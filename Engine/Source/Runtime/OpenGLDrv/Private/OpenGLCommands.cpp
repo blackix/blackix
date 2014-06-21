@@ -1597,12 +1597,16 @@ void FOpenGLDynamicRHI::RHISetRenderTargets(
 		PendingState.Viewport.Max.X = PendingState.RenderTargetWidth = Width;
 		PendingState.Viewport.Max.Y = PendingState.RenderTargetHeight = Height;
 	}
-	else if( NewDepthStencilTargetRHI )
+	// BEGIN: TEMP FIX FROM Andrew.Copland 
+	else if (NewDepthStencilTargetRHI)
 	{
 		// Set viewport size to new depth target size.
 		PendingState.Viewport.Max.X = GetOpenGLTextureSizeXFromRHITexture(NewDepthStencilTargetRHI);
 		PendingState.Viewport.Max.Y = GetOpenGLTextureSizeYFromRHITexture(NewDepthStencilTargetRHI);
+		PendingState.Viewport.Min.X = FMath::Min<uint32>(PendingState.Viewport.Min.X, PendingState.Viewport.Max.X);
+		PendingState.Viewport.Min.Y = FMath::Min<uint32>(PendingState.Viewport.Min.Y, PendingState.Viewport.Max.Y);
 	}
+	// END
 }
 
 void FOpenGLDynamicRHI::RHIDiscardRenderTargets(bool Depth, bool Stencil, uint32 ColorBitMask)

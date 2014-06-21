@@ -135,19 +135,19 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRHI,b
 	{
 		if (bNeedFinishFrame)
 		{
-		static const auto CFinishFrameVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.FinishCurrentFrame"));
-		if (!CFinishFrameVar->GetValueOnRenderThread())
-		{
-			// Wait for the GPU to finish rendering the previous frame before finishing this frame.
-			Viewport->WaitForFrameEventCompletion();
-			Viewport->IssueFrameEvent();
-		}
-		else
-		{
-			// Finish current frame immediately to reduce latency
-			Viewport->IssueFrameEvent();
-			Viewport->WaitForFrameEventCompletion();
-		}
+			static const auto CFinishFrameVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.FinishCurrentFrame"));
+			if (!CFinishFrameVar->GetValueOnRenderThread())
+			{
+				// Wait for the GPU to finish rendering the previous frame before finishing this frame.
+				Viewport->WaitForFrameEventCompletion();
+				Viewport->IssueFrameEvent();
+			}
+			else
+			{
+				// Finish current frame immediately to reduce latency
+				Viewport->IssueFrameEvent();
+				Viewport->WaitForFrameEventCompletion();
+			}
 		}
 		
 		// If the input latency timer has been triggered, block until the GPU is completely
