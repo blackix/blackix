@@ -169,11 +169,13 @@ void FDebugCanvasDrawer::DrawRenderThread( const void* InWindowBackBuffer )
 
 	if( RenderThreadCanvas )
 	{
-		RenderTarget->SetRenderTargetTexture( *(FTexture2DRHIRef*)InWindowBackBuffer );
+		FTexture2DRHIRef& RT = *(FTexture2DRHIRef*)InWindowBackBuffer;
+		RenderTarget->SetRenderTargetTexture( RT );
+		if (IsValidRef(RT))
 		{
-			RenderThreadCanvas->Canvas.SetRenderTargetRect( RenderTarget->GetViewRect() );
-			RenderThreadCanvas->Canvas.Flush( true );
+			RenderThreadCanvas->Canvas.SetRenderTargetRect( FIntRect(0, 0, RT->GetSizeX(), RT->GetSizeY()) );
 		}
+		RenderThreadCanvas->Canvas.Flush(true);
 		RenderTarget->ClearRenderTargetTexture();
 	}
 }

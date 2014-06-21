@@ -52,11 +52,12 @@ bool DoScreenSpaceReflections(const FViewInfo& View)
 		return false;
 	}
 
-	if(GEngine->IsStereoscopic3D())
-	{
-		// todo: revisit that later
-		return false;
-	}
+//!AB: Seems to me it works fine in stereo, so removing this limitation.
+// 	if(GEngine->IsStereoscopic3D())
+// 	{
+// 		// todo: revisit that later
+// 		return false;
+// 	}
 
 	if(View.FinalPostProcessSettings.ScreenSpaceReflectionIntensity < 1.0f)
 	{

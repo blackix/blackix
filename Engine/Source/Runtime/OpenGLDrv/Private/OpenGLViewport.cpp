@@ -110,14 +110,14 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRHI,b
 
 	DYNAMIC_CAST_OPENGLRESOURCE(Viewport,Viewport);
 
-	SCOPE_CYCLE_COUNTER(STAT_OpenGLPresentTime);
-
 	check(DrawingViewport.GetReference() == Viewport);
 
 	FOpenGLTexture2D* BackBuffer = Viewport->GetBackBuffer();
 
-	PlatformBlitToViewport(PlatformDevice,
-		Viewport->OpenGLContext,
+	SCOPE_CYCLE_COUNTER(STAT_OpenGLPresentTime);
+
+	bool bNeedFinishFrame = PlatformBlitToViewport(PlatformDevice,
+		*Viewport, 
 		BackBuffer->GetSizeX(),
 		BackBuffer->GetSizeY(),
 		bPresent,
@@ -133,6 +133,8 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRHI,b
 	// Don't wait on the GPU when using SLI, let the driver determine how many frames behind the GPU should be allowed to get
 	if (GNumActiveGPUsForRendering == 1)
 	{
+		if (bNeedFinishFrame)
+		{
 		static const auto CFinishFrameVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.FinishCurrentFrame"));
 		if (!CFinishFrameVar->GetValueOnRenderThread())
 		{
@@ -145,6 +147,7 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRHI,b
 			// Finish current frame immediately to reduce latency
 			Viewport->IssueFrameEvent();
 			Viewport->WaitForFrameEventCompletion();
+		}
 		}
 		
 		// If the input latency timer has been triggered, block until the GPU is completely
@@ -178,6 +181,7 @@ bool FOpenGLDynamicRHI::RHIIsDrawingViewport()
 FTexture2DRHIRef FOpenGLDynamicRHI::RHIGetViewportBackBuffer(FViewportRHIParamRef ViewportRHI)
 {
 	DYNAMIC_CAST_OPENGLRESOURCE(Viewport,Viewport);
+
 	return Viewport->GetBackBuffer();
 }
 
@@ -235,6 +239,10 @@ void FOpenGLViewport::Resize(uint32 InSizeX,uint32 InSizeY,bool bInIsFullscreen)
 
 	VERIFY_GL_SCOPE();
 
+	if (OpenGLRHI->OpenGLBridge)
+	{
+		OpenGLRHI->OpenGLBridge->ReleaseBackBuffer();
+	}
 
 	BackBuffer.SafeRelease();	// when the rest of the engine releases it, its framebuffers will be released too (those the engine knows about)
 
@@ -250,3 +258,9 @@ void FOpenGLViewport::Resize(uint32 InSizeX,uint32 InSizeY,bool bInIsFullscreen)
 	SizeY = InSizeY;
 	bIsFullscreen = bInIsFullscreen;
 }
+
+void* FOpenGLViewport::GetNativeWindow(void** AddParam) const
+{
+	return PlatformGetWindow(OpenGLContext, AddParam);
+}
+

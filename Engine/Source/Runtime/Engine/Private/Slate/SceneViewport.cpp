@@ -989,12 +989,27 @@ void FSceneViewport::EnqueueBeginRenderFrame()
 {
 	check( IsInGameThread() );
 
+	// check if we need to reallocate rendertarget for HMD and update HMD rendering viewport 
+	if (GEngine->StereoRenderingDevice.IsValid())
+	{
+		bool bNewUseSepRenTarget = GEngine->StereoRenderingDevice->ShouldUseSeparateRenderTarget();
+		if (bNewUseSepRenTarget != bUseSeparateRenderTarget ||
+		    (bNewUseSepRenTarget && GEngine->StereoRenderingDevice->NeedReAllocateViewportRenderTarget(*this)))
+		{
+			// This will cause RT to be allocated (or freed)
+			bUseSeparateRenderTarget = bNewUseSepRenTarget;
+			UpdateViewportRHI(false, SizeX, SizeY, WindowMode);
+		}
+	}
+
 	DebugCanvasDrawer->InitDebugCanvas(GetClient()->GetWorld());
 
 	// Note: ViewportRHI is only updated on the game thread
 
 	// If we dont have the ViewportRHI then we need to get it before rendering
-	if( !bUseSeparateRenderTarget && !IsValidRef(ViewportRHI) )
+	// Note, we need ViewportRHI even if bUseSeparateRenderTarget is true when stereo rendering
+	// is enabled.
+	if( !IsValidRef(ViewportRHI) && (!bUseSeparateRenderTarget || (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->ShouldUseSeparateRenderTarget()) ))
 	{
 		// Get the viewport for this window from the renderer so we can render directly to the backbuffer
 		TSharedPtr<FSlateRenderer> Renderer = FSlateApplication::Get().GetRenderer();
@@ -1004,10 +1019,14 @@ void FSceneViewport::EnqueueBeginRenderFrame()
 		{
 			ViewportRHI = *((FViewportRHIRef*)ViewportResource);
 		}
-
 	}
 
 	FViewport::EnqueueBeginRenderFrame();
+
+	if (bUseSeparateRenderTarget && GEngine->StereoRenderingDevice.IsValid())
+	{
+		GEngine->StereoRenderingDevice->UpdateViewport(*this);	
+	}
 }
 
 void FSceneViewport::BeginRenderFrame()
@@ -1100,20 +1119,34 @@ void FSceneViewport::InitDynamicRHI()
 		HitProxyMap.Init(SizeX,SizeY);
 	}
 
+	TSharedPtr<FSlateRenderer> Renderer = FSlateApplication::Get().GetRenderer();
+	FWidgetPath WidgetPath;
 	if( bUseSeparateRenderTarget )
 	{
+		uint32 TexSizeX = SizeX, TexSizeY = SizeY;
+		if (GEngine->StereoRenderingDevice.IsValid())
+		{
+			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(TexSizeX, TexSizeY);
+		}
 		FTexture2DRHIRef ShaderResourceTextureRHI;
 
-		RHICreateTargetableShaderResource2D( SizeX, SizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, RenderTargetTextureRHI, ShaderResourceTextureRHI );
+		RHICreateTargetableShaderResource2D( TexSizeX, TexSizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, RenderTargetTextureRHI, ShaderResourceTextureRHI );
 
 		if( !SlateRenderTargetHandle )
 		{
-			SlateRenderTargetHandle = new FSlateRenderTargetRHI( ShaderResourceTextureRHI, SizeX, SizeY );
+			SlateRenderTargetHandle = new FSlateRenderTargetRHI( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
+			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY);
 		}
 		else
 		{
-			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, SizeX, SizeY );
+			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d, prev %p"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY, SlateRenderTargetHandle->GetRHIRef().GetReference());
+			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
 		}
+		Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), RenderTargetTextureRHI);
+	}
+	else
+	{
+		Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), nullptr);
 	}
 }
 

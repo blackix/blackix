@@ -51,7 +51,7 @@ public:
 	void ConditionalResetSwapChain(bool bIgnoreFocus);
 
 	/** Presents the swap chain. */
-	void Present(bool bLockToVsync);
+	bool Present(bool bLockToVsync);
 
 	// Accessors.
 	FIntPoint GetSizeXY() const { return FIntPoint(SizeX, SizeY); }
@@ -67,13 +67,22 @@ public:
 		FrameSyncEvent.IssueEvent();
 	}
 
+	IDXGISwapChain* GetSwapChain() const { return SwapChain; } 
+
+	virtual void* GetNativeSwapChain() const OVERRIDE { return GetSwapChain(); }
+	virtual void* GetNativeBackBufferTexture() const OVERRIDE { return BackBuffer->GetResource(); }
+	virtual void* GetNativeBackBufferRT() const OVERRIDE { return BackBuffer->GetRenderTargetView(0, 0); }
+
 private:
 
 	/** Presents the frame synchronizing with DWM. */
 	void PresentWithVsyncDWM();
 
-	/** Presents the swap chain checking the return result. */
-	void PresentChecked(int32 SyncInterval);
+	/**
+	 * Presents the swap chain checking the return result. 
+	 * Returns true if Present was done by Engine.
+	 */
+	bool PresentChecked(int32 SyncInterval);
 
 	FD3D11DynamicRHI* D3DRHI;
 	uint64 LastFlipTime;

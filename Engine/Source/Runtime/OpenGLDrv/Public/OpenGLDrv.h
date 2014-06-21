@@ -41,6 +41,7 @@
 #include "OpenGLUtil.h"
 #include "OpenGLState.h"
 #include "OpenGLResources.h"
+#include "OpenGLBridge.h"
 
 #define FOpenGLCachedUniformBuffer_Invalid 0xFFFFFFFF
 
@@ -303,7 +304,6 @@ public:
 	virtual void PushEvent(const TCHAR* Name);
 	virtual void PopEvent();
 
-
 	#define DEFINE_RHIMETHOD(Type,Name,ParameterTypesAndNames,ParameterNames,ReturnStatement,NullImplementation) virtual Type Name ParameterTypesAndNames
 	#include "RHIMethods.h"
 	#undef DEFINE_RHIMETHOD
@@ -379,6 +379,7 @@ public:
 	/** Inform all queries about the need to recreate themselves after OpenGL context they're in gets deleted. */
 	void InvalidateQueries();
 
+	FOpenGLBridge* GetOpenGLBridge() const { return OpenGLBridge; }
 private:
 
 	/** RHI device state, independent of underlying OpenGL context used */
@@ -416,7 +417,8 @@ private:
 	/** A critical section to protect modifications and iteration over Queries list */
 	FCriticalSection TimerQueriesListCriticalSection;
 
-
+	/** Bridge to low-level OpenGL */
+	TRefCountPtr<FOpenGLBridge> OpenGLBridge;
 
 	FOpenGLGPUProfiler GPUProfilingData;
 	friend FOpenGLGPUProfiler;

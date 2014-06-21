@@ -201,11 +201,15 @@ void PlatformNULLContextSetup();
 // Creates a platform-specific back buffer
 FRHITexture* PlatformCreateBuiltinBackBuffer(FOpenGLDynamicRHI* OpenGLRHI, uint32 SizeX, uint32 SizeY);
 
+// Init platform-specific OpenGL bridge.
+void PlatformInitBridge(FOpenGLDynamicRHI* OpenGLRHI, FOpenGLBridge* OpenGLBridge);
+
 /**
  * Main function for transferring data to on-screen buffers.
  * On Windows it temporarily switches OpenGL context, on Mac only context's output view.
+ * Should return true if frame was presented and it is necessary to finish frame rendering.
  */
-void PlatformBlitToViewport( FPlatformOpenGLDevice* Device, FPlatformOpenGLContext* Context, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync, int32 SyncInterval );
+bool PlatformBlitToViewport( FPlatformOpenGLDevice* Device, const FOpenGLViewport& Viewport, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync, int32 SyncInterval );
 
 /**
  * Resize the GL context for platform.
@@ -232,6 +236,9 @@ void PlatformRestoreDesktopDisplayMode();
  * Get current backbuffer dimensions.
  */
 void PlatformGetBackbufferDimensions( uint32& OutWidth, uint32& OutHeight );
+
+// Returns native window handle.
+void* PlatformGetWindow(FPlatformOpenGLContext* Context, void** AddParam);
 
 /*------------------------------------------------------------------------------
 	OpenGL texture format table.

@@ -95,6 +95,10 @@ EWindowMode::Type GetWindowModeType(EWindowMode::Type WindowMode)
 	return EWindowMode::Fullscreen;
 }
 
+
+
+
+
 UGameEngine::UGameEngine(const class FPostConstructInitializeProperties& PCIP)
 : Super(PCIP)
 {
@@ -104,8 +108,10 @@ UGameEngine::UGameEngine(const class FPostConstructInitializeProperties& PCIP)
 	cleanup!!
 -----------------------------------------------------------------------------*/
 
-void UGameEngine::CreateGameViewportWidget( UGameViewportClient* GameViewportClient )
+void UGameEngine::CreateGameViewport( UGameViewportClient* GameViewportClient )
 {
+	check(GameViewportWindow.IsValid());
+
 	TSharedRef<SOverlay> ViewportOverlayWidgetRef = SNew( SOverlay );
 	TSharedRef<SViewport> GameViewportWidgetRef = 
 		SNew( SViewport )
@@ -116,23 +122,9 @@ void UGameEngine::CreateGameViewportWidget( UGameViewportClient* GameViewportCli
 				ViewportOverlayWidgetRef
 			];
 
-	GameViewportWidget = GameViewportWidgetRef;
-
-	GameViewportClient->SetViewportOverlayWidget( GameViewportWindow.Pin(), ViewportOverlayWidgetRef );
-}
-
-void UGameEngine::CreateGameViewport( UGameViewportClient* GameViewportClient )
-{
-	check(GameViewportWindow.IsValid());
-
-	if( !GameViewportWidget.IsValid() )
-	{
-		CreateGameViewportWidget( GameViewportClient );
-	}
-	TSharedRef<SViewport> GameViewportWidgetRef = GameViewportWidget.ToSharedRef();
-
 	auto Window = GameViewportWindow.Pin();
 
+	GameViewportWidget = GameViewportWidgetRef;
 	Window->SetWidgetToFocusOnActivate( GameViewportWidgetRef );
 	Window->SetOnWindowClosed( FOnWindowClosed::CreateUObject( this, &UGameEngine::OnGameWindowClosed ) );
 
@@ -153,7 +145,7 @@ void UGameEngine::CreateGameViewport( UGameViewportClient* GameViewportClient )
 
 	SceneViewport = MakeShareable( new FSceneViewport( GameViewportClient, GameViewportWidgetRef ) );
 	GameViewportClient->Viewport = SceneViewport.Get();
-
+	GameViewportClient->SetViewportOverlayWidget( Window, ViewportOverlayWidgetRef );
 	//GameViewportClient->CreateHighresScreenshotCaptureRegionWidget(); //  Disabled until mouse based input system can be made to work correctly.
 
 	// The viewport widget needs an interface so it knows what should render
@@ -434,19 +426,14 @@ void UGameEngine::Init(IEngineLoop* InEngineLoop)
 	// Attach the viewport client to a new viewport.
 	if(ViewportClient)
 	{
-		// This must be created before any gameplay code adds widgets
 		bool bWindowAlreadyExists = GameViewportWindow.IsValid();
 		if (!bWindowAlreadyExists)
 		{
 			GameViewportWindow = CreateGameWindow();
 		}
-
 		CreateGameViewport( ViewportClient );
-
-		if( !bWindowAlreadyExists )
-		{
 			SwitchGameWindowToUseGameViewport();
-		}
+	
 		FString Error;
 		if(!ViewportClient->Init(Error))
 		{

@@ -37,6 +37,7 @@
 #include "IHeadMountedDisplay.h"
 #include "Scalability.h"
 #include "StatsData.h"
+#include "ScreenRendering.h"
 
 #if !UE_BUILD_SHIPPING
 #include "STaskGraph.h"
@@ -1503,11 +1504,11 @@ class FFakeStereoRenderingDevice : public IStereoRendering
 public:
 	virtual ~FFakeStereoRenderingDevice() {}
 
-	virtual bool IsStereoEnabled() const { return true; }
+	virtual bool IsStereoEnabled() const OVERRIDE { return true; }
 
-	virtual bool EnableStereo(bool stereo = true) { return true; }
+	virtual bool EnableStereo(bool stereo = true) OVERRIDE { return true; }
 
-	virtual void AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
+	virtual void AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const OVERRIDE
 	{
 		SizeX = SizeX / 2;
 		if( StereoPass == eSSP_RIGHT_EYE )
@@ -1516,7 +1517,7 @@ public:
 		}
 	}
 
-	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation)
+	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation) OVERRIDE
 	{
 		if( StereoPassType != eSSP_FULL)
 		{
@@ -1526,7 +1527,7 @@ public:
 		}
 	}
 
-	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType, const float FOV) const
+	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType, const float FOV) const OVERRIDE
 	{
 		const float ProjectionCenterOffset = 0.151976421f;
 		const float PassProjectionOffset = (StereoPassType == eSSP_LEFT_EYE) ? ProjectionCenterOffset : -ProjectionCenterOffset;
@@ -1550,24 +1551,53 @@ public:
 
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) {}
 
-	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const 
+	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const OVERRIDE 
 	{
 		FMatrix m;
 		m.SetIdentity();
 		InCanvas->PushAbsoluteTransform(m);
 	}
 
-	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const 
+	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const OVERRIDE 
 	{
 		FMatrix m;
 		m.SetIdentity();
 		InCanvas->PushAbsoluteTransform(m);
 	}
 
-	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const
+	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const OVERRIDE
 	{
 		EyeToSrcUVOffsetValue = FVector2D::ZeroVector;
 		EyeToSrcUVScaleValue = FVector2D(1.0f, 1.0f);
+	}
+
+	virtual bool ShouldUseSeparateRenderTarget() const OVERRIDE 
+	{ 
+		// should return true to test rendering into a separate texture; however, there is a bug
+		// in DrawNormalizedScreenQuad (FScreenVS shader), TTP #338597, so false for now.
+		return false; //true; 
+	}
+
+	virtual void RenderTexture_RenderThread(FTexture2DRHIParamRef BackBuffer, FTexture2DRHIParamRef SrcTexture) const OVERRIDE 
+	{
+		check(IsInRenderingThread());
+
+		RHISetRenderTarget( BackBuffer, FTextureRHIRef() );
+		const uint32 ViewportWidth = BackBuffer->GetSizeX();
+		const uint32 ViewportHeight = BackBuffer->GetSizeY();
+		RHISetViewport( 0,0,0,ViewportWidth, ViewportHeight, 1.0f );
+		RHISetBlendState(TStaticBlendState<>::GetRHI());
+		RHISetRasterizerState(TStaticRasterizerState<>::GetRHI());
+		RHISetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
+		RHIClear(true, FLinearColor::Black, false, 0, false, 0, FIntRect());
+		
+		DrawNormalizedScreenQuad(
+			0, 0,
+			0, 0,
+			SrcTexture->GetSizeX(), SrcTexture->GetSizeY(),
+			1, 1,
+			FIntPoint(ViewportWidth, ViewportHeight),
+			SrcTexture);
 	}
 };
 
@@ -6190,7 +6220,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 
 	//@todo joeg: Move this stuff to a function, make safe to use on consoles by
 	// respecting the various safe zones, and make it compile out.
-	const int32 FPSXOffset	= (GEngine->IsStereoscopic3D()) ? 250 : (FPlatformProperties::SupportsWindowedMode() ? 110 : 250);
+	const int32 FPSXOffset	= (GEngine->IsStereoscopic3D()) ? Viewport->GetSizeXY().X * 0.5f * 0.334f : (FPlatformProperties::SupportsWindowedMode() ? 110 : 250);
 	const int32 StatsXOffset	= FPlatformProperties::SupportsWindowedMode() ?  4 : 100;
 
 	int32 MessageY = 35;

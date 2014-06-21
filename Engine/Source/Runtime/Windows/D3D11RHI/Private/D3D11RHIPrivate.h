@@ -31,6 +31,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogD3D11RHI, Log, All);
 #include "D3D11Viewport.h"
 #include "D3D11ConstantBuffer.h"
 #include "D3D11StateCache.h"
+#include "D3D11Bridge.h"
 
 // DX11 doesn't support higher MSAA count
 #define DX_MAX_MSAA_COUNT 8
@@ -352,7 +353,10 @@ public:
 	{
 		return DXGIFactory;
 	}
-
+	FD3D11Bridge* GetBridge() const
+	{
+		return D3D11Bridge;
+	}
 private:
 	template <EShaderFrequency ShaderFrequency>
 	void ClearShaderResourceViews(FD3D11BaseShaderResource* Resource);
@@ -480,6 +484,8 @@ protected:
 	FD3DGPUProfiler GPUProfilingData;
 	// >= 0, was computed before, unless hardware was changed during engine init it should be the same
 	int32 ChosenAdapter;
+
+	TRefCountPtr<FD3D11Bridge>	D3D11Bridge;
 
 	template<typename BaseResourceType>
 	TD3D11Texture2D<BaseResourceType>* CreateD3D11Texture2D(uint32 SizeX,uint32 SizeY,uint32 SizeZ,bool bTextureArray,bool CubeTexture,uint8 Format,

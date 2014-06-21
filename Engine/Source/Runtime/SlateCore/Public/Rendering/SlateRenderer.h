@@ -8,7 +8,7 @@
 
 
 class SWindow;
-
+class FRHITexture2D;
 
 /**
  * Abstract base class for Slate renderers.
@@ -173,6 +173,9 @@ public:
 	 * that will be stored into the TArray of FColors.
 	 */
 	virtual void PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData) {}
+
+	/** Saves render target in the renderer. */
+	virtual void SetRenderTarget(const SWindow& Window, FRHITexture2D* RT) { }
 
 protected:
 

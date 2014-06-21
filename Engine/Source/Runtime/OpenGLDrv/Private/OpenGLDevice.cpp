@@ -997,6 +997,28 @@ void FOpenGLDynamicRHI::InvalidateQueries( void )
 	}
 }
 
+void FOpenGLDynamicRHI::RHISetBridge(FBridgeRHIParamRef BridgeRHI)
+{
+	DYNAMIC_CAST_OPENGLRESOURCE(Bridge, Bridge);
+
+	if (OpenGLBridge && OpenGLBridge != Bridge)
+	{
+		OpenGLBridge->Reset();
+	}
+
+	OpenGLBridge = Bridge;
+
+	if (OpenGLBridge)
+	{
+		PlatformInitBridge(this, OpenGLBridge);
+	}
+}
+
+FBridgeRHIRef FOpenGLDynamicRHI::RHIGetBridge()
+{
+	return OpenGLBridge.GetReference();
+}
+
 bool FOpenGLDynamicRHIModule::IsSupported()
 {
 	return PlatformInitOpenGL();

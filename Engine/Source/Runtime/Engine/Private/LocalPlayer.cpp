@@ -295,10 +295,15 @@ void ULocalPlayer::GetViewPoint(FMinimalViewInfo& OutViewInfo)
 	// allow HMDs to override fov
 	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
 	{
-		float HmdFov = GEngine->HMDDevice->GetFieldOfViewInRadians();
-		if (HmdFov > 0)
-		{
-			OutViewInfo.FOV = HmdFov;
+		float HFOV, VFOV;
+        GEngine->HMDDevice->GetFieldOfView(HFOV, VFOV);
+        if (VFOV > 0 && HFOV > 0)
+        {
+            OutViewInfo.FOV = FMath::Max(HFOV, VFOV);
+			// AspectRatio won't be used until bConstrainAspectRatio is set to true,
+			// but it doesn't really matter since HMD calcs its own projection matrix.
+			//OutViewInfo.AspectRatio = HFOV / VFOV;
+			//OutViewInfo.bConstrainAspectRatio = true;
 		}
 	}
 }
@@ -456,7 +461,7 @@ FSceneView* ULocalPlayer::CalcSceneView( class FSceneViewFamily* ViewFamily,
 
 	for (int ViewExt = 0; ViewExt < ViewFamily->ViewExtensions.Num(); ViewExt++)
 	{
-		ViewFamily->ViewExtensions[ViewExt]->SetupView(*View);
+		ViewFamily->ViewExtensions[ViewExt]->SetupView(*ViewFamily, *View);
 	}
 	return View;
 }
@@ -632,7 +637,7 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 	PlayerController->LocalPlayerCachedLODDistanceFactor = ViewInfo.FOV / FMath::Max<float>(0.01f, (PlayerController->PlayerCameraManager != NULL) ? PlayerController->PlayerCameraManager->DefaultFOV : 90.f);
 	
 	FVector StereoViewLocation = ViewInfo.Location;
-	if (GEngine->IsStereoscopic3D() && StereoPass != eSSP_FULL)
+    if ((GEngine->IsStereoscopic3D() && StereoPass != eSSP_FULL) || (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed()))
 	{
 		GEngine->StereoRenderingDevice->CalculateStereoViewOffset(StereoPass, ViewInfo.Rotation, GetWorld()->GetWorldSettings()->WorldToMeters, StereoViewLocation);
 	}

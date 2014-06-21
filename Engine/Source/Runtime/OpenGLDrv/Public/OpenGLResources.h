@@ -1353,6 +1353,10 @@ public:
 		FrameSyncEvent.IssueEvent();
 	}
 
+	virtual void* GetNativeWindow(void** AddParam) const OVERRIDE;
+
+	struct FPlatformOpenGLContext* GetGLContext() const { return OpenGLContext; }
+	FOpenGLDynamicRHI* GetOpenGLRHI() const { return OpenGLRHI; }
 private:
 
 	friend class FOpenGLDynamicRHI;
@@ -1366,3 +1370,4 @@ private:
 	TRefCountPtr<FOpenGLTexture2D> BackBuffer;
 	FOpenGLEventQuery FrameSyncEvent;
 };
+

@@ -586,6 +586,7 @@ static UCanvas* GetCanvasByName(FName CanvasName)
 
 void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 {
+	
 	// Allow HMD to modify screen settings
 	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
 	{
@@ -969,14 +970,23 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 			{
 				GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, DebugCanvas, DebugCanvasObject, Viewport);
 				ViewportConsole->PostRender_Console(DebugCanvasObject);
+#if !UE_BUILD_SHIPPING
+				if (DebugCanvas != NULL && GEngine->HMDDevice.IsValid())
+				{
+					GEngine->HMDDevice->DrawDebug(DebugCanvasObject, eSSP_LEFT_EYE);
+				}
+#endif
 				DebugCanvas->PopTransform();
 
 				GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_RIGHT_EYE, DebugCanvas, DebugCanvasObject, Viewport);
 				ViewportConsole->PostRender_Console(DebugCanvasObject);
-				if (DebugCanvas != NULL)
+#if !UE_BUILD_SHIPPING
+				if (DebugCanvas != NULL && GEngine->HMDDevice.IsValid())
 				{
-					DebugCanvas->PopTransform();
+					GEngine->HMDDevice->DrawDebug(DebugCanvasObject, eSSP_RIGHT_EYE);
 				}
+#endif
+				DebugCanvas->PopTransform();
 
 				// Reset the canvas for rendering to the full viewport.
 				DebugCanvasObject->Reset();
@@ -1019,6 +1029,13 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		DebugCanvasObject->SizeY = Viewport->GetSizeXY().Y;
 		DebugCanvasObject->SetView(NULL);
 		DebugCanvasObject->Update();
+
+#if !UE_BUILD_SHIPPING
+		if (GEngine->HMDDevice.IsValid())
+		{
+			GEngine->HMDDevice->DrawDebug(DebugCanvasObject, eSSP_FULL);
+		}
+#endif
 	}
 	else
 	{

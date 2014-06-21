@@ -166,6 +166,18 @@ public:
 		return nullptr;
 	}
 
+	/**
+	 * Returns access to the platform-specific native shader resource view pointer.  This is designed to be used to provide plugins with access
+	 * to the underlying resource and should be used very carefully or not at all.
+	 *
+	 * @return	The pointer to the native resource or NULL if it not initialized or not supported for this resource type for some reason
+	 */
+	virtual void* GetNativeShaderResourceView() const
+	{
+		// Override this in derived classes to expose access to the native texture resource
+		return nullptr;
+	}
+
 	/** @return The number of mip-maps in the texture. */
 	uint32 GetNumMips() const { return NumMips; }
 
@@ -304,7 +316,41 @@ private:
 //
 
 class FRHIRenderQuery : public FRHIResource {};
-class FRHIViewport : public FRHIResource {};
+
+class FRHIViewport : public FRHIResource 
+{
+public:
+	/**
+	 * Returns access to the platform-specific native resource pointer.  This is designed to be used to provide plugins with access
+	 * to the underlying resource and should be used very carefully or not at all.
+	 *
+	 * @return	The pointer to the native resource or NULL if it not initialized or not supported for this resource type for some reason
+	 */
+	virtual void* GetNativeSwapChain() const { return nullptr; }
+	/**
+	 * Returns access to the platform-specific native resource pointer to a backbuffer texture.  This is designed to be used to provide plugins with access
+	 * to the underlying resource and should be used very carefully or not at all.
+	 *
+	 * @return	The pointer to the native resource or NULL if it not initialized or not supported for this resource type for some reason
+	 */
+	virtual void* GetNativeBackBufferTexture() const { return nullptr; }
+	/**
+	 * Returns access to the platform-specific native resource pointer to a backbuffer rendertarget. This is designed to be used to provide plugins with access
+	 * to the underlying resource and should be used very carefully or not at all.
+	 *
+	 * @return	The pointer to the native resource or NULL if it not initialized or not supported for this resource type for some reason
+	 */
+	virtual void* GetNativeBackBufferRT() const { return nullptr; }
+
+	/**
+	 * Returns access to the platform-specific native window. This is designed to be used to provide plugins with access
+	 * to the underlying resource and should be used very carefully or not at all. 
+	 *
+	 * @return	The pointer to the native resource or NULL if it not initialized or not supported for this resource type for some reason.
+	 * AddParam could represent any additional platform-specific data (could be null).
+	 */
+	virtual void* GetNativeWindow(void** AddParam = nullptr) const { return nullptr; }
+};
 
 //
 // Views
@@ -346,3 +392,7 @@ public:
 		ArraySliceIndex(InArraySliceIndex)
 	{}
 };
+
+class FRHIBridge : public FRHIResource {};
+DEFINE_RHI_REFERENCE_TYPE(Bridge, Resource)
+

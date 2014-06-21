@@ -301,6 +301,12 @@ namespace UnrealBuildTool
 						Result += " /Z7";
 					}
 				}
+				if (WindowsPlatform.Compiler == WindowsCompiler.VisualStudio2012 ||
+				    WindowsPlatform.Compiler == WindowsCompiler.VisualStudio2013)
+				{
+					//Console.WriteLine("Optimized build debugging is enabled.");
+					Result += " /d2Zi+"; // Enable optimized build debugging
+				}	
 			}
 
 			// Specify the appropriate runtime library based on the platform and config.

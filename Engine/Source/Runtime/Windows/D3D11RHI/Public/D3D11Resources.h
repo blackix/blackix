@@ -379,6 +379,10 @@ public:
 	{ 
 		return GetResource();
 	}
+	virtual void* GetNativeShaderResourceView() const OVERRIDE
+	{
+		return GetShaderResourceView();
+	}
 
 	// IRefCountedObject interface.
 	virtual uint32 AddRef() const

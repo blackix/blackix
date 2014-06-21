@@ -80,6 +80,17 @@ DEFINE_RHIMETHOD_2(
 //
 
 DEFINE_RHIMETHOD_1(
+	void,RHISetBridge,
+	FBridgeRHIParamRef,Bridge,
+	,
+	);
+
+DEFINE_RHIMETHOD_0(
+	FBridgeRHIRef,RHIGetBridge,
+	return,return new FRHIBridge();
+	);
+
+DEFINE_RHIMETHOD_1(
 	FSamplerStateRHIRef,RHICreateSamplerState,
 	const FSamplerStateInitializerRHI&,Initializer,
 	return,return new FRHISamplerState();

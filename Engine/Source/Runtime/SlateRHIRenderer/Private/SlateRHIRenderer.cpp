@@ -10,6 +10,7 @@
 #include "Runtime/Engine/Public/ScreenRendering.h"
 #include "Runtime/Engine/Public/ShaderCompiler.h"
 #include "SlateShaders.h"
+#include "StereoRendering.h"
 
 DECLARE_CYCLE_STAT(TEXT("Map Staging Buffer"),STAT_MapStagingBuffer,STATGROUP_CrashTracker);
 DECLARE_CYCLE_STAT(TEXT("Generate Capture Buffer"),STAT_GenerateCaptureBuffer,STATGROUP_CrashTracker);
@@ -100,6 +101,7 @@ void FSlateRHIRenderer::FViewportInfo::ReleaseRHI()
 {
 	DepthStencil.SafeRelease();
 	ViewportRHI.SafeRelease();
+	RenderTargetTexture.SafeRelease();
 }
 
 void FSlateRHIRenderer::FViewportInfo::ConditionallyUpdateDepthBuffer(bool bInRequiresStencilTest)
@@ -434,10 +436,14 @@ void FSlateRHIRenderer::DrawWindow_RenderThread( const FViewportInfo& ViewportIn
 		// should have been created by the game thread
 		check( IsValidRef(ViewportInfo.ViewportRHI) );
 
-		RHIBeginDrawingViewport( ViewportInfo.ViewportRHI, FTextureRHIRef() );
-		RHISetViewport( 0,0,0,ViewportInfo.Width, ViewportInfo.Height, 0.0f );
+		FTexture2DRHIRef BackBuffer = (ViewportInfo.RenderTargetTexture) ? 
+			ViewportInfo.RenderTargetTexture : RHIGetViewportBackBuffer(ViewportInfo.ViewportRHI);
+		const uint32 ViewportWidth = BackBuffer->GetSizeX();
+		const uint32 ViewportHeight = BackBuffer->GetSizeY();
 
-		FTexture2DRHIRef BackBuffer = RHIGetViewportBackBuffer( ViewportInfo.ViewportRHI );
+		RHIBeginDrawingViewport( ViewportInfo.ViewportRHI, FTextureRHIRef() );
+		RHISetViewport( 0,0,0,ViewportWidth, ViewportHeight, 0.0f ); 
+
 
 		if( ViewportInfo.bRequiresStencilTest )
 		{
@@ -451,11 +457,11 @@ void FSlateRHIRenderer::DrawWindow_RenderThread( const FViewportInfo& ViewportIn
 
 		if( WindowElementList.GetRenderBatches().Num() > 0 )
 		{
-			FSlateRenderTarget BackBufferTarget( BackBuffer, FIntPoint( ViewportInfo.Width, ViewportInfo.Height ) );
+			FSlateRenderTarget BackBufferTarget( BackBuffer, FIntPoint( ViewportWidth, ViewportHeight ) );
 
 			RenderingPolicy->DrawElements
 			(
-				FIntPoint(ViewportInfo.Width, ViewportInfo.Height),
+				FIntPoint(ViewportWidth, ViewportHeight),
 				BackBufferTarget,
 				ViewMatrix*ViewportInfo.ProjectionMatrix,
 				WindowElementList.GetRenderBatches()
@@ -463,6 +469,12 @@ void FSlateRHIRenderer::DrawWindow_RenderThread( const FViewportInfo& ViewportIn
 		}
 	}
 
+	bool bNeedCallFinishFrameForStereo = false;
+	if (GEngine && IsValidRef(ViewportInfo.RenderTargetTexture) && GEngine->StereoRenderingDevice.IsValid())
+	{
+		GEngine->StereoRenderingDevice->RenderTexture_RenderThread(RHIGetViewportBackBuffer(ViewportInfo.ViewportRHI), ViewportInfo.RenderTargetTexture);
+		bNeedCallFinishFrameForStereo = true;
+	}
 
 	// Calculate renderthread time (excluding idle time).	
 	uint32 StartTime		= FPlatformTime::Cycles();
@@ -470,6 +482,10 @@ void FSlateRHIRenderer::DrawWindow_RenderThread( const FViewportInfo& ViewportIn
 	// Note - We do not include present time in the slate render thread stat
 	RHIEndDrawingViewport( ViewportInfo.ViewportRHI, true, bLockToVsync );
 
+	if (bNeedCallFinishFrameForStereo)
+	{
+		GEngine->StereoRenderingDevice->FinishRenderingFrame_RenderThread();
+	}
 	uint32 EndTime		= FPlatformTime::Cycles();
 
 	GSwapBufferTime		= EndTime - StartTime;
@@ -1040,5 +1056,14 @@ void FSlateRHIRenderer::RequestResize( const TSharedPtr<SWindow>& Window, uint32
 	{
 		ViewInfo->DesiredWidth = NewWidth;
 		ViewInfo->DesiredHeight = NewHeight;
+	}
+}
+
+void FSlateRHIRenderer::SetRenderTarget(const SWindow& Window, FTexture2DRHIParamRef RT)
+{
+	FViewportInfo* ViewInfo = WindowToViewportInfo.FindRef(&Window);
+	if (ViewInfo)
+	{
+		ViewInfo->RenderTargetTexture = RT;
 	}
 }

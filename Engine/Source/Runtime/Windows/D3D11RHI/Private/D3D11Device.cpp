@@ -439,3 +439,26 @@ void FD3D11DynamicRHI::RHIFlushComputeShaderCache()
 {
 	// Nothing to do
 }
+
+void FD3D11DynamicRHI::RHISetBridge(FBridgeRHIParamRef BridgeRHI)
+{
+	DYNAMIC_CAST_D3D11RESOURCE(Bridge, Bridge);
+
+	if (D3D11Bridge && D3D11Bridge != Bridge)
+	{
+		D3D11Bridge->Reset();
+	}
+
+	D3D11Bridge = Bridge;
+
+	if (Bridge)
+	{
+		Bridge->Init(Direct3DDevice, Direct3DDeviceIMContext);
+	}
+}
+
+FBridgeRHIRef FD3D11DynamicRHI::RHIGetBridge()
+{
+	return D3D11Bridge.GetReference();
+}
+

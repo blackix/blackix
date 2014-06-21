@@ -1,13 +1,60 @@
-// Copyright 1998-2012 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2014 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
+#include "IOculusRiftPlugin.h"
+#include "HeadMountedDisplay.h"
+#include "IHeadMountedDisplay.h"
+
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
-#include "IHeadMountedDisplay.h"
 #include "SceneViewExtension.h"
 
+#if PLATFORM_SUPPORTS_PRAGMA_PACK
+#pragma pack (push,8)
+#endif
 
-using namespace OVR;
+#if PLATFORM_WINDOWS
+	#define OVR_VISION_ENABLED
+	#define OVR_DIRECT_RENDERING
+	#define OVR_D3D_VERSION 11
+	#define OVR_GL
+#endif
+
+#ifdef OVR_VISION_ENABLED
+	#define OVR_CAPI_VISIONSUPPORT
+#endif
+
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
+	
+	#include "OVRVersion.h"
+
+	#include "../Src/Kernel/OVR_Math.h"
+	#include "../Src/Kernel/OVR_Threads.h"
+	#include "../Src/OVR_CAPI.h"
+	#include "../Src/Kernel/OVR_Color.h"
+	#include "../Src/Kernel/OVR_Timer.h"
+
+#ifdef OVR_DIRECT_RENDERING
+	#include "AllowWindowsPlatformTypes.h"
+	#ifdef OVR_D3D_VERSION
+		#include "../Src/OVR_CAPI_D3D.h"
+
+		#include "D3D11Bridge.h"
+	#endif // OVR_D3D_VERSION
+	#ifdef OVR_GL
+		#include "../Src/OVR_CAPI_GL.h"
+		#include "OpenGLBridge.h"
+	#endif
+#endif // OVR_DIRECT_RENDERING
+
+	using namespace OVR;
+
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
+
+#if PLATFORM_SUPPORTS_PRAGMA_PACK
+#pragma pack (pop)
+#endif
+
 
 /**
  * Oculus Rift Head Mounted Display
@@ -28,16 +75,13 @@ public:
 
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) OVERRIDE;
 	virtual float GetInterpupillaryDistance() const OVERRIDE;
-    virtual float GetFieldOfViewInRadians() const OVERRIDE;
+    //virtual float GetFieldOfViewInRadians() const OVERRIDE;
+	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const OVERRIDE;
 
     virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) const OVERRIDE;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) OVERRIDE;
 	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) OVERRIDE;
 
-	virtual float GetLensCenterOffset() const OVERRIDE;
-    virtual float GetDistortionScalingFactor() const OVERRIDE;
-    virtual void GetDistortionWarpValues(FVector4& K) const OVERRIDE;
-	virtual bool GetChromaAbCorrectionValues(FVector4& K) const OVERRIDE;
 	virtual bool IsChromaAbCorrectionEnabled() const OVERRIDE;
 
 	virtual class ISceneViewExtension* GetViewExtension() OVERRIDE;
@@ -54,24 +98,18 @@ public:
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) OVERRIDE;
 	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const OVERRIDE;
 	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const OVERRIDE;
-	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const OVERRIDE
-	{
-		EyeToSrcUVOffsetValue = FVector2D::ZeroVector;
-		EyeToSrcUVScaleValue = FVector2D(1.0f, 1.0f);
-	}
+	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const OVERRIDE;
+	virtual void GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPass, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const OVERRIDE;
 
     /** ISceneViewExtension interface */
     virtual void ModifyShowFlags(FEngineShowFlags& ShowFlags) OVERRIDE;
-    virtual void SetupView(FSceneView& InView) OVERRIDE;
-	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) OVERRIDE {}
+    virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) OVERRIDE;
 	virtual void PreRenderView_RenderThread(FSceneView& InView) OVERRIDE;
+	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) OVERRIDE;
 
 	/** Positional tracking control methods */
 	virtual bool IsPositionalTrackingEnabled() const OVERRIDE;
 	virtual bool EnablePositionalTracking(bool enable) OVERRIDE;
-
-	/** A hookup for latency tester (render thread). */
-	virtual bool GetLatencyTesterColor_RenderThread(FColor& color, const FSceneView& view) OVERRIDE;
 
 	virtual bool IsHeadTrackingAllowed() const OVERRIDE;
 
@@ -83,14 +121,139 @@ public:
 		current position as 0 point. */
 	virtual void ResetOrientationAndPosition(float yaw = 0.f) OVERRIDE;
 
-	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) OVERRIDE {}
+	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) OVERRIDE;
 	virtual void UpdateScreenSettings(const FViewport*) OVERRIDE;
 
-#if !UE_BUILD_SHIPPING
-    /** Debugging functionality */
-	virtual bool HandleInputKey(UPlayerInput*, FKey Key, EInputEvent EventType, float AmountDepressed, bool bGamepad);
-	virtual bool HandleInputAxis(UPlayerInput*, FKey Key, float Delta, float DeltaTime, int32 NumSamples, bool bGamepad);
-#endif // !UE_BUILD_SHIPPING
+#ifdef OVR_DIRECT_RENDERING
+	class BridgeBaseImpl
+	{
+	public:
+		BridgeBaseImpl(FOculusRiftHMD* plugin) :Plugin(plugin), bNeedReinitRendererAPI(true), /*bReadOnly(false),*/ bInitialized(false) {}
+
+		// Returns true if it is initialized and used.
+		bool IsInitialized() const { return bInitialized; }
+
+		virtual void BeginRendering() = 0;
+		virtual void UpdateViewport(const FViewport& Viewport, const FRHIViewport* ViewportRHI) = 0;
+		virtual void SetNeedReinitRendererAPI() { bNeedReinitRendererAPI = true; }
+
+		virtual void Shutdown()	{}
+
+	protected: // data
+		// Data
+		mutable OVR::Lock	ModifyLock;
+		mutable OVR::Lock	ModifyEyeTexturesLock;
+		FOculusRiftHMD*		Plugin;
+		bool				bNeedReinitRendererAPI;
+		bool				bInitialized;
+	};
+
+#if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
+	class D3D11Bridge : public BridgeBaseImpl, public FD3D11Bridge
+	{
+	public:
+		D3D11Bridge(FOculusRiftHMD* plugin):
+			BridgeBaseImpl(plugin),
+			bNeedReinitEyeTextures(false)
+		{
+			memset(&Cfg, 0, sizeof(Cfg));
+			memset(&EyeTexture, 0, sizeof(EyeTexture));
+			memset(&EyeTexture_RenderThread, 0, sizeof(EyeTexture_RenderThread));
+		}
+
+		// Implementation of IBaseRHIBridge, called by Plugin itself
+		virtual void BeginRendering() OVERRIDE;
+		void FinishRendering();
+		virtual void UpdateViewport(const FViewport& Viewport, const FRHIViewport* ViewportRHI) OVERRIDE;
+		virtual void Shutdown() OVERRIDE
+		{
+			BridgeBaseImpl::Shutdown();
+			Reset();
+		}
+
+		// Implementation of FD3D11Bridge, called by RHI
+		virtual void Init(ID3D11Device* InD3DDevice, ID3D11DeviceContext* InD3DDeviceContext) OVERRIDE;
+		virtual void Reset() OVERRIDE;
+
+		// Resets Viewport-specific pointers (BackBufferRT, SwapChain).
+		virtual void ReleaseBackBuffer() OVERRIDE;
+
+		virtual bool FinishFrame(int SyncInterval) OVERRIDE;
+
+	protected:
+		void Reset_RenderThread();
+	protected: // data
+		ovrD3D11Config		Cfg;
+		ovrD3D11Texture		EyeTexture[2];				
+		ovrD3D11Texture		EyeTexture_RenderThread[2];
+		bool				bNeedReinitEyeTextures;
+	};
+
+#endif
+
+#ifdef OVR_GL
+	class OGLBridge : public BridgeBaseImpl, public FOpenGLBridge
+	{
+	public:
+		OGLBridge(FOculusRiftHMD* plugin) : 
+			BridgeBaseImpl(plugin), 
+			bNeedReinitEyeTextures(false)
+		{
+			memset(&Cfg, 0, sizeof(Cfg));
+			memset(&EyeTexture, 0, sizeof(EyeTexture));
+			memset(&EyeTexture_RenderThread, 0, sizeof(EyeTexture_RenderThread));
+		}
+
+		// Implementation of IBaseRHIBridge, called by Plugin itself
+		virtual void BeginRendering() OVERRIDE;
+		void FinishRendering();
+		virtual void UpdateViewport(const FViewport& Viewport, const FRHIViewport* ViewportRHI) OVERRIDE;
+		virtual void Shutdown() OVERRIDE
+		{
+			BridgeBaseImpl::Shutdown();
+			Reset();
+		}
+
+		// Implementation of FOpenGLBridge, called by RHI
+		virtual void Init() OVERRIDE;
+		virtual void Reset() OVERRIDE;
+
+		// Resets Viewport-specific pointers (BackBufferRT, SwapChain).
+		virtual void ReleaseBackBuffer() OVERRIDE;
+
+		virtual bool FinishFrame(int SyncInterval) OVERRIDE;
+
+	protected: // data
+		ovrGLConfig			Cfg;
+		ovrGLTexture		EyeTexture[2];
+		ovrGLTexture		EyeTexture_RenderThread[2];
+		bool				bNeedReinitEyeTextures;
+	};
+#endif // OVR_GL
+	FRHIBridge*		GetActiveRHIBridge();
+	BridgeBaseImpl* GetActiveRHIBridgeImpl();
+
+	virtual void UpdateViewport(const FViewport& Viewport, const FRHIViewport* ViewportRHI) OVERRIDE;
+
+	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const OVERRIDE;
+	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const OVERRIDE;
+	virtual bool ShouldUseSeparateRenderTarget() const OVERRIDE 
+	{ 
+		check(IsInGameThread());
+		return IsStereoEnabled(); 
+	}
+
+	void BeginRendering_RenderThread();
+	void FinishRendering_RenderThread();
+	void ShutdownRendering();
+
+#else
+
+	virtual void FinishRenderingFrame_RenderThread() OVERRIDE;
+
+#endif // #ifdef OVR_DIRECT_RENDERING
+
+	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) OVERRIDE;
 
 	/** Constructor */
 	FOculusRiftHMD();
@@ -102,6 +265,8 @@ public:
 	bool IsInitialized() const;
 
 private:
+	FOculusRiftHMD* getThis() { return this; }
+
 	/**
 	 * Starts up the Oculus Rift device
 	 */
@@ -116,16 +281,12 @@ private:
 	 * Reads the device configuration, and sets up the stereoscopic rendering parameters
 	 */
 	void UpdateStereoRenderingParams();
-
-	/**
-	 * Calculates the distortion scaling factor used in the distortion postprocess
-	 */
-    float CalcDistortionScale(float InScale);
+	void UpdateHmdRenderInfo();
 
     /**
      * Updates the view point reflecting the current HMD orientation. 
      */
-	void UpdatePlayerViewPoint(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FQuat& BaseViewOrientation, const FVector& BaseViewPosition, FRotator& ViewRotation, FVector& ViewLocation);
+	static void UpdatePlayerViewPoint(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& LastHmdPosition, const FQuat& DeltaControlOrientation, const FQuat& BaseViewOrientation, const FVector& BaseViewPosition, FRotator& ViewRotation, FVector& ViewLocation);
 
 	/**
 	 * Converts quat from Oculus ref frame to Unreal
@@ -184,6 +345,16 @@ private:
 		return InVec * (1.f / WorldToMetersScale);
 	}
 
+	FORCEINLINE FMatrix ToFMatrix(const OVR::Matrix4f& vtm) const
+	{
+		// Rows and columns are swapped between OVR::Matrix4f and FMatrix
+		return FMatrix(
+			FPlane(vtm.M[0][0], vtm.M[1][0], vtm.M[2][0], vtm.M[3][0]),
+			FPlane(vtm.M[0][1], vtm.M[1][1], vtm.M[2][1], vtm.M[3][1]),
+			FPlane(vtm.M[0][2], vtm.M[1][2], vtm.M[2][2], vtm.M[3][2]),
+			FPlane(vtm.M[0][3], vtm.M[1][3], vtm.M[2][3], vtm.M[3][3]));
+	}
+
 	/**
 	 * Called when state changes from 'stereo' to 'non-stereo'. Suppose to distribute
 	 * the event further to user's code (?).
@@ -201,13 +372,18 @@ private:
 	/** Restores system values after overrides applied. */
 	void RestoreSystemValues();
 
-	void ProcessLatencyTesterInput() const;
 	void ResetControlRotation() const;
 
 	/** Get/set head model. Units are meters, not UU! 
 	    Use ToFVector and ToFVector_M2U conversion routines. */
-	OVR::Vector3d GetHeadModel() const;
-	void		  SetHeadModel(const OVR::Vector3d&);
+	OVR::Vector3f	GetHeadModel() const;
+	void			SetHeadModel(const OVR::Vector3f&);
+
+	void PrecalculatePostProcess_NoLock();
+
+	void UpdateSensorHmdCaps();
+
+	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const;
 
 #if !UE_BUILD_SHIPPING
 	void DrawDebugTrackingCameraFrustum(class UWorld* InWorld, const FVector& ViewLocation);
@@ -217,13 +393,22 @@ private: // data
 	friend class FOculusMessageHandler;
 
 	/** Whether or not the Oculus was successfully initialized */
-	bool bWasInitialized;
+	enum EInitStatus
+	{
+		eNotInitialized   = 0x00,
+		eStartupExecuted  = 0x01,
+		eInitialized      = 0x02,
+	};
+	int InitStatus; // see bitmask EInitStatus
 
 	/** Whether stereo is currently on or off. */
 	bool bStereoEnabled;
 
 	/** Whether or not switching to stereo is allowed */
 	bool bHMDEnabled;
+
+	/** Indicates if it is necessary to update stereo rendering params */
+	bool bNeedUpdateStereoRenderingParams;
 
 	/** Debugging:  Whether or not the stereo rendering settings have been manually overridden by an exec command.  They will no longer be auto-calculated */
     bool bOverrideStereo;
@@ -236,6 +421,8 @@ private: // data
 
 	/** Debugging: Allows changing internal params, such as screen size, eye-to-screen distance, etc */
 	bool bDevSettingsEnabled;
+
+	bool bOverrideFOV;
 
 	/** Whether or not to override game VSync setting when switching to stereo */
 	bool bOverrideVSync;
@@ -251,6 +438,9 @@ private: // data
 	/** Overridden ScreenPercentage value */
 	float ScreenPercentage;
 
+	/** Ideal ScreenPercentage value for the HMD */
+	float IdealScreenPercentage;
+
 	/** Allows renderer to finish current frame. Setting this to 'true' may reduce the total 
 	 *  framerate (if it was above vsync) but will reduce latency. */
 	bool bAllowFinishCurrentFrame;
@@ -260,15 +450,18 @@ private: // data
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
 	float WorldToMetersScale;
+	/** Whether world-to-meters scale is overriden or not. */
+	bool bWorldToMetersOverride; 
 
 	/** User-tunable modification to the interpupillary distance */
 	float UserDistanceToScreenModifier;
 
     /** The FOV to render at (radians), based on the physical characteristics of the device */
-    float FOV;
+	float HFOVInRadians; // horizontal
+	float VFOVInRadians; // vertical
 
-    /** Motion prediction (in seconds) */
-    float MotionPrediction;
+	/** Motion prediction (in seconds). 0 - no prediction */
+	double MotionPredictionInSeconds;
 
 	/** Gain for gravity correction (should not need to be changed) */
 	float AccelGain;
@@ -279,24 +472,14 @@ private: // data
     /** Distortion on/off */
     bool bHmdDistortion;
 
-	/** Distortion coefficients needed to perform the lens-correction warping */
-    FVector4 HmdDistortion;
-
-	/** Scaling factor for the post process distortion effect */
-	float DistortionScale;
-
-	/** Offset the post process distortion effect */
-	//FVector2D DistortionOffset;
-
 	/** Chromatic aberration correction on/off */
 	bool bChromaAbCorrectionEnabled;
 
-	/** Chromatic aberration correction coefficients */
-	FVector4 ChromaAbCorrection;
+	/** Yaw drift correction on/off */
+	bool bYawDriftCorrectionEnabled;
 
-	/** Device constants, needed for stereo rendering calculations, calculated in UpdateStereoRenderingParams() */
-	float ProjectionCenterOffset;
-    float LensCenterOffset;
+	/** HMD tilt correction on/off */
+	bool bTiltCorrectionEnabled;
 
 	/** Whether or not 2D stereo settings overridden. */
 	bool bOverride2D;
@@ -324,7 +507,24 @@ private: // data
 	 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
 	 */
 	bool bDrawTrackingCameraFrustum;
+
+	/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
+	bool				bDoNotUpdateOnGT;
+
+	/** Show status / statistics on screen. See 'hmd stats' cmd */
+	bool				bShowStats;
+
+	/** Draw lens centered grid */
+	bool				bDrawGrid;
 #endif
+
+	/** Whether timewarp is enabled or not */
+	bool					bTimeWarp;
+
+	/** Optional far clipping plane for projection matrix */
+	float					NearClippingPlane;
+	/** Optional far clipping plane for projection matrix */
+	float					FarClippingPlane;
 
 	/** Player's orientation tracking */
 	FQuat					CurHmdOrientation;
@@ -333,50 +533,102 @@ private: // data
 	FQuat					DeltaControlOrientation; // same as DeltaControlRotation but as quat
 
 	FVector					CurHmdPosition;
-	FQuat					LastHmdOrientation;
+
+	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
+	FVector					LastHmdPosition;	// contains last APPLIED ON GT HMD position 
 
 	/** HMD base values, specify forward orientation and zero pos offset */
-	OVR::Vector3d			BaseOffset;      // base position, in Oculus coords
+	OVR::Vector3f			BaseOffset;      // base position, in Oculus coords
 	FQuat					BaseOrientation; // base orientation
 
-	/** The device manager, in charge of enumeration */
-	Ptr<DeviceManager>		pDevManager;
+	ovrHmd					Hmd;
+	ovrHmdDesc				HmdDesc;
+	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
+	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
+	// U,V scale and offset needed for timewarp.
+	ovrRecti				EyeRenderViewport[2];		// 0 - left, 1 - right, same as Views
+	ovrSizei				TextureSize; // texture size (for both eyes)
 
-	/** Oculus orientation sensor device */
-	Ptr<SensorDevice>		pSensor;
+	unsigned				SensorCaps;
+	unsigned				DistortionCaps;
+	unsigned				HmdCaps;
 
-	/** The Oculus device itself */
-	Ptr<HMDDevice>			pHMD;
+	unsigned				SupportedSensorCaps;
+	unsigned				SupportedDistortionCaps;
+	unsigned				SupportedHmdCaps;
 
-	/** Optional latency tester */
-	Ptr<LatencyTestDevice>	pLatencyTester;
-	mutable OVR::Lock       LatencyTestLock;
-	Util::LatencyTest*		pLatencyTest;
-	OVR::Color				LatencyTestColor;
-	OVR::AtomicInt<uint32>	LatencyTestFrameNumber;
+	FIntPoint				EyeViewportSize; // size of the viewport (for one eye). At the moment it is a half of RT.
 
-	SensorFusion*			pSensorFusion;
-	HMDInfo					DeviceInfo;
+#ifndef OVR_DIRECT_RENDERING
+	struct FDistortionMesh : public OVR::RefCountBase<FDistortionMesh>
+	{
+		struct FDistortionVertex*	pVertices;
+		uint16*						pIndices;
+		unsigned					NumVertices;
+		unsigned					NumIndices;
+		unsigned					NumTriangles;
 
-	class FOculusMessageHandler* pMsgHandler;
+		FDistortionMesh() :pVertices(NULL), pIndices(NULL), NumVertices(0), NumIndices(0), NumTriangles(0) {}
+		~FDistortionMesh() { Clear(); }
+		void Clear();
+	};
+	ovrVector2f				UVScaleOffset[2][2];	// 0 - left, 1 - right, same as Views
+	Ptr<FDistortionMesh>	pDistortionMesh[2];		// 0 - left, 1 - right, same as Views
+#else // DIRECT_RENDERING
+	//FIntPoint				RenderTargetSize; // size of the texture (for both eyes)
+
+	//TRefCountPtr<FRHIBridge> pRHIBridge;
+
+#if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
+	TRefCountPtr<D3D11Bridge>	pD3D11Bridge;
+#endif
+#if defined(OVR_GL)
+	TRefCountPtr<OGLBridge>		pOGLBridge;
+#endif
+
+#endif // OVR_DIRECT_RENDERING
+
+	OVR::Lock					StereoParamsLock;
+
+	// Params accessible from rendering thread. Should be filled at the beginning
+	// of the rendering thread under the StereoParamsLock.
+	struct FRenderParams
+	{
+		FVector					LastHmdPosition;	// contains last APPLIED ON GT HMD position 
+		FQuat					DeltaControlOrientation;
+		ovrPosef				EyeRenderPose[2];
+
+#ifndef OVR_DIRECT_RENDERING
+		Ptr<FDistortionMesh>	pDistortionMesh[2]; // 0 - left, 1 - right, same as Views
+		ovrVector2f				UVScale[2];			// 0 - left, 1 - right, same as Views
+		ovrVector2f				UVOffset[2];		// 0 - left, 1 - right, same as Views
+		FQuat					CurHmdOrientation;
+		FVector					CurHmdPosition;
+#else
+		ovrEyeRenderDesc		EyeRenderDesc[2];	// 0 - left, 1 - right, same as Views
+		ovrFovPort				EyeFov[2];			// 0 - left, 1 - right, same as Views
+#endif // OVR_DIRECT_RENDERING
+		bool					bFrameBegun;
+		bool					bTimeWarp;
+		FEngineShowFlags		ShowFlags; // a copy of showflags
+
+		FRenderParams(FOculusRiftHMD* plugin);
+
+		void Clear() 
+		{ 
+			#ifndef OVR_DIRECT_RENDERING
+			pDistortionMesh[0] = pDistortionMesh[1] = NULL; 
+			#endif
+		}
+	} RenderParams_RenderThread;
+
 
 	/** True, if pos tracking is enabled */
 	bool						bHmdPosTracking;
-
-#ifdef OVR_VISION_ENABLED
-	Ptr<OVR::CameraDevice>		pCamera;
-	OVR::Vision::PoseTracker*	pPoseTracker;
-	float						PositionScaleFactor; // scale factor for pos tracking vector
-#if !UE_BUILD_SHIPPING
-	// debugging positional tracking
-	Vector3d					SimPosition;
-	bool						bPosTrackingSim;
 	mutable bool				bHaveVisionTracking;
-#endif // #if !UE_BUILD_SHIPPING
-
-#else // NO VISION
-	OVR::Vector3d				HeadModel_Meters; // in meters
-#endif // OCULUS_USE_VISION
 };
+
+DEFINE_LOG_CATEGORY_STATIC(LogHMD, Log, All);
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
