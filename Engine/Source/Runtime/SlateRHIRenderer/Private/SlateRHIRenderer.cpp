@@ -438,12 +438,12 @@ void FSlateRHIRenderer::DrawWindow_RenderThread( const FViewportInfo& ViewportIn
 
 		FTexture2DRHIRef BackBuffer = (ViewportInfo.RenderTargetTexture) ? 
 			ViewportInfo.RenderTargetTexture : RHIGetViewportBackBuffer(ViewportInfo.ViewportRHI);
-		const uint32 ViewportWidth = BackBuffer->GetSizeX();
-		const uint32 ViewportHeight = BackBuffer->GetSizeY();
+		
+		const uint32 ViewportWidth  = (ViewportInfo.RenderTargetTexture) ? ViewportInfo.RenderTargetTexture->GetSizeX() : ViewportInfo.Width;
+		const uint32 ViewportHeight = (ViewportInfo.RenderTargetTexture) ? ViewportInfo.RenderTargetTexture->GetSizeY() : ViewportInfo.Height;
 
 		RHIBeginDrawingViewport( ViewportInfo.ViewportRHI, FTextureRHIRef() );
 		RHISetViewport( 0,0,0,ViewportWidth, ViewportHeight, 0.0f ); 
-
 
 		if( ViewportInfo.bRequiresStencilTest )
 		{

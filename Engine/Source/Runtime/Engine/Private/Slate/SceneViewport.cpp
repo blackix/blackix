@@ -1124,7 +1124,7 @@ void FSceneViewport::InitDynamicRHI()
 	if( bUseSeparateRenderTarget )
 	{
 		uint32 TexSizeX = SizeX, TexSizeY = SizeY;
-		if (GEngine->StereoRenderingDevice.IsValid())
+		if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
 		{
 			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(TexSizeX, TexSizeY);
 		}
@@ -1142,7 +1142,16 @@ void FSceneViewport::InitDynamicRHI()
 			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d, prev %p"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY, SlateRenderTargetHandle->GetRHIRef().GetReference());
 			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
 		}
-		Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), RenderTargetTextureRHI);
+
+		// We need to pass a texture to the renderer only for stereo rendering. Otherwise, Editor will be rendered incorrectly.
+		if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+		{
+			Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), RenderTargetTextureRHI);
+		}
+		else
+		{
+			Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), nullptr);
+		}
 	}
 	else
 	{
