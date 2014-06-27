@@ -1143,19 +1143,27 @@ void FSceneViewport::InitDynamicRHI()
 			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
 		}
 
-		// We need to pass a texture to the renderer only for stereo rendering. Otherwise, Editor will be rendered incorrectly.
-		if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+		TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath);
+		if (Window.IsValid())
 		{
-			Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), RenderTargetTextureRHI);
-		}
-		else
-		{
-			Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), nullptr);
+			// We need to pass a texture to the renderer only for stereo rendering. Otherwise, Editor will be rendered incorrectly.
+			if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+			{
+				Renderer->SetRenderTarget(*Window, RenderTargetTextureRHI);
+			}
+			else
+			{
+				Renderer->SetRenderTarget(*Window, nullptr);
+			}
 		}
 	}
 	else
 	{
-		Renderer->SetRenderTarget(*FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath), nullptr);
+		TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath);
+		if (Window.IsValid())
+		{
+			Renderer->SetRenderTarget(*Window, nullptr);
+		}
 	}
 }
 

@@ -587,12 +587,6 @@ static UCanvas* GetCanvasByName(FName CanvasName)
 void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 {
 	
-	// Allow HMD to modify screen settings
-	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
-	{
-		GEngine->HMDDevice->UpdateScreenSettings(Viewport);
-	}
-
 	FCanvas* DebugCanvas = InViewport->GetDebugCanvas();
 
 	// Create a temporary canvas if there isn't already one.
@@ -605,6 +599,19 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	UCanvas* DebugCanvasObject = GetCanvasByName(DebugCanvasObjectName);
 	DebugCanvasObject->Canvas = DebugCanvas;	
 	DebugCanvasObject->Init(InViewport->GetSizeXY().X, InViewport->GetSizeXY().Y, NULL);
+
+	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
+	{
+		// Allow HMD to modify screen settings
+		GEngine->HMDDevice->UpdateScreenSettings(Viewport);
+		DebugCanvas->SetScaledToRenderTarget(true);
+		SceneCanvas->SetScaledToRenderTarget(true);
+	}
+	else
+	{
+		DebugCanvas->SetScaledToRenderTarget(false);
+		SceneCanvas->SetScaledToRenderTarget(false);
+	}
 
 	bool bUIDisableWorldRendering = false;
 	FGameViewDrawer GameViewDrawer;
