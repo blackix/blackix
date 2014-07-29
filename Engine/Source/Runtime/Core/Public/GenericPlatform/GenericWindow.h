@@ -12,11 +12,15 @@ namespace EWindowMode
 	enum Type
 	{
 		/** The window is in true fullscreen mode */
-		Fullscreen,
+		Fullscreen = 0,
 		/** The window has no border and takes up the entire area of the screen */
-		WindowedFullscreen,
+		WindowedFullscreen = 1,
 		/** The window has a border and may not take up the entire screen area */
-		Windowed
+		Windowed = 2, 
+
+		WindowedMirror = 3,
+
+		_Total
 	};
 
 	static inline Type ConvertIntToWindowMode(int32 InWindowMode)
@@ -29,6 +33,9 @@ namespace EWindowMode
 				break;
 			case 1:
 				WindowMode = WindowedFullscreen;
+				break;
+			case 3:
+				WindowMode = WindowedMirror;
 				break;
 			case 2:
 			default:

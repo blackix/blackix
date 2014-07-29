@@ -18,6 +18,8 @@
 	#define OVR_DIRECT_RENDERING
 	#define OVR_D3D_VERSION 11
 	#define OVR_GL
+#elif PLATFORM_MAC
+	#define OVR_VISION_ENABLED
 #endif
 
 #ifdef OVR_VISION_ENABLED
@@ -28,13 +30,11 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	
-	#include "OVRVersion.h"
+	#include "OVR.h"
+	#include "OVR_Version.h"
+	#include "OVR_Kernel.h"
 
-	#include "../Src/Kernel/OVR_Math.h"
 	#include "../Src/Kernel/OVR_Threads.h"
-	#include "../Src/OVR_CAPI.h"
-	#include "../Src/Kernel/OVR_Color.h"
-	#include "../Src/Kernel/OVR_Timer.h"
 
 #ifdef OVR_DIRECT_RENDERING
 	#include "AllowWindowsPlatformTypes.h"
@@ -60,8 +60,9 @@
  */
 class FOculusRiftHMD : public IHeadMountedDisplay, public ISceneViewExtension
 {
-
 public:
+	static void PreInit();
+
 	/** IHeadMountedDisplay interface */
 	virtual bool IsHMDEnabled() const override;
 	virtual void EnableHMD(bool allow = true) override;
@@ -87,6 +88,8 @@ public:
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) override;
 
+	virtual bool IsFullScreenAllowed() const override;
+
 	/** IStereoRendering interface */
 	virtual bool IsStereoEnabled() const override;
 	virtual bool EnableStereo(bool stereo = true) override;
@@ -100,8 +103,9 @@ public:
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	virtual void GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPass, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const override;
 
-#ifdef OVR_DIRECT_RENDERING
 	virtual void UpdateViewport(bool bUseSeparateRenderTarget, const FViewport& Viewport) override;
+
+#ifdef OVR_DIRECT_RENDERING
 	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const override;
 	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const override;
 #endif//OVR_DIRECT_RENDERING
@@ -139,7 +143,11 @@ public:
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) override;
 	virtual void UpdateScreenSettings(const FViewport*) override;
 
+	virtual bool HandleInputKey(class UPlayerInput*, const FKey& Key, EInputEvent EventType, float AmountDepressed, bool bGamepad) override;
+
 	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) override;
+
+	void BeginRendering_RenderThread();
 
 #ifdef OVR_DIRECT_RENDERING
 	class BridgeBaseImpl : public FRHICustomPresent
@@ -237,13 +245,11 @@ public:
 #endif // OVR_GL
 	BridgeBaseImpl* GetActiveRHIBridgeImpl();
 
-	void BeginRendering_RenderThread();
-	void FinishRendering_RenderThread();
 	void ShutdownRendering();
 
 #else
 
-virtual void FinishRenderingFrame_RenderThread(FRHICommandListImmediate& RHICmdList) override;
+	virtual void FinishRenderingFrame_RenderThread(FRHICommandListImmediate& RHICmdList) override;
 
 #endif // #ifdef OVR_DIRECT_RENDERING
 
@@ -494,6 +500,9 @@ private: // data
 	    See 'MOTION ENFORCE' console command. */
 	bool bHeadTrackingEnforced;
 
+	/** Is mirroring enabled or not (see 'HMD MIRROR' console cmd) */
+	bool bMirrorToWindow;
+
 #if !UE_BUILD_SHIPPING
 	/** Draw tracking camera frustum, for debugging purposes. 
 	 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
@@ -534,7 +543,6 @@ private: // data
 	FQuat					BaseOrientation; // base orientation
 
 	ovrHmd					Hmd;
-	ovrHmdDesc				HmdDesc;
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
 	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
@@ -542,11 +550,11 @@ private: // data
 	ovrRecti				EyeRenderViewport[2];		// 0 - left, 1 - right, same as Views
 	ovrSizei				TextureSize; // texture size (for both eyes)
 
-	unsigned				SensorCaps;
+	unsigned				TrackingCaps;
 	unsigned				DistortionCaps;
 	unsigned				HmdCaps;
 
-	unsigned				SupportedSensorCaps;
+	unsigned				SupportedTrackingCaps;
 	unsigned				SupportedDistortionCaps;
 	unsigned				SupportedHmdCaps;
 
@@ -616,6 +624,8 @@ private: // data
 	/** True, if pos tracking is enabled */
 	bool						bHmdPosTracking;
 	mutable bool				bHaveVisionTracking;
+
+	void*						OSWindowHandle;
 };
 
 DEFINE_LOG_CATEGORY_STATIC(LogHMD, Log, All);

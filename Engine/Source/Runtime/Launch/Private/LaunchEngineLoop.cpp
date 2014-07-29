@@ -18,6 +18,10 @@
 #include "UProjectInfo.h"
 #include "EngineVersion.h"
 
+#if WITH_ENGINE
+	#include "HeadMountedDisplay.h"
+#endif
+
 #if WITH_EDITOR
 	#include "EditorStyle.h"
 	#include "AutomationController.h"
@@ -2348,6 +2352,8 @@ bool FEngineLoop::AppInit( )
 		IPluginManager::Get().LoadModulesForEnabledPlugins(ELoadingPhase::PostConfigInit);
 	}
 
+	PreInitHMDDevice();
+
 	// Put the command line and config info into the suppression system
 	FLogSuppressionInterface::Get().ProcessConfigAndCommandLine();
 
@@ -2557,6 +2563,24 @@ void FEngineLoop::AppExit( )
 	}
 
 	FInternationalization::TearDown();
+}
+
+void FEngineLoop::PreInitHMDDevice()
+{
+#if WITH_ENGINE
+	if (!GIsEditor)
+	{
+		if (!FParse::Param(FCommandLine::Get(), TEXT("nohmd")) && !FParse::Param(FCommandLine::Get(), TEXT("emulatestereo")))
+		{
+			// Get a list of plugins that implement this feature
+			TArray<IHeadMountedDisplayModule*> HMDImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IHeadMountedDisplayModule>(IHeadMountedDisplayModule::GetModularFeatureName());
+			for (auto HMDModuleIt = HMDImplementations.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
+			{
+				(*HMDModuleIt)->PreInit();
+			}
+		}
+	}
+#endif // #if WITH_ENGINE
 }
 
 #undef LOCTEXT_NAMESPACE

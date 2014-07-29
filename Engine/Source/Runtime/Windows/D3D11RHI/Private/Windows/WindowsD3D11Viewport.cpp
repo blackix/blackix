@@ -12,7 +12,7 @@
 
 int32 FD3D11Viewport::GetBackBufferFormat()
 {
-	return DXGI_FORMAT_R10G10B10A2_UNORM;
+	return DXGI_FORMAT_B8G8R8A8_UNORM; //?? return DXGI_FORMAT_R10G10B10A2_UNORM;
 }
 
 extern FD3D11Texture2D* GetSwapChainSurface(FD3D11DynamicRHI* D3DRHI,IDXGISwapChain* SwapChain);
