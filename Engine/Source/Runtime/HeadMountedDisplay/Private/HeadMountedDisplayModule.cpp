@@ -1,6 +1,7 @@
 // Copyright 1998-2014 Epic Games, Inc. All Rights Reserved.
 
 #include "HeadMountedDisplayPrivate.h"
+#include "Layout/SlateRect.h"
 
 class FHeadMountedDisplayModule : public IHeadMountedDisplayModule
 {
@@ -15,16 +16,19 @@ IMPLEMENT_MODULE( FHeadMountedDisplayModule, HeadMountedDisplay );
 
 IHeadMountedDisplay::IHeadMountedDisplay()
 {
-	PreFullScreenRect = FSlateRect(-1.f, -1.f, -1.f, -1.f);
+	PreFullScreenRect.Left = PreFullScreenRect.Right = PreFullScreenRect.Top = PreFullScreenRect.Bottom = -1.f;
 }
 
 void IHeadMountedDisplay::PushPreFullScreenRect(const FSlateRect& InPreFullScreenRect)
 {
-	PreFullScreenRect = InPreFullScreenRect;
+	PreFullScreenRect.Left	= InPreFullScreenRect.Left;
+	PreFullScreenRect.Top	= InPreFullScreenRect.Top;
+	PreFullScreenRect.Right	= InPreFullScreenRect.Right;
+	PreFullScreenRect.Bottom = InPreFullScreenRect.Bottom;
 }
 
 void IHeadMountedDisplay::PopPreFullScreenRect(FSlateRect& OutPreFullScreenRect)
 {
-	OutPreFullScreenRect = PreFullScreenRect;
-	PreFullScreenRect = FSlateRect(-1.f, -1.f, -1.f, -1.f);
+	OutPreFullScreenRect = FSlateRect(PreFullScreenRect.Left, PreFullScreenRect.Top, PreFullScreenRect.Right, PreFullScreenRect.Bottom);
+	PreFullScreenRect.Left = PreFullScreenRect.Right = PreFullScreenRect.Top = PreFullScreenRect.Bottom = -1.f;
 }

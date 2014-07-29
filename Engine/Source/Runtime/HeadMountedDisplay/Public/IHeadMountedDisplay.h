@@ -2,8 +2,7 @@
 
 #pragma once
 
-#include "StereoRendering.h"
-#include "Layout/SlateRect.h"
+#include "Runtime/Engine/Public/StereoRendering.h"
 
 // depending on your kit and SDK, you may want to use this.
 // new distortion handling still in development.
@@ -149,11 +148,16 @@ public:
     virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) = 0;
 
 	/**
+	 * Returns true, if HMD allows fullscreen mode.
+	 */
+	virtual bool IsFullScreenAllowed() const { return true; }
+
+	/**
 	 * Saves / loads pre-fullscreen rectangle. Could be used to store saved original window position 
 	 * before switching to fullscreen mode.
 	 */
-	virtual void PushPreFullScreenRect(const FSlateRect& InPreFullScreenRect);
-	virtual void PopPreFullScreenRect(FSlateRect& OutPreFullScreenRect);
+	virtual void PushPreFullScreenRect(const class FSlateRect& InPreFullScreenRect);
+	virtual void PopPreFullScreenRect(class FSlateRect& OutPreFullScreenRect);
 
 	/**
 	 * A callback that is called when screen mode is changed (fullscreen <-> window). 
@@ -209,6 +213,14 @@ public:
 	 */
 	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) {}
 
+
+	/**
+	 * Passing key events to HMD (for debugging purposes).
+	 * If returns 'false' then key will be handled by PlayerController;
+	 * otherwise, key won't be handled by the PlayerController.
+	 */
+	virtual bool HandleInputKey(class UPlayerInput*, const struct FKey& Key, enum EInputEvent EventType, float AmountDepressed, bool bGamepad) { return false; }
+
 	/** 
 	 * Additional optional distorion rendering parameters
 	 * @todo:  Once we can move shaders into plugins, remove these!
@@ -233,5 +245,11 @@ public:
 
 private:
 	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */
-	FSlateRect PreFullScreenRect;
+	struct Rect
+	{
+		float Left;
+		float Top;
+		float Right;
+		float Bottom;
+	} PreFullScreenRect;
 };

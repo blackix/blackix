@@ -830,7 +830,15 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 						GEngine->HMDDevice->GetHMDMonitorInfo(MonitorInfo);
 						NewSizeX = MonitorInfo.ResolutionX;
 						NewSizeY = MonitorInfo.ResolutionY;
-						WindowToResize->ReshapeWindow(FVector2D(MonitorInfo.DesktopX, MonitorInfo.DesktopY), FVector2D(MonitorInfo.ResolutionX, MonitorInfo.ResolutionY));
+						if (GEngine->HMDDevice->IsFullScreenAllowed())
+						{
+							WindowToResize->ReshapeWindow(FVector2D(MonitorInfo.DesktopX, MonitorInfo.DesktopY), FVector2D(MonitorInfo.ResolutionX, MonitorInfo.ResolutionY));
+						}
+						else
+						{
+							WindowToResize->Resize(FVector2D(MonitorInfo.ResolutionX, MonitorInfo.ResolutionY));
+							DesiredWindowMode = EWindowMode::WindowedMirror;
+						}
 
 						GEngine->HMDDevice->PushPreFullScreenRect(PreFullScreenRect);
 					}
@@ -845,7 +853,7 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 					{
 						FSlateRect PreFullScreenRect;
 						GEngine->HMDDevice->PopPreFullScreenRect(PreFullScreenRect);
-						if (PreFullScreenRect.GetSize().X > 0 && PreFullScreenRect.GetSize().Y > 0)
+						if (PreFullScreenRect.GetSize().X > 0 && PreFullScreenRect.GetSize().Y > 0 && GEngine->HMDDevice->IsFullScreenAllowed())
 						{
 							NewSizeX = PreFullScreenRect.GetSize().X;
 							NewSizeY = PreFullScreenRect.GetSize().Y;
@@ -865,7 +873,8 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 				int32 NewWindowSizeX = NewSizeX;
 				int32 NewWindowSizeY = NewSizeY;
 
-				if (DesiredWindowMode != EWindowMode::Windowed && CVarValue != 0)
+				if (DesiredWindowMode != EWindowMode::Windowed && CVarValue != 0 && 
+					(!GEngine->HMDDevice.IsValid() || GEngine->HMDDevice->IsFullScreenAllowed()))
 				{
 					FSlateRect Rect = WindowToResize->GetFullScreenInfo();
 

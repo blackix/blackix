@@ -1590,8 +1590,15 @@ void FOpenGLDynamicRHI::RHISetRenderTargets(
 	else if( NewDepthStencilTargetRHI )
 	{
 		// Set viewport size to new depth target size.
+		//PendingState.Viewport.Max.X = GetOpenGLTextureSizeXFromRHITexture(NewDepthStencilTargetRHI);
+		//PendingState.Viewport.Max.Y = GetOpenGLTextureSizeYFromRHITexture(NewDepthStencilTargetRHI);
+		// OCULUS BEGIN, see https://udn.unrealengine.com/questions/211264/opengl-windows-crash-and-slowdown.html
+		// Set viewport size to new depth target size.
 		PendingState.Viewport.Max.X = GetOpenGLTextureSizeXFromRHITexture(NewDepthStencilTargetRHI);
 		PendingState.Viewport.Max.Y = GetOpenGLTextureSizeYFromRHITexture(NewDepthStencilTargetRHI);
+		PendingState.Viewport.Min.X = FMath::Min<uint32>(PendingState.Viewport.Min.X, PendingState.Viewport.Max.X);
+		PendingState.Viewport.Min.Y = FMath::Min<uint32>(PendingState.Viewport.Min.Y, PendingState.Viewport.Max.Y);
+		// OCULUS END
 	}
 }
 
