@@ -34,8 +34,10 @@ public class Launch : ModuleRules
 				"Slate",
 				"SlateCore",
 				"Sockets",
+				"HeadMountedDisplay",
 			}
 		);
+		DynamicallyLoadedModuleNames.Add("HeadMountedDisplay");
         
         if( !UEBuildConfiguration.bBuildDedicatedServer)
         {
