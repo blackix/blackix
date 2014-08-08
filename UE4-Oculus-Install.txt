@@ -32,10 +32,16 @@ D.  Using GenerateProjectFiles.bat re-generate project files and re-build the so
 
 Running
 -------
-Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer is located in the Engine/Extras/Oculus directory. Run the executable and follow the instructions.
+Before running UE4 with this integration, you must install Oculus Run-Time. The installer could be downloaded from www.oculus.com (go to "Developer", register/login, "Downloads", "Oculus Runtime"). 
+For Windows: run the executable and follow the instructions.
+For Mac: double click on downloaded file and run the installer. Follow the instructions.
 
-If the headset is properly connected (do not use splitters), it should be automatically detected. In the "Compatibility mode", using fullscreen should display on the HMD only. 
-In the "Application only mode" Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). It will be automatically de-activated once you switch back to non-stereo mode. 
+The Runtime installer will install all necessary drivers. You might need to uninstall previous standalone Oculus camera driver, if you have it installed.
+It also installs an OculusConfigUtil that should be used to configure user's profile and the Rift.
+
+If the headset is properly connected (do not use HDMI splitters), it should be automatically detected. In the "Extended Desktop to HMD" mode, switching to fullscreen should render on the HMD only. 
+In the "Direct HMD access from Apps" mode the Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). 
+It will be automatically de-activated once you switch back to non-stereo mode. 
 Only one HMD can be connected at a time.
 
 If stereo mode doesn't work then check the log-file (search for 'OCULUS' and 'LogHMD' sub-strings). Make sure the Run-Time & Drivers are installed and the service (OVRService.exe) is running. Check the Oculus User Guide for further details (located in Engine/Extras/Oculus directory).

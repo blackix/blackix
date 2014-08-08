@@ -94,9 +94,9 @@ public:
 	virtual float	GetInterpupillaryDistance() const = 0;
 
     /**
-     * Get the current orientation and position reported by the HMD.
+     * Get the current orientation and position reported by the HMD. 
      */
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) const = 0;
+    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) = 0;
 
     /**
      * Get the ISceneViewExtension for this HMD, or none.

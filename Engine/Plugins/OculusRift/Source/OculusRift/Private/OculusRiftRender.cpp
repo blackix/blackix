@@ -161,21 +161,6 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 		RenderParams_RenderThread.pDistortionMesh[1] = pDistortionMesh[1];
 		RenderParams_RenderThread.bTimeWarp = bTimeWarp;
 	}
-
-	// get latest orientation/position and cache it
-	if (bUpdateOnRT)
-	{
-		Lock::Locker lock(&UpdateOnRTLock);
-		if (!RenderParams_RenderThread.bTimeWarp)
-		{
-			GetCurrentOrientationAndPosition(CurHmdOrientation, CurHmdPosition);
-			RenderParams_RenderThread.CurHmdOrientation = CurHmdOrientation;
-			RenderParams_RenderThread.CurHmdPosition = CurHmdPosition;
-		}
-
-		RenderParams_RenderThread.LastHmdPosition = LastHmdPosition;
-		RenderParams_RenderThread.DeltaControlOrientation = DeltaControlOrientation;
-	}
 #else
 	{
 		// make a copy of StereoParams to access from the RenderThread.
@@ -186,6 +171,7 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 		RenderParams_RenderThread.EyeFov[1] = EyeFov[1];
 		RenderParams_RenderThread.bTimeWarp = bTimeWarp;
 	}
+#endif
 	// get latest orientation/position and cache it
 	if (bUpdateOnRT)
 	{
@@ -193,7 +179,6 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 		RenderParams_RenderThread.LastHmdPosition = LastHmdPosition;
 		RenderParams_RenderThread.DeltaControlOrientation = DeltaControlOrientation;
 	}
-#endif
 
 	BeginRendering_RenderThread();
 }
@@ -483,7 +468,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 		Str = FString::Printf(TEXT("W-to-m scale: %.2f uu/m"), WorldToMetersScale);
 		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 
-		//if ((HmdDesc.HmdCaps & ovrHmdCap_LatencyTest) != 0)
+		if ((SupportedHmdCaps & ovrHmdCap_DynamicPrediction) != 0)
 		{
 			float latencies[3] = { 0.0f, 0.0f, 0.0f };
 			if (ovrHmd_GetFloatArray(Hmd, "DK2Latency", latencies, 3) == 3)
@@ -524,6 +509,12 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 		StatusStr = ((SupportedHmdCaps & ovrHmdCap_LowPersistence) != 0) ? 
 			((bLowPersistenceMode) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
 		Str = FString::Printf(TEXT("LowPers: %s"), *StatusStr);
+		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+		Y += RowHeight;
+
+		StatusStr = ((SupportedDistortionCaps & ovrDistortionCap_Overdrive) != 0) ?
+			((bOverdrive) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
+		Str = FString::Printf(TEXT("Overdrive: %s"), *StatusStr);
 		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 		Y += RowHeight;
 	}
@@ -624,7 +615,7 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering()
 		{
 			OVR::Lock::Locker lock(&ModifyLock);
 			check(Cfg.D3D11.pSwapChain); // make sure Config is initialized
-			(Plugin->bTimeWarp) ? Plugin->DistortionCaps |= ovrDistortionCap_TimeWarp : Plugin->DistortionCaps &= ~ovrDistortionCap_TimeWarp;
+			Plugin->UpdateDistortionCaps();
 			if (!ovrHmd_ConfigureRendering(Plugin->Hmd, &Cfg.Config, Plugin->DistortionCaps, 
 				Plugin->RenderParams_RenderThread.EyeFov, Plugin->RenderParams_RenderThread.EyeRenderDesc))
 			{
@@ -920,9 +911,7 @@ void FOculusRiftHMD::OGLBridge::BeginRendering()
 		if (bNeedReinitRendererAPI)
 		{
 			OVR::Lock::Locker lock(&ModifyLock);
-			Plugin->DistortionCaps &= ~ovrDistortionCap_SRGB;
-			Plugin->DistortionCaps |= ovrDistortionCap_FlipInput;
-			(Plugin->bTimeWarp) ? Plugin->DistortionCaps |= ovrDistortionCap_TimeWarp : Plugin->DistortionCaps &= ~ovrDistortionCap_TimeWarp;
+			Plugin->UpdateDistortionCaps();
 			if (!ovrHmd_ConfigureRendering(Plugin->Hmd, &Cfg.Config, Plugin->DistortionCaps, 
 				Plugin->RenderParams_RenderThread.EyeFov, Plugin->RenderParams_RenderThread.EyeRenderDesc))
 			{
