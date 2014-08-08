@@ -455,6 +455,9 @@ void HSWDisplay::RenderInternal(ovrEyeType eye, const ovrTexture* eyeTexture)
 {
     if(RenderEnabled && eyeTexture)
     {
+        // Hack - Clear previous errors.
+        glGetError();
+        
         // We need to render to the eyeTexture with the texture viewport.
         // Setup rendering to the texture.
         ovrGLTexture* eyeTextureGL = const_cast<ovrGLTexture*>(reinterpret_cast<const ovrGLTexture*>(eyeTexture));
