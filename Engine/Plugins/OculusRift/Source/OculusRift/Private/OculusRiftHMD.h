@@ -78,7 +78,7 @@ public:
     //virtual float GetFieldOfViewInRadians() const override;
 	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const override;
 
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) const override;
+	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
 	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
@@ -147,6 +147,7 @@ public:
 
 	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) override;
 
+	void GetCurrentPose(FQuat& CurrentOrientation, FVector& CurrentPosition) const;
 	void BeginRendering_RenderThread();
 
 #ifdef OVR_DIRECT_RENDERING
@@ -372,14 +373,10 @@ private:
 
 	void ResetControlRotation() const;
 
-	/** Get/set head model. Units are meters, not UU! 
-	    Use ToFVector and ToFVector_M2U conversion routines. */
-	OVR::Vector3f	GetHeadModel() const;
-	void			SetHeadModel(const OVR::Vector3f&);
-
 	void PrecalculatePostProcess_NoLock();
 
-	void UpdateSensorHmdCaps();
+	void UpdateDistortionCaps();
+	void UpdateHmdCaps();
 
 	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const;
 
@@ -464,9 +461,6 @@ private: // data
 	/** Gain for gravity correction (should not need to be changed) */
 	float AccelGain;
 
-	/** Whether or not to use a head model offset to determine view position */
-	bool bUseHeadModel;
-
     /** Distortion on/off */
     bool bHmdDistortion;
 
@@ -475,9 +469,6 @@ private: // data
 
 	/** Yaw drift correction on/off */
 	bool bYawDriftCorrectionEnabled;
-
-	/** HMD tilt correction on/off */
-	bool bTiltCorrectionEnabled;
 
 	/** Whether or not 2D stereo settings overridden. */
 	bool bOverride2D;
@@ -495,6 +486,12 @@ private: // data
 	*/
 	bool				bUpdateOnRT;
 	mutable OVR::Lock	UpdateOnRTLock;
+
+	/** Overdrive brightness transitions to reduce artifacts on DK2+ displays */
+	bool bOverdrive;
+
+	/** High-quality sampling of distortion buffer for anti-aliasing */
+	bool bHQDistortion;
 
 	/** Enforces headtracking to work even in non-stereo mode (for debugging or screenshots). 
 	    See 'MOTION ENFORCE' console command. */
@@ -517,6 +514,9 @@ private: // data
 
 	/** Draw lens centered grid */
 	bool				bDrawGrid;
+
+	/** Profiling mode, removed extra waits in Present (Direct Rendering). See 'hmd profile' cmd */
+	bool				bProfiling;
 #endif
 
 	/** Whether timewarp is enabled or not */

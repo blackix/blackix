@@ -23,6 +23,8 @@ hmd sp reset				Resets to original r.ScreenPercentage value.
 hmd lp [on|off]				Enables/disables/toggles low-persistence mode (DK2 and up only)
 hmd timewarp [on|off]		Enables/disables/toggles timewarp mode.
 hmd mirror [on|off]			Enables/disables/toggles mirroring in a window (for "Application Only" mode only).
+hmd overdrive [on|off]		Enables/disables/toggles overdrive of brightness transitions to reduce artifacts on DK2+ displays.
+hmd profile					Toggles "profiling mode" that eliminates extra waits in Present with timewarp. Use it if you are profiling the game.
 stereo e=0.064				Eye distance (m). Use 'stereo reset' to restore original value.
 stereo w2m=100				Overrides default worldunits-to-meters scale. Use 'stereo reset' to restore original value.
 stereo ncp=10 fcp=10000		Overrides near clipping and/or far clipping planes for stereo rendering (in cm). Use 'stereo reset' to restore original value.
@@ -47,10 +49,9 @@ motion enforce				Toggles motion tracking even if not in stereo (for testing pur
 hmdmag on|off				Turns magnetometer on/off
 hmdmag show					Shows state of magnetometer
 
-hmdtilt on|off				Turns tilt correction on/off
-hmdtilt show				Shows state of tilt correction
-
-hmdwarp on|off				Distortion on/off
+hmdwarp on|off				Distortion on/off (works only when DirectRendering is off)
+hmdwarp cha					Turns on chromatic aberration correction
+hmdwarp nocha				Turns off chromatic aberration correction
 hmdwrap show				Shows current state of hmdwarp
 
 Misc

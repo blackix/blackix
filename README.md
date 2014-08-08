@@ -1,4 +1,4 @@
-Oculus integration with UE 4.3.
+Oculus integration with UE 4.3
 ==============================================
 This is the source code page for the **Unreal Engine with Latest Oculus Support on GitHub**.
 Current integration supports Rift DK2 and backward compatible with all previous Rifts and prototypes.
@@ -11,12 +11,15 @@ Full list of Oculus-related console commands is included in UE4-Oculus.txt file.
 
 Note, you need to download pre-requisite .zip and uncompress it into UnrealEngine directory, similarly how you do it with Epic's .zip files:
 
-[Link1](http://static.oculusvr.com/sdk-downloads/ovr_ue4_4.3_github_prereq.zip)
+[Link1](http://static.oculusvr.com/sdk-downloads/ovr_ue4_4.3_github_prereq_0.4.1.zip)
 
-Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer is located in the Engine/Extras/Oculus directory. Run the executable and follow the instructions.
+Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer downloaded from www.oculus.com (go to "Developer", register/login, "Downloads", "Oculus Runtime").
+For Windows: run the executable and follow the instructions.
+For Mac: double click on downloaded file and run the installer. Follow the instructions.
 
-If the headset is properly connected (do not use splitters), it should be automatically detected. In the "Compatibility mode", using fullscreen should display on the HMD only. 
-In the "Application only mode" Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). It will be automatically de-activated once you switch back to non-stereo mode. 
+If the headset is properly connected (do not use HDMI splitters), it should be automatically detected. In the "Extended Desktop to HMD" mode, switching to fullscreen should render on the HMD only. 
+In the "Direct HMD access from Apps" mode the Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). 
+It will be automatically de-activated once you switch back to non-stereo mode. 
 Only one HMD can be connected at a time.
 
 If stereo mode doesn't work then check the log-file (search for 'OCULUS' and 'LogHMD' sub-strings). Make sure the Run-Time & Drivers are installed and the service (OVRService.exe) is running. Check the Oculus User Guide for further details (located in Engine/Extras/Oculus directory).
