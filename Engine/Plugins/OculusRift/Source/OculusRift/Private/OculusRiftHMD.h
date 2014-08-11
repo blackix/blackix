@@ -20,6 +20,8 @@
 	#define OVR_GL
 #elif PLATFORM_MAC
 	#define OVR_VISION_ENABLED
+    #define OVR_DIRECT_RENDERING
+    #define OVR_GL
 #endif
 
 #ifdef OVR_VISION_ENABLED
@@ -37,7 +39,9 @@
 	#include "../Src/Kernel/OVR_Threads.h"
 
 #ifdef OVR_DIRECT_RENDERING
-	#include "AllowWindowsPlatformTypes.h"
+    #if PLATFORM_WINDOWS
+        #include "AllowWindowsPlatformTypes.h"
+    #endif
 	#ifdef OVR_D3D_VERSION
 		#include "../Src/OVR_CAPI_D3D.h"
 	#endif // OVR_D3D_VERSION
