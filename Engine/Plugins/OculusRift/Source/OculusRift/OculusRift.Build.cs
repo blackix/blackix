@@ -38,7 +38,6 @@ namespace UnrealBuildTool.Rules
                 if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
                 {
                     PrivateDependencyModuleNames.AddRange(new string[] { "D3D11RHI" });
-					PublicAdditionalLibraries.Add("atls.lib");
                 }
                 if (Target.Platform == UnrealTargetPlatform.Mac)
                 {
