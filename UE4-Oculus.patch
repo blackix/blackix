@@ -11,7 +11,7 @@
  	]
  }
 --- ../../../../UE4-QA/Engine/Plugins/OculusRift/Source/OculusRift/OculusRift.Build.cs	2014-07-05 08:47:48.000000000 -0700
-+++ ./Engine/Plugins/OculusRift/Source/OculusRift/OculusRift.Build.cs	2014-08-08 15:17:34.991478300 -0700
++++ ./Engine/Plugins/OculusRift/Source/OculusRift/OculusRift.Build.cs	2014-08-13 14:52:55.204679200 -0700
 @@ -10,8 +10,6 @@
  				new string[] {
  					"OculusRift/Private",
@@ -29,18 +29,17 @@
  					"RHI",
  					"RenderCore",
  					"Renderer",
-@@ -39,6 +38,11 @@
-                 if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
+@@ -40,6 +39,10 @@
                  {
                      PrivateDependencyModuleNames.AddRange(new string[] { "D3D11RHI" });
-+					PublicAdditionalLibraries.Add("atls.lib");
-+                }
+                 }
 +                if (Target.Platform == UnrealTargetPlatform.Mac)
 +                {
 +               		AddThirdPartyPrivateStaticDependencies(Target, "OpenGL");
-                 }
++                }
              }
  		}
+ 	}
 --- ../../../../UE4-QA/Engine/Plugins/OculusRift/Source/OculusRift/Private/OculusRiftHMD.cpp	2014-07-06 06:17:24.000000000 -0700
 +++ ./Engine/Plugins/OculusRift/Source/OculusRift/Private/OculusRiftHMD.cpp	2014-08-07 17:21:43.502549100 -0700
 @@ -3,8 +3,6 @@
@@ -1515,17 +1514,6 @@
  				else if (FullScreenChar == TEXT("f"))
  				{
  					WindowMode = EWindowMode::Fullscreen;
---- ../../../../UE4-QA/Engine/Source/Runtime/Core/Private/Windows/WindowsPlatformMisc.cpp	2014-06-18 10:02:02.000000000 -0700
-+++ ./Engine/Source/Runtime/Core/Private/Windows/WindowsPlatformMisc.cpp	2014-08-07 17:25:08.622549100 -0700
-@@ -1858,7 +1858,7 @@
- bool FWindowsPlatformMisc::CoInitialize()
- {
- 	HRESULT hr = ::CoInitialize(NULL);
--	return hr == S_OK || hr == S_FALSE;
-+	return hr == S_OK || hr == S_FALSE || hr == RPC_E_CHANGED_MODE; // RPC_E_CHANGED_MODE maybe returned if CoInit is called several times with different type of threading model. @todo: revise.
- }
- 
- void FWindowsPlatformMisc::CoUninitialize()
 --- ../../../../UE4-QA/Engine/Source/Runtime/Core/Private/Windows/WindowsWindow.cpp	2014-05-15 08:56:27.000000000 -0700
 +++ ./Engine/Source/Runtime/Core/Private/Windows/WindowsWindow.cpp	2014-07-22 17:44:50.000000000 -0700
 @@ -453,13 +453,16 @@
@@ -2336,7 +2324,7 @@
 +#endif
 +
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Include/OVR_Version.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Include/OVR_Version.h	2014-08-11 16:10:28.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Include/OVR_Version.h	2014-08-13 14:35:58.185679200 -0700
 @@ -0,0 +1,33 @@
 +/************************************************************************************
 +
@@ -2368,7 +2356,7 @@
 +#define OVR_MAJOR_VERSION 0
 +#define OVR_MINOR_VERSION 4
 +#define OVR_BUILD_VERSION 1
-+#define OVR_VERSION_STRING "0.4.1"
++#define OVR_VERSION_STRING "0.4.1a"
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Projects/Win32/VS2013/LibOVR.vcxproj	1969-12-31 16:00:00.000000000 -0800
@@ -15065,7 +15053,7 @@
 +
 +#endif // INC_OVR_CAPI_GL_Util_h
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,65 @@
 +#ifndef DISTORTION_PS_H
 +#define DISTORTION_PS_H
@@ -15146,12 +15134,12 @@
 +	return float4(Result * oColor, 1.0 );
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_ps_refl.h	2014-08-13 15:17:05.936679200 -0700
 @@ -0,0 +1 @@
 +// No data available for shader reflection Distortion_ps_refl
 \ No newline at end of file
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,82 @@
 +#ifndef DISTORTION_VS_H
 +#define DISTORTION_VS_H
@@ -15257,7 +15245,7 @@
 +}
 +
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/Distortion_vs_refl.h	2014-08-13 15:17:05.958679200 -0700
 @@ -0,0 +1,9 @@
 +#ifndef Distortion_vs_refl
 +
@@ -15269,7 +15257,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,137 @@
 +#ifndef DISTORTIONCHROMA_PS_H
 +#define DISTORTIONCHROMA_PS_H
@@ -15449,7 +15437,7 @@
 +	}
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_ps_refl.h	2014-08-13 15:17:05.832679200 -0700
 @@ -0,0 +1,9 @@
 +#ifndef DistortionChroma_ps_refl
 +
@@ -15461,7 +15449,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,101 @@
 +#ifndef DISTORTIONCHROMA_VS_H
 +#define DISTORTIONCHROMA_VS_H
@@ -15598,7 +15586,7 @@
 +}
 +
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionChroma_vs_refl.h	2014-08-13 15:17:05.856679200 -0700
 @@ -0,0 +1,9 @@
 +#ifndef DistortionChroma_vs_refl
 +
@@ -15610,7 +15598,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,167 @@
 +#ifndef DISTORTIONTIMEWARP_VS_H
 +#define DISTORTIONTIMEWARP_VS_H
@@ -15823,7 +15811,7 @@
 +
 +
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarp_vs_refl.h	2014-08-13 15:17:05.913679200 -0700
 @@ -0,0 +1,11 @@
 +#ifndef DistortionTimewarp_vs_refl
 +
@@ -15837,7 +15825,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,214 @@
 +#ifndef DISTORTIONTIMEWARPCHROMA_VS_H
 +#define DISTORTIONTIMEWARPCHROMA_VS_H
@@ -16100,7 +16088,7 @@
 +    oColor = Color.r;              // Used for vignette fade.
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/DistortionTimewarpChroma_vs_refl.h	2014-08-13 15:17:05.885679200 -0700
 @@ -0,0 +1,11 @@
 +#ifndef DistortionTimewarpChroma_vs_refl
 +
@@ -16150,7 +16138,7 @@
 +endlocal
 +popd
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,51 @@
 +#ifndef SIMPLEQUAD_PS_H
 +#define SIMPLEQUAD_PS_H
@@ -16213,7 +16201,7 @@
 +   return Color;
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_ps_refl.h	2014-08-13 15:17:05.979679200 -0700
 @@ -0,0 +1,8 @@
 +#ifndef SimpleQuad_ps_refl
 +
@@ -16224,7 +16212,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,64 @@
 +#ifndef SIMPLEQUAD_VS_H
 +#define SIMPLEQUAD_VS_H
@@ -16303,7 +16291,7 @@
 +}
 \ No newline at end of file
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleQuad_vs_refl.h	2014-08-13 15:17:06.000679200 -0700
 @@ -0,0 +1,9 @@
 +#ifndef SimpleQuad_vs_refl
 +
@@ -16315,7 +16303,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,77 @@
 +#ifndef SIMPLETEXTUREDQUAD_PS_H
 +#define SIMPLETEXTUREDQUAD_PS_H
@@ -16414,7 +16402,7 @@
 +    return Color * inputValues.Color * Texture.Sample(LinearSampler, inputValues.TexCoord);
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_ps_refl.h	2014-08-13 15:17:06.022679200 -0700
 @@ -0,0 +1,8 @@
 +#ifndef SimpleTexturedQuad_ps_refl
 +
@@ -16425,7 +16413,7 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs.h	2014-08-05 19:08:30.000000000 -0700
 @@ -0,0 +1,82 @@
 +#ifndef SIMPLETEXTUREDQUAD_VS_H
 +#define SIMPLETEXTUREDQUAD_VS_H
@@ -16529,7 +16517,7 @@
 +   outputValues.TexCoord = TexCoord;
 +}
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs_refl.h	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs_refl.h	2014-08-11 16:10:18.000000000 -0700
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/CAPI/Shaders/SimpleTexturedQuad_vs_refl.h	2014-08-13 15:17:06.044679200 -0700
 @@ -0,0 +1,9 @@
 +#ifndef SimpleTexturedQuad_vs_refl
 +
@@ -16777,8 +16765,8 @@
 +
 +#endif
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_Display.cpp	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_Display.cpp	2014-08-11 16:10:26.000000000 -0700
-@@ -0,0 +1,1035 @@
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_Display.cpp	2014-08-13 15:16:40.670679200 -0700
+@@ -0,0 +1,1031 @@
 +/************************************************************************************
 +
 +Filename    :   OVR_Win32_Display.cpp
@@ -16820,8 +16808,6 @@
 +#include <conio.h>
 +# pragma comment(lib, "wbemuuid.lib")
 +#include <wbemidl.h>
-+#include <AtlBase.h>
-+#include <AtlConv.h>
 +
 +// WIN32_LEAN_AND_MEAN included in OVR_Atomic.h may break 'byte' declaration.
 +#ifdef WIN32_LEAN_AND_MEAN
@@ -17118,8 +17104,6 @@
 +
 +static bool getCompatDisplayEDID( WCHAR* displayName, String& serialNumberStr, String& userFriendlyNameStr )
 +{
-+	USES_CONVERSION;
-+
 +	IWbemLocator *pLoc = NULL;
 +	IWbemServices *pSvc = NULL;
 +	HRESULT hres;
@@ -18572,8 +18556,8 @@
 +
 +#endif // OVR_Win32_FocusReader_h
 --- ../../../../UE4-QA/Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_RenderShim.cpp	1969-12-31 16:00:00.000000000 -0800
-+++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_RenderShim.cpp	2014-08-11 16:10:26.000000000 -0700
-@@ -0,0 +1,788 @@
++++ ./Engine/Source/ThirdParty/Oculus/LibOVR_04/Src/Displays/OVR_Win32_RenderShim.cpp	2014-08-13 14:46:07.448679200 -0700
+@@ -0,0 +1,793 @@
 +/************************************************************************************
 +
 +Filename    :   OVR_Win32_DisplayShim.cpp
@@ -18592,8 +18576,7 @@
 +
 +#include <windows.h>
 +#include <DbgHelp.h>
-+#include <AtlBase.h>
-+#include <AtlConv.h>
++#include <malloc.h>
 +
 +#include "OVR_Win32_Dxgi_Display.h"
 +
@@ -18605,6 +18588,12 @@
 +#endif
 +
 +#pragma comment(lib, "DbgHelp.lib")
++
++#define WIDE_TO_MB(wideString) \
++    int wideString ## _slen = (int)wcslen(wideString); \
++    char* wideString ## _cstr = (char*)alloca(wideString ## _slen * 2); \
++    int count = WideCharToMultiByte(GetACP(), 0, wideString, -1, wideString ## _cstr, wideString ## _slen * 2, NULL, NULL); \
++    wideString ## _cstr[count] = '\0';
 +
 +// Forward declarations
 +// These functions are implemented in OVR_Win32_DisplayDevice.cpp.
@@ -18825,15 +18814,15 @@
 +	__in LPCWSTR lpLibFileName
 +	)
 +{
-+	USES_CONVERSION;
++    WIDE_TO_MB(lpLibFileName); // Convert lpLibFileName -> lpLibFileName_cstr
 +
 +	OVRTargetAPI targetAPI = DirectX;
 +
-+	bool needShim = checkForOverride( W2A( lpLibFileName ), targetAPI );
++    bool needShim = checkForOverride( lpLibFileName_cstr, targetAPI );
 +	if( !needShim )	
 +		return (*oldProcW)( lpLibFileName );
 +
-+	return createShim( W2A( lpLibFileName ), targetAPI );
++    return createShim( lpLibFileName_cstr, targetAPI );
 +}
 +
 +static HMODULE
@@ -18863,16 +18852,16 @@
 +	__in       DWORD dwFlags
 +	)
 +{
-+	USES_CONVERSION;
++    WIDE_TO_MB(lpLibFileName); // Convert lpLibFileName -> lpLibFileName_cstr
 +
 +	OVRTargetAPI targetAPI = DirectX;
 +
-+	bool needShim = checkForOverride( W2A( lpLibFileName ), targetAPI );
++	bool needShim = checkForOverride( lpLibFileName_cstr, targetAPI );
 +	if( !needShim )
 +		return (*oldProcExW)( lpLibFileName, hFile, dwFlags );
 +
 +	// FIXME: Don't throw away the flags parameter
-+	return createShim( W2A( lpLibFileName ), targetAPI );
++	return createShim( lpLibFileName_cstr, targetAPI );
 +}
 +
 +static BOOL WINAPI OVRGetModuleHandleExA(
@@ -18900,17 +18889,17 @@
 +	__out    HMODULE *phModule
 +	)
 +{
-+	USES_CONVERSION;
++    WIDE_TO_MB(lpModuleName); // Convert lpModuleName -> lpModuleName_cstr
 +
-+	OVRTargetAPI targetAPI = DirectX;
++    OVRTargetAPI targetAPI = DirectX;
 +
-+	bool needShim = checkForOverride( W2A( lpModuleName ), targetAPI );
++	bool needShim = checkForOverride( lpModuleName_cstr, targetAPI );
 +	if( !needShim )
 +	{
 +		return (*oldProcModExW)( dwFlags, lpModuleName, phModule );
 +	}
 +
-+	*phModule = createShim( W2A( lpModuleName ), targetAPI );
++	*phModule = createShim( lpModuleName_cstr, targetAPI );
 +
 +	return TRUE;
 +}

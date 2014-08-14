@@ -1858,7 +1858,7 @@ uint32 FWindowsPlatformMisc::GetLastError()
 bool FWindowsPlatformMisc::CoInitialize()
 {
 	HRESULT hr = ::CoInitialize(NULL);
-	return hr == S_OK || hr == S_FALSE || hr == RPC_E_CHANGED_MODE; // RPC_E_CHANGED_MODE maybe returned if CoInit is called several times with different type of threading model. @todo: revise.
+	return hr == S_OK || hr == S_FALSE;
 }
 
 void FWindowsPlatformMisc::CoUninitialize()
