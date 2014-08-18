@@ -2580,6 +2580,7 @@ void FEngineLoop::PreInitHMDDevice()
 #if WITH_ENGINE
 	if (!GIsEditor)
 	{
+		//@todo vr: only preinit first valid hmd?
 		if (!FParse::Param(FCommandLine::Get(), TEXT("nohmd")) && !FParse::Param(FCommandLine::Get(), TEXT("emulatestereo")))
 		{
 			// Get a list of plugins that implement this feature

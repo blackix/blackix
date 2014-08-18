@@ -14,30 +14,6 @@
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (pop)
 #endif
-//////////////////////////////////////////////////////////////////////////
-class OculusLog : public OVR::Log
-{
-public:
-	OculusLog()
-	{
-		SetLoggingMask(OVR::LogMask_Debug | OVR::LogMask_Regular);
-	}
-
-	// This virtual function receives all the messages,
-	// developers should override this function in order to do custom logging
-	virtual void    LogMessageVarg(LogMessageType messageType, const char* fmt, va_list argList)
-	{
-		if ((messageType & GetLoggingMask()) == 0)
-			return;
-
-		ANSICHAR buf[1024];
-		int32 len = FCStringAnsi::GetVarArgs(buf, sizeof(buf), sizeof(buf)/sizeof(ANSICHAR), fmt, argList);
-		if (len > 0 && buf[len - 1] == '\n') // truncate the trailing new-line char, since Logf adds its own
-			buf[len - 1] = '\0';
-		TCHAR* tbuf = ANSI_TO_TCHAR(buf);
-		GLog->Logf(TEXT("OCULUS: %s"), tbuf);
-	}
-};
 #endif // #if !UE_BUILD_SHIPPING
 
 //---------------------------------------------------
@@ -72,6 +48,40 @@ void FOculusRiftPlugin::PreInit()
 	FOculusRiftHMD::PreInit();
 }
 
+//---------------------------------------------------
+// Oculus Rift IHeadMountedDisplay Implementation
+//---------------------------------------------------
+
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
+
+#if !UE_BUILD_SHIPPING
+//////////////////////////////////////////////////////////////////////////
+class OculusLog : public OVR::Log
+{
+public:
+	OculusLog()
+	{
+		SetLoggingMask(OVR::LogMask_Debug | OVR::LogMask_Regular);
+	}
+
+	// This virtual function receives all the messages,
+	// developers should override this function in order to do custom logging
+	virtual void    LogMessageVarg(LogMessageType messageType, const char* fmt, va_list argList)
+	{
+		if ((messageType & GetLoggingMask()) == 0)
+			return;
+
+		ANSICHAR buf[1024];
+		int32 len = FCStringAnsi::GetVarArgs(buf, sizeof(buf), sizeof(buf) / sizeof(ANSICHAR), fmt, argList);
+		if (len > 0 && buf[len - 1] == '\n') // truncate the trailing new-line char, since Logf adds its own
+			buf[len - 1] = '\0';
+		TCHAR* tbuf = ANSI_TO_TCHAR(buf);
+		GLog->Logf(TEXT("OCULUS: %s"), tbuf);
+	}
+};
+
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 class ConditionalLocker
 {
@@ -92,9 +102,6 @@ private:
 	OVR::Lock*	pLock;
 };
 
-//---------------------------------------------------
-// Oculus Rift IHeadMountedDisplay Implementation
-//---------------------------------------------------
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
@@ -796,51 +803,51 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 		return false;
 	}
 	else if (FParse::Command(&Cmd, TEXT("HMDWARP")))
-    {
+	{
 #ifndef OVR_DIRECT_RENDERING
         if (FParse::Command( &Cmd, TEXT("ON") ))
-        {
+		{
             bHmdDistortion = true;
-            return true;
-        }
+			return true;
+		}
         else if (FParse::Command( &Cmd, TEXT("OFF") ))
-        {
+		{
             bHmdDistortion = false;
-            return true;
-        }
+			return true;
+		}
 #endif //OVR_DIRECT_RENDERING
 		if (FParse::Command(&Cmd, TEXT("CHA")))
 		{
 			bChromaAbCorrectionEnabled = true;
 			UpdateDistortionCaps();
-			return true;
+ 			return true;
 		}
 		else if (FParse::Command(&Cmd, TEXT("NOCHA")))
 		{
 			bChromaAbCorrectionEnabled = false;
 			UpdateDistortionCaps();
 			return true;
-		}
+	}
 		else if (FParse::Command( &Cmd, TEXT("HQ") ))
-		{
+    {
 			// High quality distortion
-			if (FParse::Command( &Cmd, TEXT("ON") ))
-			{
+        if (FParse::Command( &Cmd, TEXT("ON") ))
+        {
 				bHQDistortion = true;
 			}
 			else if (FParse::Command(&Cmd, TEXT("OFF")))
 			{
 				bHQDistortion = false;
-			}
+        }
 			else
-			{
+        {
 				bHQDistortion = !bHQDistortion;
 			}
 			Ar.Logf(TEXT("High quality distortion is currently %s"), (bHQDistortion) ? TEXT("ON") : TEXT("OFF") ?
 				TEXT("on") : TEXT("off"));
 			UpdateDistortionCaps();
-			return true;
-		}
+            return true;
+        }
 
 		if (FParse::Command(&Cmd, TEXT("SHOW")))
 		{
@@ -1480,8 +1487,8 @@ FOculusRiftHMD::FOculusRiftHMD()
 	, WorldToMetersScale(100.f)
 	, bWorldToMetersOverride(false)
 	, UserDistanceToScreenModifier(0.f)
-	, VFOVInRadians(FMath::DegreesToRadians(90.f))
 	, HFOVInRadians(FMath::DegreesToRadians(90.f))
+	, VFOVInRadians(FMath::DegreesToRadians(90.f))
 	, MotionPredictionInSeconds(0)
 	, AccelGain(0.f)
 	, bHmdDistortion(true)
@@ -1497,8 +1504,8 @@ FOculusRiftHMD::FOculusRiftHMD()
 	, bHeadTrackingEnforced(false)
 	, bMirrorToWindow(true)
 #if !UE_BUILD_SHIPPING
-	, bDoNotUpdateOnGT(false)
 	, bDrawTrackingCameraFrustum(false)
+	, bDoNotUpdateOnGT(false)
 	, bShowStats(false)
 	, bDrawGrid(false)
 	, bProfiling(false)
@@ -1732,7 +1739,7 @@ void FOculusRiftHMD::UpdateHmdCaps()
 			HmdCaps &= ~ovrHmdCap_LowPersistence;
 		}
 
-		if (bVSync)
+		if (bVSync) 
 		{
 			HmdCaps &= ~ovrHmdCap_NoVSync;
 		}

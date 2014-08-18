@@ -2088,10 +2088,11 @@ bool APlayerController::InputKey(FKey Key, EInputEvent EventType, float AmountDe
 
 	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
 	{
-		bResult = GEngine->HMDDevice->HandleInputKey(
-			PlayerInput, Key, EventType, AmountDepressed, bGamepad);
+		bResult = GEngine->HMDDevice->HandleInputKey(PlayerInput, Key, EventType, AmountDepressed, bGamepad);
 		if (bResult)
+		{
 			return bResult;
+		}
 	}
 
 	if (PlayerInput)
