@@ -1,3 +1,33 @@
+Oculus integration with UE 4.4
+==============================================
+This is the source code page for the **Unreal Engine with Latest Oculus Support on GitHub**.
+Current integration supports Rift DK2 and backward compatible with all previous Rifts and prototypes.
+Timewarp technique support has been added into this integration. The new technique called Timewarp intends 
+to reduce motion-to-photon latency. This technique re-projects the scene to a more recently measured orientation during the distortion 
+rendering phase. Implemented for both DX11 and OpenGL, so far for Windows only (we are working on adding Mac and Linux support). Oculus integration
+should work on Mac too, but without timewarp support yet.
+
+Full list of Oculus-related console commands is included in UE4-Oculus.txt file.
+
+Note, you need to download pre-requisite .zip and uncompress it into UnrealEngine directory, similarly how you do it with Epic's .zip files:
+
+[Link1](http://static.oculusvr.com/sdk-downloads/ovr_ue4_4.4_github_prereq_0.4.1a.zip)
+
+Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer downloaded from www.oculus.com (go to "Developer", register/login, "Downloads", "Oculus Runtime").
+For Windows: run the executable and follow the instructions.
+For Mac: double click on downloaded file and run the installer. Follow the instructions.
+
+If the headset is properly connected (do not use HDMI splitters), it should be automatically detected. In the "Extended Desktop to HMD" mode, switching to fullscreen should render on the HMD only. 
+In the "Direct HMD access from Apps" mode the Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). 
+It will be automatically de-activated once you switch back to non-stereo mode. 
+Only one HMD can be connected at a time.
+
+If stereo mode doesn't work then check the log-file (search for 'OCULUS' and 'LogHMD' sub-strings). Make sure the Run-Time & Drivers are installed and the service (OVRService.exe) is running. Check the Oculus User Guide for further details (located in Engine/Extras/Oculus directory).
+
+See UE4-Oculus.txt for the new console commands.
+
+And now, back to Epic's notes.
+
 Welcome to the UE 4.4 source code!
 ==================================
 

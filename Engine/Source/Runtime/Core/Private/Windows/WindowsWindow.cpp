@@ -4,11 +4,12 @@
 #include "WindowsWindow.h"
 #include "WindowsApplication.h"
 
+
 #if WINVER > 0x502	// Windows Vista or better required for DWM
-#include "AllowWindowsPlatformTypes.h"
-#include "Dwmapi.h"
-#include <ShlObj.h>
-#include "HideWindowsPlatformTypes.h"
+	#include "AllowWindowsPlatformTypes.h"
+	#include "Dwmapi.h"
+	#include <ShlObj.h>
+	#include "HideWindowsPlatformTypes.h"
 #endif
 
 FWindowsWindow::~FWindowsWindow()
@@ -453,13 +454,16 @@ void FWindowsWindow::SetWindowMode( EWindowMode::Type NewWindowMode )
 		const LONG RestoredFlags = WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU | WS_OVERLAPPED | WS_BORDER;
 
 		// If we're not in fullscreen, make it so
-		if( NewWindowMode == EWindowMode::WindowedFullscreen || NewWindowMode == EWindowMode::Fullscreen )
+		if( NewWindowMode == EWindowMode::WindowedFullscreen || NewWindowMode == EWindowMode::Fullscreen || NewWindowMode == EWindowMode::WindowedMirror)
 		{
 			::GetWindowPlacement(HWnd, &PreFullscreenWindowPlacement);
 
 			// Setup Win32 flags for fullscreen window
-			WindowFlags &= ~RestoredFlags;
-			WindowFlags |= FullscreenFlags;
+			if (NewWindowMode != EWindowMode::WindowedMirror)
+			{
+				WindowFlags &= ~RestoredFlags;
+				WindowFlags |= FullscreenFlags;
+			}
 			SetWindowLong(HWnd, GWL_STYLE, WindowFlags);
 
 			if (!bTrueFullscreen)

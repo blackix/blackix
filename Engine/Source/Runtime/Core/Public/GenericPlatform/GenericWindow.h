@@ -12,9 +12,9 @@ namespace EWindowMode
 	enum Type
 	{
 		/** The window is in true fullscreen mode */
-		Fullscreen,
+		Fullscreen = 0,
 		/** The window has no border and takes up the entire area of the screen */
-		WindowedFullscreen,
+		WindowedFullscreen = 1,
 		/** The window has a border and may not take up the entire screen area */
 		Windowed,
 		/** Pseudo-fullscreen mode for devices like HMDs */

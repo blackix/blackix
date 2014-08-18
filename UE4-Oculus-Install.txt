@@ -1,0 +1,56 @@
+UE4 Oculus
+----------
+
+Install & Building
+------------------
+Our version is based on 4.4 (August 2014 QA). Note, this integration contains newer Epic's code along with Oculus's modification.
+These changes weren't QA-ed by Epic, so use this integration at your own risk.
+
+Do one of these:
+A.	There are two ways of installing the update over the existing UE4. The easiest one is to install it over
+	clean installation of the QA build (see above for the exact version). In this case, you may just decompress
+	the patch into the root QA directory and apply it.
+	Apply the supplied patch (UE4-Oculus.patch) using the standard patch tool (or something you like that is compatible):
+	$ patch -p0 -l --binary < UE4-Oculus.patch
+	If there are rejects, review those (probably in places you have modified).
+
+	If you are sure that there are no your changes in UE4 QA source, you also may just decompress the 
+	whole 'Engine' directory into your UE4 QA directory (overwriting all the files).
+
+B.  In the case if you are installing the Oculus update over the different version of UE4 
+	(different QA or modified one): make a "clean" copy of the August 2014 QA or 4.4 (even if you use a different version; you can omit the content)
+    AND a copy of August 2014 QA or 4.4 with the Oculus integration files in it.
+	Use a merge tool that supports interactive merging of folders (such as Araxis Merge or WinMerge), and merge:	
+		The base version is the clean August 2014 QA or 4.4
+		The left is your game
+		The right is the source with Oculus integration over it.
+
+C.  Copy the following directories from the .zip to corresponding location in your UE4 directory:
+		Engine/Source/ThirdParty
+		Engine/Extras/Oculus
+D.  Using GenerateProjectFiles.bat re-generate project files and re-build the solution.
+
+Running
+-------
+Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer is located in the Engine/Extras/Oculus directory. Run the executable and follow the instructions.
+
+If the headset is properly connected (do not use splitters), it should be automatically detected. In the "Compatibility mode", using fullscreen should display on the HMD only. 
+In the "Application only mode" Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to fullscreen (Alt-Enter). It will be automatically de-activated once you switch back to non-stereo mode. 
+Only one HMD can be connected at a time.
+
+If stereo mode doesn't work then check the log-file (search for 'OCULUS' and 'LogHMD' sub-strings). Make sure the Run-Time & Drivers are installed and the service (OVRService.exe) is running. Check the Oculus User Guide for further details (located in Engine/Extras/Oculus directory).
+
+See UE4-Oculus.txt for the new console commands.
+
+
+Troubleshooting
+-------
+A. Linker errors on unresolved symbols in libovr.
+Didn't copy Engine/Source/ThirdParty directory from the .zip to your UE4 directory.
+
+B. Oculus config tool doesn't recognize the Rift or obsolete.
+Didn't install latest Oculus Run-Time & Drivers (located in Engine/Extras/Oculus directory).
+
+C. 'No Oculus HMD detected!' message in the log file and no Rift support
+Didn't install latest Oculus Run-Time & Drivers (located in Engine/Extras/Oculus directory).
+Servie is not running. Check the Oculus User Guide for further details (located in Engine/Extras/Oculus directory).
