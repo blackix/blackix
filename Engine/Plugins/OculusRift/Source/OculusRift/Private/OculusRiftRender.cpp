@@ -339,6 +339,17 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 	{
 		if (bDrawGrid)
 		{
+			bool bPopTransform = false;
+			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX / 2) ||
+				EyeRenderDesc[0].DistortedViewport.Size.h != Canvas->ClipY)
+			{
+				bPopTransform = true;
+				Canvas->Canvas->PushAbsoluteTransform(FScaleMatrix(
+					FVector((Canvas->ClipX * 0.5f) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
+					Canvas->ClipY / float(EyeRenderDesc[0].DistortedViewport.Size.h),
+					1.0f)));
+			}
+
 			const FColor cNormal(255, 0, 0);
 			const FColor cSpacer(255, 255, 0);
 			const FColor cMid(0, 128, 255);
@@ -362,7 +373,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 				limitX = Alg::Max(renderViewportW - midX, midX);
 				limitY = Alg::Max(renderViewportH - midY, midY);
 
-				int spacerMask = (lineStep << 2) - 1;
+				int spacerMask = (lineStep << 1) - 1;
 
 				for (int xp = 0; xp < limitX; xp += lineStep)
 				{
@@ -414,6 +425,10 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 						RenderLines(Canvas->Canvas, 2, cNormal, x, y);
 					}
 				}
+			}
+			if (bPopTransform)
+			{
+				Canvas->Canvas->PopTransform();
 			}
 		}
 		return;
