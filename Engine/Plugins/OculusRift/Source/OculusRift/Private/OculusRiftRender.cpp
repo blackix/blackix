@@ -194,13 +194,13 @@ void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
 		return;
 
 	const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
-	FQuat		CurrentHmdOrientation;
-	FVector		CurrentHmdPosition;
+	FQuat	CurrentHmdOrientation;
+	FVector	CurrentHmdPosition;
 
-		// Get new predicted pose to corresponding eye.
-		ovrPosef eyeRenderPose = ovrHmd_GetEyePose(Hmd, eyeIdx);
-		PoseToOrientationAndPosition(eyeRenderPose, CurrentHmdOrientation, CurrentHmdPosition);
-		RenderParams_RenderThread.EyeRenderPose[eyeIdx] = eyeRenderPose;
+	// Get new predicted pose to corresponding eye.
+	ovrPosef eyeRenderPose = ovrHmd_GetEyePose(Hmd, eyeIdx);
+	PoseToOrientationAndPosition(eyeRenderPose, CurrentHmdOrientation, CurrentHmdPosition);
+	RenderParams_RenderThread.EyeRenderPose[eyeIdx] = eyeRenderPose;
 
 	if (bUpdateOnRT)
 	{
@@ -339,6 +339,17 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 	{
 		if (bDrawGrid)
 		{
+			bool bPopTransform = false;
+			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX / 2) ||
+				EyeRenderDesc[0].DistortedViewport.Size.h != Canvas->ClipY)
+			{
+				bPopTransform = true;
+				Canvas->Canvas->PushAbsoluteTransform(FScaleMatrix(
+					FVector((Canvas->ClipX * 0.5f) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
+					Canvas->ClipY / float(EyeRenderDesc[0].DistortedViewport.Size.h),
+					1.0f)));
+			}
+
 			const FColor cNormal(255, 0, 0);
 			const FColor cSpacer(255, 255, 0);
 			const FColor cMid(0, 128, 255);
@@ -362,7 +373,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 				limitX = Alg::Max(renderViewportW - midX, midX);
 				limitY = Alg::Max(renderViewportH - midY, midY);
 
-				int spacerMask = (lineStep << 2) - 1;
+				int spacerMask = (lineStep << 1) - 1;
 
 				for (int xp = 0; xp < limitX; xp += lineStep)
 				{
@@ -414,6 +425,10 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 						RenderLines(Canvas->Canvas, 2, cNormal, x, y);
 					}
 				}
+			}
+			if (bPopTransform)
+			{
+				Canvas->Canvas->PopTransform();
 			}
 		}
 		return;
@@ -533,15 +548,15 @@ void FOculusRiftHMD::UpdateViewport(bool bUseSeparateRenderTarget, const FViewpo
 	if (!IsStereoEnabled())
 	{
 		if (!bUseSeparateRenderTarget)
-	{
+		{
 			ViewportRHI->SetCustomPresent(nullptr);
-	}
+		}
 #if PLATFORM_WINDOWS
 		if (OSWindowHandle)
-	{
+		{
 			ovrHmd_AttachToWindow(Hmd, NULL, NULL, NULL);
 			OSWindowHandle = nullptr;
-	}
+		}
 #endif
 		return;
 	}
@@ -688,9 +703,9 @@ void FOculusRiftHMD::D3D11Bridge::FinishRendering()
 		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams_RenderThread.EyeRenderPose, eyeTextures); // This function will present
 	}
 	else
-		{
+	{
 		UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
-		}
+	}
 	Plugin->RenderParams_RenderThread.bFrameBegun = false;
 }
 
@@ -959,9 +974,9 @@ void FOculusRiftHMD::OGLBridge::FinishRendering()
 		Plugin->RenderParams_RenderThread.bFrameBegun = false;
 	}
 	else
-		{
+	{
 		UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
-		}
+	}
 }
 
 void FOculusRiftHMD::OGLBridge::Init()
