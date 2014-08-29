@@ -197,10 +197,10 @@ void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
 	FQuat	CurrentHmdOrientation;
 	FVector	CurrentHmdPosition;
 
-		// Get new predicted pose to corresponding eye.
-		ovrPosef eyeRenderPose = ovrHmd_GetEyePose(Hmd, eyeIdx);
-		PoseToOrientationAndPosition(eyeRenderPose, CurrentHmdOrientation, CurrentHmdPosition);
-		RenderParams_RenderThread.EyeRenderPose[eyeIdx] = eyeRenderPose;
+	// Get new predicted pose to corresponding eye.
+	ovrPosef eyeRenderPose = ovrHmd_GetEyePose(Hmd, eyeIdx);
+	PoseToOrientationAndPosition(eyeRenderPose, CurrentHmdOrientation, CurrentHmdPosition);
+	RenderParams_RenderThread.EyeRenderPose[eyeIdx] = eyeRenderPose;
 
 	if (bUpdateOnRT)
 	{
@@ -548,15 +548,15 @@ void FOculusRiftHMD::UpdateViewport(bool bUseSeparateRenderTarget, const FViewpo
 	if (!IsStereoEnabled())
 	{
 		if (!bUseSeparateRenderTarget)
-	{
+		{
 			ViewportRHI->SetCustomPresent(nullptr);
-	}
+		}
 #if PLATFORM_WINDOWS
 		if (OSWindowHandle)
-	{
+		{
 			ovrHmd_AttachToWindow(Hmd, NULL, NULL, NULL);
 			OSWindowHandle = nullptr;
-	}
+		}
 #endif
 		return;
 	}
@@ -703,9 +703,9 @@ void FOculusRiftHMD::D3D11Bridge::FinishRendering()
 		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams_RenderThread.EyeRenderPose, eyeTextures); // This function will present
 	}
 	else
-		{
+	{
 		UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
-		}
+	}
 	Plugin->RenderParams_RenderThread.bFrameBegun = false;
 }
 
@@ -974,7 +974,7 @@ void FOculusRiftHMD::OGLBridge::FinishRendering()
 		Plugin->RenderParams_RenderThread.bFrameBegun = false;
 	}
 	else
-		{
+	{
 		UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
 	}
 }
