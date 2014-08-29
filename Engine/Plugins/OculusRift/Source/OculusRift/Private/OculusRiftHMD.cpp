@@ -800,51 +800,51 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 		return false;
 	}
 	else if (FParse::Command(&Cmd, TEXT("HMDWARP")))
-    {
+	{
 #ifndef OVR_DIRECT_RENDERING
         if (FParse::Command( &Cmd, TEXT("ON") ))
-        {
+		{
             bHmdDistortion = true;
-            return true;
-        }
+			return true;
+		}
         else if (FParse::Command( &Cmd, TEXT("OFF") ))
-        {
+		{
             bHmdDistortion = false;
-            return true;
-        }
+			return true;
+		}
 #endif //OVR_DIRECT_RENDERING
 		if (FParse::Command(&Cmd, TEXT("CHA")))
 		{
 			bChromaAbCorrectionEnabled = true;
 			UpdateDistortionCaps();
-			return true;
+ 			return true;
 		}
 		else if (FParse::Command(&Cmd, TEXT("NOCHA")))
 		{
 			bChromaAbCorrectionEnabled = false;
 			UpdateDistortionCaps();
 			return true;
-		}
+	}
 		else if (FParse::Command( &Cmd, TEXT("HQ") ))
-		{
+    {
 			// High quality distortion
-			if (FParse::Command( &Cmd, TEXT("ON") ))
-			{
+        if (FParse::Command( &Cmd, TEXT("ON") ))
+        {
 				bHQDistortion = true;
 			}
 			else if (FParse::Command(&Cmd, TEXT("OFF")))
 			{
 				bHQDistortion = false;
-			}
+        }
 			else
-			{
+        {
 				bHQDistortion = !bHQDistortion;
 			}
 			Ar.Logf(TEXT("High quality distortion is currently %s"), (bHQDistortion) ? TEXT("ON") : TEXT("OFF") ?
 				TEXT("on") : TEXT("off"));
 			UpdateDistortionCaps();
-			return true;
-		}
+            return true;
+        }
 
 		if (FParse::Command(&Cmd, TEXT("SHOW")))
 		{
@@ -1736,7 +1736,7 @@ void FOculusRiftHMD::UpdateHmdCaps()
 			HmdCaps &= ~ovrHmdCap_LowPersistence;
 		}
 
-		if (bVSync)
+		if (bVSync) 
 		{
 			HmdCaps &= ~ovrHmdCap_NoVSync;
 		}
