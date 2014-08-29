@@ -242,7 +242,7 @@ void FOculusRiftHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation,
 	checkf(IsInGameThread());
 	GetCurrentPose(CurHmdOrientation, CurHmdPosition);
 	CurrentOrientation = LastHmdOrientation = CurHmdOrientation;
-	
+
 	CurrentPosition = CurHmdPosition;
 	
 	// @TODO: we can't actually return just CurHmdPosition here, it should be rotated by CurrentOrientation.
@@ -1097,8 +1097,8 @@ void FOculusRiftHMD::RecordAnalytics()
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("AllowFinishCurrentFrame"), bAllowFinishCurrentFrame));
 #ifdef OVR_VISION_ENABLED
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("HmdPosTracking"), bHmdPosTracking));
+#endif
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("LowPersistenceMode"), bLowPersistenceMode));
-#endif		
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("UpdateOnRT"), bUpdateOnRT));
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("Overdrive"), bOverdrive));
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("MirrorToWindow"), bMirrorToWindow));
@@ -1610,6 +1610,8 @@ void FOculusRiftHMD::Startup()
 			MotionPredictionInSeconds *= 2;
 		}
 
+		bHmdPosTracking = (SupportedTrackingCaps & ovrTrackingCap_Position) != 0;
+
 		UpdateDistortionCaps();
 		UpdateHmdRenderInfo();
 		UpdateStereoRenderingParams();
@@ -1933,12 +1935,6 @@ void FOculusRiftHMD::LoadFromIni()
 	{
 		bAllowFinishCurrentFrame = v;
 	}
-#ifdef OVR_VISION_ENABLED
-	if (GConfig->GetBool(OculusSettings, TEXT("bHmdPosTracking"), v, GEngineIni))
-	{
-		bHmdPosTracking = v;
-	}
-#endif // #ifdef OVR_VISION_ENABLED
 	if (GConfig->GetBool(OculusSettings, TEXT("bLowPersistenceMode"), v, GEngineIni))
 	{
 		bLowPersistenceMode = v;
@@ -1990,9 +1986,6 @@ void FOculusRiftHMD::SaveToIni()
 	}
 	GConfig->SetBool(OculusSettings, TEXT("bAllowFinishCurrentFrame"), bAllowFinishCurrentFrame, GEngineIni);
 
-#ifdef OVR_VISION_ENABLED
-	GConfig->SetBool(OculusSettings, TEXT("bHmdPosTracking"), bHmdPosTracking, GEngineIni);
-#endif
 	GConfig->SetBool(OculusSettings, TEXT("bLowPersistenceMode"), bLowPersistenceMode, GEngineIni);
 
 	GConfig->SetBool(OculusSettings, TEXT("bUpdateOnRT"), bUpdateOnRT, GEngineIni);
