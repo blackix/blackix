@@ -10,7 +10,7 @@ Full list of Oculus-related console commands is included in UE4-Oculus.txt file.
 
 Note, you need to download pre-requisite .zip and uncompress it into UnrealEngine directory, similarly how you do it with Epic's .zip files:
 
-[Link1](http://static.oculusvr.com/sdk-downloads/ovr_ue4_4.4_github_prereq_0.4.1a.zip)
+[Link1](http://static.oculusvr.com/sdk-downloads/ovr_ue4_4.4_github_prereq_0.4.2.zip)
 
 Before running UE4 with this integration, you must install Oculus Run-Time & Drivers. The installer downloaded from www.oculus.com (go to "Developer", register/login, "Downloads", "Oculus Runtime").
 Make sure you have installed the latest Run-Time.

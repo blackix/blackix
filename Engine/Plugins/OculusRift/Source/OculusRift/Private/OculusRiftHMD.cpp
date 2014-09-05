@@ -1024,7 +1024,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 	}
 	else if (FParse::Command(&Cmd, TEXT("OVRVERSION")))
 	{
-		static const char* Results = ovr_GetVersionString() + 7; // +7 is temporary, until libovr returns just numbers
+		static const char* Results = ovr_GetVersionString();
 		Ar.Logf(TEXT("%s, LibOVR: %s, built %s, %s"), *GEngineVersion.ToString(), UTF8_TO_TCHAR(Results), 
 			UTF8_TO_TCHAR(__DATE__), UTF8_TO_TCHAR(__TIME__));
 		return true;
