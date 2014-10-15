@@ -114,6 +114,7 @@ public class UnrealEd : ModuleRules
 				"Kismet",
                 "InternationalizationSettings",
                 "JsonUtilities",
+				"HeadMountedDisplay",
 			}
 		);
 

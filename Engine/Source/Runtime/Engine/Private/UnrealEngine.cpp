@@ -1709,25 +1709,22 @@ public:
 
 bool UEngine::InitializeHMDDevice()
 {
-	if( !GIsEditor )
+	if (!GIsEditor && FParse::Param(FCommandLine::Get(),TEXT("emulatestereo")))
 	{
-		if (FParse::Param(FCommandLine::Get(),TEXT("emulatestereo")))
+		TSharedPtr<FFakeStereoRenderingDevice> FakeStereoDevice(new FFakeStereoRenderingDevice());
+		StereoRenderingDevice = FakeStereoDevice;
+	}
+	// No reason to connect an HMD on a dedicated server.  Also fixes dedicated servers stealing the oculus connection.
+	else if(!HMDDevice.IsValid() && !FParse::Param(FCommandLine::Get(),TEXT("nohmd")) && !IsRunningDedicatedServer())
+	{
+		// Get a list of plugins that implement this feature
+		TArray<IHeadMountedDisplayModule*> HMDImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IHeadMountedDisplayModule>( IHeadMountedDisplayModule::GetModularFeatureName() );
+		for( auto HMDModuleIt = HMDImplementations.CreateIterator(); HMDModuleIt && !HMDDevice.IsValid(); ++HMDModuleIt )
 		{
-			TSharedPtr<FFakeStereoRenderingDevice> FakeStereoDevice(new FFakeStereoRenderingDevice());
-			StereoRenderingDevice = FakeStereoDevice;
-		}
-		// No reason to connect an HMD on a dedicated server.  Also fixes dedicated servers stealing the oculus connection.
-		else if(!HMDDevice.IsValid() && !FParse::Param(FCommandLine::Get(),TEXT("nohmd")) && !IsRunningDedicatedServer())
-		{
-			// Get a list of plugins that implement this feature
-			TArray<IHeadMountedDisplayModule*> HMDImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IHeadMountedDisplayModule>( IHeadMountedDisplayModule::GetModularFeatureName() );
-			for( auto HMDModuleIt = HMDImplementations.CreateIterator(); HMDModuleIt && !HMDDevice.IsValid(); ++HMDModuleIt )
+			HMDDevice = (*HMDModuleIt)->CreateHeadMountedDisplay();
+			if( HMDDevice.IsValid()  && !GIsEditor )
 			{
-				HMDDevice = (*HMDModuleIt)->CreateHeadMountedDisplay();
-				if( HMDDevice.IsValid() )
-				{
-					StereoRenderingDevice = HMDDevice;
-				}
+				StereoRenderingDevice = HMDDevice;
 			}
 		}
 	}

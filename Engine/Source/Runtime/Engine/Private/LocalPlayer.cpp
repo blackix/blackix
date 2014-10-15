@@ -975,7 +975,7 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 
 	// If stereo rendering is enabled, update the size and offset appropriately for this pass
 	const bool bNeedStereo = GEngine->IsStereoscopic3D() && (StereoPass != eSSP_FULL);
-	if( bNeedStereo )
+	if ( bNeedStereo && GEngine->StereoRenderingDevice.IsValid() )
 	{
 		GEngine->StereoRenderingDevice->AdjustViewRect(StereoPass, X, Y, SizeX, SizeY);
 	}
@@ -986,7 +986,13 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
     FVector StereoViewLocation = ViewInfo.Location;
     if ((GEngine->IsStereoscopic3D() && StereoPass != eSSP_FULL) || (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed()))
     {
-        GEngine->StereoRenderingDevice->CalculateStereoViewOffset(StereoPass, ViewInfo.Rotation, GetWorld()->GetWorldSettings()->WorldToMeters, StereoViewLocation);
+		// StereoRenderingDevice could be NULL and HMDDevice not in Editor, for example (where it can track the HMD but do not do 
+		// stereo rendering).
+		IStereoRendering* Stereo = (GEngine->StereoRenderingDevice.IsValid()) ? GEngine->StereoRenderingDevice.Get() : GEngine->HMDDevice.Get();
+		if (Stereo)
+		{
+			Stereo->CalculateStereoViewOffset(StereoPass, ViewInfo.Rotation, GetWorld()->GetWorldSettings()->WorldToMeters, StereoViewLocation);
+		}
     }
 
 	// Create the view matrix
@@ -1087,7 +1093,7 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 			}
 		}
 	}
-	else
+	else if (GEngine->StereoRenderingDevice.IsValid())
 	{
 		// Let the stereoscopic rendering device handle creating its own projection matrix, as needed
 		ProjectionData.ProjectionMatrix = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix(StereoPass, ViewInfo.FOV);

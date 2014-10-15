@@ -35,6 +35,8 @@
 #include "SScissorRectBox.h"
 #include "Online.h"
 
+#include "Runtime/HeadMountedDisplay/Public/HeadMountedDisplay.h"
+
 DEFINE_LOG_CATEGORY_STATIC(LogPlayLevel, Log, All);
 
 #define LOCTEXT_NAMESPACE "PlayLevel"
@@ -184,6 +186,11 @@ void UEditorEngine::EndPlayMap()
 		EditorWorld->GetNavigationSystem()->OnPIEEnd();
 	}
 #endif // WITH_NAVIGATION_GENERATOR
+
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->OnEndPlay();
+	}
 
 	EditorWorld->bAllowAudioPlayback = true;
 	EditorWorld = NULL;
@@ -1854,6 +1861,11 @@ void UEditorEngine::PlayInEditor( UWorld* InWorld, bool bInSimulateInEditor )
 	{
 		// immediately end the playworld
 		EndPlayMap();
+	}
+
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->OnBeginPlay();
 	}
 
 	// remember old GWorld

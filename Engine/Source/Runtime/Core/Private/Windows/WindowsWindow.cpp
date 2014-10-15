@@ -474,37 +474,40 @@ void FWindowsWindow::SetWindowMode( EWindowMode::Type NewWindowMode )
 				ShowWindow(HWnd, SW_RESTORE);
 			}
 
-			// Get the current window position.
-			RECT ClientRect;
-			GetClientRect(HWnd, &ClientRect);
+			if (NewWindowMode != EWindowMode::WindowedMirror)
+			{
+				// Get the current window position.
+				RECT ClientRect;
+				GetClientRect(HWnd, &ClientRect);
 
-			// Grab current monitor data for sizing
-			HMONITOR Monitor = MonitorFromWindow( HWnd, bTrueFullscreen ? MONITOR_DEFAULTTOPRIMARY : MONITOR_DEFAULTTONEAREST );
-			MONITORINFO MonitorInfo;
-			MonitorInfo.cbSize = sizeof(MONITORINFO);
-			GetMonitorInfo( Monitor, &MonitorInfo );
+				// Grab current monitor data for sizing
+				HMONITOR Monitor = MonitorFromWindow( HWnd, bTrueFullscreen ? MONITOR_DEFAULTTOPRIMARY : MONITOR_DEFAULTTONEAREST );
+				MONITORINFO MonitorInfo;
+				MonitorInfo.cbSize = sizeof(MONITORINFO);
+				GetMonitorInfo( Monitor, &MonitorInfo );
 
-			// Get the target client width to send to ReshapeWindow.
-			// Preserve the current res if going to true fullscreen and the monitor supports it and allow the calling code
-			// to resize if required.
-			// Else, use the monitor's res for windowed fullscreen.
-			LONG MonitorWidth  = MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left;
-			LONG TargetClientWidth = bTrueFullscreen ?
-				FMath::Min(MonitorWidth, ClientRect.right - ClientRect.left) :
-				MonitorWidth;
+				// Get the target client width to send to ReshapeWindow.
+				// Preserve the current res if going to true fullscreen and the monitor supports it and allow the calling code
+				// to resize if required.
+				// Else, use the monitor's res for windowed fullscreen.
+				LONG MonitorWidth  = MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left;
+				LONG TargetClientWidth = bTrueFullscreen ?
+					FMath::Min(MonitorWidth, ClientRect.right - ClientRect.left) :
+					MonitorWidth;
 
-			LONG MonitorHeight = MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top;
-			LONG TargetClientHeight = bTrueFullscreen ?
-				FMath::Min(MonitorHeight, ClientRect.bottom - ClientRect.top) :
-				MonitorHeight;
+				LONG MonitorHeight = MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top;
+				LONG TargetClientHeight = bTrueFullscreen ?
+					FMath::Min(MonitorHeight, ClientRect.bottom - ClientRect.top) :
+					MonitorHeight;
 
 
-			// Resize and position fullscreen window
-			ReshapeWindow(
-				MonitorInfo.rcMonitor.left,
-				MonitorInfo.rcMonitor.top,
-				TargetClientWidth,
-				TargetClientHeight);
+				// Resize and position fullscreen window
+				ReshapeWindow(
+					MonitorInfo.rcMonitor.left,
+					MonitorInfo.rcMonitor.top,
+					TargetClientWidth,
+					TargetClientHeight);
+			}
 		}
 		else
 		{
