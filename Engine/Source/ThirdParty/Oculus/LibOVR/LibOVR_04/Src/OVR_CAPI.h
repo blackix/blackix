@@ -192,14 +192,15 @@ typedef enum
 /// Used with ovrHmd_ConfigureRendering and ovrHmd_CreateDistortionMesh.
 typedef enum
 {
-    ovrDistortionCap_Chromatic      = 0x01,     /// Supports chromatic aberration correction.
-    ovrDistortionCap_TimeWarp       = 0x02,     /// Supports timewarp.
-    ovrDistortionCap_Vignette       = 0x08,     /// Supports vignetting around the edges of the view.
-    ovrDistortionCap_NoRestore      = 0x10,     /// Do not save and restore the graphics state when rendering distortion.
-    ovrDistortionCap_FlipInput      = 0x20,     /// Flip the vertical texture coordinate of input images.
-    ovrDistortionCap_SRGB           = 0x40,     /// Assume input images are in sRGB gamma-corrected color space.
-    ovrDistortionCap_Overdrive      = 0x80,     /// Overdrive brightness transitions to reduce artifacts on DK2+ displays
-    ovrDistortionCap_HqDistortion   = 0x100,    /// High-quality sampling of distortion buffer for anti-aliasing
+    ovrDistortionCap_Chromatic          = 0x01,     /// Supports chromatic aberration correction.
+    ovrDistortionCap_TimeWarp           = 0x02,     /// Supports timewarp.
+    ovrDistortionCap_Vignette           = 0x08,     /// Supports vignetting around the edges of the view.
+    ovrDistortionCap_NoRestore          = 0x10,     /// Do not save and restore the graphics state when rendering distortion.
+    ovrDistortionCap_FlipInput          = 0x20,     /// Flip the vertical texture coordinate of input images.
+    ovrDistortionCap_SRGB               = 0x40,     /// Assume input images are in sRGB gamma-corrected color space.
+    ovrDistortionCap_Overdrive          = 0x80,     /// Overdrive brightness transitions to reduce artifacts on DK2+ displays
+    ovrDistortionCap_HqDistortion       = 0x100,    /// High-quality sampling of distortion buffer for anti-aliasing
+    ovrDistortionCap_LinuxDevFullscreen = 0x200,    /// Indicates window is fullscreen on a device when set. The SDK will automatically apply distortion mesh rotation if needed.
 
     ovrDistortionCap_ProfileNoTimewarpSpinWaits = 0x10000,  /// Use when profiling with timewarp to remove false positives
 } ovrDistortionCaps;

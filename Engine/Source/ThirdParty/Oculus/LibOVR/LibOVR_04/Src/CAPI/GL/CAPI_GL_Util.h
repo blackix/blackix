@@ -668,6 +668,7 @@ class Context
     Display            *x11Display;
     GLXDrawable         x11Drawable;
     GLXContext          systemContext;
+    XVisualInfo         x11Visual;
 #elif defined(OVR_OS_MAC)
     CGLContextObj       systemContext;
 #endif

@@ -3,7 +3,7 @@ UE4 Oculus
 
 Install & Building
 ------------------
-Our version is based on 4.5. Note, this integration contains newer Epic's code along with Oculus's modification.
+Our version is based on 4.5.1. Note, this integration contains newer Epic's code along with Oculus's modification.
 These changes weren't QA-ed by Epic, so use this integration at your own risk.
 
 Do one of these:
@@ -18,10 +18,10 @@ A.	There are two ways of installing the update over the existing UE4. The easies
 	whole 'Engine' directory into your UE4 QA directory (overwriting all the files).
 
 B.  In the case if you are installing the Oculus update over the different version of UE4 
-	(different QA or modified one): make a "clean" copy of the 4.5 (even if you use a different version; you can omit the content)
-    AND a copy of 4.5 with the Oculus integration files in it.
+	(different QA or modified one): make a "clean" copy of the 4.5.1 (even if you use a different version; you can omit the content)
+    AND a copy of 4.5.1 with the Oculus integration files in it.
 	Use a merge tool that supports interactive merging of folders (such as Araxis Merge or WinMerge), and merge:	
-		The base version is the clean 4.5
+		The base version is the clean 4.5.1
 		The left is your game
 		The right is the source with Oculus integration over it.
 

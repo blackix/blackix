@@ -169,6 +169,8 @@ protected:
 
 	Ptr<ShaderSet>      DistortionShader;
 
+    bool                RotateCCW90;
+
     struct StandardUniformData
     {
         Matrix4f  Proj;

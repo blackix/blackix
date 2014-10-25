@@ -31,10 +31,6 @@ stereo ncp=10 fcp=10000		Overrides near clipping and/or far clipping planes for 
 stereo show					Shows current ipd and head model offset
 stereo reset				Resets stereo settings
 
-motion pred on|off			Enables/disables motion prediction
-motion pred 0.0167          Motion prediction (in seconds)
-motion show					Shows current prediction and gain
-
 hmdpos on|off				Enables/disables positional tracking.
 hmdpos reset				Resets forward direction and 'zero' position
 hmdpos reset -37			Resets forward direction and apply yaw rotation (in degrees) and 'zero' position

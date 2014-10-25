@@ -188,14 +188,17 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 	}
 #endif
 
-	// get latest orientation/position and cache it
-	ovrTrackingState ts;
-	ovrVector3f hmdToEyeViewOffset[2] = 
-	{ 
-		RenderParams_RenderThread.EyeRenderDesc[0].HmdToEyeViewOffset, 
-		RenderParams_RenderThread.EyeRenderDesc[1].HmdToEyeViewOffset 
-	};
-	ovrHmd_GetEyePoses(Hmd, RenderParams_RenderThread.FrameNumber, hmdToEyeViewOffset, RenderParams_RenderThread.EyeRenderPose, &ts);
+	if (RenderParams_RenderThread.ShowFlags.Rendering)
+	{
+		// get latest orientation/position and cache it
+		ovrTrackingState ts;
+		ovrVector3f hmdToEyeViewOffset[2] =
+		{
+			RenderParams_RenderThread.EyeRenderDesc[0].HmdToEyeViewOffset,
+			RenderParams_RenderThread.EyeRenderDesc[1].HmdToEyeViewOffset
+		};
+		ovrHmd_GetEyePoses(Hmd, RenderParams_RenderThread.FrameNumber, hmdToEyeViewOffset, RenderParams_RenderThread.EyeRenderPose, &ts);
+	}
 
 	BeginRendering_RenderThread();
 }
