@@ -987,7 +987,28 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 
 							DebugCanvasObject->SceneView = View;
 							PlayerController->MyHUD->SetCanvas(CanvasObject, DebugCanvasObject);
-							PlayerController->MyHUD->PostRender();
+							if (GEngine->IsStereoscopic3D())
+							{
+								check(GEngine->StereoRenderingDevice.IsValid());
+								GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, SceneCanvas, CanvasObject, Viewport);
+								PlayerController->MyHUD->PostRender();
+								SceneCanvas->PopTransform();
+
+								GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_RIGHT_EYE, SceneCanvas, CanvasObject, Viewport);
+								PlayerController->MyHUD->PostRender();
+								SceneCanvas->PopTransform();
+
+								// Reset the canvas for rendering to the full viewport.
+								CanvasObject->Reset();
+								CanvasObject->SizeX = View->UnscaledViewRect.Width();
+								CanvasObject->SizeY = View->UnscaledViewRect.Height();
+								CanvasObject->SetView(NULL);
+								CanvasObject->Update();
+							}
+							else
+							{
+								PlayerController->MyHUD->PostRender();
+							}
 							
 							// Put these pointers back as if a blueprint breakpoint hits during HUD PostRender they can
 							// have been changed

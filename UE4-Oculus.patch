@@ -3162,6 +3162,37 @@
 +	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
 +	static void GetPositionOffset(FVector& OutPosOffset);
  };
+--- ../../../../UE4-QA/Engine/Source/Runtime/Engine/Private/GameViewportClient.cpp	2014-10-14 16:07:05.074503400 -0400
++++ ./Engine/Source/Runtime/Engine/Private/GameViewportClient.cpp	2014-10-25 00:35:18.867711400 -0400
+@@ -987,7 +987,28 @@
+ 
+ 							DebugCanvasObject->SceneView = View;
+ 							PlayerController->MyHUD->SetCanvas(CanvasObject, DebugCanvasObject);
++							if (GEngine->IsStereoscopic3D())
++							{
++								check(GEngine->StereoRenderingDevice.IsValid());
++								GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, SceneCanvas, CanvasObject, Viewport);
+ 							PlayerController->MyHUD->PostRender();
++								SceneCanvas->PopTransform();
++
++								GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_RIGHT_EYE, SceneCanvas, CanvasObject, Viewport);
++								PlayerController->MyHUD->PostRender();
++								SceneCanvas->PopTransform();
++
++								// Reset the canvas for rendering to the full viewport.
++								CanvasObject->Reset();
++								CanvasObject->SizeX = View->UnscaledViewRect.Width();
++								CanvasObject->SizeY = View->UnscaledViewRect.Height();
++								CanvasObject->SetView(NULL);
++								CanvasObject->Update();
++							}
++							else
++							{
++								PlayerController->MyHUD->PostRender();
++							}
+ 							
+ 							// Put these pointers back as if a blueprint breakpoint hits during HUD PostRender they can
+ 							// have been changed
 --- ../../../../UE4-QA/Engine/Source/Runtime/Engine/Private/HeadMountedDisplayFunctionLibrary.cpp	2014-09-05 02:15:06.662020600 -0400
 +++ ./Engine/Source/Runtime/Engine/Private/HeadMountedDisplayFunctionLibrary.cpp	2014-10-05 04:25:43.318268600 -0400
 @@ -10,12 +10,12 @@
@@ -3360,6 +3391,20 @@
   
  	return StereoRenderingDevice.IsValid();
  }
+--- ../../../../UE4-QA/Engine/Source/Runtime/Engine/Private/UserInterface/Canvas.cpp	2014-10-14 16:07:10.362142900 -0400
++++ ./Engine/Source/Runtime/Engine/Private/UserInterface/Canvas.cpp	2014-10-25 00:00:55.871742500 -0400
+@@ -647,6 +647,11 @@
+ 	{
+ 		ViewRect = FIntRect( FIntPoint::ZeroValue, RenderTarget->GetSizeXY() );
+ 	}
++	if (IsScaledToRenderTarget() && IsValidRef(RenderTarget->GetRenderTargetTexture()))
++	{
++		ViewRect = FIntRect(0, 0, RenderTarget->GetRenderTargetTexture()->GetSizeX(), 
++								  RenderTarget->GetRenderTargetTexture()->GetSizeY());
++	}
+ 
+ 	struct FCanvasFlushParameters
+ 	{
 --- ../../../../UE4-QA/Engine/Source/Runtime/Engine/Public/SceneViewExtension.h	2014-09-05 02:15:15.457468200 -0400
 +++ ./Engine/Source/Runtime/Engine/Public/SceneViewExtension.h	2014-10-05 04:25:50.112790500 -0400
 @@ -21,8 +21,9 @@
