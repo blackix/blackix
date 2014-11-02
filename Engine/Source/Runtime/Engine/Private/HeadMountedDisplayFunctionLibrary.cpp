@@ -13,6 +13,24 @@ bool UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled()
 	return GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed();
 }
 
+bool UHeadMountedDisplayFunctionLibrary::EnableHMD(bool Enable)
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->EnableHMD(Enable);
+		if (Enable)
+		{
+			return GEngine->HMDDevice->EnableStereo(true);
+		}
+		else
+		{
+			GEngine->HMDDevice->EnableStereo(false);
+			return true;
+		}
+	}
+	return false;
+}
+
 void UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition)
 {
 	if(GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
@@ -80,27 +98,21 @@ void UHeadMountedDisplayFunctionLibrary::EnableLowPersistenceMode(bool Enable)
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition(float Yaw)
+void UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition(float Yaw, EOrientPositionSelector::Type Options)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
-		GEngine->HMDDevice->ResetOrientationAndPosition(Yaw);
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::ResetOrientation(float Yaw)
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
-		GEngine->HMDDevice->ResetOrientation(Yaw);
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::ResetPosition()
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
-		GEngine->HMDDevice->ResetPosition();
+		switch (Options)
+		{
+		case EOrientPositionSelector::Orientation:
+			GEngine->HMDDevice->ResetOrientation(Yaw);
+			break;
+		case EOrientPositionSelector::Position:
+			GEngine->HMDDevice->ResetPosition();
+			break;
+		default:
+			GEngine->HMDDevice->ResetOrientationAndPosition(Yaw);
+		}
 	}
 }
 
@@ -112,50 +124,27 @@ void UHeadMountedDisplayFunctionLibrary::SetClippingPlanes(float NCP, float FCP)
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::SetBaseRotation(const FRotator& BaseRot)
+void UHeadMountedDisplayFunctionLibrary::SetBaseRotationAndPositionOffset(const FRotator& BaseRot, const FVector& PosOffset, EOrientPositionSelector::Type Options)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
-		GEngine->HMDDevice->SetBaseRotation(BaseRot);
+		if (Options == EOrientPositionSelector::Orientation || EOrientPositionSelector::OrientationAndPosition)
+		{
+			GEngine->HMDDevice->SetBaseRotation(BaseRot);
+		}
+		if (Options == EOrientPositionSelector::Position || EOrientPositionSelector::OrientationAndPosition)
+		{
+			GEngine->HMDDevice->SetPositionOffset(PosOffset);
+		}
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetBaseRotation(FRotator& OutRot)
+void UHeadMountedDisplayFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
 		OutRot = GEngine->HMDDevice->GetBaseRotation();
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::SetBaseOrientation(const FQuat& BaseOrient)
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
-		GEngine->HMDDevice->SetBaseOrientation(BaseOrient);
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::GetBaseOrientation(FQuat& OutOrient)
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
-		OutOrient = GEngine->HMDDevice->GetBaseOrientation();
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::SetPositionOffset(const FVector& PosOffset)
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
-		GEngine->HMDDevice->SetPositionOffset(PosOffset);
-	}
-}
-
-void UHeadMountedDisplayFunctionLibrary::GetPositionOffset(FVector& OutPosOffset)
-{
-	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
-	{
 		OutPosOffset = GEngine->HMDDevice->GetPositionOffset();
 	}
 }
+
