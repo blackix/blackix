@@ -676,7 +676,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	DebugCanvasObject->Canvas = DebugCanvas;	
 	DebugCanvasObject->Init(InViewport->GetSizeXY().X, InViewport->GetSizeXY().Y, NULL);
 
-	const bool bScaledToRenderTarget = GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D();
+	const bool bScaledToRenderTarget = GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D(InViewport);
 	if (bScaledToRenderTarget)
 	{
 		// Allow HMD to modify screen settings
@@ -739,7 +739,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		.SetRealtimeUpdate(true));
 
 	// Allow HMD to modify the view later, just before rendering
-	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
+	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D(InViewport))
 	{
 		ISceneViewExtension* HmdViewExt = GEngine->HMDDevice->GetViewExtension();
 		if (HmdViewExt)
@@ -768,7 +768,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 			ULocalPlayer* LocalPlayer = Cast<ULocalPlayer>(PlayerController->Player);
 			if (LocalPlayer)
 			{
-				const bool bEnableStereo = GEngine->IsStereoscopic3D();
+				const bool bEnableStereo = GEngine->IsStereoscopic3D(InViewport);
 				int32 NumViews = bEnableStereo ? 2 : 1;
 
 				for( int i = 0; i < NumViews; ++i )
@@ -990,7 +990,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 
 							DebugCanvasObject->SceneView = View;
 							PlayerController->MyHUD->SetCanvas(CanvasObject, DebugCanvasObject);
-							if (GEngine->IsStereoscopic3D())
+							if (GEngine->IsStereoscopic3D(InViewport))
 							{
 								check(GEngine->StereoRenderingDevice.IsValid());
 								GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, SceneCanvas, CanvasObject, Viewport);
@@ -1065,7 +1065,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		// Render the console.
 		if (ViewportConsole)
 		{
-			if (GEngine->IsStereoscopic3D())
+			if (GEngine->IsStereoscopic3D(InViewport))
 			{
 				GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, DebugCanvas, DebugCanvasObject, Viewport);
 				ViewportConsole->PostRender_Console(DebugCanvasObject);
@@ -1112,7 +1112,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		}
 	}
 
-	if (GEngine->IsStereoscopic3D())
+	if (GEngine->IsStereoscopic3D(InViewport))
 	{
 		GEngine->StereoRenderingDevice->PushViewportCanvas(eSSP_LEFT_EYE, DebugCanvas, DebugCanvasObject, InViewport);
 		DrawStatsHUD(GetWorld(), InViewport, DebugCanvas, DebugCanvasObject, DebugProperties, PlayerCameraLocation, PlayerCameraRotation);

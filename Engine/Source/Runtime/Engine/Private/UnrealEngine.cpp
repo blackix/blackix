@@ -930,6 +930,9 @@ void UEngine::PreExit()
 	}
 
 	delete ScreenSaverInhibitorRunnable;
+
+	StereoRenderingDevice.Reset();
+	HMDDevice.Reset();
 }
 
 void UEngine::TickDeferredCommands()
@@ -1720,7 +1723,7 @@ public:
 
 bool UEngine::InitializeHMDDevice()
 {
-	if (!GIsEditor)
+	//if (!GIsEditor)
 	{
 		if (FParse::Param(FCommandLine::Get(), TEXT("emulatestereo")))
 		{
@@ -1762,7 +1765,7 @@ void UEngine::RecordHMDAnalytics()
 bool UEngine::IsSplitScreen(UWorld *InWorld)
 {
 	if (InWorld == NULL)
-{
+	{
 		// If no specified world, return true if any world context has multiple local players
 		for (auto It = WorldList.CreateIterator(); It; ++It)
 		{
@@ -1779,9 +1782,10 @@ bool UEngine::IsSplitScreen(UWorld *InWorld)
 }
 
 /** @return whether we're currently running with stereoscopic 3D enabled */
-bool UEngine::IsStereoscopic3D()
+bool UEngine::IsStereoscopic3D(FViewport* InViewport)
 {
-	return !GIsEditor && StereoRenderingDevice.IsValid() && StereoRenderingDevice->IsStereoEnabled();
+	return (!InViewport || InViewport->IsStereoRenderingAllowed()) &&
+		   (StereoRenderingDevice.IsValid() && StereoRenderingDevice->IsStereoEnabled());
 }
 
 ULocalPlayer* GetLocalPlayerFromControllerId_local(const TArray<class ULocalPlayer*>& GamePlayers, int32 ControllerId)
@@ -6662,7 +6666,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 
 	//@todo joeg: Move this stuff to a function, make safe to use on consoles by
 	// respecting the various safe zones, and make it compile out.
-	const int32 FPSXOffset	= (GEngine->IsStereoscopic3D()) ? Viewport->GetSizeXY().X * 0.5f * 0.334f : (FPlatformProperties::SupportsWindowedMode() ? 110 : 250);
+	const int32 FPSXOffset	= (GEngine->IsStereoscopic3D(Viewport)) ? Viewport->GetSizeXY().X * 0.5f * 0.334f : (FPlatformProperties::SupportsWindowedMode() ? 110 : 250);
 	const int32 StatsXOffset	= FPlatformProperties::SupportsWindowedMode() ?  4 : 100;
 
 	int32 MessageY = 35;
@@ -6856,7 +6860,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 
 	{
 		int32 X = (CanvasObject) ? CanvasObject->SizeX - FPSXOffset : Viewport->GetSizeXY().X - FPSXOffset; //??
-		int32 Y = (GEngine->IsStereoscopic3D()) ? FMath::TruncToInt(Viewport->GetSizeXY().Y * 0.40f) : FMath::TruncToInt(Viewport->GetSizeXY().Y * 0.20f);
+		int32 Y = (GEngine->IsStereoscopic3D(Viewport)) ? FMath::TruncToInt(Viewport->GetSizeXY().Y * 0.40f) : FMath::TruncToInt(Viewport->GetSizeXY().Y * 0.20f);
 
 		//give the viewport first shot at drawing stats
 		Y = Viewport->DrawStatsHUD(Canvas, X, Y);

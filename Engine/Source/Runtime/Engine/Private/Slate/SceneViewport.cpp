@@ -9,7 +9,6 @@
 
 #include "IHeadMountedDisplay.h"
 
-extern int32 GetBoundFullScreenModeCVar();
 extern EWindowMode::Type GetWindowModeType(EWindowMode::Type WindowMode);
 
 FSceneViewport::FSceneViewport( FViewportClient* InViewportClient, TSharedPtr<SViewport> InViewportWidget )
@@ -846,13 +845,12 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 			// scaling so we actual render to the resolution we've been asked for.
 			if (DesiredWindowMode == EWindowMode::WindowedFullscreen)
 			{
-				FSlateRect Rect = WindowToResize->GetFullScreenInfo();
-				if (Rect.IsValid())
-				{
-					NewSizeX = Rect.GetSize().X;
-					NewSizeY = Rect.GetSize().Y;
-				}
+				FDisplayMetrics DisplayMetrics;
+				FSlateApplication::Get().GetInitialDisplayMetrics(DisplayMetrics);
+				NewSizeX = DisplayMetrics.PrimaryDisplayWidth;;
+				NewSizeY = DisplayMetrics.PrimaryDisplayHeight;;
 			}
+
 			uint32 ViewportSizeX = NewSizeX;
 			uint32 ViewportSizeY = NewSizeY;
 
@@ -966,6 +964,15 @@ TSharedPtr<SWindow> FSceneViewport::FindWindow()
 	return FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef());
 }
 
+bool FSceneViewport::IsStereoRenderingAllowed() const
+{
+	if (ViewportWidget.IsValid())
+	{
+		return ViewportWidget.Pin()->IsStereoRenderingAllowed();
+	}
+	return false;
+}
+
 void FSceneViewport::ResizeViewport(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::Type NewWindowMode, int32 InPosX, int32 InPosY)
 {
 	// Do not resize if the viewport is an invalid size or our UI should be responsive
@@ -1072,7 +1079,7 @@ void FSceneViewport::EnqueueBeginRenderFrame()
 	check( IsInGameThread() );
 
 	// check if we need to reallocate rendertarget for HMD and update HMD rendering viewport 
-	if (!GIsEditor && GEngine->StereoRenderingDevice.IsValid())
+	if (GEngine->StereoRenderingDevice.IsValid() && IsStereoRenderingAllowed())
 	{
 		bool bNewUseSepRenTarget = GEngine->StereoRenderingDevice->ShouldUseSeparateRenderTarget();
 		if (bNewUseSepRenTarget != bUseSeparateRenderTarget ||
@@ -1091,7 +1098,7 @@ void FSceneViewport::EnqueueBeginRenderFrame()
 	// If we dont have the ViewportRHI then we need to get it before rendering
 	// Note, we need ViewportRHI even if bUseSeparateRenderTarget is true when stereo rendering
 	// is enabled.
-	if( !IsValidRef(ViewportRHI) && (!bUseSeparateRenderTarget || (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->ShouldUseSeparateRenderTarget()) ))
+	if( !IsValidRef(ViewportRHI) )
 	{
 		// Get the viewport for this window from the renderer so we can render directly to the backbuffer
 		TSharedPtr<FSlateRenderer> Renderer = FSlateApplication::Get().GetRenderer();
@@ -1203,7 +1210,7 @@ void FSceneViewport::InitDynamicRHI()
 	if( bUseSeparateRenderTarget )
 	{
 		uint32 TexSizeX = SizeX, TexSizeY = SizeY;
-		if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+		if (GEngine->IsStereoscopic3D(this))
 		{
 			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(TexSizeX, TexSizeY);
 		}
@@ -1215,11 +1222,11 @@ void FSceneViewport::InitDynamicRHI()
 		if( !SlateRenderTargetHandle )
 		{
 			SlateRenderTargetHandle = new FSlateRenderTargetRHI( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
-//			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY);
+			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY);
 		}
 		else
 		{
-//			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d, prev %p"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY, SlateRenderTargetHandle->GetRHIRef().GetReference());
+			UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d, prev %p"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY, SlateRenderTargetHandle->GetRHIRef().GetReference());
 			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
 		}
 
@@ -1227,7 +1234,7 @@ void FSceneViewport::InitDynamicRHI()
 		if (Window.IsValid())
 		{
 			// We need to pass a texture to the renderer only for stereo rendering. Otherwise, Editor will be rendered incorrectly.
-			if (GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+			if (GEngine->IsStereoscopic3D(this))
 			{
 				Renderer->SetWindowRenderTarget(*Window, RenderTargetTextureRHI);
 			}

@@ -218,7 +218,7 @@ protected:
 	 * Retrieve the viewpoint of this player.
 	 * @param OutViewInfo - Upon return contains the view information for the player.
 	 */
-	void GetViewPoint(FMinimalViewInfo& OutViewInfo);
+	void GetViewPoint(FMinimalViewInfo& OutViewInfo, EStereoscopicPass StereoPass);
 
 	/** @todo document */
 	void ExecMacro( const TCHAR* Filename, FOutputDevice& Ar );
