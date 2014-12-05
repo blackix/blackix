@@ -1,4 +1,4 @@
-Oculus integration with UE 4.6 (COMING SOON!!!)
+Oculus integration with UE 4.6
 ==============================================
 This is the source code page for the **Unreal Engine with Latest Oculus Support on GitHub**.
 Current integration supports Rift DK2 and backward compatible with all previous Rifts and prototypes.
