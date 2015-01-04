@@ -1,3 +1,10 @@
+Notes from Oculus
+=================
+**DISCLAIMER: THIS IS AN EXPERIMENTAL BRANCH!**
+
+This branch introduces significant changes in OculusRift plugin and in the way how VR camera is controlled by the HMD.
+More details to follow, stay tuned!...
+
 Unreal Engine
 =============
 
