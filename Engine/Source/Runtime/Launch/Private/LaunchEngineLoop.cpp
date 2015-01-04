@@ -2232,8 +2232,18 @@ void FEngineLoop::Tick()
 			SlateApp.FinishedInputThisFrame();
 		}
 
+		if (GEngine && GEngine->HMDDevice.IsValid())
+		{
+			GEngine->HMDDevice->OnStartGameFrame();
+		}
+
 		GEngine->Tick( FApp::GetDeltaTime(), bIdleMode );
-		
+
+		if (GEngine && GEngine->HMDDevice.IsValid())
+		{
+			GEngine->HMDDevice->OnEndGameFrame();
+		}
+
 		// If a movie that is blocking the game thread has been playing,
 		// wait for it to finish before we continue to tick or tick again
 		// We do this right after GEngine->Tick() because that is where user code would initiate a load / movie.

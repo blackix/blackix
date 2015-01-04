@@ -719,11 +719,6 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	DebugCanvasObject->Init(InViewport->GetSizeXY().X, InViewport->GetSizeXY().Y, NULL);
 
 	const bool bScaledToRenderTarget = GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D(InViewport);
-	if (bScaledToRenderTarget)
-	{
-		// Allow HMD to modify screen settings
-		GEngine->HMDDevice->UpdateScreenSettings(Viewport);
-	}
 	if (DebugCanvas)
 	{
 		DebugCanvas->SetScaledToRenderTarget(bScaledToRenderTarget);
@@ -787,10 +782,15 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		if (HmdViewExt)
 		{
 			ViewFamily.ViewExtensions.Add(HmdViewExt);
-			HmdViewExt->ModifyShowFlags(ViewFamily.EngineShowFlags);
+			HmdViewExt->SetupViewFamily(ViewFamily);
 		}
 	}
 
+	if (bScaledToRenderTarget)
+	{
+		// Allow HMD to modify screen settings
+		GEngine->HMDDevice->UpdateScreenSettings(Viewport);
+	}
 
 	ESplitScreenType::Type SplitScreenConfig = GetCurrentSplitscreenConfiguration();
 	EngineShowFlagOverride(ESFIM_Game, (EViewModeIndex)ViewModeIndex, ViewFamily.EngineShowFlags, NAME_None, SplitScreenConfig != ESplitScreenType::None);

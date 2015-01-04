@@ -176,7 +176,7 @@ namespace
 }
 
 
-void FSteamVRHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition)
+void FSteamVRHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
 {
 	checkf(IsInGameThread());
 	GetCurrentPose(CurHmdOrientation, CurHmdPosition, MotionPredictionInSecondsGame);
@@ -209,7 +209,7 @@ void FSteamVRHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation
 	ViewRotation = FRotator(DeltaControlOrientation * CurHmdOrientation);
 }
 
-void FSteamVRHMD::UpdatePlayerCameraRotation(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
+void FSteamVRHMD::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
 {
 	GetCurrentPose(CurHmdOrientation, CurHmdPosition, MotionPredictionInSecondsGame);
 	LastHmdOrientation = CurHmdOrientation;
@@ -484,12 +484,12 @@ void FSteamVRHMD::GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, 
 }
 
 
-void FSteamVRHMD::ModifyShowFlags(FEngineShowFlags& ShowFlags)
+void FSteamVRHMD::SetupViewFamily(FSceneViewFamily& InViewFamily)
 {
-	ShowFlags.MotionBlur = 0;
-	ShowFlags.HMDDistortion = true;
-	ShowFlags.ScreenPercentage = 1.0f;
-	ShowFlags.StereoRendering = IsStereoEnabled();
+	InViewFamily.EngineShowFlags.MotionBlur = 0;
+	InViewFamily.EngineShowFlags.HMDDistortion = true;
+	InViewFamily.EngineShowFlags.ScreenPercentage = 1.0f;
+	InViewFamily.EngineShowFlags.StereoRendering = IsStereoEnabled();
 }
 
 void FSteamVRHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)

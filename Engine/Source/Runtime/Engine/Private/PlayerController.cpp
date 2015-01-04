@@ -76,6 +76,9 @@ APlayerController::APlayerController(const FObjectInitializer& ObjectInitializer
 		// We want to drive rotation with ControlRotation regardless of attachment state.
 		RootComponent->bAbsoluteRotation = true;
 	}
+
+	// By default, PlayerController follows HMD (unless camera or camera manager follow HMD).
+	bFollowHmd = true;
 }
 
 float APlayerController::GetNetPriority(const FVector& ViewPos, const FVector& ViewDir, APlayerController* Viewer, UActorChannel* InChannel, float Time, bool bLowBandwidth)
@@ -896,7 +899,7 @@ void APlayerController::UpdateRotation( float DeltaTime )
 		PlayerCameraManager->ProcessViewRotation(DeltaTime, ViewRotation, DeltaRot);
 	}
 
-	if (!PlayerCameraManager || !PlayerCameraManager->bFollowHmdOrientation)
+	if (bFollowHmd)
 	{
 		if (IsLocalPlayerController() && GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 		{
@@ -2097,7 +2100,7 @@ bool APlayerController::InputKey(FKey Key, EInputEvent EventType, float AmountDe
 {
 	bool bResult = false;
 	
-	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D())
+	if (GEngine->HMDDevice.IsValid())
 	{
 		bResult = GEngine->HMDDevice->HandleInputKey(PlayerInput, Key, EventType, AmountDepressed, bGamepad);
 		if (bResult)

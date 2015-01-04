@@ -1532,4 +1532,8 @@ public:
 
 	/** FReply used to defer some slate operations. */
 	FReply		SlateOperations;
+
+	/** Whether this camera's orientation should be updated by most recent HMD orientation or not. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = PlayerController)
+	bool		bFollowHmd;
 };

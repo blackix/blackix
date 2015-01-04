@@ -32,14 +32,14 @@ bool UHeadMountedDisplayFunctionLibrary::EnableHMD(bool Enable)
 	return false;
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition)
+void UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
 {
 	if(GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
 		FQuat OrientationAsQuat;
 		FVector Position(0.f);
 
-		GEngine->HMDDevice->GetCurrentOrientationAndPosition(OrientationAsQuat, Position);
+		GEngine->HMDDevice->GetCurrentOrientationAndPosition(OrientationAsQuat, Position, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera);
 
 		DeviceRotation = OrientationAsQuat.Rotator();
 		DevicePosition = Position;

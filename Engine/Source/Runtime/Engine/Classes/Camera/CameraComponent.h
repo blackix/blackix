@@ -49,6 +49,14 @@ class UCameraComponent : public USceneComponent
 	UPROPERTY(Interp, BlueprintReadWrite, Category=CameraSettings, meta=(ShowOnlyInnerProperties))
 	struct FPostProcessSettings PostProcessSettings;
 
+	/** If this property is set to true then the camera will follow the HMD orientation (in VR). */
+	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category=CameraSettings)
+	uint32 bFollowHmdOrientation:1;
+
+	/** If this property is set to true then the camera will follow the HMD position (in VR). */
+	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category=CameraSettings)
+	uint32 bFollowHmdPosition:1;
+
 	// UActorComponent interface
 	ENGINE_API virtual void OnRegister() override;
 	ENGINE_API virtual void OnUnregister() override;

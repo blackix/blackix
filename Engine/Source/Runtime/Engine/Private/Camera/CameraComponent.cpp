@@ -35,6 +35,8 @@ UCameraComponent::UCameraComponent(const FObjectInitializer& ObjectInitializer)
 	bUsePawnControlRotation = false;
 	bAutoActivate = true;
 
+	bFollowHmdOrientation = bFollowHmdPosition = false;
+
 	// Init deprecated var, for old code that may refer to it.
 	SetDeprecatedControllerViewRotation(*this, bUsePawnControlRotation);
 }
@@ -182,6 +184,10 @@ void UCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredV
 	DesiredView.bConstrainAspectRatio = bConstrainAspectRatio;
 	DesiredView.ProjectionMode = ProjectionMode;
 	DesiredView.OrthoWidth = OrthoWidth;
+
+	DesiredView.bFollowHmdOrientation = bFollowHmdOrientation;
+	DesiredView.bFollowHmdPosition    = bFollowHmdPosition;
+	DesiredView.Scale3D	= GetComponentScale();
 
 	// See if the CameraActor wants to override the PostProcess settings used.
 	DesiredView.PostProcessBlendWeight = PostProcessBlendWeight;

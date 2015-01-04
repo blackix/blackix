@@ -29,10 +29,10 @@ public:
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) override;
 	virtual float GetInterpupillaryDistance() const override;
 
-	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) override;
+	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera) override;
 	virtual class ISceneViewExtension* GetViewExtension() override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
-	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
+	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
 	virtual bool IsChromaAbCorrectionEnabled() const override;
 
@@ -78,7 +78,7 @@ public:
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 
 	/** ISceneViewExtension interface */
-	virtual void ModifyShowFlags(FEngineShowFlags& ShowFlags) override;
+	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
 	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
 	virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;

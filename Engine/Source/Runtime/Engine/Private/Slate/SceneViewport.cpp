@@ -1242,9 +1242,10 @@ void FSceneViewport::InitDynamicRHI()
 	if( bUseSeparateRenderTarget )
 	{
 		uint32 TexSizeX = SizeX, TexSizeY = SizeY;
-		if (GEngine->IsStereoscopic3D(this))
+		
+		if (GEngine->IsStereoscopic3D(this) && GEngine->StereoRenderingDevice.IsValid())
 		{
-			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(TexSizeX, TexSizeY);
+			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(*this, TexSizeX, TexSizeY);
 		}
 		FTexture2DRHIRef ShaderResourceTextureRHI;
 

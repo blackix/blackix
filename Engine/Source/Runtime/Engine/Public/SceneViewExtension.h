@@ -12,7 +12,7 @@ public:
     /**
      * Called on game thread when creating the view family.
      */
-    virtual void ModifyShowFlags(FEngineShowFlags& ShowFlags) = 0;
+    virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) = 0;
 
     /**
      * Called on game thread when creating the view.

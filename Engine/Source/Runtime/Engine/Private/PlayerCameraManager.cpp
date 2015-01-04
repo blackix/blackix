@@ -42,7 +42,7 @@ APlayerCameraManager::APlayerCameraManager(const FObjectInitializer& ObjectIniti
 	CameraStyle = NAME_Default;
 	bCanBeDamaged = false;
 	
-	bFollowHmdOrientation = false;
+	bFollowHmdOrientation = bFollowHmdPosition = false;
 
 	// create dummy transform component
 	TransformComponent = ObjectInitializer.CreateDefaultSubobject<USceneComponent>(this, TEXT("TransformComponent0"));
@@ -567,11 +567,26 @@ void APlayerCameraManager::UpdateViewTarget(FTViewTarget& OutVT, float DeltaTime
 		ApplyCameraModifiers(DeltaTime, OutVT.POV);
 	}
 
-	if (bFollowHmdOrientation)
+	if (OutVT.POV.bFollowHmdOrientation || OutVT.POV.bFollowHmdPosition)
 	{
 		if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 		{
-			GEngine->HMDDevice->UpdatePlayerCameraRotation(this, OutVT.POV);
+			GEngine->HMDDevice->UpdatePlayerCamera(this, OutVT.POV);
+			PCOwner->bFollowHmd = false; // do not apply HMD rot/pos by PlayerController in addition to camera
+		}
+	}
+	else if (bFollowHmdOrientation || bFollowHmdPosition)
+	{
+		if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
+		{
+			bool bSavedO = OutVT.POV.bFollowHmdOrientation;
+			bool bSavedP = OutVT.POV.bFollowHmdPosition;
+			OutVT.POV.bFollowHmdOrientation = bFollowHmdOrientation;
+			OutVT.POV.bFollowHmdPosition    = bFollowHmdPosition;
+			GEngine->HMDDevice->UpdatePlayerCamera(this, OutVT.POV);
+			OutVT.POV.bFollowHmdOrientation = bSavedO;
+			OutVT.POV.bFollowHmdPosition    = bSavedP;
+			PCOwner->bFollowHmd = false; // do not apply HMD rot/pos by PlayerController in addition to camera manager
 		}
 	}
 

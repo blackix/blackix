@@ -77,9 +77,9 @@ public:
 	virtual bool	GetHMDMonitorInfo(MonitorInfo&) = 0;
 	
     /**
-	 * Calculates the FOV, based on the screen dimensions of the device
+	 * Calculates the FOV, based on the screen dimensions of the device. Original FOV is passed as params.
 	 */
-	virtual void	GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const = 0;
+	virtual void	GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegrees) const = 0;
 
 	/**
 	 * Whether or not the HMD supports positional tracking (either via camera or other means)
@@ -105,7 +105,7 @@ public:
     /**
      * Get the current orientation and position reported by the HMD.
      */
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) = 0;
+    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) = 0;
 
     /**
      * Get the ISceneViewExtension for this HMD, or none.
@@ -120,10 +120,10 @@ public:
 	virtual void ApplyHmdRotation(class APlayerController* PC, FRotator& ViewRotation) = 0;
 
 	/**
-	 * Apply the orientation of the headset to the Camera's rotation.
+	 * Apply the orientation and position of the headset to the Camera's rotation/location.
 	 * This method is called for cameras with bFollowHmdOrientation set to 'true'.
 	 */
-	virtual void UpdatePlayerCameraRotation(class APlayerCameraManager* Camera, struct FMinimalViewInfo& POV) = 0;
+	virtual void UpdatePlayerCamera(class APlayerCameraManager* Camera, struct FMinimalViewInfo& POV) = 0;
 
   	/**
 	 * Gets the scaling factor, applied to the post process warping effect
@@ -300,6 +300,16 @@ public:
 	 * This method is called when playing ends. Useful to reset all runtime values stored in the plugin.
 	 */
 	virtual void OnEndPlay() {}
+
+	/**
+	 * This method is called when new game frame begins (called on a game thread).
+	 */
+	virtual void OnStartGameFrame() {}
+
+	/**
+	 * This method is called when game frame ends (called on a game thread).
+	 */
+	virtual void OnEndGameFrame() {}
 
 	/** 
 	 * Additional optional distorion rendering parameters

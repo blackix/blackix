@@ -59,6 +59,263 @@
 #pragma pack (pop)
 #endif
 
+#ifdef UE_BUILD_DEBUG
+	#undef FORCEINLINE
+	#define FORCEINLINE
+#endif
+
+struct FDistortionVertex;
+
+namespace OculusRift 
+{
+
+typedef uint64 bool64;
+
+struct FSettings
+{
+	/** Whether or not the Oculus was successfully initialized */
+	enum EInitStatus
+	{
+		eNotInitialized = 0x00,
+		eStartupExecuted = 0x01,
+		eInitialized = 0x02,
+	};
+
+	union
+	{
+		struct
+		{
+			uint64 InitStatus : 2; // see bitmask EInitStatus
+
+			/** Whether stereo is currently on or off. */
+			bool64 bStereoEnabled : 1;
+
+			/** Whether or not switching to stereo is allowed */
+			bool64 bHMDEnabled : 1;
+
+			/** Debugging:  Whether or not the stereo rendering settings have been manually overridden by an exec command.  They will no longer be auto-calculated */
+			bool64 bOverrideStereo : 1;
+
+			/** Debugging:  Whether or not the IPD setting have been manually overridden by an exec command. */
+			bool64 bOverrideIPD : 1;
+
+			/** Debugging:  Whether or not the distortion settings have been manually overridden by an exec command.  They will no longer be auto-calculated */
+			bool64 bOverrideDistortion : 1;
+
+			/** Debugging: Allows changing internal params, such as screen size, eye-to-screen distance, etc */
+			bool64 bDevSettingsEnabled : 1;
+
+			bool64 bOverrideFOV : 1;
+
+			/** Whether or not to override game VSync setting when switching to stereo */
+			bool64 bOverrideVSync : 1;
+
+			/** Overridden VSync value */
+			bool64 bVSync : 1;
+
+			/** Saved original values for VSync and ScreenPercentage. */
+			bool64 bSavedVSync : 1;
+
+			/** Whether or not to override game ScreenPercentage setting when switching to stereo */
+			bool64 bOverrideScreenPercentage : 1;
+
+			/** Allows renderer to finish current frame. Setting this to 'true' may reduce the total 
+			 *  framerate (if it was above vsync) but will reduce latency. */
+			bool64 bAllowFinishCurrentFrame : 1;
+
+			/** Whether world-to-meters scale is overriden or not. */
+			bool64 bWorldToMetersOverride : 1;
+
+			/** Distortion on/off */
+			bool64 bHmdDistortion : 1;
+
+			/** Chromatic aberration correction on/off */
+			bool64 bChromaAbCorrectionEnabled : 1;
+
+			/** Yaw drift correction on/off */
+			bool64 bYawDriftCorrectionEnabled : 1;
+
+			/** Whether or not 2D stereo settings overridden. */
+			bool64 bOverride2D : 1;
+
+			/** Low persistence mode */
+			bool64 bLowPersistenceMode : 1;
+
+			/** Turns on/off updating view's orientation/position on a RenderThread. When it is on,
+				latency should be significantly lower. 
+				See 'HMD UPDATEONRT ON|OFF' console command.
+			*/
+			bool64 bUpdateOnRT : 1;
+
+			/** Overdrive brightness transitions to reduce artifacts on DK2+ displays */
+			bool64 bOverdrive : 1;
+
+			/** High-quality sampling of distortion buffer for anti-aliasing */
+			bool64 bHQDistortion : 1;
+
+			/** Enforces headtracking to work even in non-stereo mode (for debugging or screenshots). 
+				See 'MOTION ENFORCE' console command. */
+			bool64 bHeadTrackingEnforced : 1;
+
+			/** Is mirroring enabled or not (see 'HMD MIRROR' console cmd) */
+			bool64 bMirrorToWindow : 1;
+
+			/** Whether timewarp is enabled or not */
+			bool64 bTimeWarp : 1;
+
+			/** True, if pos tracking is enabled */
+			bool64				bHmdPosTracking : 1;
+
+			bool64				bClippingPlanesOverride : 1;
+#if !UE_BUILD_SHIPPING
+			/** Draw tracking camera frustum, for debugging purposes. 
+			 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
+			 */
+			bool64				bDrawTrackingCameraFrustum : 1;
+
+			/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
+			bool64				bDoNotUpdateOnGT : 1;
+
+			/** Show status / statistics on screen. See 'hmd stats' cmd */
+			bool64				bShowStats : 1;
+
+			/** Draw lens centered grid */
+			bool64				bDrawGrid : 1;
+
+			/** Profiling mode, removed extra waits in Present (Direct Rendering). See 'hmd profile' cmd */
+			bool64				bProfiling : 1;
+#endif
+		};
+		uint64 Raw;
+	} Flags;
+
+	/** Saved original value for ScreenPercentage. */
+	float SavedScrPerc;
+
+	/** Overridden ScreenPercentage value */
+	float ScreenPercentage;
+
+	/** Ideal ScreenPercentage value for the HMD */
+	float IdealScreenPercentage;
+
+	/** Interpupillary distance, in meters (user configurable) */
+	float InterpupillaryDistance;
+
+	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
+	float WorldToMetersScale;
+
+	/** User-tunable modification to the interpupillary distance */
+	float UserDistanceToScreenModifier;
+
+	/** The FOV to render at (radians), based on the physical characteristics of the device */
+	float HFOVInRadians; // horizontal
+	float VFOVInRadians; // vertical
+
+	/** Optional far clipping plane for projection matrix */
+	float NearClippingPlane;
+
+	/** Optional far clipping plane for projection matrix */
+	float FarClippingPlane;
+
+	/** HUD stereo offset */
+	float HudOffset;
+
+	/** Screen center adjustment for 2d elements */
+	float CanvasCenterOffset;
+
+	/** Size of mirror window; {0,0} if size is the default one */
+	FIntPoint	MirrorWindowSize;
+
+	/** HMD base values, specify forward orientation and zero pos offset */
+	Vector3f				BaseOffset;			// base position, in Oculus coords
+	FQuat					BaseOrientation;	// base orientation
+	FVector					PositionOffset;
+
+	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
+	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
+	// U,V scale and offset needed for timewarp.
+	ovrRecti				EyeRenderViewport[2];	// 0 - left, 1 - right, same as Views
+
+	unsigned				SupportedTrackingCaps;
+	unsigned				SupportedDistortionCaps;
+	unsigned				SupportedHmdCaps;
+
+	unsigned				TrackingCaps;
+	unsigned				DistortionCaps;
+	unsigned				HmdCaps;
+
+#ifndef OVR_SDK_RENDERING
+	struct FDistortionMesh : public OVR::RefCountBase < FDistortionMesh >
+	{
+		FDistortionVertex*	pVertices;
+		uint16*				pIndices;
+		unsigned			NumVertices;
+		unsigned			NumIndices;
+		unsigned			NumTriangles;
+
+		FDistortionMesh() :pVertices(NULL), pIndices(NULL), NumVertices(0), NumIndices(0), NumTriangles(0) {}
+		~FDistortionMesh() { Reset(); }
+		void Reset();
+	};
+	ovrVector2f				UVScaleOffset[2][2];	// scale UVScaleOffset[x][0], offset UVScaleOffset[x][1], where x is eye idx
+	Ptr<FDistortionMesh>	pDistortionMesh[2];		// 
+#endif
+
+	FSettings();
+
+	bool IsStereoEnabled() const { return Flags.bStereoEnabled && Flags.bHMDEnabled; }
+	void SetViewportSize(int w, int h);
+	FIntPoint GetTextureSize() const { return FIntPoint(EyeRenderViewport[0].Size.w + EyeRenderViewport[1].Size.w, EyeRenderViewport[0].Size.h	); }
+	FIntPoint GetViewportSize() const { return FIntPoint(EyeRenderViewport[0].Size.w, EyeRenderViewport[0].Size.h); }
+	void Reset();
+};
+
+struct FGameFrame
+{
+	uint32					FrameNumber; // current frame number.
+	FSettings				Settings;
+
+	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
+	float					WorldToMetersScale;
+	FVector					CameraScale3D;
+
+	FQuat					DeltaControlOrientation; // same as DeltaControlRotation but as quat
+
+	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
+	FVector					LastHmdPosition;    // contains last APPLIED ON GT HMD position
+	uint32					LastFrameNumber;	// the copy of GFrameNumber when last Hmd orientation was read.
+
+	ovrPosef				EyeRenderPose[2];
+	ovrPosef				HeadPose;					// position of head
+
+	union
+	{
+		struct
+		{
+			bool64			bOutOfFrame : 1;
+			bool64			bFrameStarted : 1;
+
+			/** Whether ScreenPercentage usage is enabled */
+			bool64			bScreenPercentageEnabled : 1;
+
+			/** True, if vision is acquired at the moment */
+			bool64			bHaveVisionTracking : 1;
+
+			bool64			bOrientationChanged : 1;
+			bool64			bPositionChanged : 1;
+			bool64			bPlayerControllerFollowsHmd : 1;
+		};
+		uint64 Raw;
+	} Flags;
+
+	FGameFrame() { Reset(); }
+	void Reset();
+};
+
+} // namespace OculusRift
+
+using namespace OculusRift;
 
 /**
  * Oculus Rift Head Mounted Display
@@ -69,6 +326,10 @@ public:
 	static void PreInit();
 
 	/** IHeadMountedDisplay interface */
+	virtual void OnStartGameFrame() override;
+	virtual void OnEndGameFrame() override;
+	virtual void OnBeginRenderingViewFamily(FCanvas* Canvas,FSceneViewFamily* ViewFamily) override;
+
 	virtual bool IsHMDConnected() override;
 	virtual bool IsHMDEnabled() const override;
 	virtual void EnableHMD(bool allow = true) override;
@@ -83,9 +344,9 @@ public:
 	virtual float GetInterpupillaryDistance() const override;
 	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const override;
 
-	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) override;
+	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
-	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
+	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
 	virtual bool IsChromaAbCorrectionEnabled() const override;
 
@@ -112,7 +373,7 @@ public:
 	virtual void UpdateViewport(bool bUseSeparateRenderTarget, const FViewport& Viewport, SViewport*) override;
 
 #ifdef OVR_SDK_RENDERING
-	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const override;
+	virtual void CalculateRenderTargetSize(const FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) const override;
 	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const override;
 #endif//OVR_SDK_RENDERING
 
@@ -127,7 +388,7 @@ public:
 	}
 
     /** ISceneViewExtension interface */
-    virtual void ModifyShowFlags(FEngineShowFlags& ShowFlags) override;
+    virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
     virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
@@ -170,7 +431,7 @@ public:
 	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) override;
 
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
-	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition);
+	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);
 	void BeginRendering_RenderThread();
 
 #ifdef OVR_SDK_RENDERING
@@ -333,7 +594,7 @@ private:
 	 * Converts vector from Oculus to Unreal, also converting meters to UU (Unreal Units)
 	 */
 	template <typename OVRVector3>
-	FORCEINLINE FVector ToFVector_M2U(const OVRVector3& InVec) const
+	FORCEINLINE FVector ToFVector_M2U(const OVRVector3& InVec, float WorldToMetersScale) const
 	{
 		return FVector(float(-InVec.z * WorldToMetersScale), 
 			           float(InVec.x  * WorldToMetersScale), 
@@ -343,7 +604,7 @@ private:
 	 * Converts vector from Oculus to Unreal, also converting UU (Unreal Units) to meters.
 	 */
 	template <typename OVRVector3>
-	FORCEINLINE OVRVector3 ToOVRVector_U2M(const FVector& InVec) const
+	FORCEINLINE OVRVector3 ToOVRVector_U2M(const FVector& InVec, float WorldToMetersScale) const
 	{
 		return OVRVector3(float(InVec.Y * (1.f / WorldToMetersScale)), 
 			              float(InVec.Z * (1.f / WorldToMetersScale)), 
@@ -359,12 +620,12 @@ private:
 	}
 
 	/** Converts vector from meters to UU (Unreal Units) */
-	FORCEINLINE FVector MetersToUU(const FVector& InVec) const
+	FORCEINLINE FVector MetersToUU(const FVector& InVec, float WorldToMetersScale) const
 	{
 		return InVec * WorldToMetersScale;
 	}
 	/** Converts vector from UU (Unreal Units) to meters */
-	FORCEINLINE FVector UUToMeters(const FVector& InVec) const
+	FORCEINLINE FVector UUToMeters(const FVector& InVec, float WorldToMetersScale) const
 	{
 		return InVec * (1.f / WorldToMetersScale);
 	}
@@ -404,7 +665,7 @@ private:
 	void UpdateDistortionCaps();
 	void UpdateHmdCaps();
 
-	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const;
+	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition, const FGameFrame& InFrame) const;
 
 	class FSceneViewport* FindSceneViewport();
 
@@ -412,222 +673,39 @@ private:
 	void DrawDebugTrackingCameraFrustum(class UWorld* InWorld, const FVector& ViewLocation);
 #endif // #if !UE_BUILD_SHIPPING
 
+	FGameFrame* GetFrame();
+	const FGameFrame* GetFrame() const;
+
 private: // data
-	friend class FOculusMessageHandler;
 
-	/** Whether or not the Oculus was successfully initialized */
-	enum EInitStatus
-	{
-		eNotInitialized   = 0x00,
-		eStartupExecuted  = 0x01,
-		eInitialized      = 0x02,
-	};
+	FSettings		Settings;
+	FGameFrame		Frame;
+	ovrHmd			Hmd;
 
-	typedef uint64 bool64;
 	union
 	{
 		struct
 		{
-			uint64 InitStatus : 2; // see bitmask EInitStatus
-
-			/** Whether stereo is currently on or off. */
-			bool64 bStereoEnabled : 1;
-
-			/** Whether or not switching to stereo is allowed */
-			bool64 bHMDEnabled : 1;
-
 			/** Indicates if it is necessary to update stereo rendering params */
-			bool64 bNeedUpdateStereoRenderingParams : 1;
+			bool64	bNeedUpdateStereoRenderingParams : 1;
 
-			/** Debugging:  Whether or not the stereo rendering settings have been manually overridden by an exec command.  They will no longer be auto-calculated */
-			bool64 bOverrideStereo : 1;
-
-			/** Debugging:  Whether or not the IPD setting have been manually overridden by an exec command. */
-			bool64 bOverrideIPD : 1;
-
-			/** Debugging:  Whether or not the distortion settings have been manually overridden by an exec command.  They will no longer be auto-calculated */
-			bool64 bOverrideDistortion : 1;
-
-			/** Debugging: Allows changing internal params, such as screen size, eye-to-screen distance, etc */
-			bool64 bDevSettingsEnabled : 1;
-
-			bool64 bOverrideFOV : 1;
-
-			/** Whether or not to override game VSync setting when switching to stereo */
-			bool64 bOverrideVSync : 1;
-
-			/** Overridden VSync value */
-			bool64 bVSync : 1;
-
-			/** Saved original values for VSync and ScreenPercentage. */
-			bool64 bSavedVSync : 1;
-
-			/** Whether or not to override game ScreenPercentage setting when switching to stereo */
-			bool64 bOverrideScreenPercentage : 1;
-
-			/** Allows renderer to finish current frame. Setting this to 'true' may reduce the total 
-			 *  framerate (if it was above vsync) but will reduce latency. */
-			bool64 bAllowFinishCurrentFrame : 1;
-
-			/** Whether world-to-meters scale is overriden or not. */
-			bool64 bWorldToMetersOverride : 1;
-
-			/** Distortion on/off */
-			bool64 bHmdDistortion : 1;
-
-			/** Chromatic aberration correction on/off */
-			bool64 bChromaAbCorrectionEnabled : 1;
-
-			/** Yaw drift correction on/off */
-			bool64 bYawDriftCorrectionEnabled : 1;
-
-			/** Whether or not 2D stereo settings overridden. */
-			bool64 bOverride2D : 1;
-
-			/** Low persistence mode */
-			bool64 bLowPersistenceMode : 1;
-
-			/** Turns on/off updating view's orientation/position on a RenderThread. When it is on,
-				latency should be significantly lower. 
-				See 'HMD UPDATEONRT ON|OFF' console command.
-			*/
-			bool64 bUpdateOnRT : 1;
-
-			/** Overdrive brightness transitions to reduce artifacts on DK2+ displays */
-			bool64 bOverdrive : 1;
-
-			/** High-quality sampling of distortion buffer for anti-aliasing */
-			bool64 bHQDistortion : 1;
-
-			/** Enforces headtracking to work even in non-stereo mode (for debugging or screenshots). 
-				See 'MOTION ENFORCE' console command. */
-			bool64 bHeadTrackingEnforced : 1;
-
-			/** Is mirroring enabled or not (see 'HMD MIRROR' console cmd) */
-			bool64 bMirrorToWindow : 1;
-
-			/** Whether timewarp is enabled or not */
-			bool64 bTimeWarp : 1;
-
-			/** Whether ScreenPercentage usage is enabled */
-			bool64 bScreenPercentageEnabled : 1;
-
-			/** True, if pos tracking is enabled */
-			bool64				bHmdPosTracking : 1;
+			bool64	bNeedDisableStereo : 1;
+					
+			bool64	bApplySystemOverridesOnStereo : 1;
+			bool64  bNeedUpdateDistortionCaps : 1;
+			bool64  bNeedUpdateHmdCaps : 1;
 
 			/** True, if vision is acquired at the moment */
-			bool64				bHaveVisionTracking : 1;
-
-			bool64				bClippingPlanesOverride : 1;
-#if !UE_BUILD_SHIPPING
-			/** Draw tracking camera frustum, for debugging purposes. 
-			 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
-			 */
-			bool64				bDrawTrackingCameraFrustum : 1;
-
-			/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
-			bool64				bDoNotUpdateOnGT : 1;
-
-			/** Show status / statistics on screen. See 'hmd stats' cmd */
-			bool64				bShowStats : 1;
-
-			/** Draw lens centered grid */
-			bool64				bDrawGrid : 1;
-
-			/** Profiling mode, removed extra waits in Present (Direct Rendering). See 'hmd profile' cmd */
-			bool64				bProfiling : 1;
-#endif
+			bool64	bHaveVisionTracking : 1;
 		};
 		uint64 Raw;
 	} Flags;
 
-	/** Saved original value for ScreenPercentage. */
-	float SavedScrPerc;
-
-	/** Overridden ScreenPercentage value */
-	float ScreenPercentage;
-
-	/** Ideal ScreenPercentage value for the HMD */
-	float IdealScreenPercentage;
-
-	/** Interpupillary distance, in meters (user configurable) */
-	float InterpupillaryDistance;
-
-	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
-	float WorldToMetersScale;
-
-	/** User-tunable modification to the interpupillary distance */
-	float UserDistanceToScreenModifier;
-
-	/** The FOV to render at (radians), based on the physical characteristics of the device */
-	float HFOVInRadians; // horizontal
-	float VFOVInRadians; // vertical
-
-	/** HUD stereo offset */
-	float HudOffset;
-
-	/** Screen center adjustment for 2d elements */
-	float CanvasCenterOffset;
-
-	OVR::Lock	UpdateOnRTLock;
-
-	/** Size of mirror window; {0,0} if size is the default one */
-	FIntPoint	MirrorWindowSize;
-
-	/** Optional far clipping plane for projection matrix */
-	float					NearClippingPlane;
-
-	/** Optional far clipping plane for projection matrix */
-	float					FarClippingPlane;
-
+	OVR::Lock				UpdateOnRTLock;
+	FGameFrame				RenderFrame;
 	FRotator				DeltaControlRotation;    // same as DeltaControlOrientation but as rotator
-	FQuat					DeltaControlOrientation; // same as DeltaControlRotation but as quat
 
-	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
-	uint32					LastFrameNumber; // the copy of GFrameNumber when last Hmd orientation was read.
-
-	/** HMD base values, specify forward orientation and zero pos offset */
-	OVR::Vector3f			BaseOffset;      // base position, in Oculus coords
-	FQuat					BaseOrientation; // base orientation
-	FVector					PositionOffset;
-
-	ovrHmd					Hmd;
-	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
-	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
-	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
-	ovrPosef				EyeRenderPose[2];
-	// U,V scale and offset needed for timewarp.
-	ovrRecti				EyeRenderViewport[2];		// 0 - left, 1 - right, same as Views
-	ovrSizei				TextureSize; // texture size (for both eyes)
-
-	unsigned				TrackingCaps;
-	unsigned				DistortionCaps;
-	unsigned				HmdCaps;
-
-	unsigned				SupportedTrackingCaps;
-	unsigned				SupportedDistortionCaps;
-	unsigned				SupportedHmdCaps;
-
-	FIntPoint				EyeViewportSize; // size of the viewport (for one eye). At the moment it is a half of RT.
-
-#ifndef OVR_SDK_RENDERING
-	struct FDistortionMesh : public OVR::RefCountBase<FDistortionMesh>
-	{
-		struct FDistortionVertex*	pVertices;
-		uint16*						pIndices;
-		unsigned					NumVertices;
-		unsigned					NumIndices;
-		unsigned					NumTriangles;
-
-		FDistortionMesh() :pVertices(NULL), pIndices(NULL), NumVertices(0), NumIndices(0), NumTriangles(0) {}
-		~FDistortionMesh() { Clear(); }
-		void Clear();
-	};
-	ovrVector2f				UVScaleOffset[2][2];	// 0 - left, 1 - right, same as Views
-	Ptr<FDistortionMesh>	pDistortionMesh[2];		// 0 - left, 1 - right, same as Views
-#else // DIRECT_RENDERING
-
-	uint32						AlternateFrameRateDivider;
+#ifdef OVR_SDK_RENDERING
 
 #if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
 	TRefCountPtr<D3D11Bridge>	pD3D11Bridge;
@@ -638,39 +716,22 @@ private: // data
 
 #endif // OVR_SDK_RENDERING
 	
-	OVR::Lock					StereoParamsLock;
-
 	// Params accessible from rendering thread. Should be filled at the beginning
 	// of the rendering thread under the StereoParamsLock.
 	struct FRenderParams
 	{
-		//FVector					LastHmdPosition;	// contains last APPLIED ON GT HMD position 
-		FVector					LastEyePosition[2];	// contains last APPLIED ON GT HMD position 
-		FQuat					DeltaControlOrientation;
-		ovrPosef				EyeRenderPose[2];
+		FGameFrame				Frame;
 
-#ifndef OVR_SDK_RENDERING
-		Ptr<FDistortionMesh>	pDistortionMesh[2]; // 0 - left, 1 - right, same as Views
-		ovrVector2f				UVScale[2];			// 0 - left, 1 - right, same as Views
-		ovrVector2f				UVOffset[2];		// 0 - left, 1 - right, same as Views
-#else
-		ovrFovPort				EyeFov[2];			// 0 - left, 1 - right, same as Views
-#endif // OVR_SDK_RENDERING
-		ovrEyeRenderDesc		EyeRenderDesc[2];	// 0 - left, 1 - right, same as Views
-		uint32					FrameNumber;
+		ovrPosef				EyeRenderPose[2];	// most recent eye render poses
+		ovrPosef				CurHeadPose;		// current position of head
+
 		bool					bFrameBegun : 1;
-		bool					bTimeWarp   : 1;
 		FEngineShowFlags		ShowFlags; // a copy of showflags
 
 		FRenderParams(FOculusRiftHMD* plugin);
 
-		void Clear() 
-		{ 
-			#ifndef OVR_SDK_RENDERING
-			pDistortionMesh[0] = pDistortionMesh[1] = NULL; 
-			#endif
-		}
-	} RenderParams_RenderThread;
+		void Reset() { Frame.Reset(); }
+	} RenderParams;
 
 	void*						OSWindowHandle;
 };

@@ -118,7 +118,7 @@ void FSimpleHMD::GetCurrentPose(FQuat& CurrentOrientation)
 	}
 }
 
-void FSimpleHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition)
+void FSimpleHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
 {
 	CurrentPosition = FVector(0.0f, 0.0f, 0.0f);
 
@@ -150,7 +150,7 @@ void FSimpleHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
 	ViewRotation = FRotator(DeltaControlOrientation * CurHmdOrientation);
 }
 
-void FSimpleHMD::UpdatePlayerCameraRotation(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
+void FSimpleHMD::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
 {
 	return;
 }
@@ -351,12 +351,12 @@ void FSimpleHMD::GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, F
 }
 
 
-void FSimpleHMD::ModifyShowFlags(FEngineShowFlags& ShowFlags)
+void FSimpleHMD::SetupViewFamily(FSceneViewFamily& InViewFamily)
 {
-	ShowFlags.MotionBlur = 0;
-	ShowFlags.HMDDistortion = true;
-	ShowFlags.ScreenPercentage = 1.0f;
-	ShowFlags.StereoRendering = IsStereoEnabled();
+	InViewFamily.EngineShowFlags.MotionBlur = 0;
+	InViewFamily.EngineShowFlags.HMDDistortion = true;
+	InViewFamily.EngineShowFlags.ScreenPercentage = 1.0f;
+	InViewFamily.EngineShowFlags.StereoRendering = IsStereoEnabled();
 }
 
 void FSimpleHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)

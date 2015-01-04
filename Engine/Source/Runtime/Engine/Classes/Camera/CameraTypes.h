@@ -71,6 +71,20 @@ struct FMinimalViewInfo
 	UPROPERTY()
 	struct FPostProcessSettings PostProcessSettings;
 
+	/** Weather the camera follows the HMD orientation (in VR) or not. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Camera)
+	bool bFollowHmdOrientation;
+
+	/** Weather the camera follows the HMD position (in VR) or not. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	bool bFollowHmdPosition;
+
+	/** 
+	 * Camera component scale that could be used to scale position and IPD of VR camera.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
+	FVector Scale3D;
+
 	FMinimalViewInfo()
 		: Location(ForceInit)
 		, Rotation(ForceInit)
@@ -80,6 +94,9 @@ struct FMinimalViewInfo
 		, bConstrainAspectRatio(false)
 		, ProjectionMode(ECameraProjectionMode::Perspective)
 		, PostProcessBlendWeight(0.0f)
+		, bFollowHmdOrientation(false)
+		, bFollowHmdPosition(false)
+		, Scale3D(1.0f, 1.0f, 1.0f)
 	{
 	}
 

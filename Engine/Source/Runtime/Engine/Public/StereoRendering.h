@@ -72,7 +72,7 @@ public:
 	/**
 	 * Calculates dimensions of the render target texture for direct rendering of distortion.
 	 */
-	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const {}
+	virtual void CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) const {}
 
 	/**
 	 * Returns true, if render target texture must be re-calculated. 
@@ -90,4 +90,9 @@ public:
 	 * Called after Present is called.
 	 */
 	virtual void FinishRenderingFrame_RenderThread(class FRHICommandListImmediate& RHICmdList) {}
+
+	/**
+	 * Called on a game thread, right before initiating rendering.
+	 */
+	virtual void OnBeginRenderingViewFamily(class FCanvas* InCanvas, class FSceneViewFamily* InViewFamily) {}
 };

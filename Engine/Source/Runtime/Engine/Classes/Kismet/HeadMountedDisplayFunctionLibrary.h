@@ -43,7 +43,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param DevicePosition	(out) The device's current position, in its own tracking space
 	 */
 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
-	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition);
+	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);
 
 	/**
 	 * If the HMD supports positional tracking, whether or not we are currently being tracked	
