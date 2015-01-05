@@ -329,6 +329,7 @@ public:
 	virtual void OnStartGameFrame() override;
 	virtual void OnEndGameFrame() override;
 	virtual void OnBeginRenderingViewFamily(FCanvas* Canvas,FSceneViewFamily* ViewFamily) override;
+	virtual void OnWorldTick() override;
 
 	virtual bool IsHMDConnected() override;
 	virtual bool IsHMDEnabled() const override;
@@ -337,14 +338,14 @@ public:
 	virtual bool GetHMDMonitorInfo(MonitorInfo&) override;
 
 	virtual bool DoesSupportPositionalTracking() const override;
-	virtual bool HasValidTrackingPosition() const override;
+	virtual bool HasValidTrackingPosition() override;
 	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) override;
 	virtual float GetInterpupillaryDistance() const override;
 	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const override;
 
-	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
+	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale) override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
 	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
@@ -695,8 +696,8 @@ private: // data
 			bool64  bNeedUpdateDistortionCaps : 1;
 			bool64  bNeedUpdateHmdCaps : 1;
 
-			/** True, if vision is acquired at the moment */
-			bool64	bHaveVisionTracking : 1;
+			/** True, if vision was acquired at previous frame */
+			bool64	bHadVisionTracking : 1;
 		};
 		uint64 Raw;
 	} Flags;

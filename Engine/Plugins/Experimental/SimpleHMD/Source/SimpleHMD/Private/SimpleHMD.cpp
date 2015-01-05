@@ -71,7 +71,7 @@ bool FSimpleHMD::DoesSupportPositionalTracking() const
 	return false;
 }
 
-bool FSimpleHMD::HasValidTrackingPosition() const
+bool FSimpleHMD::HasValidTrackingPosition()
 {
 	return false;
 }
@@ -118,7 +118,7 @@ void FSimpleHMD::GetCurrentPose(FQuat& CurrentOrientation)
 	}
 }
 
-void FSimpleHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
+void FSimpleHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
 {
 	CurrentPosition = FVector(0.0f, 0.0f, 0.0f);
 

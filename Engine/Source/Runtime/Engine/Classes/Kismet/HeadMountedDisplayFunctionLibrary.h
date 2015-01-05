@@ -41,9 +41,12 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 *
 	 * @param DeviceRotation	(out) The device's current rotation
 	 * @param DevicePosition	(out) The device's current position, in its own tracking space
+	 * @param bUseOrienationForPlayerCamera	(in) Should be set to 'true' if the orientation is going to be used to update orientation of the camera manually.
+	 * @param bUsePositionForPlayerCamera	(in) Should be set to 'true' if the position is going to be used to update position of the camera manually.
+	 * @param PositionScale		(in) The 3D scale that will be applied to position in the case if bUsePositionForPlayerCamera is set to true.
 	 */
 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
-	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);
+	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector PositionScale = FVector(1.0f, 1.0f, 1.0f));
 
 	/**
 	 * If the HMD supports positional tracking, whether or not we are currently being tracked	

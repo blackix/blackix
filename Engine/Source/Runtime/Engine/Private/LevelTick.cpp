@@ -12,6 +12,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Collision.h"
 #include "PhysicsPublic.h"
+#include "IHeadMountedDisplay.h"
 
 #include "ParticleDefinitions.h"
 //#include "SoundDefinitions.h"
@@ -1002,6 +1003,11 @@ void UWorld::Tick( ELevelTick TickType, float DeltaSeconds )
 #endif
 
 	SCOPE_CYCLE_COUNTER(STAT_WorldTickTime);
+
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->OnWorldTick();
+	}
 
 #if ENABLE_COLLISION_ANALYZER
 	// Tick collision analyzer (only if level is really ticking)

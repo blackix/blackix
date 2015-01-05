@@ -89,7 +89,7 @@ public:
 	/**
 	 * If the device has positional tracking, whether or not we currently have valid tracking
 	 */
-	virtual bool	HasValidTrackingPosition() const = 0;
+	virtual bool	HasValidTrackingPosition() = 0;
 
 	/**
 	 * If the HMD supports positional tracking via a camera, this returns the frustum properties (all in game-world space) of the tracking camera.
@@ -105,7 +105,7 @@ public:
     /**
      * Get the current orientation and position reported by the HMD.
      */
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) = 0;
+    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector& PositionScale = FVector(1.0f, 1.0f, 1.0f)) = 0;
 
     /**
      * Get the ISceneViewExtension for this HMD, or none.
@@ -310,6 +310,11 @@ public:
 	 * This method is called when game frame ends (called on a game thread).
 	 */
 	virtual void OnEndGameFrame() {}
+
+	/**
+	 * This method is called when World ticks (called on a game thread).
+	 */
+	virtual void OnWorldTick() {}
 
 	/** 
 	 * Additional optional distorion rendering parameters

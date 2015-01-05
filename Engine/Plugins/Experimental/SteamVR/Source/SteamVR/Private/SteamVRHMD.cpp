@@ -103,7 +103,7 @@ bool FSteamVRHMD::DoesSupportPositionalTracking() const
 	return true;
 }
 
-bool FSteamVRHMD::HasValidTrackingPosition() const
+bool FSteamVRHMD::HasValidTrackingPosition()
 {
 	return bHmdPosTracking && bHaveVisionTracking;
 }
@@ -176,7 +176,7 @@ namespace
 }
 
 
-void FSteamVRHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
+void FSteamVRHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
 {
 	checkf(IsInGameThread());
 	GetCurrentPose(CurHmdOrientation, CurHmdPosition, MotionPredictionInSecondsGame);
