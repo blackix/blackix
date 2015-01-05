@@ -3,6 +3,19 @@ Notes from Oculus
 **DISCLAIMER: THIS IS AN EXPERIMENTAL BRANCH!**
 
 This branch introduces significant changes in OculusRift plugin and in the way how VR camera is controlled by the HMD.
+
+This is 4.7-preview with re-factored plugin and improved (I hope) camera control. I haven't added new Blueprint functions yet (like raw accel data or player's metrics, still in work). I am going to document all the changes (documentation is long due anyway)...
+
+So, briefly. I've added PlayerController.bFollowHmd property, which is by default set to 'true' (for compatibility reasons). When it is set in 'true' then the behavior is the same as it was before: HMD drives PlayerController. You can either set it to 'false' or just don't bother, it will be set to false automatically, once you use PlayerCameraManager or CameraComponent approach.
+
+The main approach you guys care the most (I think) is to enable HMD via CameraComponent. This class now has two additional boolean properties - bFollowHmdOrientation and bFollowHmdPosition. In addition, the scale of the CameraComponent now will be a scale of the position change / ipd. The bigger scale is set, the smaller world is perceived. Camera's origin is located in-between eyes, i.e. IPD will be applied at the camera's origin, half of IPD in positive Y-axis direction and another half in negative Y-axis direction (in camera coordinate system).
+
+Besides CameraComponent, the PlayerCameraManager also has boolean properties bFollowHmdOrientation and bFollowHmdPosition. Thus, any camera attached to this PlayerCameraManager via SetViewTarget method will follow the HMD orientation and/or position.
+
+In addition, the HeadMountedDisplay::GetCurrentOrientationAndPosition method now has two additional boolean parameters: bUseOrienationForPlayerCamera and bUsePositionForPlayerCamera (by default - both a set to 'false'). Set these to true, if you use this method to get HMD orientation/position to change the camera orientation / position manually. This is necessary to correctly calculate delta orientation/position for timewarp later on a render thread. However, there is no way to specify the proper scale to position in this case (should I add one more parameter to this method? With default value vector(1,1,1)? Probably, will think about this.)
+
+If you have any suggestions, there is ongoing discussion [here](https://forums.oculus.com/viewtopic.php?p=233266#p233266).
+
 More details to follow, stay tuned!...
 
 Unreal Engine
