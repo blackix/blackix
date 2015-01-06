@@ -3300,7 +3300,8 @@ void UParticleModuleLifetime::SpawnEx(FParticleEmitterInstance* Owner, int32 Off
 			// First module to modify lifetime.
 			Particle.OneOverMaxLifetime = MaxLifetime > 0.f ? 1.f / MaxLifetime : 0.f;
 		}
-		Particle.RelativeTime = SpawnTime * Particle.OneOverMaxLifetime;
+		//If the relative time is already > 1.0f then we don't want to be setting it. Some modules use this to mark a particle as dead during spawn.
+		Particle.RelativeTime = Particle.RelativeTime > 1.0f ? Particle.RelativeTime : SpawnTime * Particle.OneOverMaxLifetime;
 	}
 }
 
@@ -3433,6 +3434,13 @@ void UParticleModuleAttractorLine::PostEditChangeProperty(FPropertyChangedEvent&
 void UParticleModuleAttractorLine::Update(FParticleEmitterInstance* Owner, int32 Offset, float DeltaTime)
 {
 	FVector Line = EndPoint1 - EndPoint0;
+
+	// if both end points are the same, we end up with NaNs in the results of the update
+	if (Line.Size() == 0.0f)
+	{
+		Line = FVector(SMALL_NUMBER, SMALL_NUMBER, SMALL_NUMBER);
+	}
+
 	FVector LineNorm = Line;
 	LineNorm.Normalize();
 

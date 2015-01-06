@@ -1,6 +1,7 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #include "MergePrivatePCH.h"
+#include "DiffUtils.h"
 #include "DiffResults.h"
 #include "GraphDiffControl.h"
 #include "SDockTab.h"
@@ -52,6 +53,8 @@ struct FMergeGraphRowEntry
 	UEdGraphPin* RemotePin;
 
 	FLinearColor DisplayColor;
+
+	bool bHasConflicts;
 };
 
 struct FMergeGraphEntry
@@ -181,8 +184,8 @@ static TArray< FMergeGraphEntry > GenerateDiffListItems(const FBlueprintRevPair&
 								continue;
 							}
 
-							ConflictMap[&RemoteDifference] = ConflictingDifference;
-							ConflictMap[ConflictingDifference] = &RemoteDifference;
+							ConflictMap.Add(&RemoteDifference, ConflictingDifference);
+							ConflictMap.Add(ConflictingDifference, &RemoteDifference);
 						}
 					}
 
@@ -212,9 +215,10 @@ static TArray< FMergeGraphEntry > GenerateDiffListItems(const FBlueprintRevPair&
 							, Difference.Pin1 /*UEdGraphPin* BasePin*/
 							, Difference.Pin2 /*UEdGraphPin* RemotePin*/
 							, Difference.DisplayColor
+							, ConflictingDifference ? true : false
 						};
 
-						GraphEntry.bAnyConflics |= NewEntry.LocalNode && NewEntry.RemoteNode;
+						GraphEntry.bAnyConflics |= NewEntry.bHasConflicts;
 						GraphEntry.Changes.Push( NewEntry );
 					}
 
@@ -236,6 +240,7 @@ static TArray< FMergeGraphEntry > GenerateDiffListItems(const FBlueprintRevPair&
 								, Difference.Pin1 /*UEdGraphPin* BasePin*/
 								, nullptr
 								, Difference.DisplayColor
+								, false
 							};
 
 							GraphEntry.Changes.Push(NewEntry);
