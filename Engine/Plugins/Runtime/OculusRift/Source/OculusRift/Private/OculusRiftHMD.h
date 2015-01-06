@@ -328,8 +328,6 @@ public:
 	/** IHeadMountedDisplay interface */
 	virtual void OnStartGameFrame() override;
 	virtual void OnEndGameFrame() override;
-	virtual void OnBeginRenderingViewFamily(FCanvas* Canvas,FSceneViewFamily* ViewFamily) override;
-	virtual void OnWorldTick() override;
 
 	virtual bool IsHMDConnected() override;
 	virtual bool IsHMDEnabled() const override;

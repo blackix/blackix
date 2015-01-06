@@ -311,11 +311,6 @@ public:
 	 */
 	virtual void OnEndGameFrame() {}
 
-	/**
-	 * This method is called when World ticks (called on a game thread).
-	 */
-	virtual void OnWorldTick() {}
-
 	/** 
 	 * Additional optional distorion rendering parameters
 	 * @todo:  Once we can move shaders into plugins, remove these!

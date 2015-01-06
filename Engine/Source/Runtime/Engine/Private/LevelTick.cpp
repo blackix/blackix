@@ -1006,7 +1006,7 @@ void UWorld::Tick( ELevelTick TickType, float DeltaSeconds )
 
 	if (GEngine->HMDDevice.IsValid())
 	{
-		GEngine->HMDDevice->OnWorldTick();
+		GEngine->HMDDevice->OnStartGameFrame();
 	}
 
 #if ENABLE_COLLISION_ANALYZER
@@ -1373,6 +1373,11 @@ void UWorld::Tick( ELevelTick TickType, float DeltaSeconds )
 
 	// Dump the viewpoints with which we were rendered last frame. They will be updated when the world is next rendered.
 	ViewLocationsRenderedLastFrame.Reset();
+
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->OnEndGameFrame();
+	}
 }
 
 /**

@@ -90,9 +90,4 @@ public:
 	 * Called after Present is called.
 	 */
 	virtual void FinishRenderingFrame_RenderThread(class FRHICommandListImmediate& RHICmdList) {}
-
-	/**
-	 * Called on a game thread, right before initiating rendering.
-	 */
-	virtual void OnBeginRenderingViewFamily(class FCanvas* InCanvas, class FSceneViewFamily* InViewFamily) {}
 };

@@ -16,7 +16,6 @@
 #include "SceneViewExtension.h"
 #include "PostProcessBusyWait.h"
 #include "SceneUtils.h"
-#include "HeadMountedDisplay.h"
 
 /*-----------------------------------------------------------------------------
 	Globals
@@ -1132,11 +1131,6 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas,FSceneViewFamily*
 {
 	// Flush the canvas first.
 	Canvas->Flush_GameThread();
-
-	if (GEngine->StereoRenderingDevice.IsValid())
-	{
-		GEngine->StereoRenderingDevice->OnBeginRenderingViewFamily(Canvas, ViewFamily);
-	}
 
 	// Increment FrameNumber before render the scene. Wrapping around is no problem.
 	// This is the only spot we change GFrameNumber, other places can only read.

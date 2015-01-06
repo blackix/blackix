@@ -218,7 +218,17 @@ void FOculusRiftHMD::OnStartGameFrame()
 	Frame.FrameNumber = GFrameCounter;
 	Frame.Settings = Settings;
 	Frame.Flags.bOutOfFrame = false;
-	Frame.WorldToMetersScale = -1000;
+
+	check(GWorld);
+
+	if (Frame.Settings.Flags.bWorldToMetersOverride)
+	{
+		Frame.WorldToMetersScale = Frame.Settings.WorldToMetersScale;
+	}
+	else
+	{
+		Frame.WorldToMetersScale = GWorld->GetWorldSettings()->WorldToMeters;
+	}
 
 #ifdef OVR_VISION_ENABLED
 	if (Hmd && Frame.Settings.Flags.bHmdPosTracking)
@@ -238,25 +248,6 @@ void FOculusRiftHMD::OnStartGameFrame()
 #endif // OVR_VISION_ENABLED
 }
 
-void FOculusRiftHMD::OnBeginRenderingViewFamily(FCanvas*, FSceneViewFamily*)
-{
-	check(IsInGameThread());
-	if (!Frame.Settings.IsStereoEnabled() && !Frame.Settings.Flags.bHeadTrackingEnforced)
-	{
-		return;
-	}
-
-	Lock::Locker lock(&UpdateOnRTLock);
-	if (GFrameCounter == Frame.FrameNumber)
-	{
-		RenderFrame = Frame;
-	}
-	else
-	{
-		RenderFrame.Reset();
-	}
-}
-
 void FOculusRiftHMD::OnEndGameFrame()
 {
 	check(IsInGameThread());
@@ -267,30 +258,18 @@ void FOculusRiftHMD::OnEndGameFrame()
 	check(GFrameCounter == Frame.FrameNumber);
 	//Frame.FrameNumber = 0;
 
-	Frame.Flags.bOutOfFrame = true;
-	Frame.Flags.bFrameStarted = false;
-}
-
-void FOculusRiftHMD::OnWorldTick()
-{
-	check(IsInGameThread());
-	if (!Frame.Settings.IsStereoEnabled() && !Frame.Settings.Flags.bHeadTrackingEnforced)
+	Lock::Locker lock(&UpdateOnRTLock);
+	if (GFrameCounter == Frame.FrameNumber)
 	{
-		return;
-	}
-	check(GWorld);
-
-	auto frame = GetFrame();
-	check(frame);
-
-	if (frame->Settings.Flags.bWorldToMetersOverride)
-	{
-		frame->WorldToMetersScale = frame->Settings.WorldToMetersScale;
+		RenderFrame = Frame;
 	}
 	else
 	{
-		frame->WorldToMetersScale = GWorld->GetWorldSettings()->WorldToMeters;
+		RenderFrame.Reset();
 	}
+
+	Frame.Flags.bOutOfFrame = true;
+	Frame.Flags.bFrameStarted = false;
 }
 
 bool FOculusRiftHMD::IsHMDConnected()
