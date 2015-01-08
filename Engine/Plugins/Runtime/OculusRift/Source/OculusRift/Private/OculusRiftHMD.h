@@ -65,6 +65,7 @@
 #endif
 
 struct FDistortionVertex;
+class FOculusRiftHMD;
 
 namespace OculusRift 
 {
@@ -284,10 +285,12 @@ struct FGameFrame
 
 	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
 	FVector					LastHmdPosition;    // contains last APPLIED ON GT HMD position
-	uint32					LastFrameNumber;	// the copy of GFrameNumber when last Hmd orientation was read.
 
-	ovrPosef				EyeRenderPose[2];
-	ovrPosef				HeadPose;					// position of head
+	ovrPosef				CurEyeRenderPose[2];// eye render pose read at the eginning of the frame
+	ovrTrackingState		CurTrackingState;	// tracking state read at the beginning of the frame
+
+	ovrPosef				EyeRenderPose[2];	// eye render pose actually used
+	ovrPosef				HeadPose;			// position of head actually used
 
 	union
 	{
@@ -313,6 +316,23 @@ struct FGameFrame
 	void Reset();
 };
 
+class ViewExtension : public ISceneViewExtension
+{
+public:
+	ViewExtension(FOculusRiftHMD* plugin) : pPlugin(plugin) {}
+	virtual ~ViewExtension();
+
+    virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
+    virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override;
+    virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
+    virtual void PreRenderView_RenderThread(FSceneView& InView) override;
+
+private:
+	FOculusRiftHMD* pPlugin;
+	FGameFrame		RenderFrame;
+};
+
 } // namespace OculusRift
 
 using namespace OculusRift;
@@ -322,6 +342,7 @@ using namespace OculusRift;
  */
 class FOculusRiftHMD : public IHeadMountedDisplay, public ISceneViewExtension
 {
+	friend class ViewExtension;
 public:
 	static void PreInit();
 
@@ -349,7 +370,7 @@ public:
 
 	virtual bool IsChromaAbCorrectionEnabled() const override;
 
-	virtual class ISceneViewExtension* GetViewExtension() override;
+	virtual TSharedPtr<class ISceneViewExtension> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) override;
 
@@ -389,6 +410,7 @@ public:
     /** ISceneViewExtension interface */
     virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
     virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
 
@@ -700,7 +722,6 @@ private: // data
 		uint64 Raw;
 	} Flags;
 
-	OVR::Lock				UpdateOnRTLock;
 	FGameFrame				RenderFrame;
 	FRotator				DeltaControlRotation;    // same as DeltaControlOrientation but as rotator
 
@@ -721,7 +742,7 @@ private: // data
 	{
 		FGameFrame				Frame;
 
-		ovrPosef				EyeRenderPose[2];	// most recent eye render poses
+		ovrPosef				CurEyeRenderPose[2];// most recent eye render poses
 		ovrPosef				CurHeadPose;		// current position of head
 
 		bool					bFrameBegun : 1;

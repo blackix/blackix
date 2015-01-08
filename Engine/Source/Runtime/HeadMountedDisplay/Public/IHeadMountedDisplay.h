@@ -110,7 +110,7 @@ public:
     /**
      * Get the ISceneViewExtension for this HMD, or none.
      */
-    virtual class ISceneViewExtension* GetViewExtension() = 0;
+    virtual TSharedPtr<class ISceneViewExtension> GetViewExtension() = 0;
 
 	/**
      * Apply the orientation of the headset to the PC's rotation.

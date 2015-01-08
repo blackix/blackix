@@ -20,6 +20,11 @@ public:
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) = 0;
 
     /**
+     * Called on game thread when view family is about to be rendered.
+     */
+    virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) = 0;
+
+    /**
      * Called on render thread at the start of rendering.
      */
     virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) = 0;

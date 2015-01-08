@@ -126,9 +126,10 @@ void FSimpleHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVe
 	CurHmdOrientation = LastHmdOrientation = CurrentOrientation;
 }
 
-ISceneViewExtension* FSimpleHMD::GetViewExtension()
+TSharedPtr<ISceneViewExtension> FSimpleHMD::GetViewExtension()
 {
-	return this;
+	TSharedPtr<FSimpleHMD> ptr(AsShared());
+	return StaticCastSharedPtr<ISceneViewExtension>(ptr);
 }
 
 void FSimpleHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)

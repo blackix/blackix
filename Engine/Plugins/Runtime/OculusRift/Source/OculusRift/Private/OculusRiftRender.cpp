@@ -137,7 +137,7 @@ void FOculusRiftHMD::GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPa
 	ovrMatrix4f timeWarpMatrices[2];
 	if (RenderParams.bFrameBegun)
 	{
-		ovrHmd_GetEyeTimewarpMatrices(Hmd, eye, RenderParams.EyeRenderPose[eye], timeWarpMatrices);
+		ovrHmd_GetEyeTimewarpMatrices(Hmd, eye, RenderParams.CurEyeRenderPose[eye], timeWarpMatrices);
 	}
 	EyeRotationStart = ToFMatrix(timeWarpMatrices[0]);
 	EyeRotationEnd = ToFMatrix(timeWarpMatrices[1]);
@@ -149,10 +149,6 @@ void FOculusRiftHMD::GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPa
 void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFamily)
 {
 	check(IsInRenderingThread());
-	{
-		Lock::Locker lock(&UpdateOnRTLock);
-		RenderParams.Frame = RenderFrame;
-	}
 	if (!RenderParams.Frame.Settings.IsStereoEnabled())
 	{
 		return;
@@ -161,29 +157,32 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 
 	RenderParams.CurHeadPose = RenderParams.Frame.HeadPose;
 
+	BeginRendering_RenderThread();
+
 	if (RenderParams.ShowFlags.Rendering)
 	{
+		// get latest orientation/position and cache it
+		ovrTrackingState ts;
+		ovrVector3f hmdToEyeViewOffset[2] =
+		{
+			RenderParams.Frame.Settings.EyeRenderDesc[0].HmdToEyeViewOffset,
+			RenderParams.Frame.Settings.EyeRenderDesc[1].HmdToEyeViewOffset
+		};
+		ovrPosef EyeRenderPose[2];
+		ovrHmd_GetEyePoses(Hmd, RenderParams.Frame.FrameNumber, hmdToEyeViewOffset, EyeRenderPose, &ts);
+
 		// if !bOrientationChanged && !bPositionChanged then we still need to read new eye pose (for timewarp)
 		if (RenderParams.Frame.Settings.Flags.bUpdateOnRT || 
 			(!RenderParams.Frame.Flags.bOrientationChanged && !RenderParams.Frame.Flags.bPositionChanged))
 		{
-			// get latest orientation/position and cache it
-			ovrTrackingState ts;
-			ovrVector3f hmdToEyeViewOffset[2] =
-			{
-				RenderParams.Frame.Settings.EyeRenderDesc[0].HmdToEyeViewOffset,
-				RenderParams.Frame.Settings.EyeRenderDesc[1].HmdToEyeViewOffset
-			};
-			ovrHmd_GetEyePoses(Hmd, RenderParams.Frame.FrameNumber, hmdToEyeViewOffset, RenderParams.EyeRenderPose, &ts);
 			RenderParams.CurHeadPose = ts.HeadPose.ThePose;
+			FMemory::MemCopy(RenderParams.CurEyeRenderPose, EyeRenderPose);
 		}
 		else
 		{
-			FMemory::MemCopy(RenderParams.EyeRenderPose, RenderParams.Frame.EyeRenderPose);
+			FMemory::MemCopy(RenderParams.CurEyeRenderPose, RenderParams.Frame.EyeRenderPose);
 		}
 	}
-
-	BeginRendering_RenderThread();
 }
 
 void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
@@ -201,7 +200,7 @@ void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
 		FQuat	CurrentEyeOrientation;
 		FVector	CurrentEyePosition;
 
-		PoseToOrientationAndPosition(RenderParams.EyeRenderPose[eyeIdx], CurrentEyeOrientation, CurrentEyePosition, RenderParams.Frame);
+		PoseToOrientationAndPosition(RenderParams.CurEyeRenderPose[eyeIdx], CurrentEyeOrientation, CurrentEyePosition, RenderParams.Frame);
 
 		if (RenderParams.Frame.Flags.bOrientationChanged)
 		{
@@ -756,7 +755,7 @@ void FOculusRiftHMD::D3D11Bridge::FinishRendering()
 	{
 		// Finish the frame and let OVR do buffer swap (Present) and flush/sync.
 		const ovrTexture eyeTextures[2] = { EyeTexture_RenderThread[0].Texture, EyeTexture_RenderThread[1].Texture };
-		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams.EyeRenderPose, eyeTextures); // This function will present
+		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams.CurEyeRenderPose, eyeTextures); // This function will present
 	}
 	else
 	{
@@ -974,7 +973,7 @@ void FOculusRiftHMD::OGLBridge::FinishRendering()
 	{
 		// Finish the frame and let OVR do buffer swap (Present) and flush/sync.
 		const ovrTexture eyeTextures[2] = { EyeTexture_RenderThread[0].Texture, EyeTexture_RenderThread[1].Texture };
-		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams.EyeRenderPose, eyeTextures); // This function will present
+		ovrHmd_EndFrame(Plugin->Hmd, Plugin->RenderParams.CurEyeRenderPose, eyeTextures); // This function will present
 		Plugin->RenderParams.bFrameBegun = false;
 	}
 	else

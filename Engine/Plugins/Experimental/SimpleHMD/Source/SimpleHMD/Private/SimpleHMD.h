@@ -10,7 +10,7 @@
 /**
  * Simple Head Mounted Display
  */
-class FSimpleHMD : public IHeadMountedDisplay, public ISceneViewExtension
+class FSimpleHMD : public IHeadMountedDisplay, public ISceneViewExtension, public TSharedFromThis<FSimpleHMD>
 {
 public:
 	/** IHeadMountedDisplay interface */
@@ -30,7 +30,7 @@ public:
 	virtual float GetInterpupillaryDistance() const override;
 
 	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale) override;
-	virtual class ISceneViewExtension* GetViewExtension() override;
+	virtual TSharedPtr<class ISceneViewExtension> GetViewExtension() override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
 	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
@@ -80,6 +80,7 @@ public:
 	/** ISceneViewExtension interface */
 	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
 	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
 	virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
 

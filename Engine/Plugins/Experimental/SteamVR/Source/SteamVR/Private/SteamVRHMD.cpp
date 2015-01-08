@@ -185,9 +185,10 @@ void FSteamVRHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FV
 	CurrentPosition = CurHmdPosition;
 }
 
-ISceneViewExtension* FSteamVRHMD::GetViewExtension()
+TSharedPtr<ISceneViewExtension> FSteamVRHMD::GetViewExtension()
 {
-	return this;
+	TSharedPtr<FSteamVRHMD> ptr(AsShared());
+	return StaticCastSharedPtr<ISceneViewExtension>(ptr);
 }
 
 void FSteamVRHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)

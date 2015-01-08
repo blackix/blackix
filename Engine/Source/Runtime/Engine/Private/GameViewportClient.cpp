@@ -778,8 +778,8 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	// Allow HMD to modify the view later, just before rendering
 	if (GEngine->HMDDevice.IsValid() && GEngine->IsStereoscopic3D(InViewport))
 	{
-		ISceneViewExtension* HmdViewExt = GEngine->HMDDevice->GetViewExtension();
-		if (HmdViewExt)
+		TSharedPtr<ISceneViewExtension> HmdViewExt = GEngine->HMDDevice->GetViewExtension();
+		if (HmdViewExt.IsValid())
 		{
 			ViewFamily.ViewExtensions.Add(HmdViewExt);
 			HmdViewExt->SetupViewFamily(ViewFamily);
