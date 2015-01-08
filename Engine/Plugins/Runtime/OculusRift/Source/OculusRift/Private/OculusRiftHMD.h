@@ -342,7 +342,7 @@ using namespace OculusRift;
  */
 class FOculusRiftHMD : public IHeadMountedDisplay, public ISceneViewExtension
 {
-	friend class ViewExtension;
+	friend class FViewExtension;
 public:
 	static void PreInit();
 
