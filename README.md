@@ -12,7 +12,11 @@ The main approach you guys care the most (I think) is to enable HMD via CameraCo
 
 Besides CameraComponent, the PlayerCameraManager also has boolean properties bFollowHmdOrientation and bFollowHmdPosition. Thus, any camera attached to this PlayerCameraManager via SetViewTarget method will follow the HMD orientation and/or position.
 
-In addition, the HeadMountedDisplay::GetCurrentOrientationAndPosition method now has two additional boolean parameters: bUseOrienationForPlayerCamera and bUsePositionForPlayerCamera (by default - both a set to 'false'). Set these to true, if you use this method to get HMD orientation/position to change the camera orientation / position manually. This is necessary to correctly calculate delta orientation/position for timewarp later on a render thread. However, there is no way to specify the proper scale to position in this case (should I add one more parameter to this method? With default value vector(1,1,1)? Probably, will think about this.)
+The method GetOrientationAndPosition should be used to set the camera's orientation / position manually via blueprint. Now it has 3 additional optional parameters:
+boolean bUseOrienationForPlayerCamera = false: indicates that this orientation will be used to change camera orientation
+boolean bUsePositionForPlayerCamera = false: indicates that this orientation will be used to change camera position
+Vector PositionScale = Vector(1, 1, 1): scale to be applied to position (similar to CameraComponent.Scale); used only if bUsePositionForPlayerCamera == true.
+The boolean params are necessary to calculate (or not) orientation/position corrections on render thread to reduce latency (especially, for position).
 
 If you have any suggestions, there is ongoing discussion [here](https://forums.oculus.com/viewtopic.php?p=233266#p233266).
 
