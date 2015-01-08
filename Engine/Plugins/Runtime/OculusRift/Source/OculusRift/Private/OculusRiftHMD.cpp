@@ -687,7 +687,7 @@ bool FOculusRiftHMD::IsChromaAbCorrectionEnabled() const
 
 TSharedPtr<ISceneViewExtension> FOculusRiftHMD::GetViewExtension()
 {
-	TSharedPtr<ViewExtension> Result(MakeShareable(new ViewExtension(this)));
+	TSharedPtr<FViewExtension> Result(MakeShareable(new FViewExtension(this)));
 	return Result;
 }
 
@@ -2534,20 +2534,20 @@ void FOculusRiftHMD::OnEndPlay()
 }
 
 //////////////////////////////////////////////////////////////////////////
-ViewExtension::~ViewExtension()
+FViewExtension::~FViewExtension()
 {
 }
 
-void ViewExtension::SetupViewFamily(FSceneViewFamily& InViewFamily)
+void FViewExtension::SetupViewFamily(FSceneViewFamily& InViewFamily)
 {
 	pPlugin->SetupViewFamily(InViewFamily);
 }
-void ViewExtension::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
+void FViewExtension::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
 {
 	pPlugin->SetupView(InViewFamily, InView);
 }
 
-void ViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
+void FViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
 	// save RenderFrame in this view extension to access it later on render thread
 	// (see PreRenderViewFamily_RenderThread)
@@ -2555,12 +2555,12 @@ void ViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 	pPlugin->RenderFrame.Reset();
 	pPlugin->BeginRenderViewFamily(InViewFamily);
 }
-void ViewExtension::PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily)
+void FViewExtension::PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily)
 {
 	pPlugin->RenderParams.Frame = RenderFrame;
 	pPlugin->PreRenderViewFamily_RenderThread(InViewFamily);
 }
-void ViewExtension::PreRenderView_RenderThread(FSceneView& InView)
+void FViewExtension::PreRenderView_RenderThread(FSceneView& InView)
 {
 	pPlugin->PreRenderView_RenderThread(InView);
 }
