@@ -1685,20 +1685,6 @@ public:
 
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) {}
 
-	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override 
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-
-	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override 
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override
 	{
 		EyeToSrcUVOffsetValue = FVector2D::ZeroVector;

@@ -450,20 +450,6 @@ void FSteamVRHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 {
 }
 
-void FSteamVRHMD::PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const 
-{
-	FMatrix m;
-	m.SetIdentity();
-	InCanvas->PushAbsoluteTransform(m);
-}
-
-void FSteamVRHMD::PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const 
-{
-	FMatrix m;
-	m.SetIdentity();
-	InCanvas->PushAbsoluteTransform(m);
-}
-
 void FSteamVRHMD::GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const
 {
 	if (StereoPass == eSSP_LEFT_EYE)

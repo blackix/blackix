@@ -41,18 +41,6 @@ public:
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) = 0;
 
 	/**
-	 * Pushes transformations based on specified viewport into canvas. Necessary to call PopTransform on
-	 * FCanvas object afterwards.
-	 */
-	virtual void PushViewportCanvas(enum EStereoscopicPass StereoPass, class FCanvas *InCanvas, class UCanvas *InCanvasObject, class FViewport *InViewport) const = 0;
-
-	/**
-	 * Pushes transformations based on specified view into canvas. Necessary to call PopTransform on FCanvas 
-	 * object afterwards.
-	 */
-	virtual void PushViewCanvas(enum EStereoscopicPass StereoPass, class FCanvas *InCanvas, class UCanvas *InCanvasObject, class FSceneView *InView) const = 0;
-
-	/**
 	 * Returns eye render params, used from PostProcessHMD, RenderThread.
 	 */
 	virtual void GetEyeRenderParams_RenderThread(enum EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const {}
@@ -90,4 +78,12 @@ public:
 	 * Called after Present is called.
 	 */
 	virtual void FinishRenderingFrame_RenderThread(class FRHICommandListImmediate& RHICmdList) {}
+
+	/**
+	 * Returns orthographic projection , used from Canvas::DrawItem.
+	 */
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+	{
+		OrthoProjection[0] = OrthoProjection[1] = FMatrix::Identity;
+	}
 };

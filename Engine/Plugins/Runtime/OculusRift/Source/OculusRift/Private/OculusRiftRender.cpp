@@ -353,23 +353,25 @@ static void RenderLines(FCanvas* Canvas, int numLines, const FColor& c, float* x
 }
 #endif // #if !UE_BUILD_SHIPPING
 
-void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
+void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 {
 #if !UE_BUILD_SHIPPING
 	check(IsInGameThread());
 	auto frame = GetFrame();
-	if (frame && StereoPass == eSSP_FULL)
+	if (frame)
 	{
 		if (frame->Settings.Flags.bDrawGrid)
 		{
+			bool bStereo = Canvas->Canvas->IsStereoRendering();
+			Canvas->Canvas->SetStereoRendering(false);
 			bool bPopTransform = false;
-			if (frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX / 2) ||
+			if (frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX) ||
 				frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.h != Canvas->ClipY)
 			{
 				// scale if resolution of the Canvas does not match the viewport
 				bPopTransform = true;
 				Canvas->Canvas->PushAbsoluteTransform(FScaleMatrix(
-					FVector((Canvas->ClipX * 0.5f) / float(frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.w),
+					FVector((Canvas->ClipX) / float(frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.w),
 					Canvas->ClipY / float(frame->Settings.EyeRenderDesc[0].DistortedViewport.Size.h),
 					1.0f)));
 			}
@@ -454,112 +456,112 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 			{
 				Canvas->Canvas->PopTransform(); // optional scaling
 			}
+			Canvas->Canvas->SetStereoRendering(bStereo);
 		}
-		return;
-	}
-	else if (IsStereoEnabled() && frame->Settings.Flags.bShowStats)
-	{
-		static const FColor TextColor(0,255,0);
-		// Pick a larger font on console.
-		UFont* const Font = FPlatformProperties::SupportsWindowedMode() ? GEngine->GetSmallFont() : GEngine->GetMediumFont();
-		const int32 RowHeight = FMath::TruncToInt(Font->GetMaxCharHeight() * 1.1f);
-
-		float ClipX = Canvas->ClipX;
-		float ClipY = Canvas->ClipY;
-		float LeftPos = 0;
-
-		ClipX -= 100;
-		//ClipY = ClipY * 0.60;
-		LeftPos = ClipX * 0.3f;
-		float TopPos = ClipY * 0.4f;
-
-		int32 X = (int32)LeftPos;
-		int32 Y = (int32)TopPos;
-
-		FString Str, StatusStr;
-		// First row
-		Str = FString::Printf(TEXT("TimeWarp: %s"), (frame->Settings.Flags.bTimeWarp) ? TEXT("ON") : TEXT("OFF"));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		Y += RowHeight;
-		Str = FString::Printf(TEXT("VSync: %s"), (frame->Settings.Flags.bVSync) ? TEXT("ON") : TEXT("OFF"));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		
-		Y += RowHeight;
-		Str = FString::Printf(TEXT("Upd on GT/RT: %s / %s"), (!frame->Settings.Flags.bDoNotUpdateOnGT) ? TEXT("ON") : TEXT("OFF"), 
-			(frame->Settings.Flags.bUpdateOnRT) ? TEXT("ON") : TEXT("OFF"));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		Y += RowHeight;
-		static IConsoleVariable* CFinishFrameVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.FinishCurrentFrame"));
-		int finFr = CFinishFrameVar->GetInt();
-		Str = FString::Printf(TEXT("FinFr: %s"), (finFr || frame->Settings.Flags.bTimeWarp) ? TEXT("ON") : TEXT("OFF"));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		Y += RowHeight;
-		static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-		int32 sp = (int32)CScrPercVar->GetFloat();
-		Str = FString::Printf(TEXT("SP: %d"), sp);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		Y += RowHeight;
-		Str = FString::Printf(TEXT("FOV V/H: %.2f / %.2f deg"), 
-			FMath::RadiansToDegrees(frame->Settings.VFOVInRadians), FMath::RadiansToDegrees(frame->Settings.HFOVInRadians));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		Y += RowHeight;
-		Str = FString::Printf(TEXT("W-to-m scale: %.2f uu/m"), frame->WorldToMetersScale);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-
-		if ((frame->Settings.SupportedHmdCaps & ovrHmdCap_DynamicPrediction) != 0)
+		if (IsStereoEnabled() && frame->Settings.Flags.bShowStats)
 		{
-			float latencies[3] = { 0.0f, 0.0f, 0.0f };
-			if (ovrHmd_GetFloatArray(Hmd, "DK2Latency", latencies, 3) == 3)
+			static const FColor TextColor(0,255,0);
+			// Pick a larger font on console.
+			UFont* const Font = FPlatformProperties::SupportsWindowedMode() ? GEngine->GetSmallFont() : GEngine->GetMediumFont();
+			const int32 RowHeight = FMath::TruncToInt(Font->GetMaxCharHeight() * 1.1f);
+
+			float ClipX = Canvas->ClipX;
+			float ClipY = Canvas->ClipY;
+			float LeftPos = 0;
+
+			ClipX -= 100;
+			//ClipY = ClipY * 0.60;
+			LeftPos = ClipX * 0.3f;
+			float TopPos = ClipY * 0.4f;
+
+			int32 X = (int32)LeftPos;
+			int32 Y = (int32)TopPos;
+
+			FString Str, StatusStr;
+			// First row
+			Str = FString::Printf(TEXT("TimeWarp: %s"), (frame->Settings.Flags.bTimeWarp) ? TEXT("ON") : TEXT("OFF"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			Y += RowHeight;
+			Str = FString::Printf(TEXT("VSync: %s"), (frame->Settings.Flags.bVSync) ? TEXT("ON") : TEXT("OFF"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+		
+			Y += RowHeight;
+			Str = FString::Printf(TEXT("Upd on GT/RT: %s / %s"), (!frame->Settings.Flags.bDoNotUpdateOnGT) ? TEXT("ON") : TEXT("OFF"), 
+				(frame->Settings.Flags.bUpdateOnRT) ? TEXT("ON") : TEXT("OFF"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			Y += RowHeight;
+			static IConsoleVariable* CFinishFrameVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.FinishCurrentFrame"));
+			int finFr = CFinishFrameVar->GetInt();
+			Str = FString::Printf(TEXT("FinFr: %s"), (finFr || frame->Settings.Flags.bTimeWarp) ? TEXT("ON") : TEXT("OFF"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			Y += RowHeight;
+			static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
+			int32 sp = (int32)CScrPercVar->GetFloat();
+			Str = FString::Printf(TEXT("SP: %d"), sp);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			Y += RowHeight;
+			Str = FString::Printf(TEXT("FOV V/H: %.2f / %.2f deg"), 
+				FMath::RadiansToDegrees(frame->Settings.VFOVInRadians), FMath::RadiansToDegrees(frame->Settings.HFOVInRadians));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			Y += RowHeight;
+			Str = FString::Printf(TEXT("W-to-m scale: %.2f uu/m"), frame->WorldToMetersScale);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+
+			if ((frame->Settings.SupportedHmdCaps & ovrHmdCap_DynamicPrediction) != 0)
 			{
-				Y += RowHeight;
+				float latencies[3] = { 0.0f, 0.0f, 0.0f };
+				if (ovrHmd_GetFloatArray(Hmd, "DK2Latency", latencies, 3) == 3)
+				{
+					Y += RowHeight;
 
-				char buf[3][20];
-				char destStr[100];
+					char buf[3][20];
+					char destStr[100];
 
-				OVR_sprintf(destStr, sizeof(destStr), "Latency, ren: %s tw: %s pp: %s",
-					FormatLatencyReading(buf[0], sizeof(buf[0]), latencies[0]),
-					FormatLatencyReading(buf[1], sizeof(buf[1]), latencies[1]),
-					FormatLatencyReading(buf[2], sizeof(buf[2]), latencies[2]));
+					OVR_sprintf(destStr, sizeof(destStr), "Latency, ren: %s tw: %s pp: %s",
+						FormatLatencyReading(buf[0], sizeof(buf[0]), latencies[0]),
+						FormatLatencyReading(buf[1], sizeof(buf[1]), latencies[1]),
+						FormatLatencyReading(buf[2], sizeof(buf[2]), latencies[2]));
 
-				Str = ANSI_TO_TCHAR(destStr);
-				Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+					Str = ANSI_TO_TCHAR(destStr);
+					Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+				}
 			}
+
+			// Second row
+			X = (int32)LeftPos + 200;
+			Y = (int32)TopPos;
+
+			StatusStr = ((frame->Settings.SupportedTrackingCaps & ovrTrackingCap_Position) != 0) ?
+				((frame->Settings.Flags.bHmdPosTracking) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
+			Str = FString::Printf(TEXT("PosTr: %s"), *StatusStr);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
+
+			Str = FString::Printf(TEXT("Vision: %s"), (frame->Flags.bHaveVisionTracking) ? TEXT("ACQ") : TEXT("LOST"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
+
+			Str = FString::Printf(TEXT("IPD: %.2f mm"), frame->Settings.InterpupillaryDistance*1000.f);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
+
+			StatusStr = ((frame->Settings.SupportedHmdCaps & ovrHmdCap_LowPersistence) != 0) ? 
+				((frame->Settings.Flags.bLowPersistenceMode) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
+			Str = FString::Printf(TEXT("LowPers: %s"), *StatusStr);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
+
+			StatusStr = ((frame->Settings.SupportedDistortionCaps & ovrDistortionCap_Overdrive) != 0) ?
+				((frame->Settings.Flags.bOverdrive) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
+			Str = FString::Printf(TEXT("Overdrive: %s"), *StatusStr);
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
 		}
-
-		// Second row
-		X = (int32)LeftPos + 200;
-		Y = (int32)TopPos;
-
-		StatusStr = ((frame->Settings.SupportedTrackingCaps & ovrTrackingCap_Position) != 0) ?
-			((frame->Settings.Flags.bHmdPosTracking) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
-		Str = FString::Printf(TEXT("PosTr: %s"), *StatusStr);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		Y += RowHeight;
-
-		Str = FString::Printf(TEXT("Vision: %s"), (frame->Flags.bHaveVisionTracking) ? TEXT("ACQ") : TEXT("LOST"));
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		Y += RowHeight;
-
-		Str = FString::Printf(TEXT("IPD: %.2f mm"), frame->Settings.InterpupillaryDistance*1000.f);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		Y += RowHeight;
-
-		StatusStr = ((frame->Settings.SupportedHmdCaps & ovrHmdCap_LowPersistence) != 0) ? 
-			((frame->Settings.Flags.bLowPersistenceMode) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
-		Str = FString::Printf(TEXT("LowPers: %s"), *StatusStr);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		Y += RowHeight;
-
-		StatusStr = ((frame->Settings.SupportedDistortionCaps & ovrDistortionCap_Overdrive) != 0) ?
-			((frame->Settings.Flags.bOverdrive) ? TEXT("ON") : TEXT("OFF")) : TEXT("UNSUP");
-		Str = FString::Printf(TEXT("Overdrive: %s"), *StatusStr);
-		Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-		Y += RowHeight;
 	}
 #endif // #if !UE_BUILD_SHIPPING
 }

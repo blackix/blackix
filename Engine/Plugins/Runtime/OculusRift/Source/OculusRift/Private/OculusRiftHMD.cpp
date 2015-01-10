@@ -16,6 +16,7 @@
 #pragma pack (push,8)
 #endif
 #include "../Src/Kernel/OVR_Log.h"
+#include "../Src/OVR_Stereo.h"
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (pop)
 #endif
@@ -103,8 +104,6 @@ FSettings::FSettings() :
 	, UserDistanceToScreenModifier(0.f)
 	, HFOVInRadians(FMath::DegreesToRadians(90.f))
 	, VFOVInRadians(FMath::DegreesToRadians(90.f))
-	, HudOffset(0.f)
-	, CanvasCenterOffset(0.f)
 	, MirrorWindowSize(0, 0)
 	, NearClippingPlane(0)
 	, FarClippingPlane(0)
@@ -1840,6 +1839,30 @@ FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassTy
 	return proj;
 }
 
+void FOculusRiftHMD::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+{
+	OVR_UNUSED(RTHeight);
+	auto frame = GetFrame();
+	check(frame);
+
+	OrthoDistance /= frame->WorldToMetersScale; // This is meters from the camera (viewer) that we place the ortho plane.
+
+    const Vector2f orthoScale[2] = 
+	{
+        Vector2f(1.f) / Vector2f(frame->Settings.EyeRenderDesc[0].PixelsPerTanAngleAtCenter),
+        Vector2f(1.f) / Vector2f(frame->Settings.EyeRenderDesc[1].PixelsPerTanAngleAtCenter)
+    };
+
+	Matrix4f SubProjection[2];
+	SubProjection[0] = ovrMatrix4f_OrthoSubProjection(frame->Settings.PerspectiveProjection[0], orthoScale[0], OrthoDistance, frame->Settings.EyeRenderDesc[0].HmdToEyeViewOffset.x);
+	SubProjection[1] = ovrMatrix4f_OrthoSubProjection(frame->Settings.PerspectiveProjection[1], orthoScale[1], OrthoDistance, frame->Settings.EyeRenderDesc[1].HmdToEyeViewOffset.x);
+
+    //Translate the subprojection for half of the screen . map it from [0,1] to [-1,1] . The total translation is translated * 0.25.
+	OrthoProjection[0] = FTranslationMatrix(FVector(SubProjection[0].M[0][3] * RTWidth * .25 , 0 , 0));
+    //Right eye gets translated to right half of screen
+	OrthoProjection[1] = FTranslationMatrix(FVector(SubProjection[1].M[0][3] * RTWidth * .25 + RTWidth * .5, 0 , 0));
+}
+
 void FOculusRiftHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 {
 	// This is used for placing small HUDs (with names)
@@ -1854,69 +1877,6 @@ void FOculusRiftHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	HmdView.UpdateViewMatrix();
 	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
 }
-
-void FOculusRiftHMD::PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const
-{
-	auto frame = GetFrame();
-	check(frame);
-	if (StereoPass != eSSP_FULL)
-	{
-		int32 SideSizeX = FMath::TruncToInt(InViewport->GetSizeXY().X * 0.5);
-
-		// !AB: temporarily assuming all canvases are at Z = 1.0f and calculating
-		// stereo disparity right here. Stereo disparity should be calculated for each
-		// element separately, considering its actual Z-depth.
-		const float Z = 1.0f;
-		float Disparity = Z * frame->Settings.HudOffset + Z * frame->Settings.CanvasCenterOffset;
-		if (StereoPass == eSSP_RIGHT_EYE)
-			Disparity = -Disparity;
-
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = SideSizeX;
-			InCanvasObject->SizeY = InViewport->GetSizeXY().Y;
-			InCanvasObject->SetView(NULL);
-			InCanvasObject->Update();
-		}
-
-		float ScaleFactor = 1.0f;
-		FScaleMatrix m(ScaleFactor);
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(
-			FVector(((StereoPass == eSSP_RIGHT_EYE) ? SideSizeX : 0) + Disparity, 0, 0))*m);
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
-void FOculusRiftHMD::PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const
-{
-	if (StereoPass != eSSP_FULL)
-	{
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = InView->ViewRect.Width();
-			InCanvasObject->SizeY = InView->ViewRect.Height();
-			InCanvasObject->SetView(InView);
-			InCanvasObject->Update();
-		}
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(FVector(InView->ViewRect.Min.X, InView->ViewRect.Min.Y, 0)));
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
 
 //---------------------------------------------------
 // Oculus Rift ISceneViewExtension Implementation
@@ -2333,34 +2293,14 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 		Settings.EyeProjectionMatrices[0] = ovrMatrix4f_Projection(Settings.EyeFov[0], 0.01f, 10000.0f, bRightHanded);
 		Settings.EyeProjectionMatrices[1] = ovrMatrix4f_Projection(Settings.EyeFov[1], 0.01f, 10000.0f, bRightHanded);
 
-		// 2D elements offset
-		if (!Settings.Flags.bOverride2D)
-		{
-			float ScreenSizeInMeters[2]; // 0 - width, 1 - height
-			float LensSeparationInMeters;
-			LensSeparationInMeters = ovrHmd_GetFloat(Hmd, "LensSeparation", 0);
-			ovrHmd_GetFloatArray(Hmd, "ScreenSize", ScreenSizeInMeters, 2);
-
-			// Recenter projection (meters)
-			const float LeftProjCenterM = ScreenSizeInMeters[0] * 0.25f;
-			const float LensRecenterM = LeftProjCenterM - LensSeparationInMeters * 0.5f;
-
-			// Recenter projection (normalized)
-			const float LensRecenter = 4.0f * LensRecenterM / ScreenSizeInMeters[0];
-
-			Settings.HudOffset = 0.25f * Settings.InterpupillaryDistance * (Hmd->Resolution.w / ScreenSizeInMeters[0]) / 15.0f;
-			Settings.CanvasCenterOffset = (0.25f * LensRecenter) * Hmd->Resolution.w;
-		}
+		Settings.PerspectiveProjection[0] = ovrMatrix4f_Projection(Settings.EyeFov[0], 0.01f, 10000.f, true);
+		Settings.PerspectiveProjection[1] = ovrMatrix4f_Projection(Settings.EyeFov[1], 0.01f, 10000.f, true);
 
 		PrecalculatePostProcess_NoLock();
 #ifdef OVR_SDK_RENDERING 
 		GetActiveRHIBridgeImpl()->SetNeedReinitRendererAPI();
 #endif // OVR_SDK_RENDERING
 		Flags.bNeedUpdateStereoRenderingParams = false;
-	}
-	else
-	{
-		Settings.CanvasCenterOffset = 0.f;
 	}
 }
 

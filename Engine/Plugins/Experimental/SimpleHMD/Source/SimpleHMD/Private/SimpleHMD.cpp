@@ -331,20 +331,6 @@ void FSimpleHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 {
 }
 
-void FSimpleHMD::PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const 
-{
-	FMatrix m;
-	m.SetIdentity();
-	InCanvas->PushAbsoluteTransform(m);
-}
-
-void FSimpleHMD::PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const 
-{
-	FMatrix m;
-	m.SetIdentity();
-	InCanvas->PushAbsoluteTransform(m);
-}
-
 void FSimpleHMD::GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const
 {
 	EyeToSrcUVOffsetValue = FVector2D::ZeroVector;
