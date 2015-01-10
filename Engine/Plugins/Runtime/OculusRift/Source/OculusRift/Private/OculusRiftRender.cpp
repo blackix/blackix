@@ -343,22 +343,23 @@ static void RenderLines(FCanvas* Canvas, int numLines, const FColor& c, float* x
 }
 #endif // #if !UE_BUILD_SHIPPING
 
-void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
+void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 {
 #if !UE_BUILD_SHIPPING
 	check(IsInGameThread());
-	if (StereoPass == eSSP_FULL)
 	{
 		if (Flags.bDrawGrid)
 		{
+			bool bStereo = Canvas->Canvas->IsStereoRendering();
+			Canvas->Canvas->SetStereoRendering(false);
 			bool bPopTransform = false;
-			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX / 2) ||
+			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX) ||
 				EyeRenderDesc[0].DistortedViewport.Size.h != Canvas->ClipY)
 			{
 				// scale if resolution of the Canvas does not match the viewport
 				bPopTransform = true;
 				Canvas->Canvas->PushAbsoluteTransform(FScaleMatrix(
-					FVector((Canvas->ClipX * 0.5f) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
+					FVector((Canvas->ClipX) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
 					Canvas->ClipY / float(EyeRenderDesc[0].DistortedViewport.Size.h),
 					1.0f)));
 			}
@@ -443,10 +444,10 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 			{
 				Canvas->Canvas->PopTransform(); // optional scaling
 			}
+			Canvas->Canvas->SetStereoRendering(bStereo);
 		}
-		return;
 	}
-	else if (IsStereoEnabled() && Flags.bShowStats)
+	if (IsStereoEnabled() && Flags.bShowStats)
 	{
 		static const FColor TextColor(0,255,0);
 		// Pick a larger font on console.

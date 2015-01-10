@@ -90,4 +90,12 @@ public:
 	 * Called after Present is called.
 	 */
 	virtual void FinishRenderingFrame_RenderThread(class FRHICommandListImmediate& RHICmdList) {}
+
+	/**
+	 * Returns orthographic projection , used from Canvas::DrawItem.
+	 */
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+	{
+		OrthoProjection[0] = OrthoProjection[1] = FMatrix::Identity;
+	}
 };

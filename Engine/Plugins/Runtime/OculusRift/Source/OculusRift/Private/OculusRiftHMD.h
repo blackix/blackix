@@ -39,6 +39,8 @@
 	#include "../Src/Kernel/OVR_Threads.h"
 	#include "../Src/OVR_CAPI_Keys.h"
 
+	#include "../Src/OVR_Stereo.h"
+
 #ifdef OVR_SDK_RENDERING
     #if PLATFORM_WINDOWS
         #include "AllowWindowsPlatformTypes.h"
@@ -103,9 +105,10 @@ public:
 	virtual void CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, 
 										   const float MetersToWorld, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const EStereoscopicPass StereoPassType, const float FOV) const override;
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const override;
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) override;
-	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override;
-	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override;
+	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override {} // DEPRECATED
+	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override {} // DEPRECATED
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	virtual void GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPass, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const override;
 
@@ -167,7 +170,7 @@ public:
 	virtual void OnBeginPlay() override;
 	virtual void OnEndPlay() override;
 
-	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) override;
+	virtual void DrawDebug(UCanvas* Canvas) override;
 
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition);
@@ -563,12 +566,6 @@ private: // data
 	float HFOVInRadians; // horizontal
 	float VFOVInRadians; // vertical
 
-	/** HUD stereo offset */
-	float HudOffset;
-
-	/** Screen center adjustment for 2d elements */
-	float CanvasCenterOffset;
-
 	OVR::Lock	UpdateOnRTLock;
 
 	/** Size of mirror window; {0,0} if size is the default one */
@@ -594,6 +591,7 @@ private: // data
 	ovrHmd					Hmd;
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				PerspectiveProjection[2];	// used for calc ortho projection matrices
 	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
 	ovrPosef				EyeRenderPose[2];
 	// U,V scale and offset needed for timewarp.
