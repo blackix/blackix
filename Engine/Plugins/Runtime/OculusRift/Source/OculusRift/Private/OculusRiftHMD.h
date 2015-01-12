@@ -136,9 +136,6 @@ struct FSettings
 			/** Yaw drift correction on/off */
 			bool64 bYawDriftCorrectionEnabled : 1;
 
-			/** Whether or not 2D stereo settings overridden. */
-			bool64 bOverride2D : 1;
-
 			/** Low persistence mode */
 			bool64 bLowPersistenceMode : 1;
 
@@ -739,8 +736,8 @@ private: // data
 		ovrPosef				CurEyeRenderPose[2];// most recent eye render poses
 		ovrPosef				CurHeadPose;		// current position of head
 
-		bool					bFrameBegun : 1;
 		FEngineShowFlags		ShowFlags; // a copy of showflags
+		bool					bFrameBegun : 1;
 
 		FRenderParams(FOculusRiftHMD* plugin);
 

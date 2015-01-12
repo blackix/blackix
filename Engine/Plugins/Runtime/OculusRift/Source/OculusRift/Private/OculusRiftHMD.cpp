@@ -2051,6 +2051,7 @@ void FOculusRiftHMD::Shutdown()
 	Settings.Reset();
 	Frame.Reset();
 	RenderFrame.Reset();
+	RenderParams.Reset();
 
 	ovr_Shutdown();
 	Settings.Flags.InitStatus = 0;
@@ -2128,9 +2129,9 @@ void FOculusRiftHMD::ReleaseDevice()
 				Plugin->GetActiveRHIBridgeImpl()->Reset();
 			}
 		});
+#endif 
 		// Wait for all resources to be released
 		FlushRenderingCommands();
-#endif 
 
 		ovrHmd_Destroy(Hmd);
 		Hmd = nullptr;

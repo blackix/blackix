@@ -26,8 +26,8 @@ void FSettings::FDistortionMesh::Reset()
 
 FOculusRiftHMD::FRenderParams::FRenderParams(FOculusRiftHMD* plugin)
 	: 
-	  bFrameBegun(false)
-	, ShowFlags(ESFIM_All0)
+	  ShowFlags(ESFIM_All0)
+	, bFrameBegun(false)
 {
 }
 
