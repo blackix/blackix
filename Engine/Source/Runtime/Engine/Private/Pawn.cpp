@@ -141,7 +141,7 @@ void APawn::UpdateNavAgent()
 	if (RootComponent != NULL && MovementComponent != NULL && MovementComponent->ShouldUpdateNavAgentWithOwnersCollision())
 	{
 		RootComponent->UpdateBounds();
-		MovementComponent->UpdateNavAgent(this);
+		MovementComponent->UpdateNavAgent(*this);
 	}
 }
 
@@ -1088,7 +1088,7 @@ void APawn::PawnMakeNoise(float Loudness, FVector NoiseLocation, bool bUseNoiseM
 	NoiseMaker->MakeNoise(Loudness, this, bUseNoiseMakerLocation ? NoiseMaker->GetActorLocation() : NoiseLocation);
 }
 
-const FNavAgentProperties& APawn::GetNavAgentProperties() const
+const FNavAgentProperties& APawn::GetNavAgentPropertiesRef() const
 {
-	return GetMovementComponent() ? GetMovementComponent()->GetNavAgentProperties() : FNavAgentProperties::DefaultProperties;
+	return GetMovementComponent() ? GetMovementComponent()->GetNavAgentPropertiesRef() : FNavAgentProperties::DefaultProperties;
 }

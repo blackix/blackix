@@ -29,6 +29,8 @@ void FAppEventManager::Tick()
 {
 	while (!Queue.IsEmpty())
 	{
+		bool bDestroyWindow = false;
+
 		FAppEventData Event = DequeueAppEvent();
 
 		switch (Event.State)
@@ -48,9 +50,16 @@ void FAppEventManager::Tick()
 			bSaveState = true; //todo android: handle save state.
 			break;
 		case APP_EVENT_STATE_WINDOW_DESTROYED:
-			//AndroidEGL::GetInstance()->UnBind()
-			FAndroidAppEntry::DestroyWindow();
-			FPlatformMisc::SetHardwareWindow(NULL);
+			if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected())
+			{
+				// delay the destruction until after the renderer teardown on GearVR
+				bDestroyWindow = true;
+			}
+			else
+			{
+				FAndroidAppEntry::DestroyWindow();
+				FPlatformMisc::SetHardwareWindow(NULL);
+			}
 			bHaveWindow = false;
 			break;
 		case APP_EVENT_STATE_ON_START:
@@ -64,14 +73,10 @@ void FAppEventManager::Tick()
 			bHaveGame = false;
 			break;
 		case APP_EVENT_STATE_ON_PAUSE:
-			FCoreDelegates::ApplicationWillDeactivateDelegate.Broadcast();
-			FCoreDelegates::ApplicationWillEnterBackgroundDelegate.Broadcast();
 			bHaveGame = false;
 			break;
 		case APP_EVENT_STATE_ON_RESUME:
 			bHaveGame = true;
-			FCoreDelegates::ApplicationHasEnteredForegroundDelegate.Broadcast();
-			FCoreDelegates::ApplicationHasReactivatedDelegate.Broadcast();
 			break;
 
 		// window focus events that follow their own  heirarchy, and might or might not respect App main events heirarchy
@@ -116,13 +121,30 @@ void FAppEventManager::Tick()
 		{
 			ResumeRendering();
 			ResumeAudio();
+
+			// broadcast events after the rendering thread has resumed
+			FCoreDelegates::ApplicationHasEnteredForegroundDelegate.Broadcast();
+			FCoreDelegates::ApplicationHasReactivatedDelegate.Broadcast();
+
 			bRunning = true;
 		}
 		else if (bRunning && (!bHaveWindow || !bHaveGame))
 		{
+			// broadcast events before rendering thred suspends
+			FCoreDelegates::ApplicationWillDeactivateDelegate.Broadcast();
+			FCoreDelegates::ApplicationWillEnterBackgroundDelegate.Broadcast();
+
 			PauseRendering();
 			PauseAudio();
+
 			bRunning = false;
+		}
+
+		if (bDestroyWindow)
+		{
+			FAndroidAppEntry::DestroyWindow();
+			FPlatformMisc::SetHardwareWindow(NULL);
+			bDestroyWindow = false;
 		}
 	}
 

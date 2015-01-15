@@ -13,6 +13,9 @@
 #include "Components/PrimitiveComponent.h"
 #include "NavMovementComponent.generated.h"
 
+class AActor;
+class UCapsuleComponent;
+
 /**
  * NavMovementComponent defines base functionality for MovementComponents that move any 'agent' that may be involved in AI pathfinding.
  */
@@ -56,8 +59,8 @@ public:
 	void SetUpdateNavAgentWithOwnersCollisions(bool bUpdateWithOwner);
 	FORCEINLINE bool ShouldUpdateNavAgentWithOwnersCollision() const { return bUpdateNavAgentWithOwnersCollision != 0; }
 	
-	void UpdateNavAgent(class AActor* Owner);
-	void UpdateNavAgent(class UCapsuleComponent* CapsuleComponent);
+	void UpdateNavAgent(const AActor& Owner);
+	void UpdateNavAgent(const UCapsuleComponent& CapsuleComponent);
 
 	/** @returns location of controlled actor - meaning center of collision bounding box */
 	FORCEINLINE FVector GetActorLocation() const { return UpdatedComponent ? UpdatedComponent->GetComponentLocation() : FVector(FLT_MAX); }
@@ -76,9 +79,9 @@ public:
 	virtual bool CanStopPathFollowing() const;
 
 	/** @returns the NavAgentProps(const) */
-	FORCEINLINE const FNavAgentProperties& GetNavAgentProperties() const { return NavAgentProps; }
+	FORCEINLINE const FNavAgentProperties& GetNavAgentPropertiesRef() const { return NavAgentProps; }
 	/** @returns the NavAgentProps */
-	FORCEINLINE FNavAgentProperties& GetNavAgentProperties() { return NavAgentProps; }
+	FORCEINLINE FNavAgentProperties& GetNavAgentPropertiesRef() { return NavAgentProps; }
 
 	/** Resets runtime movement state to character's movement capabilities */
 	void ResetMoveState() { MovementState = NavAgentProps; }
@@ -127,6 +130,15 @@ public:
 	/** @return true if currently flying (moving through a non-fluid volume without resting on the ground) */
 	UFUNCTION(BlueprintCallable, Category="AI|Components|NavMovement")
 	virtual bool IsFlying() const;
+
+	//----------------------------------------------------------------------//
+	// DEPRECATED
+	//----------------------------------------------------------------------//
+public:
+	DEPRECATED(4.7, "This function is deprecated. Please use GetNavAgentPropertiesRef instead.")
+	const FNavAgentProperties* GetNavAgentProperties() const;
+	DEPRECATED(4.7, "This function is deprecated. Please use GetNavAgentPropertiesRef instead.")
+	FNavAgentProperties* GetNavAgentProperties();
 };
 
 

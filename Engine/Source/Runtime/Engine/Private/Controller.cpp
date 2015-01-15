@@ -531,9 +531,9 @@ APawn* AController::K2_GetPawn() const
 	return GetPawn();
 }
 
-const FNavAgentProperties& AController::GetNavAgentProperties() const
+const FNavAgentProperties& AController::GetNavAgentPropertiesRef() const
 {
-	return Pawn && Pawn->GetMovementComponent() ? Pawn->GetMovementComponent()->GetNavAgentProperties() : FNavAgentProperties::DefaultProperties;
+	return Pawn && Pawn->GetMovementComponent() ? Pawn->GetMovementComponent()->GetNavAgentPropertiesRef() : FNavAgentProperties::DefaultProperties;
 }
 
 FVector AController::GetNavAgentLocation() const
@@ -570,6 +570,7 @@ void AController::InitNavigationControl(UPathFollowingComponent*& PathFollowingC
 	{
 		PathFollowingComp = NewObject<UPathFollowingComponent>(this);
 		PathFollowingComp->RegisterComponentWithWorld(GetWorld());
+		PathFollowingComp->Initialize();
 	}
 }
 

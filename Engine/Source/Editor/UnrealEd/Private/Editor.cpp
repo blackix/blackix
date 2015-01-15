@@ -117,7 +117,6 @@ FSimpleMulticastDelegate								FEditorDelegates::LoadSelectedAssetsIfNeeded;
 FSimpleMulticastDelegate								FEditorDelegates::DisplayLoadErrors;
 FEditorDelegates::FOnEditorModeTransitioned				FEditorDelegates::EditorModeEnter;
 FEditorDelegates::FOnEditorModeTransitioned				FEditorDelegates::EditorModeExit;
-FSimpleMulticastDelegate								FEditorDelegates::Undo;
 FEditorDelegates::FOnPIEEvent							FEditorDelegates::BeginPIE;
 FEditorDelegates::FOnPIEEvent							FEditorDelegates::EndPIE;
 FEditorDelegates::FOnPIEEvent							FEditorDelegates::PausePIE;
@@ -234,6 +233,7 @@ UEditorEngine::UEditorEngine(const FObjectInitializer& ObjectInitializer)
 	bPlayOnLocalPcSession = false;
 	bAllowMultiplePIEWorlds = true;
 	NumOnlinePIEInstances = 0;
+	DefaultWorldFeatureLevel = GMaxRHIFeatureLevel;
 }
 
 

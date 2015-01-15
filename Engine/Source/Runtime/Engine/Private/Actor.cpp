@@ -524,6 +524,9 @@ void AActor::ApplyWorldOffset(const FVector& InOffset, bool bWorldShift)
 	if (RootComponent != NULL && RootComponent->AttachParent == NULL)
 	{
 		RootComponent->ApplyWorldOffset(InOffset, bWorldShift);
+
+		UNavigationSystem::UpdateNavOctreeBounds(this);
+		UNavigationSystem::UpdateNavOctreeAll(this);
 	}
 }
 
@@ -1779,7 +1782,7 @@ void AActor::DispatchBlockingHit(UPrimitiveComponent* MyComp, UPrimitiveComponen
 	// If component is still alive, call delegate on component
 	if(!MyComp->IsPendingKill())
 	{
-		MyComp->OnComponentHit.Broadcast(OtherActor, MyComp, OtherComp, FVector(0,0,0), Hit);
+		MyComp->OnComponentHit.Broadcast(OtherActor, OtherComp, FVector(0,0,0), Hit);
 	}
 }
 
@@ -2045,6 +2048,19 @@ void AActor::UpdateReplicatedComponent(UActorComponent* Component)
 	else
 	{
 		ReplicatedComponents.RemoveSwap(Component);
+	}
+}
+
+void AActor::UpdateAllReplicatedComponents()
+{
+	ReplicatedComponents.Empty();
+
+	for (UActorComponent* Component : OwnedComponents)
+	{
+		if (Component != NULL)
+		{
+			UpdateReplicatedComponent(Component);
+		}
 	}
 }
 
@@ -3051,7 +3067,7 @@ void AActor::DispatchPhysicsCollisionHit(const FRigidBodyCollisionInfo& MyInfo, 
 
 	if(MyInfo.Component.IsValid() && MyInfo.Component.Get()->OnComponentHit.IsBound())
 	{
-		MyInfo.Component.Get()->OnComponentHit.Broadcast(OtherInfo.Actor.Get(), MyInfo.Component.Get(), OtherInfo.Component.Get(), RigidCollisionData.TotalNormalImpulse, Result);
+		MyInfo.Component.Get()->OnComponentHit.Broadcast(OtherInfo.Actor.Get(), OtherInfo.Component.Get(), RigidCollisionData.TotalNormalImpulse, Result);
 	}
 }
 
@@ -3426,6 +3442,8 @@ void AActor::PostInitializeComponents()
 		bActorInitialized = true;
 
 		UNavigationSystem::OnActorRegistered(this);
+		
+		UpdateAllReplicatedComponents();
 	}
 }
 

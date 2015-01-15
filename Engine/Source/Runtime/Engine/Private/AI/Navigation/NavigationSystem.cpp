@@ -262,6 +262,20 @@ void UNavigationSystem::DoInitialSetup()
 		return;
 	}
 	
+	UpdateAbstractNavData();
+
+	CreateCrowdManager();
+
+	bInitialSetupHasBeenPerformed = true;
+}
+
+void UNavigationSystem::UpdateAbstractNavData()
+{
+	if (AbstractNavData != nullptr)
+	{
+		return;
+	}
+
 	// spawn abstract nav data separately
 	// it's responsible for direct paths and shouldn't be picked for any agent type as default one
 	UWorld* NavWorld = GetWorld();
@@ -282,11 +296,14 @@ void UNavigationSystem::DoInitialSetup()
 		AbstractNavData = CreateNavigationDataInstance(DummyConfig);
 	}
 
-	CreateCrowdManager();
-
-	bInitialSetupHasBeenPerformed = true;
+	if (AbstractNavData->IsRegistered() == false)
+	{
+		// fake registration since it's a special navigation data type 
+		// and it would get discarded for not implementing any particular
+		// navigation agent
+		AbstractNavData->OnRegistered();
+	}
 }
-
 void UNavigationSystem::PostInitProperties()
 {
 	Super::PostInitProperties();
@@ -524,6 +541,7 @@ void UNavigationSystem::OnWorldInitDone(FNavigationSystem::EMode Mode)
 	else // just register data already present
 	{
 		RegisterNavigationDataInstances();
+		UpdateAbstractNavData();
 	}
 }
 
@@ -897,18 +915,12 @@ bool UNavigationSystem::GetRandomPointInRadius(const FVector& Origin, float Radi
 {
 	SCOPE_CYCLE_COUNTER(STAT_Navigation_QueriesTimeSync);
 
-	if (NavData == NULL)
+	if (NavData == nullptr)
 	{
 		NavData = MainNavData;
 	}
 
-	if (NavData != NULL)
-	{
-		NavData->GetRandomPointInRadius(Origin, Radius, ResultLocation, QueryFilter);
-		return true;
-	}
-
-	return false;
+	return NavData != nullptr && NavData->GetRandomPointInRadius(Origin, Radius, ResultLocation, QueryFilter);
 }
 
 ENavigationQueryResult::Type UNavigationSystem::GetPathCost(const FVector& PathStart, const FVector& PathEnd, float& OutPathCost, const ANavigationData* NavData, TSharedPtr<const FNavigationQueryFilter> QueryFilter) const
@@ -1000,7 +1012,7 @@ void UNavigationSystem::SimpleMoveToActor(AController* Controller, const AActor*
 	}
 	else
 	{
-		const ANavigationData* NavData = NavSys->GetNavDataForProps(Controller->GetNavAgentProperties());
+		const ANavigationData* NavData = NavSys->GetNavDataForProps(Controller->GetNavAgentPropertiesRef());
 		FPathFindingQuery Query(Controller, NavData, Controller->GetNavAgentLocation(), Goal->GetActorLocation());
 		FPathFindingResult Result = NavSys->FindPathSync(Query);
 		if (Result.IsSuccessful())
@@ -1056,7 +1068,7 @@ void UNavigationSystem::SimpleMoveToLocation(AController* Controller, const FVec
 	}
 	else
 	{
-		const ANavigationData* NavData = NavSys->GetNavDataForProps(Controller->GetNavAgentProperties());
+		const ANavigationData* NavData = NavSys->GetNavDataForProps(Controller->GetNavAgentPropertiesRef());
 		FPathFindingQuery Query(Controller, NavData, Controller->GetNavAgentLocation(), GoalLocation);
 		FPathFindingResult Result = NavSys->FindPathSync(Query);
 		if (Result.IsSuccessful())
@@ -1118,7 +1130,7 @@ UNavigationPath* UNavigationSystem::FindPathToLocationSynchronously(UObject* Wor
 			
 			if (NavAgent != NULL)
 			{
-				const FNavAgentProperties& AgentProps = NavAgent->GetNavAgentProperties();
+				const FNavAgentProperties& AgentProps = NavAgent->GetNavAgentPropertiesRef();
 				NavigationData = NavSys->GetNavDataForProps(AgentProps);
 				bValidPathContext = true;
 			}
@@ -1174,7 +1186,7 @@ bool UNavigationSystem::NavigationRaycast(UObject* WorldContextObject, const FVe
 		INavAgentInterface* MyNavAgent = Cast<INavAgentInterface>(Querier);
 		if (MyNavAgent)
 		{
-			const FNavAgentProperties& AgentProps = MyNavAgent->GetNavAgentProperties();
+			const FNavAgentProperties& AgentProps = MyNavAgent->GetNavAgentPropertiesRef();
 			NavData = NavSys->GetNavDataForProps(AgentProps);
 		}
 		if (NavData == NULL)

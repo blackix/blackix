@@ -202,8 +202,9 @@ void UWorldComposition::Rescan()
 	FString WorldRootFilename = FPackageName::LongPackageNameToFilename(WorldRoot);
 	FPlatformFileManager::Get().GetPlatformFile().IterateDirectoryRecursively(*WorldRootFilename, Gatherer);
 
-	FString PersistentLevelPackageName = OwningWorld->GetOutermost()->GetName();
-	
+	// Make sure we have persistent level name without PIE prefix
+	FString PersistentLevelPackageName = UWorld::StripPIEPrefixFromPackageName(OwningWorld->GetOutermost()->GetName(), OwningWorld->StreamingLevelsPrefix);
+		
 	// Add found tiles to a world composition, except persistent level
 	for (const auto& TilePackageName : Gatherer.TilesCollection)
 	{
@@ -586,7 +587,7 @@ void UWorldComposition::UpdateStreamingState()
 		{
 			FVector ViewLocation;
 			FRotator ViewRotation;
-			Player->PlayerController->GetActorEyesViewPoint(ViewLocation, ViewRotation);
+			Player->PlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 			CentroidLocation+= ViewLocation;
 			NumViews++;
 		}

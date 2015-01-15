@@ -260,19 +260,19 @@ namespace UnrealBuildTool
 			return Result;
 		}
 
-		static string AddFrameworkToLinkCommand(string FrameworkName, string Arg = "-framework")
+		string AddFrameworkToLinkCommand(string FrameworkName, string Arg = "-framework")
 		{
 			string Result = "";
 			if (FrameworkName.EndsWith(".framework"))
 			{
-				Result += " -F \"" + Path.GetDirectoryName(FrameworkName) + "\"";
+				Result += " -F \"" + ConvertPath(Path.GetDirectoryName(Path.GetFullPath(FrameworkName))) + "\"";
 				FrameworkName = Path.GetFileNameWithoutExtension(FrameworkName);
 			}
 			Result += " " + Arg + " \"" + FrameworkName + "\"";
 			return Result;
 		}
 
-		static string GetLinkArguments_Global(LinkEnvironment LinkEnvironment)
+		string GetLinkArguments_Global(LinkEnvironment LinkEnvironment)
 		{
 			string Result = "";
 
@@ -679,6 +679,20 @@ namespace UnrealBuildTool
 					else
 					{
 						throw new BuildException("Couldn't find required additional file to shadow: {0}", AdditionalShadowFile);
+					}
+				}
+
+				// Add any frameworks to be shadowed to the remote
+				foreach (string FrameworkPath in LinkEnvironment.Config.Frameworks)
+				{
+					if(FrameworkPath.EndsWith(".framework"))
+					{
+						foreach(string FrameworkFile in Directory.EnumerateFiles(FrameworkPath, "*", SearchOption.AllDirectories))
+						{
+							FileItem FrameworkFileItem = FileItem.GetExistingItemByPath(FrameworkFile);
+							QueueFileForBatchUpload(FrameworkFileItem);
+							LinkAction.PrerequisiteItems.Add(FrameworkFileItem);
+						}
 					}
 				}
 			}
@@ -1132,14 +1146,27 @@ namespace UnrealBuildTool
 			string SourcePath = Path.Combine(CopyAction.WorkingDirectory, Resource.ResourcePath);
 			string TargetPath = Path.Combine(BundlePath, "Contents", Resource.BundleContentsSubdir, Path.GetFileName(Resource.ResourcePath));
 
-			FileItem TargetItem = LocalToRemoteFileItem(FileItem.GetItemByPath(TargetPath), false);
+			FileItem TargetItem;
+			if(BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Mac)
+			{
+				TargetItem = FileItem.GetItemByPath(TargetPath);
+			}
+			else
+			{
+				TargetItem = FileItem.GetRemoteItemByPath(TargetPath, RemoteToolChainPlatform);
+			}
 
-			CopyAction.CommandArguments = string.Format("-c 'cp -f -R \"{0}\" \"{1}\"; touch -c \"{2}\"'", SourcePath, Path.GetDirectoryName(TargetPath) + "/", TargetPath);
+			CopyAction.CommandArguments = string.Format("-c 'cp -f -R \"{0}\" \"{1}\"; touch -c \"{2}\"'", ConvertPath(SourcePath), Path.GetDirectoryName(TargetPath).Replace('\\', '/') + "/", TargetPath.Replace('\\', '/'));
 			CopyAction.PrerequisiteItems.Add(Executable);
 			CopyAction.ProducedItems.Add(TargetItem);
 			CopyAction.bShouldOutputStatusDescription = Resource.bShouldLog;
 			CopyAction.StatusDescription = string.Format("Copying {0} to app bundle", Path.GetFileName(Resource.ResourcePath));
 			CopyAction.bCanExecuteRemotely = false;
+
+			if (BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Mac)
+			{
+				CopyAction.ActionHandler = new Action.BlockingActionHandler(RPCUtilHelper.RPCActionHandler);
+			}
 
 			if (Directory.Exists(Resource.ResourcePath))
 			{
@@ -1324,15 +1351,15 @@ namespace UnrealBuildTool
 		{
 			var OutputFiles = base.PostBuild(Executable, BinaryLinkEnvironment);
 
+			foreach (UEBuildBundleResource Resource in BinaryLinkEnvironment.Config.AdditionalBundleResources)
+			{
+				OutputFiles.Add(CopyBundleResource(Resource, Executable));
+			}
+
 			// If building for Mac on a Mac, use actions to finalize the builds (otherwise, we use Deploy)
 			if (BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Mac)
 			{
 				return OutputFiles;
-			}
-
-			foreach (UEBuildBundleResource Resource in BinaryLinkEnvironment.Config.AdditionalBundleResources)
-			{
-				OutputFiles.Add(CopyBundleResource(Resource, Executable));
 			}
 
 			if (BinaryLinkEnvironment.Config.bIsBuildingDLL || BinaryLinkEnvironment.Config.bIsBuildingLibrary)
