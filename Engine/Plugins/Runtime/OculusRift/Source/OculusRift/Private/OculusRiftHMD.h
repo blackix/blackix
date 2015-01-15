@@ -34,9 +34,7 @@
 	
 	#include "OVR.h"
 	#include "OVR_Version.h"
-	#include "OVR_Kernel.h"
 
-	#include "../Src/Kernel/OVR_Threads.h"
 	#include "../Src/OVR_CAPI_Keys.h"
 
 #ifdef OVR_SDK_RENDERING
@@ -50,8 +48,6 @@
 		#include "../Src/OVR_CAPI_GL.h"
 	#endif
 #endif // OVR_SDK_RENDERING
-
-	using namespace OVR;
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 
@@ -219,7 +215,7 @@ struct FSettings
 	FIntPoint	MirrorWindowSize;
 
 	/** HMD base values, specify forward orientation and zero pos offset */
-	Vector3f				BaseOffset;			// base position, in Oculus coords
+	OVR::Vector3f			BaseOffset;			// base position, in Oculus coords
 	FQuat					BaseOrientation;	// base orientation
 	FVector					PositionOffset;
 
@@ -442,6 +438,8 @@ public:
 
 	virtual void DrawDebug(UCanvas* Canvas) override;
 
+	virtual void GetRawSensorData(SensorData& OutData) override;
+
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);
 	void BeginRendering_RenderThread();
@@ -469,8 +467,8 @@ public:
 
 	protected: // data
 		// Data
-		mutable OVR::Lock	ModifyLock;
-		mutable OVR::Lock	ModifyEyeTexturesLock;
+		FCriticalSection	ModifyLock;
+		FCriticalSection	ModifyEyeTexturesLock;
 		FOculusRiftHMD*		Plugin;
 		bool				bNeedReinitRendererAPI;
 		bool				bInitialized;

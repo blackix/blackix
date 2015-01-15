@@ -149,3 +149,18 @@ void UHeadMountedDisplayFunctionLibrary::GetBaseRotationAndPositionOffset(FRotat
 	}
 }
 
+void UHeadMountedDisplayFunctionLibrary::GetRawSensorData(FVector& Accelerometer, FVector& Gyro, FVector& Magnetometer, float& Temperature, float& TimeInSeconds)
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		IHeadMountedDisplay::SensorData Data;
+		GEngine->HMDDevice->GetRawSensorData(Data);
+
+		Accelerometer	= Data.Accelerometer;
+		Gyro			= Data.Gyro;
+		Magnetometer	= Data.Magnetometer;
+		Temperature		= Data.Temperature;
+		TimeInSeconds	= Data.TimeInSeconds;
+	}
+}
+

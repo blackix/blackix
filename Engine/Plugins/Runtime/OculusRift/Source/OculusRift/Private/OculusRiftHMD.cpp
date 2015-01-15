@@ -79,7 +79,7 @@ public:
 
 	// This virtual function receives all the messages,
 	// developers should override this function in order to do custom logging
-	virtual void    LogMessageVarg(LogMessageType messageType, const char* fmt, va_list argList)
+	virtual void    LogMessageVarg(OVR::LogMessageType messageType, const char* fmt, va_list argList)
 	{
 		if ((messageType & GetLoggingMask()) == 0)
 			return;
@@ -146,9 +146,9 @@ FSettings::FSettings() :
 
 void FSettings::SetViewportSize(int w, int h)
 {
-	EyeRenderViewport[0].Pos = Vector2i(0, 0);
-	EyeRenderViewport[0].Size = Sizei(w, h);
-	EyeRenderViewport[1].Pos = Vector2i(w, 0);
+	EyeRenderViewport[0].Pos = OVR::Vector2i(0, 0);
+	EyeRenderViewport[0].Size = OVR::Sizei(w, h);
+	EyeRenderViewport[1].Pos = OVR::Vector2i(w, 0);
 	EyeRenderViewport[1].Size = EyeRenderViewport[0].Size;
 }
 
@@ -460,7 +460,7 @@ void FOculusRiftHMD::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat&
 
 	check(InFrame.WorldToMetersScale >= 0);
 	// correct position according to BaseOrientation and BaseOffset. 
-	const FVector Pos = ToFVector_M2U(Vector3f(InPose.Position) - InFrame.Settings.BaseOffset, InFrame.WorldToMetersScale) * InFrame.CameraScale3D;
+	const FVector Pos = ToFVector_M2U(OVR::Vector3f(InPose.Position) - InFrame.Settings.BaseOffset, InFrame.WorldToMetersScale) * InFrame.CameraScale3D;
 	OutPosition = InFrame.Settings.BaseOrientation.Inverse().RotateVector(Pos);
 
 	// apply base orientation correction to OutOrientation
@@ -1847,13 +1847,13 @@ void FOculusRiftHMD::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float Ort
 
 	OrthoDistance /= frame->WorldToMetersScale; // This is meters from the camera (viewer) that we place the ortho plane.
 
-    const Vector2f orthoScale[2] = 
+    const OVR::Vector2f orthoScale[2] = 
 	{
-        Vector2f(1.f) / Vector2f(frame->Settings.EyeRenderDesc[0].PixelsPerTanAngleAtCenter),
-        Vector2f(1.f) / Vector2f(frame->Settings.EyeRenderDesc[1].PixelsPerTanAngleAtCenter)
+        OVR::Vector2f(1.f) / OVR::Vector2f(frame->Settings.EyeRenderDesc[0].PixelsPerTanAngleAtCenter),
+        OVR::Vector2f(1.f) / OVR::Vector2f(frame->Settings.EyeRenderDesc[1].PixelsPerTanAngleAtCenter)
     };
 
-	Matrix4f SubProjection[2];
+	OVR::Matrix4f SubProjection[2];
 	SubProjection[0] = ovrMatrix4f_OrthoSubProjection(frame->Settings.PerspectiveProjection[0], orthoScale[0], OrthoDistance, frame->Settings.EyeRenderDesc[0].HmdToEyeViewOffset.x);
 	SubProjection[1] = ovrMatrix4f_OrthoSubProjection(frame->Settings.PerspectiveProjection[1], orthoScale[1], OrthoDistance, frame->Settings.EyeRenderDesc[1].HmdToEyeViewOffset.x);
 
@@ -2246,10 +2246,10 @@ void FOculusRiftHMD::UpdateHmdRenderInfo()
 		Settings.HFOVInRadians = FMath::Max(GetHorizontalFovRadians(Settings.EyeFov[0]), GetHorizontalFovRadians(Settings.EyeFov[1]));
 	}
 
-	const Sizei recommenedTex0Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Left, Settings.EyeFov[0], 1.0f);
-	const Sizei recommenedTex1Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Right, Settings.EyeFov[1], 1.0f);
+	const ovrSizei recommenedTex0Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Left, Settings.EyeFov[0], 1.0f);
+	const ovrSizei recommenedTex1Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Right, Settings.EyeFov[1], 1.0f);
 
-	Sizei idealRenderTargetSize;
+	ovrSizei idealRenderTargetSize;
 	idealRenderTargetSize.w = recommenedTex0Size.w + recommenedTex1Size.w;
 	idealRenderTargetSize.h = FMath::Max(recommenedTex0Size.h, recommenedTex1Size.h);
 
@@ -2471,6 +2471,21 @@ void FOculusRiftHMD::OnEndPlay()
 	{
 		EnableStereo(false);
 		ReleaseDevice();
+	}
+}
+
+void FOculusRiftHMD::GetRawSensorData(SensorData& OutData)
+{
+	FMemory::MemSet(OutData, 0);
+	InitDevice();
+	if (Hmd)
+	{
+		const ovrTrackingState ss = ovrHmd_GetTrackingState(Hmd, ovr_GetTimeInSeconds());
+		OutData.Accelerometer	= ToFVector(ss.RawSensorData.Accelerometer);
+		OutData.Gyro			= ToFVector(ss.RawSensorData.Gyro);
+		OutData.Magnetometer	= ToFVector(ss.RawSensorData.Magnetometer);
+		OutData.Temperature		= ss.RawSensorData.Temperature;
+		OutData.TimeInSeconds   = ss.RawSensorData.TimeInSeconds;
 	}
 }
 

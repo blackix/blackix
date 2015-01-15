@@ -125,4 +125,17 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
 	static void GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset);
+
+	/**
+	 * Reports raw sensor data. If HMD doesn't support any of the parameters then it will be set to zero.
+	 *
+	 * @param Accelerometer	(out) Acceleration reading in m/s^2.
+	 * @param Gyro			(out) Rotation rate in rad/s.
+	 * @param Magnetometer	(out) Magnetic field in Gauss.
+	 * @param Temperature	(out) Temperature of the sensor in degrees Celsius.
+	 * @param TimeInSeconds	(out) Time when the reported IMU reading took place, in seconds.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
+	static void GetRawSensorData(FVector& Accelerometer, FVector& Gyro, FVector& Magnetometer, float& Temperature, float& TimeInSeconds);
+
 };

@@ -327,6 +327,23 @@ public:
 	 */
 	virtual void RecordAnalytics() {}
 
+	/* Raw sensor data structure. */
+	struct SensorData
+	{
+		FVector Accelerometer;	// Acceleration reading in m/s^2.
+		FVector Gyro;			// Rotation rate in rad/s.
+		FVector Magnetometer;   // Magnetic field in Gauss.
+		float Temperature;		// Temperature of the sensor in degrees Celsius.
+		float TimeInSeconds;	// Time when the reported IMU reading took place, in seconds.
+	};
+
+	/**
+	 * Reports raw sensor data. If HMD doesn't support any of the parameters then it should be set to zero.
+	 *
+	 * @param OutData	(out) SensorData structure to be filled in.
+	 */
+	virtual void GetRawSensorData(SensorData& OutData) { FMemory::MemSet(OutData, 0); }
+
 private:
 	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */
 	FSlateRect PreFullScreenRect;
