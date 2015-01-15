@@ -18,6 +18,14 @@ boolean bUsePositionForPlayerCamera = false: indicates that this orientation wil
 Vector PositionScale = Vector(1, 1, 1): scale to be applied to position (similar to CameraComponent.Scale); used only if bUsePositionForPlayerCamera == true.
 The boolean params are necessary to calculate (or not) orientation/position corrections on render thread to reduce latency (especially, for position).
 
+Also added GetRawSensorData method to HeadMountedDisplay (blueprint & C++). It returns the following:
+
+* FVector Accelerometer;	// Acceleration reading in m/s^2.
+* FVector Gyro;			// Rotation rate in rad/s.
+* FVector Magnetometer;   // Magnetic field in Gauss.
+* float Temperature;		// Temperature of the sensor in degrees Celsius.
+* float TimeInSeconds;	// Time when the reported IMU reading took place, in seconds.
+
 If you have any suggestions, there is ongoing discussion [here](https://forums.oculus.com/viewtopic.php?p=233266#p233266).
 
 More details to follow, stay tuned!...
