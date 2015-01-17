@@ -147,7 +147,7 @@ bool FGearVR::DoesSupportPositionalTracking() const
 	return false;
 }
 
-bool FGearVR::HasValidTrackingPosition() const
+bool FGearVR::HasValidTrackingPosition()
 {
 	return false;
 }
@@ -177,10 +177,10 @@ void FGearVR::SetInterpupillaryDistance(float NewInterpupillaryDistance)
 	UpdateStereoRenderingParams();
 }
 
-void FGearVR::GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const
+void FGearVR::GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegrees) const
 {
-	OutHFOVInDegrees = FMath::RadiansToDegrees(HFOVInRadians);
-	OutVFOVInDegrees = FMath::RadiansToDegrees(VFOVInRadians);
+	InOutHFOVInDegrees = FMath::RadiansToDegrees(HFOVInRadians);
+	InOutVFOVInDegrees = FMath::RadiansToDegrees(VFOVInRadians);
 }
 
 void FGearVR::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const
@@ -195,7 +195,7 @@ void FGearVR::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOri
 	OutOrientation.Normalize();
 }
 
-void FGearVR::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition)
+void FGearVR::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
 {
 	const ovrSensorState ss = ovrHmd_GetSensorState(OvrHmd, ovr_GetTimeInSeconds() + MotionPredictionInSeconds, true);
 	const ovrPosef& pose = ss.Predicted.Pose;
@@ -237,7 +237,7 @@ void FGearVR::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
 	ViewRotation = FRotator(DeltaControlOrientation * CurHmdOrientation);
 }
 
-void FGearVR::UpdatePlayerCameraRotation(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
+void FGearVR::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
 {
 	ConditionalLocker lock(bUpdateOnRT, &UpdateOnRTLock);
 
@@ -262,9 +262,10 @@ bool FGearVR::IsChromaAbCorrectionEnabled() const
 	return bChromaAbCorrectionEnabled;
 }
 
-ISceneViewExtension* FGearVR::GetViewExtension()
+TSharedPtr<class ISceneViewExtension> FGearVR::GetViewExtension()
 {
-	return this;
+	TSharedPtr<FGearVR> ptr(AsShared());
+	return StaticCastSharedPtr<ISceneViewExtension>(ptr);
 }
 
 bool FGearVR::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
@@ -812,77 +813,16 @@ void FGearVR::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
 }
 
-void FGearVR::PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const
-{
-	if (StereoPass != eSSP_FULL)
-	{
-		int32 SideSizeX = FMath::TruncToInt(InViewport->GetSizeXY().X * 0.5);
-
-		// !AB: temporarily assuming all canvases are at Z = 1.0f and calculating
-		// stereo disparity right here. Stereo disparity should be calculated for each
-		// element separately, considering its actual Z-depth.
-		const float Z = 1.0f;
-		float Disparity = Z * HudOffset + Z * CanvasCenterOffset;
-		if (StereoPass == eSSP_RIGHT_EYE)
-			Disparity = -Disparity;
-
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = SideSizeX;
-			InCanvasObject->SizeY = InViewport->GetSizeXY().Y;
-			InCanvasObject->SetView(NULL);
-			InCanvasObject->Update();
-		}
-
-		float ScaleFactor = 1.0f;
-		FScaleMatrix m(ScaleFactor);
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(
-			FVector(((StereoPass == eSSP_RIGHT_EYE) ? SideSizeX : 0) + Disparity, 0, 0))*m);
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
-void FGearVR::PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const
-{
-	if (StereoPass != eSSP_FULL)
-	{
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = InView->ViewRect.Width();
-			InCanvasObject->SizeY = InView->ViewRect.Height();
-			InCanvasObject->SetView(InView);
-			InCanvasObject->Update();
-		}
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(FVector(InView->ViewRect.Min.X, InView->ViewRect.Min.Y, 0)));
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
-
 //---------------------------------------------------
 // GearVR ISceneViewExtension Implementation
 //---------------------------------------------------
 
-void FGearVR::ModifyShowFlags(FEngineShowFlags& ShowFlags)
+void FGearVR::SetupViewFamily(FSceneViewFamily& InViewFamily)
 {
-	ShowFlags.MotionBlur = 0;
-	ShowFlags.HMDDistortion = false;
-	ShowFlags.ScreenPercentage = true;
-	ShowFlags.StereoRendering = IsStereoEnabled();
+	InViewFamily.EngineShowFlags.MotionBlur = 0;
+	InViewFamily.EngineShowFlags.HMDDistortion = false;
+	InViewFamily.EngineShowFlags.ScreenPercentage = true;
+	InViewFamily.EngineShowFlags.StereoRendering = IsStereoEnabled();
 }
 
 void FGearVR::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
@@ -1330,12 +1270,17 @@ FGearVR::FRenderParams::FRenderParams(FGearVR* plugin)
 {
 }
 
-void FGearVR::CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const
+void FGearVR::CalculateRenderTargetSize(const FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) const
 {
 	check(IsInGameThread());
 
 	InOutSizeX = RenderTargetWidth;
 	InOutSizeY = RenderTargetHeight;
+}
+
+void FGearVR::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+{
+	OrthoProjection[0] = OrthoProjection[1] = FMatrix::Identity;
 }
 
 bool FGearVR::NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const
@@ -1354,7 +1299,7 @@ bool FGearVR::NeedReAllocateViewportRenderTarget(const FViewport& Viewport) cons
 	RenderTargetSize.Y = Viewport.GetRenderTargetTexture()->GetSizeY();
 
 	uint32 NewSizeX = InSizeX, NewSizeY = InSizeY;
-	CalculateRenderTargetSize(NewSizeX, NewSizeY);
+	CalculateRenderTargetSize(Viewport, NewSizeX, NewSizeY);
 	if (NewSizeX != RenderTargetSize.X || NewSizeY != RenderTargetSize.Y)
 	{
 		return true;

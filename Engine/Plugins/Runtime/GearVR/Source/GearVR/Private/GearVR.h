@@ -38,7 +38,7 @@ using namespace OVR;
 /**
  * GearVR Head Mounted Display
  */
-class FGearVR : public IHeadMountedDisplay, public ISceneViewExtension
+class FGearVR : public IHeadMountedDisplay, public ISceneViewExtension, public TSharedFromThis<FGearVR>
 {
 public:
 	static void PreInit();
@@ -51,21 +51,20 @@ public:
 	virtual bool GetHMDMonitorInfo(MonitorInfo&) override;
 
 	virtual bool DoesSupportPositionalTracking() const override;
-	virtual bool HasValidTrackingPosition() const override;
+	virtual bool HasValidTrackingPosition() override;
 	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) override;
 	virtual float GetInterpupillaryDistance() const override;
-    //virtual float GetFieldOfViewInRadians() const override;
-	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const override;
+	virtual void GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegrees) const override;
 
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) override;
+    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector& PositionScale = FVector(1.0f, 1.0f, 1.0f)) override;
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
-	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
+	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
 	virtual bool IsChromaAbCorrectionEnabled() const override;
 
-	virtual class ISceneViewExtension* GetViewExtension() override;
+	virtual TSharedPtr<class ISceneViewExtension> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) override;
 
@@ -77,12 +76,10 @@ public:
 										   const float MetersToWorld, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const EStereoscopicPass StereoPassType, const float FOV) const override;
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) override;
-	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override;
-	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override;
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 
 	virtual void UpdateViewport(bool bUseSeparateRenderTarget, const FViewport& Viewport, SViewport* ViewportWidget) override;
-	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const override;
+	virtual void CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) const override;
 	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const override;
 
 	virtual bool ShouldUseSeparateRenderTarget() const override
@@ -90,10 +87,12 @@ public:
 		check(IsInGameThread());
 		return IsStereoEnabled();
 	}
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const override;
 
     /** ISceneViewExtension interface */
-    virtual void ModifyShowFlags(FEngineShowFlags& ShowFlags) override;
+    virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
     virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
 
