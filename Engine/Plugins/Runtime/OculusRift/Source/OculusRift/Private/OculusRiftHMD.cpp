@@ -1834,6 +1834,7 @@ void FOculusRiftHMD::Shutdown()
 	{
 		Plugin->ShutdownRendering();
 	});
+	FlushRenderingCommands();
 #endif // OVR_SDK_RENDERING
 	ReleaseDevice();
 	
