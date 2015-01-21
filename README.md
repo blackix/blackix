@@ -30,16 +30,16 @@ A couple more BP/C++ functions were added. Two of them GetScreenPercentage/SetSc
 The third one - GetUserProfile, it returns a structure with the following members:
 C++:
 
-`	struct UserProfile
-	{
-		FString Name;
-		FString Gender;
-		float PlayerHeight;				// Height of the player, in meters
-		float EyeHeight;				// Height of the player's eyes, in meters
-		float IPD;						// Interpupillary distance, in meters
-		FVector2D EyeToNeckDistance;	// Eye-to-neck distance, X - horizontal, Y - vertical, in meters
-		TMap<FString, FString> ExtraFields; // extra fields in name / value pairs.
-	};`
+`	struct UserProfile`
+`	{`
+`		FString Name;`
+`		FString Gender;`
+`		float PlayerHeight;				// Height of the player, in meters`
+`		float EyeHeight;				// Height of the player's eyes, in meters`
+`		float IPD;						// Interpupillary distance, in meters`
+`		FVector2D EyeToNeckDistance;	// Eye-to-neck distance, X - horizontal, Y - vertical, in meters`
+`		TMap<FString, FString> ExtraFields; // extra fields in name / value pairs.`
+`	};`
 
 Blueprint struct is similar, however, instead of TMap I had to use TArray of FString pairs. The name of BP struct is FHmdUserProfile.
 
