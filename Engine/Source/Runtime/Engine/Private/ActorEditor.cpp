@@ -45,7 +45,7 @@ void AActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 			AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(GetLevel());
 			if (IFA)
 			{
-				TArray<UActorComponent*> Components;
+				TInlineComponentArray<UActorComponent*> Components;
 				GetComponents(Components);
 
 				for ( int32 Idx = 0 ; Idx < Components.Num() ; ++Idx )
@@ -97,7 +97,7 @@ void AActor::PostEditMove(bool bFinished)
 			AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(GetLevel());
 			if (IFA)
 			{
-				TArray<UActorComponent*> Components;
+				TInlineComponentArray<UActorComponent*> Components;
 				GetComponents(Components);
 
 				for ( int32 Idx = 0 ; Idx < Components.Num() ; ++Idx )
@@ -256,7 +256,7 @@ AActor::FActorTransactionAnnotation::FActorTransactionAnnotation(const AActor* A
 		for (USceneComponent* AttachChild : RootComponent->AttachChildren)
 		{
 			AActor* ChildOwner = (AttachChild ? AttachChild->GetOwner() : NULL);
-			if (ChildOwner != Actor)
+			if (ChildOwner && ChildOwner != Actor)
 			{
 				// Save info about actor to reattach
 				FActorRootComponentReconstructionData::FAttachedActorInfo Info;
@@ -294,7 +294,7 @@ TSharedPtr<ITransactionObjectAnnotation> AActor::GetTransactionAnnotation() cons
 void AActor::PreEditUndo()
 {
 	// Since child actor components will rebuild themselves get rid of the Actor before we make changes
-	TArray<UChildActorComponent*> ChildActorComponents;
+	TInlineComponentArray<UChildActorComponent*> ChildActorComponents;
 	GetComponents(ChildActorComponents);
 
 	for (UChildActorComponent* ChildActorComponent : ChildActorComponents)
@@ -711,7 +711,7 @@ void AActor::CheckForErrors()
 	}
 
 	// Route error checking to components.
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for ( int32 ComponentIndex = 0 ; ComponentIndex < Components.Num() ; ++ComponentIndex )

@@ -50,7 +50,7 @@ namespace
 		/** Called before UCS execution has started for the given Actor */
 		void PreProcessComponents(const AActor* InActor)
 		{
-			TArray<UActorComponent*> ActorComponents;
+			TInlineComponentArray<UActorComponent*> ActorComponents;
 			InActor->GetComponents(ActorComponents);
 			for (auto CompIt = ActorComponents.CreateConstIterator(); CompIt; ++CompIt)
 			{
@@ -186,7 +186,7 @@ void AActor::ResetPropertiesForConstruction()
 void AActor::DestroyConstructedComponents()
 {
 	// Remove all existing components
-	TArray<UActorComponent*> PreviouslyAttachedComponents;
+	TInlineComponentArray<UActorComponent*> PreviouslyAttachedComponents;
 	GetComponents(PreviouslyAttachedComponents);
 	for (int32 i = 0; i < PreviouslyAttachedComponents.Num(); i++)
 	{
@@ -224,7 +224,7 @@ void AActor::DestroyConstructedComponents()
 				// Rename component to avoid naming conflicts in the case where we rerun the SCS and name the new components the same way.
 				FName const NewBaseName( *(FString::Printf(TEXT("TRASH_%s"), *Component->GetClass()->GetName())) );
 				FName const NewObjectName = MakeUniqueObjectName(this, GetClass(), NewBaseName);
-				Component->Rename(*NewObjectName.ToString(), this, REN_ForceNoResetLoaders);
+				Component->Rename(*NewObjectName.ToString(), this, REN_ForceNoResetLoaders|REN_DontCreateRedirectors);
 			}
 		}
 	}
@@ -542,7 +542,7 @@ void AActor::ProcessUserConstructionScript()
 void AActor::FinishAndRegisterComponent(UActorComponent* Component)
 {
 	Component->RegisterComponent();
-	SerializedComponents.Add(Component);
+	BlueprintCreatedComponents.Add(Component);
 }
 
 UActorComponent* AActor::CreateComponentFromTemplate(UActorComponent* Template, const FString& InName)
@@ -551,13 +551,13 @@ UActorComponent* AActor::CreateComponentFromTemplate(UActorComponent* Template, 
 	if(Template != NULL)
 	{
 		// Note we aren't copying the the RF_ArchetypeObject flag. Also note the result is non-transactional by default.
-		NewActorComp = (UActorComponent*)StaticDuplicateObject(Template, this, *InName, RF_AllFlags & ~(RF_ArchetypeObject|RF_Transactional|RF_WasLoaded) );
+		NewActorComp = (UActorComponent*)StaticDuplicateObject(Template, this, *InName, RF_AllFlags & ~(RF_ArchetypeObject|RF_Transactional|RF_WasLoaded|RF_Public) );
 		//NewActorComp = ConstructObject<UActorComponent>(Template->GetClass(), this, *InName, RF_NoFlags, Template);
 
 		NewActorComp->bCreatedByConstructionScript = true;
 
 		// Need to do this so component gets saved - Components array is not serialized
-		SerializedComponents.Add(NewActorComp);
+		BlueprintCreatedComponents.Add(NewActorComp);
 	}
 	return NewActorComp;
 }

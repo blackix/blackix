@@ -54,7 +54,7 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("GetComponentsTime"),STAT_GetComponentsTime,STATG
  * @see https://docs.unrealengine.com/latest/INT/Programming/UnrealArchitecture/Actors/
  * @see UActorComponent
  */
-UCLASS(abstract, BlueprintType, Blueprintable, config=Engine)
+UCLASS(BlueprintType, Blueprintable, config=Engine)
 class ENGINE_API AActor : public UObject
 {
 	/**
@@ -687,25 +687,46 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Utilities|Orientation")
 	FVector GetActorScale3D() const;
 
-	/** Returns the distance from this Actor to OtherActor. */
-	UFUNCTION(BlueprintCallable, Category="Utilities|Transformation")
+	/** Deprecated in favor of const/pure versions below. */
+	DEPRECATED(4.8, "AActor::GetDistanceTo will be removed. Use AActor::GetDistanceToActor instead.")
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetDistanceToActor instead"), Category = "Utilities|Transformation")
 	float GetDistanceTo(AActor* OtherActor);
+	
+	DEPRECATED(4.8, "AActor::GetHorizontalDistanceTo will be removed. Use AActor::GetHorizontalDistanceToActor instead.")
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetHorizontalDistanceToActor instead"), Category = "Utilities|Transformation")
+	float GetHorizontalDistanceTo(AActor* OtherActor);
+	
+	DEPRECATED(4.8, "AActor::GetVerticalDistanceTo will be removed. Use AActor::GetVerticalDistanceToActor instead.")
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetVerticalDistanceToActor instead"), Category = "Utilities|Transformation")
+	float GetVerticalDistanceTo(AActor* OtherActor);
+	
+	DEPRECATED(4.8, "AActor::GetDotProductTo will be removed. Use AActor::GetDotProductToActor instead.")
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetDotProductToActor instead"), Category = "Utilities|Transformation")
+	float GetDotProductTo(AActor* OtherActor);
+	
+	DEPRECATED(4.8, "AActor::GetHorizontalDotProductTo will be removed. Use AActor::GetHorizontalDotProductToActor instead.")
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetHorizontalDotProductToActor instead"), Category = "Utilities|Transformation")
+	float GetHorizontalDotProductTo(AActor* OtherActor);
+
+	/** Returns the distance from this Actor to OtherActor. */
+	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
+	float GetDistanceToActor(AActor* OtherActor) const;
 
 	/** Returns the distance from this Actor to OtherActor, ignoring Z. */
-	UFUNCTION(BlueprintCallable, Category="Utilities|Transformation")
-	float GetHorizontalDistanceTo(AActor* OtherActor);
+	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
+	float GetHorizontalDistanceToActor(AActor* OtherActor) const;
 
 	/** Returns the distance from this Actor to OtherActor, ignoring XY. */
-	UFUNCTION(BlueprintCallable, Category="Utilities|Transformation")
-	float GetVerticalDistanceTo(AActor* OtherActor);
+	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
+	float GetVerticalDistanceToActor(AActor* OtherActor) const;
 
 	/** Returns the dot product from this Actor to OtherActor. Returns -2.0 on failure. Returns 0.0 for coincidental actors. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetDotProductTo(AActor* OtherActor);
+	float GetDotProductToActor(AActor* OtherActor) const;
 
 	/** Returns the dot product from this Actor to OtherActor, ignoring Z. Returns -2.0 on failure. Returns 0.0 for coincidental actors. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetHorizontalDotProductTo(AActor* OtherActor);
+	float GetHorizontalDotProductToActor(AActor* OtherActor) const;
 
 
 	/**
@@ -1087,7 +1108,7 @@ public:
 	virtual void ReceiveDestroyed();
 
 	/** Event triggered when the actor is destroyed. */
-	UPROPERTY(BlueprintAssignable)
+	UPROPERTY(BlueprintAssignable, Category="Game")
 	FActorDestroyedSignature OnDestroyed;
 
 
@@ -1096,7 +1117,7 @@ public:
 	virtual void ReceiveEndPlay(EEndPlayReason::Type EndPlayReason);
 
 	/** Event triggered when the actor is being removed from a level. */
-	UPROPERTY(BlueprintAssignable)
+	UPROPERTY(BlueprintAssignable, Category="Game")
 	FActorEndPlaySignature OnEndPlay;
 	
 	// Begin UObject Interface
@@ -1365,9 +1386,6 @@ public:
 
 	// Called before editor paste, true allow import
 	virtual bool ShouldImport(FString* ActorPropString, bool IsMovingLevel) { return true; }
-
-	// For UUnrealEdEngine::UpdatePropertyWindows()
-	virtual bool GetSelectedComponents(TArray<UObject*>& SelectedObjects) { return false; }
 
 	/** Called by InputKey when an unhandled key is pressed with a selected actor */
 	virtual void EditorKeyPressed(FKey Key, EInputEvent Event) {}
@@ -2121,8 +2139,17 @@ public:
 		return (T*)FindComponentByClass(T::StaticClass());
 	}
 
-	template<class T>
-	void GetComponents(TArray<T*>& OutComponents) const
+	/**
+	 * Get all components derived from class 'T' and fill in the OutComponents array with the result.
+	 * It's recommended to use TArrays with a TInlineAllocator to potentially avoid memory allocation costs.
+	 * TInlineComponentArray is defined to make this easier, for example:
+	 * {
+	 * 	   TInlineComponentArray<UPrimitiveComponent*> PrimComponents;
+	 *     Actor->GetComponents(PrimComponents);
+	 * }
+	 */
+	template<class T, class AllocatorType>
+	void GetComponents(TArray<T*, AllocatorType>& OutComponents) const
 	{
 		static_assert(CanConvertPointerFromTo<T, UActorComponent>::Result, "'T' template parameter to GetComponents must be derived from ActorComponent");
 
@@ -2140,8 +2167,9 @@ public:
 		}
 	}
 
-	// UActorComponent specialization to avoid unnecessary casts
-	void GetComponents(TArray<UActorComponent*>& OutComponents) const
+	/** UActorComponent specialization of GetComponents() to avoid unnecessary casts. */
+	template<class AllocatorType>
+	void GetComponents(TArray<UActorComponent*, AllocatorType>& OutComponents) const
 	{
 		SCOPE_CYCLE_COUNTER(STAT_GetComponentsTime);
 
@@ -2154,6 +2182,13 @@ public:
 				OutComponents.Add(Component);
 			}
 		}
+	}
+
+	// Get a direct reference to the Components array rather than a copy
+	// with the null pointers removed
+	const TArray<UActorComponent*>& GetComponents() const
+	{
+		return OwnedComponents;
 	}
 
 	/** Puts a component in to the OwnedComponents array of the Actor.
@@ -2201,9 +2236,13 @@ private:
 
 public:
 
-	/** Array of ActorComponents that is actually serialized per-instance. */
+	/** Array of ActorComponents that are created by blueprints and serialized per-instance. */
 	UPROPERTY(TextExportTransient, NonTransactional)
-	TArray<UActorComponent*> SerializedComponents;
+	TArray<UActorComponent*> BlueprintCreatedComponents;
+
+	/** Array of ActorComponents that have been added by the user on a per-instance basis. */
+	UPROPERTY()
+	TArray<UActorComponent*> InstanceComponents;
 
 public:
 	//=============================================================================
@@ -2307,5 +2346,12 @@ FORCEINLINE FVector AActor::GetSimpleCollisionCylinderExtent() const
 	bool SetActorLocationAndRotation(FVector NewLocation, FRotator NewRotation, bool bSweep=false, FHitResult* OutSweepHitResult=nullptr) { return Super::SetActorLocationAndRotation(NewLocation, NewRotation, bSweep, OutSweepHitResult); } \
 	virtual bool TeleportTo( const FVector& DestLocation, const FRotator& DestRotation, bool bIsATest, bool bNoCheck ) override { return Super::TeleportTo(DestLocation, DestRotation, bIsATest, bNoCheck); } \
 	virtual FVector GetVelocity() const override { return Super::GetVelocity(); } \
-	float GetDistanceTo(AActor* OtherActor) { return Super::GetDistanceTo(OtherActor); }
+	float GetHorizontalDistanceToActor(AActor* OtherActor)  const { return Super::GetHorizontalDistanceToActor(OtherActor); } \
+	float GetVerticalDistanceToActor(AActor* OtherActor)  const { return Super::GetVerticalDistanceToActor(OtherActor); } \
+	float GetDotProductToActor(AActor* OtherActor) const { return Super::GetDotProductToActor(OtherActor); } \
+	float GetHorizontalDotProductToActor(AActor* OtherActor) const { return Super::GetHorizontalDotProductToActor(OtherActor); } \
+	float GetDistanceToActor(AActor* OtherActor) const { return Super::GetDistanceToActor(OtherActor); }
+
+
+
 

@@ -23,6 +23,7 @@
 #include "EdGraph/EdGraphNode_Documentation.h"
 #include "Engine/DynamicBlueprintBinding.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Engine/InheritableComponentHandler.h"
 
 static bool bDebugPropertyPropagation = false;
 
@@ -257,6 +258,14 @@ void FKismetCompilerContext::SaveSubObjectsFromCleanAndSanitizeClass(FSubobjectC
 		{
 			SubObjectsToSave.AddObject(Curve);
 		}
+	}
+
+	if (Blueprint->InheritableComponentHandler)
+	{
+		SubObjectsToSave.AddObject(Blueprint->InheritableComponentHandler);
+		TArray<UActorComponent*> AllTemplates;
+		Blueprint->InheritableComponentHandler->GetAllTemplates(AllTemplates);
+		SubObjectsToSave.AddObjects(AllTemplates);
 	}
 }
 
@@ -902,7 +911,7 @@ void FKismetCompilerContext::CheckConnectionResponse(const FPinConnectionRespons
 {
 	if (!Response.CanSafeConnect())
 	{
-		MessageLog.Error(*FString::Printf(*LOCTEXT("FailedBuildingConnection_Error", "COMPILER ERROR: failed building connection with '%s' at @@").ToString(), *Response.Message), Node);
+		MessageLog.Error(*FString::Printf(*LOCTEXT("FailedBuildingConnection_Error", "COMPILER ERROR: failed building connection with '%s' at @@").ToString(), *Response.Message.ToString()), Node);
 	}
 }
 
@@ -1752,6 +1761,11 @@ void FKismetCompilerContext::FinishCompilingClass(UClass* Class)
 				Property->RepNotifyFunc = NAME_None;
 			}
 		}
+		if( Property->HasAnyPropertyFlags( CPF_Config ))
+		{
+			// If we have properties that are set from the config, then the class needs to also have CLASS_Config flags
+			Class->ClassFlags |= CLASS_Config;
+		}
 	}
 
 	// Set class metadata as needed
@@ -1767,10 +1781,12 @@ void FKismetCompilerContext::FinishCompilingClass(UClass* Class)
 		BPGClass->ComponentTemplates.Empty();
 		BPGClass->Timelines.Empty();
 		BPGClass->SimpleConstructionScript = NULL;
+		BPGClass->InheritableComponentHandler = NULL;
 
 		BPGClass->ComponentTemplates = Blueprint->ComponentTemplates;
 		BPGClass->Timelines = Blueprint->Timelines;
 		BPGClass->SimpleConstructionScript = Blueprint->SimpleConstructionScript;
+		BPGClass->InheritableComponentHandler = Blueprint->InheritableComponentHandler;
 	}
 
 	//@TODO: Not sure if doing this again is actually necessary
@@ -3261,6 +3277,15 @@ void FKismetCompilerContext::Compile()
 			continue;
 		}
 		++TimelineIndex;
+	}
+
+	if (CompileOptions.CompileType == EKismetCompileType::Full)
+	{
+		auto InheritableComponentHandler = Blueprint->GetInheritableComponentHandler(false);
+		if (InheritableComponentHandler)
+		{
+			InheritableComponentHandler->ValidateTemplates();
+		}
 	}
 
 	CleanAndSanitizeClass(TargetClass, OldCDO);

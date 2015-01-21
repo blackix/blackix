@@ -616,7 +616,7 @@ UWidget* UUserWidget::GetRootWidget() const
 	return nullptr;
 }
 
-void UUserWidget::AddToViewport()
+void UUserWidget::AddToViewport(int32 ZOrder)
 {
 	if ( !FullScreenWidget.IsValid() )
 	{
@@ -631,7 +631,7 @@ void UUserWidget::AddToViewport()
 		{
 			if ( UGameViewportClient* ViewportClient = World->GetGameViewport() )
 			{
-				ViewportClient->AddViewportWidgetContent(RootWidget, 10);
+				ViewportClient->AddViewportWidgetContent(RootWidget, 10 + ZOrder);
 			}
 		}
 	}
@@ -688,6 +688,14 @@ ULocalPlayer* UUserWidget::GetOwningLocalPlayer() const
 {
 	APlayerController* PC = PlayerContext.IsValid() ? PlayerContext.GetPlayerController() : nullptr;
 	return PC ? Cast<ULocalPlayer>(PC->Player) : nullptr;
+}
+
+void UUserWidget::SetOwningLocalPlayer(ULocalPlayer* LocalPlayer)
+{
+	if ( LocalPlayer )
+	{
+		PlayerContext = FLocalPlayerContext(LocalPlayer);
+	}
 }
 
 APlayerController* UUserWidget::GetOwningPlayer() const

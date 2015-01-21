@@ -38,13 +38,15 @@ public:
 	/** Options for ShowDetails */
 	struct FShowDetailsOptions
 	{
-		FString ForcedTitle;
+		FText ForcedTitle;
 		bool bForceRefresh;
+		bool bShowComponents;
 		bool bHideFilterArea;
 
-		FShowDetailsOptions(const FString& InForcedTitle = FString(), bool bInForceRefresh = false)
+		FShowDetailsOptions(const FText& InForcedTitle = FText::GetEmpty(), bool bInForceRefresh = false)
 			:ForcedTitle(InForcedTitle)
 			,bForceRefresh(bInForceRefresh)
+			,bShowComponents(true)
 			,bHideFilterArea(false)
 		{}
 	};
@@ -63,6 +65,9 @@ public:
 
 	TSharedPtr<class IDetailsView> GetPropertyView() const { return PropertyView; }
 
+	void SetOwnerTab(TSharedRef<SDockTab> Tab);
+	TSharedPtr<SDockTab> GetOwnerTab() const;
+
 protected:
 	/** Update the inspector window to show information on the supplied objects */
 	void UpdateFromObjects(const TArray<UObject*>& PropertyObjects, struct FKismetSelectionInfo& SelectionInfo, const FShowDetailsOptions& Options);
@@ -73,11 +78,17 @@ protected:
 	/** Pointer back to the kismet 2 tool that owns us */
 	TWeakPtr<FBlueprintEditor> Kismet2Ptr;
 
+	/** The tab that owns this details view. */
+	TWeakPtr<SDockTab> OwnerTab;
+
 	/** String used as the title above the property window */
-	FString PropertyViewTitle;
+	FText PropertyViewTitle;
 
 	/** Should we currently show the property view */
 	bool bShowInspectorPropertyView;
+
+	/** Should we currently show components */
+	bool bShowComponents;
 
 	/** State of CheckBox representing whether to show only the public variables*/
 	ECheckBoxState	PublicViewState;
@@ -122,7 +133,7 @@ protected:
 	/**
 	 * Generates the text for the title in the contextual editing widget
 	 */
-	FString GetContextualEditingWidgetTitle() const;
+	FText GetContextualEditingWidgetTitle() const;
 
 	ECheckBoxState GetPublicViewCheckboxState() const;
 	void SetPublicViewCheckboxState(ECheckBoxState InIsChecked);

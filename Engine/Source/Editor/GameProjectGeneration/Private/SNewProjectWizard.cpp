@@ -44,9 +44,10 @@ struct FTemplateItem
 
 	FString		ClassTypes;
 	FString		AssetTypes;
-	FTemplateItem(FText InName, FText InDescription, bool bInGenerateCode, FName InType, FString InSortKey, FString InProjectFile, TSharedPtr<FSlateBrush> InThumbnail, TSharedPtr<FSlateBrush> InPreviewImage,FString InClassTypes, FString InAssetTypes)
+	bool		bHasFeaturePack;
+	FTemplateItem(FText InName, FText InDescription, bool bInGenerateCode, FName InType, FString InSortKey, FString InProjectFile, TSharedPtr<FSlateBrush> InThumbnail, TSharedPtr<FSlateBrush> InPreviewImage,FString InClassTypes, FString InAssetTypes, bool InHasFeaturePack)
 		: Name(InName), Description(InDescription), bGenerateCode(bInGenerateCode), Type(InType), SortKey(MoveTemp(InSortKey)), ProjectFile(MoveTemp(InProjectFile)), Thumbnail(InThumbnail), PreviewImage(InPreviewImage)
-		, ClassTypes(InClassTypes), AssetTypes(InAssetTypes)
+		, ClassTypes(InClassTypes), AssetTypes(InAssetTypes), bHasFeaturePack(InHasFeaturePack)
 	{}
 };
 
@@ -253,8 +254,20 @@ public:
 					.WidthOverride(ThumbnailSize)
 					.HeightOverride(ThumbnailSize)
 					[
-						SNew(SImage)
-						.Image(this, &STemplateTile::GetThumbnail)
+						SNew(SOverlay)
+						+SOverlay::Slot()
+						[
+							SNew(SImage)
+							.Image(this, &STemplateTile::GetThumbnail)
+						]
+						+ SOverlay::Slot()
+						.HAlign(HAlign_Right)
+						.VAlign(VAlign_Bottom)
+						[
+							SNew(SImage)
+							.Visibility(this, &STemplateTile::GetHasFeaturePackVisibility)
+							.Image(FEditorStyle::GetBrush("GameProjectDialog.FeaturePackThumbnail"))
+						]
 					]
 				]
 
@@ -288,7 +301,18 @@ private:
 		}
 		return FEditorStyle::GetBrush("GameProjectDialog.DefaultGameThumbnail.Small");
 	}
-
+	
+	/** Returns visible if this item has an equivalent feature pack available */
+	EVisibility GetHasFeaturePackVisibility() const
+	{
+		auto ItemPtr = Item.Pin();
+		EVisibility Vis = EVisibility::Hidden;
+		if (ItemPtr.IsValid() )
+		{
+			Vis = ItemPtr->bHasFeaturePack == true ? EVisibility::Visible : EVisibility::Collapsed;
+		}
+		return Vis;
+	}
 };
 
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
@@ -555,7 +579,7 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 								.Padding(FMargin(0, 0, 0, 15.f))
 								[
 									SNew(STextBlock)
-									.Text(LOCTEXT("ProjectSettingsDescription", "Next, choose some settings for your project. Don't worry, you can choose later or change these at any time in [Project Settings - Target Hardware]:"))
+									.Text(LOCTEXT("ProjectSettingsDescription", "Next, choose some settings for your project. Don't worry, you can choose later or change these at any time in [Project Settings - Target Hardware]\nItems that are marked with an FP icon are availabe as a feature pack and the components of these can be added to a project at any time\nNote also that you can add the starter content after you have created your project."))
 									.ToolTip(IDocumentation::Get()->CreateToolTip(LOCTEXT("HardwareTargetTooltip", "These settings will choose good defaults for a number of other settings in the project such as post-processing flags and touch input emulation using the mouse."), NULL, TEXT("Shared/Editor/NewProjectWizard"), TEXT("TargetHardware")))
 								]
 
@@ -661,7 +685,16 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 				.Padding( UniformPadding / 2 )
 				[
 					SNew(SHorizontalBox)
-										
+						
+					+ SHorizontalBox::Slot()
+					.VAlign(VAlign_Center)
+					.Padding(2.f)
+					.AutoWidth()
+					[
+						SNew(SImage)
+						.Image(FEditorStyle::GetBrush("MessageLog.Warning"))
+					]
+
 					+SHorizontalBox::Slot()
 					.VAlign(VAlign_Center)
 					.FillWidth(1.0f)
@@ -671,15 +704,14 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 						.TextStyle(FEditorStyle::Get(), TEXT("GameProjectDialog.ErrorLabelFont"))
 					]
 
-					// A link to a platform-specific IDE, only shown when a compiler is not available
+					// Button/link to the suggested IDE
 					+SHorizontalBox::Slot()
 					.VAlign(VAlign_Center)
+					.HAlign(HAlign_Center)
 					.AutoWidth()
+					.Padding(5.f, 0.f)
 					[
-						SNew(SHyperlink)
-						.Text(FText::Format(LOCTEXT("IDEDownloadLinkText", "Download {0}"), FSourceCodeNavigation::GetSuggestedSourceCodeIDE()))
-						.OnNavigate(this, &SNewProjectWizard::OnDownloadIDEClicked, FSourceCodeNavigation::GetSuggestedSourceCodeIDEDownloadURL())
-						.Visibility(this, &SNewProjectWizard::GetGlobalErrorLabelIDELinkVisibility)
+						SNew(SGetSuggestedIDEWidget)
 					]
 									
 					// A button to close the persistent global error text
@@ -712,10 +744,19 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 				.Padding(UniformPadding / 2)
 				[
 					SNew(SHorizontalBox)
-										
+					
+					+ SHorizontalBox::Slot()
+					.VAlign(VAlign_Center)
+					.Padding(2.f)
+					.AutoWidth()
+					[
+						SNew(SImage)
+						.Image(FEditorStyle::GetBrush("MessageLog.Warning"))
+					]
+
 					+SHorizontalBox::Slot()
 					.VAlign(VAlign_Center)
-					.FillWidth(1.0f)
+					.AutoWidth()
 					[
 						SNew(STextBlock)
 						.AutoWrapText(true)
@@ -852,9 +893,9 @@ TSharedPtr<FTemplateItem> SNewProjectWizard::GetSelectedTemplateItem() const
 	return NULL;
 }
 
-FString SNewProjectWizard::GetSelectedTemplateClassTypes() const
+FText SNewProjectWizard::GetSelectedTemplateClassTypes() const
 {
-	return GetSelectedTemplateProperty<FString>(&FTemplateItem::ClassTypes);
+	return FText::FromString(GetSelectedTemplateProperty<FString>(&FTemplateItem::ClassTypes));
 }
 
 EVisibility SNewProjectWizard::GetSelectedTemplateClassVisibility() const
@@ -862,9 +903,9 @@ EVisibility SNewProjectWizard::GetSelectedTemplateClassVisibility() const
 	return GetSelectedTemplateProperty<FString>(&FTemplateItem::ClassTypes).IsEmpty() == false? EVisibility::Visible : EVisibility::Collapsed;
 }
 
-FString SNewProjectWizard::GetSelectedTemplateAssetTypes() const
+FText SNewProjectWizard::GetSelectedTemplateAssetTypes() const
 {
-	return GetSelectedTemplateProperty<FString>(&FTemplateItem::AssetTypes);
+	return FText::FromString(GetSelectedTemplateProperty<FString>(&FTemplateItem::AssetTypes));
 }
 
 EVisibility SNewProjectWizard::GetSelectedTemplateAssetVisibility() const
@@ -1009,13 +1050,6 @@ FReply SNewProjectWizard::HandleBrowseButtonClicked()
 	return FReply::Handled();
 }
 
-
-void SNewProjectWizard::OnDownloadIDEClicked(FString URL)
-{
-	FPlatformProcess::LaunchURL( *URL, NULL, NULL );
-}
-
-
 void SNewProjectWizard::HandleTemplateListViewDoubleClick( TSharedPtr<FTemplateItem> TemplateItem )
 {
 	// Advance to the name/location page
@@ -1066,13 +1100,6 @@ EVisibility SNewProjectWizard::GetGlobalErrorLabelCloseButtonVisibility() const
 {
 	return PersistentGlobalErrorLabelText.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
 }
-
-
-EVisibility SNewProjectWizard::GetGlobalErrorLabelIDELinkVisibility() const
-{
-	return (IsCompilerRequired() && !FSourceCodeNavigation::IsCompilerAvailable()) ? EVisibility::Visible : EVisibility::Collapsed;
-}
-
 
 FText SNewProjectWizard::GetGlobalErrorLabelText() const
 {
@@ -1129,7 +1156,8 @@ void SNewProjectWizard::FindTemplateProjects()
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectThumbnail") ) ),
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectPreview") ) ),
 		TEXT(""),		// No class types
-		TEXT("")		// No asset types
+		TEXT(""),		// No asset types,
+		false			// No equivalent feature pack
 		)) );
 
 	Templates.FindOrAdd(FTemplateCategory::CodeCategoryName).Add(MakeShareable(new FTemplateItem(
@@ -1141,7 +1169,8 @@ void SNewProjectWizard::FindTemplateProjects()
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BasicCodeThumbnail") ) ),
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectPreview") ) ),
 		TEXT(""),		// No class types
-		TEXT("")		// No asset types
+		TEXT(""),		// No asset types
+		false			// No equivalent feature pack
 		)) );
 
 	// Now discover and all data driven templates
@@ -1200,6 +1229,7 @@ void SNewProjectWizard::FindTemplateProjects()
 					FText TemplateDescription = TemplateDefs->GetLocalizedDescription();
 					FString ClassTypes = TemplateDefs->ClassTypes;
 					FString AssetTypes = TemplateDefs->AssetTypes;
+					bool bHasFeaturePack = TemplateDefs->bHasFeaturePack;
 
 					// If no template name was specified for the current culture, just use the project name
 					if ( TemplateName.IsEmpty() )
@@ -1254,7 +1284,8 @@ void SNewProjectWizard::FindTemplateProjects()
 						ThumbnailBrush,
 						PreviewBrush,
 						ClassTypes,
-						AssetTypes
+						AssetTypes,
+						bHasFeaturePack
 					)));
 				}
 			}
@@ -1462,10 +1493,25 @@ void SNewProjectWizard::CreateAndOpenProject( )
 			// Prevent periodic validity checks. This is to prevent a brief error message about the project already existing while you are exiting.
 			bPreventPeriodicValidityChecksUntilNextChange = true;
 
-			// If it's a code project, compile the binaries first.
-			if(!GetSelectedTemplateItem()->bGenerateCode || GameProjectUtils::BuildCodeProject(ProjectFile))
+			// Rocket already has the engine compiled, so we can try to build and open a new project immediately. Non-Rocket might require building
+			// the engine (especially the case when binaries came from P4), so open the IDE instead.
+			if(FRocketSupport::IsRocket())
 			{
-				OpenProject( ProjectFile );
+				if(!GetSelectedTemplateItem()->bGenerateCode || GameProjectUtils::BuildCodeProject(ProjectFile))
+				{
+					OpenProject(ProjectFile);
+				}
+			}
+			else
+			{
+				if(GetSelectedTemplateItem()->bGenerateCode)
+				{
+					OpenCodeIDE(ProjectFile);
+				}
+				else
+				{
+					OpenProject(ProjectFile);
+				}
 			}
 		}
 	}

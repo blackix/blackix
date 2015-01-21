@@ -378,7 +378,7 @@ TSharedRef< SWidget > SPlacementModeTools::CreateStandardPanel()
 			SNew( SBox )
 			.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("PMVisual")))
 			[
-				CreatePlacementGroupTab( (int32)EPlacementTab::Visual, NSLOCTEXT( "PlacementMode", "Visual", "Visual" ), false )
+				CreatePlacementGroupTab( (int32)EPlacementTab::Visual, NSLOCTEXT( "PlacementMode", "VisualEffects", "Visual Effects" ), false )
 			]
 		]
 
@@ -464,7 +464,7 @@ TSharedRef< SWidget > SPlacementModeTools::CreateStandardPanel()
 					]
 				]
 
-				// Visual
+				// Visual Effects
 				+ SWidgetSwitcher::Slot()
 				[
 					SNew( SScrollBox )
@@ -666,53 +666,53 @@ TSharedRef< SWidget > SPlacementModeTools::BuildVisualWidget()
 
 TSharedRef< SWidget > SPlacementModeTools::BuildBasicWidget()
 {
-	return SNew( SVerticalBox )
+	TSharedRef<SVerticalBox> VerticalBox = SNew( SVerticalBox )
 
 	// Basics
-	+ SVerticalBox::Slot()
+	
+	+SVerticalBox::Slot()
 	.AutoHeight()
 	[
-		BuildDraggableAssetWidget( UActorFactoryCameraActor::StaticClass() )
+		BuildDraggableAssetWidget(UActorFactoryPointLight::StaticClass())
 	]
-
 	+ SVerticalBox::Slot()
 	.AutoHeight()
 	[
 		BuildDraggableAssetWidget( UActorFactoryPlayerStart::StaticClass() )
 	]
-
-	+ SVerticalBox::Slot()
-	.AutoHeight()
-	[
-		BuildDraggableAssetWidget(UActorFactoryPointLight::StaticClass())
-	]
-
-
-	// Triggers
 	+ SVerticalBox::Slot()
 	.AutoHeight()
 	[
 		BuildDraggableAssetWidget( UActorFactoryTriggerBox::StaticClass() )
 	]
-
 	+ SVerticalBox::Slot()
 	.AutoHeight()
 	[
 		BuildDraggableAssetWidget( UActorFactoryTriggerSphere::StaticClass() )
-	]
-
-	+ SVerticalBox::Slot()
-	.AutoHeight()
-	[
-		BuildDraggableAssetWidget( UActorFactoryTriggerCapsule::StaticClass() )
-	]
-
-
-	+ SVerticalBox::Slot()
-	.AutoHeight()
-	[
-		BuildDraggableAssetWidget( UActorFactoryTargetPoint::StaticClass() )
 	];
+
+	if( GetDefault<UEditorExperimentalSettings>()->bInWorldBPEditing )
+	{
+		VerticalBox->InsertSlot(0)
+		.AutoHeight()
+		[
+			BuildDraggableAssetWidget(UActorFactoryEmptyActor::StaticClass())
+		];
+
+		VerticalBox->InsertSlot(1)
+		.AutoHeight()
+		[
+			BuildDraggableAssetWidget(UActorFactoryCharacter::StaticClass())
+		];
+
+		VerticalBox->InsertSlot(2)
+		.AutoHeight()
+		[
+			BuildDraggableAssetWidget(UActorFactoryPawn::StaticClass())
+		];
+	}
+
+	return VerticalBox;
 }
 
 void SPlacementModeTools::UpdateRecentlyPlacedAssets( const TArray< FActorPlacementInfo >& RecentlyPlaced )

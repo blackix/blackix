@@ -1993,15 +1993,14 @@ void FOculusRiftHMD::Startup()
 		Settings.Flags.bHeadTrackingEnforced = true;
 	}
 
-	bool forced = true;
+	bool bForced = FParse::Param(FCommandLine::Get(), TEXT("forcedrift"));
 	bool bInitialized = false;
-	if (!FParse::Param(FCommandLine::Get(), TEXT("forcedrift")))
+	if (!bForced)
 	{
 		bInitialized = InitDevice();
-		forced = false;
 	}
 
-	if (!forced && !bInitialized)
+	if (!bInitialized && !bForced)
 	{
 		ovr_Shutdown();
 		Settings.Flags.InitStatus = 0;
@@ -2028,7 +2027,7 @@ void FOculusRiftHMD::Startup()
 #endif
 #endif // #ifdef OVR_SDK_RENDERING
 
-	if (forced || Hmd)
+	if (bForced || Hmd)
 	{
 		Settings.Flags.InitStatus |= FSettings::eInitialized;
 

@@ -8,6 +8,7 @@
 #endif
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Engine/InheritableComponentHandler.h"
 
 //////////////////////////////////////////////////////////////////////////
 // USCS_Node
@@ -30,8 +31,25 @@ UActorComponent* USCS_Node::ExecuteNodeOnActor(AActor* Actor, USceneComponent* P
 	check(Actor != nullptr);
 	check((ParentComponent != nullptr && !ParentComponent->IsPendingKill()) || (RootTransform != nullptr)); // must specify either a parent component or a world transform
 
+	UActorComponent* OverridenComponentTemplate = nullptr;
+	static const FBoolConfigValueHelper EnableInheritableComponents(TEXT("Kismet"), TEXT("bEnableInheritableComponents"), GEngineIni);
+	if (EnableInheritableComponents)
+	{
+		const FComponentKey ComponentKey(this);
+		auto ActualBPGC = Cast<UBlueprintGeneratedClass>(Actor->GetClass());
+		while (!OverridenComponentTemplate && ActualBPGC)
+		{
+			if (ActualBPGC->InheritableComponentHandler)
+			{
+				OverridenComponentTemplate = ActualBPGC->InheritableComponentHandler->GetOverridenComponentTemplate(ComponentKey);
+			}
+			ActualBPGC = Cast<UBlueprintGeneratedClass>(ActualBPGC->GetSuperClass());
+		}
+	}
+	UActorComponent* ActualComponentTemplate = OverridenComponentTemplate ? OverridenComponentTemplate : ComponentTemplate;
+
 	// Create a new component instance based on the template
-	UActorComponent* NewActorComp = Actor->CreateComponentFromTemplate(ComponentTemplate, VariableName.ToString());
+	UActorComponent* NewActorComp = Actor->CreateComponentFromTemplate(ActualComponentTemplate, VariableName.ToString());
 	if(NewActorComp != nullptr)
 	{
 		// SCS created components are net addressable
@@ -317,7 +335,7 @@ USceneComponent* USCS_Node::GetParentComponentTemplate(UBlueprint* InBlueprint) 
 			if(CDO != NULL)
 			{
 				// Find the component template in the CDO that matches the specified name
-				TArray<USceneComponent*> Components;
+				TInlineComponentArray<USceneComponent*> Components;
 				CDO->GetComponents(Components);
 
 				for(auto CompIt = Components.CreateIterator(); CompIt; ++CompIt)
@@ -365,23 +383,6 @@ USceneComponent* USCS_Node::GetParentComponentTemplate(UBlueprint* InBlueprint) 
 	}
 
 	return ParentComponentTemplate;
-}
-
-bool USCS_Node::IsValidVariableNameString(const FString& InString)
-{
-	// First test to make sure the string is not empty and does not equate to the DefaultSceneRoot node name
-	bool bIsValid = !InString.IsEmpty() && !InString.Equals(USimpleConstructionScript::DefaultSceneRootVariableName.ToString());
-	if(bIsValid && ComponentTemplate != NULL)
-	{
-		// Next test to make sure the string doesn't conflict with the format that MakeUniqueObjectName() generates
-		FString MakeUniqueObjectNamePrefix = FString::Printf(TEXT("%s_"), *ComponentTemplate->GetClass()->GetName());
-		if(InString.StartsWith(MakeUniqueObjectNamePrefix))
-		{
-			bIsValid = !InString.Replace(*MakeUniqueObjectNamePrefix, TEXT("")).IsNumeric();
-		}
-	}
-
-	return bIsValid;
 }
 
 void USCS_Node::GenerateListOfExistingNames( TArray<FName>& CurrentNames ) const
@@ -458,6 +459,29 @@ FName USCS_Node::GenerateNewComponentName( TArray<FName>& CurrentNames, FName De
 		}
 	}
 	return NewName;
+}
+
+void USCS_Node::PostLoad()
+{
+	Super::PostLoad();
+
+	ValidateGuid();
+}
+
+void USCS_Node::ValidateGuid()
+{
+	// Backward compatibility: node requires a guid. 
+	// The guid for the node should be always the same (event when it's not saved). The guid is created using persistent name.
+	if (!VariableGuid.IsValid())
+	{
+		const FName PersistentVariableName = GetVariableName();
+		if (PersistentVariableName != NAME_None)
+		{
+			const FString NameVariableString = PersistentVariableName.ToString();
+			const uint32 PersistentCrc = FCrc::StrCrc32(*NameVariableString);
+			VariableGuid = FGuid(PersistentCrc, 0, 0, 0);
+		}
+	}
 }
 
 #endif

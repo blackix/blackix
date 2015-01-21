@@ -405,9 +405,11 @@ void RefreshEngineSettings()
 	SystemResolutionSinkCallback();
 }
 
+FConsoleVariableSinkHandle GRefreshEngineSettingsSinkHandle;
+
 ENGINE_API void InitializeRenderingCVarsCaching()
 {
-	IConsoleManager::Get().RegisterConsoleVariableSink(FConsoleCommandDelegate::CreateStatic(&RefreshEngineSettings));
+	GRefreshEngineSettingsSinkHandle = IConsoleManager::Get().RegisterConsoleVariableSink_Handle(FConsoleCommandDelegate::CreateStatic(&RefreshEngineSettings));
 
 	// Initialise this to invalid
 	GCachedScalabilityCVars.MaterialQualityLevel = EMaterialQualityLevel::Num;
@@ -419,7 +421,7 @@ ENGINE_API void InitializeRenderingCVarsCaching()
 
 void ShutdownRenderingCVarsCaching()
 {
-	IConsoleManager::Get().UnregisterConsoleVariableSink(FConsoleCommandDelegate::CreateStatic(&RefreshEngineSettings));
+	IConsoleManager::Get().UnregisterConsoleVariableSink_Handle(GRefreshEngineSettingsSinkHandle);
 }
 
 namespace
@@ -831,7 +833,7 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 			FOnExternalUIChangeDelegate OnExternalUIChangeDelegate;
 			OnExternalUIChangeDelegate.BindUObject(this, &UEngine::OnExternalUIChange);
 
-			ExternalUI->AddOnExternalUIChangeDelegate(OnExternalUIChangeDelegate);
+			ExternalUI->AddOnExternalUIChangeDelegate_Handle(OnExternalUIChangeDelegate);
 		}
 	}
 
@@ -845,7 +847,7 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	// register screenshot capture if we are dumping a movie
 	if(GIsDumpingMovie)
 	{
-		UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &UEngine::HandleScreenshotCaptured);
+		HandleScreenshotCapturedDelegateHandle = UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &UEngine::HandleScreenshotCaptured);
 	}
 #endif
 
@@ -929,7 +931,7 @@ void UEngine::PreExit()
 	FEngineAnalytics::Shutdown();
 
 #if WITH_EDITOR
-	UGameViewportClient::OnScreenshotCaptured().RemoveUObject(this, &UEngine::HandleScreenshotCaptured);
+	UGameViewportClient::OnScreenshotCaptured().Remove(HandleScreenshotCapturedDelegateHandle);
 #endif
 
 	if (ScreenSaverInhibitor)
@@ -7621,7 +7623,9 @@ static inline void CallHandleDisconnectForFailure(UWorld* InWorld, UNetDriver* N
 		ULocalPlayer* const LP = Context.OwningGameInstance->GetFirstGamePlayer();
 		if(ensure(LP))
 		{
-			LP->HandleDisconnect(InWorld, NetDriver);
+			// Use the world on the context instead since InWorld is null, it should be valid. This way we can do a travel
+			// in UEngine::HandleDisconnect if it gets called
+			LP->HandleDisconnect(Context.World(), NetDriver);
 		}
 	}
 	else
@@ -7915,12 +7919,6 @@ void UEngine::HandleDisconnect( UWorld *InWorld, UNetDriver *NetDriver )
 	// If there is a context for this world, setup client travel.
 	if (FWorldContext* WorldContext = GetWorldContextFromWorld(InWorld))
 	{
-		if (InWorld)
-		{
-			// If we have a world, then the failing NetDriver must be the world' net driver
-			check(InWorld->GetNetDriver() == NetDriver);
-		}
-
 		// Remove ?Listen parameter, if it exists
 		WorldContext->LastURL.RemoveOption( TEXT("Listen") );
 		WorldContext->LastURL.RemoveOption( TEXT("LAN") );
@@ -7940,6 +7938,23 @@ void UEngine::HandleDisconnect( UWorld *InWorld, UNetDriver *NetDriver )
 		{
 			NetDriver->Shutdown();
 			NetDriver->LowLevelDestroy();
+
+			// In this case, the world is null and something went wrong, so we should travel back to the default world so that we
+			// can get back to a good state.
+			for (FWorldContext& WorldContext : WorldList)
+			{
+				if (WorldContext.WorldType == EWorldType::Game)
+				{
+					FURL DefaultURL;
+					DefaultURL.LoadURLConfig(TEXT("DefaultPlayer"), GGameIni);
+					const UGameMapsSettings* GameMapsSettings = GetDefault<UGameMapsSettings>();
+					if (GameMapsSettings)
+					{
+						WorldContext.TravelURL = FURL(&DefaultURL, *(GameMapsSettings->GetGameDefaultMap() + GameMapsSettings->LocalMapOptions), TRAVEL_Partial).ToString();
+						WorldContext.TravelType = TRAVEL_Partial;
+					}
+				}
+			}
 		}
 	}
 }
@@ -7963,7 +7978,9 @@ bool UEngine::MakeSureMapNameIsValid(FString& InOutMapName)
 	bool bIsValid = !FPackageName::IsShortPackageName(TestMapName);
 	if (bIsValid)
 	{
-		bIsValid = FPackageName::DoesPackageExist(TestMapName);
+		// If the user starts a multiplayer PIE session with an unsaved map,
+		// DoesPackageExist won't find it, so we have to try to find the package in memory as well.
+		bIsValid = (FindObjectFast<UPackage>(nullptr, FName(*TestMapName)) != nullptr) || FPackageName::DoesPackageExist(TestMapName);
 	}
 	else
 	{
@@ -10144,7 +10161,7 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 	AActor* NewActor = Cast<AActor>(NewObject);
 	if(NewActor != NULL)
 	{
-		TArray<UActorComponent*> Components;
+		TInlineComponentArray<UActorComponent*> Components;
 		NewActor->GetComponents(Components);
 
 		for(int32 i=0; i<Components.Num(); i++)
@@ -10372,7 +10389,7 @@ bool UEngine::ShouldAbsorbAuthorityOnlyEvent()
 			}
 		}
 
-		if (useIt)
+		if (useIt && (Context.World() != nullptr))
 		{
 			return (Context.World()->GetNetMode() ==  NM_Client);
 		}
@@ -10413,7 +10430,7 @@ bool UEngine::ShouldAbsorbCosmeticOnlyEvent()
 			}
 		}
 
-		if (useIt)
+		if (useIt && (Context.World() != nullptr))
 		{
 			return (Context.World()->GetNetMode() == NM_DedicatedServer);
 		}

@@ -554,7 +554,7 @@ void ULevel::PostLoad()
 		if (LevelScriptBlueprint && OuterWorld && LevelScriptBlueprint->GetFName() != OuterWorld->GetFName())
 		{
 			// Use LevelScriptBlueprint->GetOuter() instead of NULL to make sure the generated top level objects are moved appropriately
-			LevelScriptBlueprint->Rename(*OuterWorld->GetName(), LevelScriptBlueprint->GetOuter(), REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);
+			LevelScriptBlueprint->Rename(*OuterWorld->GetName(), LevelScriptBlueprint->GetOuter(), REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional | REN_SkipGeneratedClasses);
 		}
 	}
 #endif
@@ -1628,6 +1628,24 @@ bool ULevel::HasAnyActorsOfType(UClass *SearchType)
 }
 
 #if WITH_EDITOR
+
+TArray<UBlueprint*> ULevel::GetLevelBlueprints() const
+{
+	TArray<UBlueprint*> LevelBlueprints;
+	TArray<UObject*> LevelChildren;
+	GetObjectsWithOuter(this, LevelChildren, false, RF_PendingKill);
+
+	for (UObject* LevelChild : LevelChildren)
+	{
+		UBlueprint* LevelChildBP = Cast<UBlueprint>(LevelChild);
+		if (LevelChildBP)
+		{
+			LevelBlueprints.Add(LevelChildBP);
+		}
+	}
+
+	return LevelBlueprints;
+}
 
 ULevelScriptBlueprint* ULevel::GetLevelScriptBlueprint(bool bDontCreate)
 {

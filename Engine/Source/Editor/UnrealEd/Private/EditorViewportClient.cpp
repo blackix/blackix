@@ -307,6 +307,12 @@ FEditorViewportClient::FEditorViewportClient(FEditorModeTools* InModeTools, FPre
 
 FEditorViewportClient::~FEditorViewportClient()
 {
+	if (bOwnsModeTools)
+	{
+		ModeTools->SetDefaultMode(FBuiltinEditorModes::EM_Default);
+		ModeTools->DeactivateAllModes(); // this also activates the default mode
+	}
+
 	ModeTools->OnEditorModeChanged().RemoveAll(this);
 
 	delete Widget;
@@ -562,7 +568,8 @@ FSceneView* FEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily)
 
 		float MinZ = GetNearClipPlane();
 		float MaxZ = MinZ;
-		float MatrixFOV = ViewFOV * (float)PI / 360.0f;
+		// Avoid zero ViewFOV's which cause divide by zero's in projection matrix
+		float MatrixFOV = FMath::Max(0.001f, ViewFOV) * (float)PI / 360.0f;
 
 		if( bConstrainAspectRatio )
 		{

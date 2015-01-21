@@ -22,7 +22,6 @@
 #include "ActorEditorUtils.h"
 #include "BlueprintEditorUtils.h"
 #include "ComponentTransformDetails.h"
-#include "ComponentsTree.h"
 #include "IPropertyUtilities.h"
 #include "IDocumentation.h"
 #include "Runtime/Engine/Classes/Engine/BrushShape.h"
@@ -128,13 +127,6 @@ void FActorDetails::CustomizeDetails( IDetailLayoutBuilder& DetailLayout )
 		}
 
 		OnExtendActorDetails.Broadcast(DetailLayout, FGetSelectedActors::CreateSP(this, &FActorDetails::GetSelectedActors));
-
-		/*if (!HideCategories.Contains(TEXT("Layers")))
-		{
-			AddLayersCategory(DetailLayout);
-		}*/
-
-		//AddComponentsCategory( DetailLayout );
 	}
 
 	TSharedPtr<IPropertyHandle> PrimaryTickProperty = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(AActor, PrimaryActorTick));
@@ -675,23 +667,6 @@ void FActorDetails::AddBlutilityCategory( IDetailLayoutBuilder& DetailBuilder, c
 	}
 }
 
-void FActorDetails::AddComponentsCategory( IDetailLayoutBuilder& DetailBuilder )
-{
-	AActor* SelectedActor = NULL;
-	const TArray< TWeakObjectPtr<AActor> >& Actors = GetSelectedActors();
-	if(Actors.Num() == 1 && Actors[0].IsValid())
-	{
-		SelectedActor = Actors[0].Get();
-	}
-
-	DetailBuilder.EditCategory( "Components", NSLOCTEXT("ActorDetails", "ComponentsSection", "Components"), ECategoryPriority::Uncommon )
-		.InitiallyCollapsed( true )
-		.AddCustomRow( NSLOCTEXT("ActorDetails", "ComponentsSection", "Components") )
-		[
-			SNew( SComponentsTree, SelectedActor )
-		];
-}
-
 const TArray< TWeakObjectPtr<AActor> >& FActorDetails::GetSelectedActors() const
 {
 	return SelectedActors;
@@ -790,14 +765,14 @@ void FActorDetails::AddUtilityBlueprintRows( IDetailCategoryBuilder& BlueprintCa
 			.WidthOverride( 200 )
 			[
 				SNew( SButton )
-				.ToolTipText( LOCTEXT( "CreateHarvestBlueprint_ToolTip", "Copy the components from the selected actors and create a new Class Blueprint" ) )
+				.ToolTipText( LOCTEXT( "CreateHarvestBlueprint_ToolTip", "Copy the components from the selected actors and create a new Blueprint Class" ) )
 				.HAlign( HAlign_Fill )
 				//.ButtonColorAndOpacity( FLinearColor( 0.2f, 0.4f, 0.6f, 1.0f ) )
 				.OnClicked( FOnClicked::CreateRaw( this, &FActorDetails::OnPickBlueprintPathClicked, true ) )
 				.ContentPadding( 2 )
 				[
 					SNew( STextBlock )
-					.Text( LOCTEXT( "ReplaceWithAmalgamBlueprint", "Convert to Class Blueprint" ) )
+					.Text( LOCTEXT( "ReplaceWithAmalgamBlueprint", "Convert to Blueprint Class" ) )
 					.Font(IDetailLayoutBuilder::GetDetailFont())
 				]
 			]
@@ -830,22 +805,6 @@ void FActorDetails::AddSingleBlueprintRow( IDetailCategoryBuilder& BlueprintCate
 		Description = FText::FromString( InBlueprint->GetDesc() );
 	}
 
-	int NumBlueprintableActors = 0;
-	bool IsBlueprintBased = InBlueprint ? true : false;
-
-	if(!InBlueprint)
-	{
-		for ( TWeakObjectPtr<AActor>& Actor : SelectedActors )
-		{
-			if( FKismetEditorUtilities::CanCreateBlueprintOfClass(Actor->GetClass()))
-			{
-				NumBlueprintableActors++;
-			}
-		}
-	}
-
-	const bool bCanCreateActorBlueprint = ( !IsBlueprintBased && ( NumBlueprintableActors == 1 ) );
-
 	// Set up PathPickerConfig.
 	PathForActorBlueprint = FString("/Game/");
 	FPathPickerConfig PathPickerConfig;
@@ -853,20 +812,24 @@ void FActorDetails::AddSingleBlueprintRow( IDetailCategoryBuilder& BlueprintCate
 	PathPickerConfig.OnPathSelected = FOnPathSelected::CreateRaw(this, &FActorDetails::OnSelectBlueprintPath);
 	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 
+	bool bCanCreateActorBlueprint = false;
+	FString SelectedActorClassName;
 	FText CreateBlueprintToolTip = LOCTEXT("CreateBlueprintSuccess_ToolTip", "Create a Blueprint based on this Actor");
-	if(IsBlueprintBased)
+	if (SelectedActors.Num() == 1)
 	{
-		CreateBlueprintToolTip = LOCTEXT("CreateBlueprintFail_ToolTip", "Cannot create Blueprint using this Actor class");
+		if (FKismetEditorUtilities::CanCreateBlueprintOfClass(SelectedActors[0]->GetClass()))
+		{
+			SelectedActorClassName = SelectedActors[0]->GetClass()->GetName();
+			bCanCreateActorBlueprint = true;
+		}
+		else
+		{
+			CreateBlueprintToolTip = LOCTEXT("CreateBlueprintFail_ToolTip", "Cannot create Blueprint using this Actor class");
+		}
 	}
-	else if(!IsBlueprintBased && NumBlueprintableActors > 1)
+	else
 	{
 		CreateBlueprintToolTip = LOCTEXT("CreateBlueprintFailTooMany_ToolTip", "Cannot create Blueprint, please select only one Actor");
-	}
-
-	FString SelectedActorClassName;
-	if(NumBlueprintableActors == 1)
-	{
-		SelectedActorClassName = SelectedActors[0]->GetClass()->GetName();
 	}
 	
 	FText CurrentBlueprintLong = FText::Format( FText::FromString( TEXT( "{0} {1}" ) ), Name, Description );
@@ -1005,8 +968,6 @@ void FActorDetails::AddSingleBlueprintRow( IDetailCategoryBuilder& BlueprintCate
 		]
 	];
 
-	if(!InBlueprint)
-	{
 		BlueprintCategory.AddCustomRow( LOCTEXT("CreateBlueprintFilterString", "Create Blueprint"), true )
 		.WholeRowContent()
 		.MinDesiredWidth(200)
@@ -1033,7 +994,7 @@ void FActorDetails::AddSingleBlueprintRow( IDetailCategoryBuilder& BlueprintCate
 						.AutoWidth()
 						[
 							SNew(STextBlock)
-							.Text( FText::Format( LOCTEXT("CreateBlueprintFromActor", "Create {0} Blueprint..."), FText::FromString( SelectedActorClassName ) ) )
+							.Text( FText::Format( LOCTEXT("CreateBlueprintFromActor", "Create {0} Blueprint Class..."), FText::FromString( SelectedActorClassName ) ) )
 							.Font(IDetailLayoutBuilder::GetDetailFont())
 						]
 
@@ -1050,7 +1011,6 @@ void FActorDetails::AddSingleBlueprintRow( IDetailCategoryBuilder& BlueprintCate
 			]
 		];
 	}
-}
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
 FReply FActorDetails::OnPickBlueprintPathClicked(bool bHarvest )
@@ -1249,11 +1209,18 @@ bool FActorDetails::PushToBlueprintDefaults_IsEnabled( TWeakObjectPtr<UBlueprint
 			&& Blueprint != NULL
 			&& Actor->GetClass()->ClassGeneratedBy == Blueprint)
 		{
-			AActor* BlueprintCDO = Actor->GetClass()->GetDefaultObject<AActor>();
-			if(BlueprintCDO != NULL)
+			if (Actor->InstanceComponents.Num() > 0)
 			{
-				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
-				bIsEnabled = EditorUtilities::CopyActorProperties(Actor, BlueprintCDO, CopyOptions) > 0;
+				bIsEnabled = true;
+			}
+			else
+			{
+				AActor* BlueprintCDO = Actor->GetClass()->GetDefaultObject<AActor>();
+				if(BlueprintCDO != NULL)
+				{
+					const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
+					bIsEnabled = EditorUtilities::CopyActorProperties(Actor, BlueprintCDO, CopyOptions) > 0;
+				}
 			}
 		}
 	}
@@ -1279,6 +1246,7 @@ FText FActorDetails::PushToBlueprintDefaults_ToolTipText( TWeakObjectPtr<UBluepr
 				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
 				NumChangedProperties += EditorUtilities::CopyActorProperties(Actor, BlueprintCDO, CopyOptions);
 			}
+			NumChangedProperties += Actor->InstanceComponents.Num();
 		}
 	}
 
@@ -1316,9 +1284,16 @@ FReply FActorDetails::PushToBlueprintDefaults_OnClicked( TWeakObjectPtr<UBluepri
 			{
 				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties|EditorUtilities::ECopyOptions::PropagateChangesToArcheypeInstances);
 				NumChangedProperties = EditorUtilities::CopyActorProperties(Actor, BlueprintCDO, CopyOptions);
+				if (Actor->InstanceComponents.Num() > 0)
+				{
+					FKismetEditorUtilities::AddComponentsToBlueprint(Blueprint, Actor->InstanceComponents);
+					NumChangedProperties += Actor->InstanceComponents.Num();
+					Actor->InstanceComponents.Empty();
+				}
 				if(NumChangedProperties > 0)
 				{
 					FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+					FKismetEditorUtilities::CompileBlueprint(Blueprint);
 				}
 			}
 		}
@@ -1373,11 +1348,18 @@ bool FActorDetails::ResetToBlueprintDefaults_IsEnabled( TWeakObjectPtr<UBlueprin
 			&& Blueprint != NULL
 			&& Actor->GetClass()->ClassGeneratedBy == Blueprint)
 		{
-			AActor* BlueprintCDO = Actor->GetClass()->GetDefaultObject<AActor>();
-			if(BlueprintCDO != NULL)
+			if (Actor->InstanceComponents.Num() > 0)
 			{
-				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
-				bIsEnabled = EditorUtilities::CopyActorProperties(BlueprintCDO, Actor, CopyOptions) > 0;
+				bIsEnabled = true;
+			}
+			else
+			{
+				AActor* BlueprintCDO = Actor->GetClass()->GetDefaultObject<AActor>();
+				if(BlueprintCDO != NULL)
+				{
+					const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
+					bIsEnabled = EditorUtilities::CopyActorProperties(BlueprintCDO, Actor, CopyOptions) > 0;
+				}
 			}
 		}
 	}
@@ -1403,6 +1385,7 @@ FText FActorDetails::ResetToBlueprintDefaults_ToolTipText( TWeakObjectPtr<UBluep
 				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::PreviewOnly|EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties);
 				NumChangedProperties += EditorUtilities::CopyActorProperties(BlueprintCDO, Actor, CopyOptions);
 			}
+			NumChangedProperties += Actor->InstanceComponents.Num();
 		}
 	}
 
@@ -1440,6 +1423,15 @@ FReply FActorDetails::ResetToBlueprintDefaults_OnClicked( TWeakObjectPtr<UBluepr
 			{
 				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties|EditorUtilities::ECopyOptions::CallPostEditChangeProperty);
 				NumChangedProperties = EditorUtilities::CopyActorProperties(BlueprintCDO, Actor, CopyOptions);
+			}
+			if (Actor->InstanceComponents.Num() > 0)
+			{
+				TArray<UActorComponent*> InstanceComponents = Actor->InstanceComponents;
+				NumChangedProperties += InstanceComponents.Num();
+				for (UActorComponent* ActorComponent : InstanceComponents)
+				{
+					ActorComponent->DestroyComponent();
+				}
 			}
 		}
 

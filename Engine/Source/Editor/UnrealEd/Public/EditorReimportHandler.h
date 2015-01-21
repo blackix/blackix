@@ -95,6 +95,9 @@ private:
 	/** Reimport handlers registered with this manager */
 	TArray<FReimportHandler*> Handlers;
 
+	/** True when the Handlers array has been modified such that it needs sorting */
+	bool bHandlersNeedSorting;
+
 	/** Delegate to call before the asset is reimported */
 	FPreReimportNotification PreReimport;
 
@@ -166,4 +169,6 @@ public:
 	 *			EReimportResult::Cancelled if the handler was cancelled part-way through re-importing the provided object.
 	 */
 	virtual EReimportResult::Type Reimport( UObject* Obj ) = 0;
+
+	virtual int32 GetPriority() const = 0;
 };

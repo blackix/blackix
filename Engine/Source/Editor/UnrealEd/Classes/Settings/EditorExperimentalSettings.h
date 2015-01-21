@@ -29,6 +29,14 @@ public:
 	UPROPERTY(EditAnywhere, config, Category=Tools, meta=(DisplayName="Editor Utility Blueprints (Blutility)"))
 	bool bEnableEditorUtilityBlueprints;
 
+	/** Enable In World BP Editing (WIP). */
+	UPROPERTY(EditAnywhere, config, Category = Tools, meta = (DisplayName = "In World Blueprint Editing"))
+	bool bInWorldBPEditing;
+
+	/** Enable Single Layout BP Editor. */
+	UPROPERTY(EditAnywhere, config, Category = Tools, meta = ( DisplayName = "Single Layout Blueprint Editor" ))
+	bool bUnifiedBlueprintEditor;
+
 	/** The Messaging Debugger provides a visual utility for debugging the messaging system. */
 	UPROPERTY(EditAnywhere, config, Category=Tools, meta=(DisplayName="Messaging Debugger"))
 	bool bMessagingDebugger;
@@ -76,11 +84,11 @@ public:
 	/** Enables Environment Queries editor */
 	UPROPERTY(EditAnywhere, config, Category = AI, meta = (DisplayName = "Environment Querying System"))
 	bool bEQSEditor;
-
-	/** Enables GetContent button in asset browser */
-	UPROPERTY(EditAnywhere, config, Category = Tools, meta = (DisplayName = "Get Feature Content (Requires content browser reopening)"))
-	bool bGetFeatureContent;
 	
+	/** Enables Git source control plugin */
+	UPROPERTY(EditAnywhere, config, Category = "Source Control", meta = (DisplayName = "Git Source Control plugin (requires editor restart)"))
+	bool bGitSourceControl;
+
 	/**
 	 * Returns an event delegate that is executed when a setting has changed.
 	 *

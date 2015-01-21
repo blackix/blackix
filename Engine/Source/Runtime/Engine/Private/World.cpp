@@ -591,10 +591,13 @@ bool UWorld::PreSaveRoot(const TCHAR* Filename, TArray<FString>& AdditionalPacka
 		}
 	}
 #if WITH_EDITOR
-	// If this level has a level script, rebuild it now to ensure no stale data is stored in the level script actor
-	if( !IsRunningCommandlet() && PersistentLevel->GetLevelScriptBlueprint(true) )
+	// Rebuild all level blueprints now to ensure no stale data is stored on the actors
+	if( !IsRunningCommandlet() )
 	{
-		FKismetEditorUtilities::CompileBlueprint(PersistentLevel->GetLevelScriptBlueprint(true), true, true);
+		for (UBlueprint* Blueprint : PersistentLevel->GetLevelBlueprints())
+		{
+			FKismetEditorUtilities::CompileBlueprint(Blueprint, false, true);
+		}
 	}
 #endif
 
@@ -1244,7 +1247,7 @@ void UWorld::UpdateCullDistanceVolumes()
 		// Establish base line of LD specified cull distances.
 		for( FActorIterator It(this); It; ++It )
 		{
-			TArray<UPrimitiveComponent*> PrimitiveComponents;
+			TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents;
 			It->GetComponents(PrimitiveComponents);
 			for (UPrimitiveComponent* PrimitiveComponent : PrimitiveComponents)
 			{
@@ -2205,7 +2208,7 @@ void UWorld::UpdateLevelStreamingInner(ULevelStreaming* StreamingLevel)
 	// Figure out whether level should be loaded, visible and block on load if it should be loaded but currently isn't.
 	bool bShouldBeLoaded	= bHasVisibilityRequestPending || (!GEngine->bUseBackgroundLevelStreaming && !bShouldForceUnloadStreamingLevels && !StreamingLevel->bIsRequestingUnloadAndRemoval);
 	bool bShouldBeVisible	= bHasVisibilityRequestPending || bShouldForceVisibleStreamingLevels;
-	bool bShouldBlockOnLoad	= StreamingLevel->bShouldBlockOnLoad;
+	bool bShouldBlockOnLoad	= StreamingLevel->bShouldBlockOnLoad || StreamingLevel->ShouldBeAlwaysLoaded();
 
 	// Don't update if the code requested this level object to be unloaded and removed.
 	if(!bShouldForceUnloadStreamingLevels && !StreamingLevel->bIsRequestingUnloadAndRemoval)
@@ -2221,7 +2224,7 @@ void UWorld::UpdateLevelStreamingInner(ULevelStreaming* StreamingLevel)
 	// on purpose as well so the GC code has a chance to execute between consecutive loads of maps.
 	//
 	// NOTE: AllowLevelLoadRequests not an invariant as streaming might affect the result, do NOT pulled out of the loop.
-	bool bAllowLevelLoadRequests =	AllowLevelLoadRequests() || bShouldBlockOnLoad;
+	bool bAllowLevelLoadRequests =	bShouldBlockOnLoad || AllowLevelLoadRequests();
 
 	// Figure out whether there are any levels we haven't collected garbage yet.
 	bool bAreLevelsPendingPurge	=	FLevelStreamingGCHelper::GetNumLevelsPendingPurge() > 0;
@@ -3183,14 +3186,19 @@ void UWorld::RemoveNetworkActor( AActor* Actor )
 	NetworkActors.RemoveSingleSwap( Actor );
 }
 
-void UWorld::AddOnActorSpawnedHandler( const FOnActorSpawned::FDelegate& InHandler )
+FDelegateHandle UWorld::AddOnActorSpawnedHandler( const FOnActorSpawned::FDelegate& InHandler )
 {
-	OnActorSpawned.Add(InHandler);
+	return OnActorSpawned.Add(InHandler);
 }
 
 void UWorld::RemoveOnActorSpawnedHandler( const FOnActorSpawned::FDelegate& InHandler )
 {
-	OnActorSpawned.Remove(InHandler);
+	OnActorSpawned.DEPRECATED_Remove(InHandler);
+}
+
+void UWorld::RemoveOnActorSpawnedHandler( FDelegateHandle InHandle )
+{
+	OnActorSpawned.Remove(InHandle);
 }
 
 ABrush* UWorld::GetBrush() const
@@ -5374,15 +5382,21 @@ void UWorld::ChangeFeatureLevel(ERHIFeatureLevel::Type InFeatureLevel)
             SlowTask.EnterProgressFrame(10.0f);
             if (Scene)
             {
-                PersistentLevel->ReleaseRenderingResources();
+				for (auto* Level : Levels)
+				{
+					Level->ReleaseRenderingResources();
+				}
+
                 Scene->Release();
                 GetRendererModule().RemoveScene(Scene);
-
                 GetRendererModule().AllocateScene(this, bRequiresHitProxies, FXSystem != nullptr, InFeatureLevel );
 
-                PersistentLevel->InitializeRenderingResources();
-                PersistentLevel->PrecomputedVisibilityHandler.UpdateScene(Scene);
-                PersistentLevel->PrecomputedVolumeDistanceField.UpdateScene(Scene);
+				for (auto* Level : Levels)
+				{
+					Level->InitializeRenderingResources();
+					Level->PrecomputedVisibilityHandler.UpdateScene(Scene);
+					Level->PrecomputedVolumeDistanceField.UpdateScene(Scene);
+				}
             }
 
             SlowTask.EnterProgressFrame(10.0f);
@@ -5401,9 +5415,9 @@ void UWorld::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 {
 	if(PersistentLevel && PersistentLevel->OwningWorld)
 	{
-		if(ULevelScriptBlueprint* LevelBlueprint = PersistentLevel->GetLevelScriptBlueprint(true))
+		for (UBlueprint* Blueprint : PersistentLevel->GetLevelBlueprints())
 		{
-			LevelBlueprint->GetAssetRegistryTags(OutTags);
+			Blueprint->GetAssetRegistryTags(OutTags);
 		}
 	}
 }

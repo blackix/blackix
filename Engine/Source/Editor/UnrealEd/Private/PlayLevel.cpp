@@ -154,10 +154,16 @@ void UEditorEngine::EndPlayMap()
 	for( FObjectIterator It; It; ++It )
 	{
 		UObject* Object = *It;
-		if( Object->HasAnyFlags(RF_Standalone) && (Object->GetOutermost()->PackageFlags & PKG_PlayInEditor)  )
+
+		if((Object->GetOutermost()->PackageFlags & PKG_PlayInEditor) != 0)
 		{
-			// Clear RF_Standalone flag from objects in the levels used for PIE so they get cleaned up.
-			Object->ClearFlags(RF_Standalone);
+			if(Object->HasAnyFlags(RF_Standalone))
+			{
+				// Clear RF_Standalone flag from objects in the levels used for PIE so they get cleaned up.
+				Object->ClearFlags(RF_Standalone);
+			}
+			// Close any asset editors that are currently editing this object
+			FAssetEditorManager::Get().CloseAllEditorsForAsset(Object);
 		}
 	}
 
@@ -196,7 +202,7 @@ void UEditorEngine::EndPlayMap()
 		// as a different delegate
 		FTimerDelegate DestroyTimer;
 		DestroyTimer.BindUObject(this, &UEditorEngine::CleanupPIEOnlineSessions, OnlineIdentifiers);
-		GetTimerManager()->SetTimer(DestroyTimer, 0.1f, false);
+		GetTimerManager()->SetTimer(CleanupPIEOnlineSessionsTimerHandle, DestroyTimer, 0.1f, false);
 	}
 	
 	{
@@ -2324,7 +2330,7 @@ void UEditorEngine::LoginPIEInstances(bool bAnyBlueprintErrors, bool bStartInSpe
 			Delegate.BindUObject(this, &UEditorEngine::OnLoginPIEComplete, DataStruct);
 
 			// Login first and continue the flow later
-			IdentityInt->AddOnLoginCompleteDelegate(0, Delegate);
+			OnLoginPIECompleteDelegateHandle = IdentityInt->AddOnLoginCompleteDelegate_Handle(0, Delegate);
 			IdentityInt->Login(0, AccountCreds);
 
 			ClientNum++;
@@ -2369,8 +2375,8 @@ void UEditorEngine::LoginPIEInstances(bool bAnyBlueprintErrors, bool bStartInSpe
 		FOnLoginCompleteDelegate Delegate;
 		Delegate.BindUObject(this, &UEditorEngine::OnLoginPIEComplete, DataStruct);
 
-		IdentityInt->ClearOnLoginCompleteDelegate(0, Delegate);
-		IdentityInt->AddOnLoginCompleteDelegate(0, Delegate);
+		IdentityInt->ClearOnLoginCompleteDelegate_Handle(0, OnLoginPIECompleteDelegateHandlesForPIEInstances.FindRef(OnlineIdentifier));
+		OnLoginPIECompleteDelegateHandlesForPIEInstances[OnlineIdentifier] = IdentityInt->AddOnLoginCompleteDelegate_Handle(0, Delegate);
 		IdentityInt->Login(0, AccountCreds);
 	}
 
@@ -2387,9 +2393,8 @@ void UEditorEngine::OnLoginPIEComplete(int32 LocalUserNum, bool bWasSuccessful, 
 	IOnlineIdentityPtr IdentityInt = Online::GetIdentityInterface(OnlineIdentifier);
 
 	// Cleanup the login delegate before calling create below
-	FOnLoginCompleteDelegate Delegate;
-	Delegate.BindUObject(this, &UEditorEngine::OnLoginPIEComplete, DataStruct);
-	IdentityInt->ClearOnLoginCompleteDelegate(0, Delegate);
+	IdentityInt->ClearOnLoginCompleteDelegate_Handle(0, OnLoginPIECompleteDelegateHandle);
+	OnLoginPIECompleteDelegateHandlesForPIEInstances.Remove(OnlineIdentifier);
 
 	// Create the new world
 	CreatePIEWorldFromLogin(PieWorldContext, DataStruct.NetMode, DataStruct);

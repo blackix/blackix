@@ -161,18 +161,56 @@ static inline USelection*& PrivateGetSelectedActors()
 	return SSelectedActors;
 };
 
+static inline USelection*& PrivateGetSelectedComponents()
+{
+	static USelection* SSelectedComponents = NULL;
+	return SSelectedComponents;
+}
+
 static inline USelection*& PrivateGetSelectedObjects()
 {
 	static USelection* SSelectedObjects = NULL;
 	return SSelectedObjects;
 };
 
+static void OnObjectSelected(UObject* Object)
+{
+	// Whenever an actor is unselected we must remove its components from the components selection
+	if (!Object->IsSelected())
+	{
+		TArray<UActorComponent*> ComponentsToDeselect;
+		for (FSelectionIterator It(*PrivateGetSelectedComponents()); It; ++It)
+		{
+			UActorComponent* Component = CastChecked<UActorComponent>(*It);
+			if (Component->GetOwner() == Object)
+			{
+				ComponentsToDeselect.Add(Component);
+			}
+		}
+		if (ComponentsToDeselect.Num() > 0)
+		{
+			PrivateGetSelectedComponents()->Modify();
+			PrivateGetSelectedComponents()->BeginBatchSelectOperation();
+			for (UActorComponent* Component : ComponentsToDeselect)
+			{
+				PrivateGetSelectedComponents()->Deselect(Component);
+			}
+			PrivateGetSelectedComponents()->EndBatchSelectOperation();
+		}
+	}
+}
+
 static void PrivateInitSelectedSets()
 {
 	PrivateGetSelectedActors() = new( GetTransientPackage(), TEXT("SelectedActors"), RF_Transactional ) USelection(FObjectInitializer());
 	PrivateGetSelectedActors()->AddToRoot();
 
-	PrivateGetSelectedObjects() = new( GetTransientPackage(), TEXT("SelectedObjects"), RF_Transactional ) USelection(FObjectInitializer());
+	PrivateGetSelectedActors()->SelectObjectEvent.AddStatic(&OnObjectSelected);
+
+	PrivateGetSelectedComponents() = new(GetTransientPackage(), TEXT("SelectedComponents"), RF_Transactional) USelection(FObjectInitializer());
+	PrivateGetSelectedComponents()->AddToRoot();
+
+	PrivateGetSelectedObjects() = new(GetTransientPackage(), TEXT("SelectedObjects"), RF_Transactional) USelection(FObjectInitializer());
 	PrivateGetSelectedObjects()->AddToRoot();
 }
 
@@ -181,6 +219,8 @@ static void PrivateDestroySelectedSets()
 #if 0
 	PrivateGetSelectedActors()->RemoveFromRoot();
 	PrivateGetSelectedActors() = NULL;
+	PrivateGetSelectedComponents()->RemoveFromRoot();
+	PrivateGetSelectedComponents() = NULL;
 	PrivateGetSelectedObjects()->RemoveFromRoot();
 	PrivateGetSelectedObjects() = NULL;
 #endif
@@ -277,6 +317,27 @@ FSelectionIterator UEditorEngine::GetSelectedActorIterator() const
 {
 	return FSelectionIterator( *GetSelectedActors() );
 };
+
+int32 UEditorEngine::GetSelectedComponentCount() const
+{
+	int32 NumSelectedComponents = 0;
+	for (FSelectionIterator It(GetSelectedComponentIterator()); It; ++It)
+	{
+		++NumSelectedComponents;
+	}
+
+	return NumSelectedComponents;
+}
+
+FSelectionIterator UEditorEngine::GetSelectedComponentIterator() const
+{
+	return FSelectionIterator(*GetSelectedComponents());
+};
+
+USelection* UEditorEngine::GetSelectedComponents() const
+{
+	return PrivateGetSelectedComponents();
+}
 
 USelection* UEditorEngine::GetSelectedObjects() const
 {
@@ -2464,6 +2525,7 @@ FReimportManager* FReimportManager::Instance()
 void FReimportManager::RegisterHandler( FReimportHandler& InHandler )
 {
 	Handlers.AddUnique( &InHandler );
+	bHandlersNeedSorting = true;
 }
 
 /**
@@ -2501,9 +2563,17 @@ bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing )
 	bool bSuccess = false;
 	if ( Obj )
 	{
+		if (bHandlersNeedSorting)
+		{
+			// Use > operator because we want higher priorities earlier in the list
+			Handlers.Sort([](const FReimportHandler& A, const FReimportHandler& B) { return A.GetPriority() > B.GetPriority(); });
+			bHandlersNeedSorting = false;
+		}
+		
 		bool bShowNotification = true;
 		bool bValidSourceFilename = false;
 		TArray<FString> SourceFilenames;
+
 		for( int32 HandlerIndex = 0; HandlerIndex < Handlers.Num(); ++HandlerIndex )
 		{
 			SourceFilenames.Empty();
@@ -4938,7 +5008,7 @@ namespace ReattachActorsHelper
 	}
 }
 
-void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetData& AssetData, UClass* NewActorClass)
+void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetData& AssetData)
 {
 	UObject* ObjectForFactory = NULL;
 
@@ -4947,7 +5017,7 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 	{
 		return;
 	}
-	else if (Factory != NULL)
+	else if (Factory != nullptr)
 	{
 		FText ActorErrorMsg;
 		if (!Factory->CanCreateActorFrom( AssetData, ActorErrorMsg))
@@ -4956,7 +5026,7 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 			return;
 		}
 	}
-	else if (NewActorClass == NULL)
+	else
 	{
 		UE_LOG(LogEditor, Error, TEXT("UEditorEngine::ReplaceSelectedActors() called with NULL parameters!"));
 		return;
@@ -4975,6 +5045,11 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 		}
 	}
 
+	ReplaceActors(Factory, AssetData, ActorsToReplace);
+}
+
+void UEditorEngine::ReplaceActors(UActorFactory* Factory, const FAssetData& AssetData, const TArray<AActor*> ActorsToReplace)
+{
 	// Cache for attachment info of all actors being converted.
 	TArray<ReattachActorsHelper::FActorAttachmentCache> AttachmentInfo;
 
@@ -4997,35 +5072,27 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 		ULevel* Level = OldActor->GetLevel();
 		AActor* NewActor = NULL;
 
+		const FName OldActorName = OldActor->GetFName();
+		OldActor->Rename(*FString::Printf(TEXT("%s_REPLACED"), *OldActorName.ToString()));
+
 		const FTransform OldTransform = OldActor->ActorToWorld();
 
 		// create the actor
-		if (Factory != NULL)
+		NewActor = Factory->CreateActor( Asset, Level, OldTransform, RF_Transactional, OldActorName );
+		// For blueprints, try to copy over properties
+		if (Factory->IsA(UActorFactoryBlueprint::StaticClass()))
 		{
-			NewActor = Factory->CreateActor( Asset, Level, OldTransform);
-			// For blueprints, try to copy over properties
-			if (Factory->IsA(UActorFactoryBlueprint::StaticClass()))
+			UBlueprint* Blueprint = CastChecked<UBlueprint>(Asset);
+			// Only try to copy properties if this blueprint is based on the actor
+			UClass* OldActorClass = OldActor->GetClass();
+			if (Blueprint->GeneratedClass->IsChildOf(OldActorClass))
 			{
-				UBlueprint* Blueprint = CastChecked<UBlueprint>(Asset);
-				// Only try to copy properties if this blueprint is based on the actor
-				UClass* OldActorClass = OldActor->GetClass();
-				if (Blueprint->GeneratedClass->IsChildOf(OldActorClass))
-				{
-					NewActor->UnregisterAllComponents();
-					UEditorEngine::CopyPropertiesForUnrelatedObjects(OldActor, NewActor);
-					NewActor->RegisterAllComponents();
-				}
+				NewActor->UnregisterAllComponents();
+				UEditorEngine::CopyPropertiesForUnrelatedObjects(OldActor, NewActor);
+				NewActor->RegisterAllComponents();
 			}
 		}
-		else
-		{
-			FActorSpawnParameters SpawnInfo;
-			SpawnInfo.OverrideLevel = Level;
 
-			const auto Rotation = OldTransform.GetRotation().Rotator();
-			const auto Translation = OldTransform.GetTranslation();
-			NewActor = World->SpawnActor( NewActorClass, &Translation, &Rotation, SpawnInfo );
-		}
 		if ( NewActor != NULL )
 		{
 			// The new actor might not have a root component
@@ -5055,8 +5122,11 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 			// Caches information for finding the new actor using the pre-converted actor.
 			ReattachActorsHelper::CacheActorConvert(OldActor, NewActor, ConvertedMap, AttachmentInfo[ActorIdx]);
 
-			SelectActor(OldActor, false, true);
-			SelectActor(NewActor, true, true);
+			if (SelectedActors->IsSelected(OldActor))
+			{
+				SelectActor(OldActor, false, true);
+				SelectActor(NewActor, true, true);
+			}
 
 			// Find compatible static mesh components and copy instance colors between them.
 			UStaticMeshComponent* NewActorStaticMeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
@@ -5070,8 +5140,17 @@ void UEditorEngine::ReplaceSelectedActors(UActorFactory* Factory, const FAssetDa
 			NewActor->PostEditMove(true);
 			NewActor->MarkPackageDirty();
 
+			// Replace references in the level script Blueprint with the new Actor
+			ULevelScriptBlueprint* LSB = NewActor->GetLevel()->GetLevelScriptBlueprint(true);
+			FBlueprintEditorUtils::ReplaceAllActorRefrences(LSB, OldActor, NewActor);
+
 			GEditor->Layers->DisassociateActorFromLayers( OldActor );
 			World->EditorDestroyActor(OldActor, true);
+		}
+		else
+		{
+			// If creating the new Actor failed, put the old Actor's name back
+			OldActor->Rename(*OldActorName.ToString());
 		}
 	}
 
@@ -5109,7 +5188,7 @@ static void CopyLightComponentProperties( const AActor& InOldActor, AActor& InNe
 	UActorComponent* LightComponentToCopy = NULL;
 
 	// Go through the old actor's components and look for a light component to copy.
-	TArray<UActorComponent*> OldActorComponents;
+	TInlineComponentArray<UActorComponent*> OldActorComponents;
 	InOldActor.GetComponents(OldActorComponents);
 
 	for( int32 CompToCopyIdx = 0; CompToCopyIdx < OldActorComponents.Num(); ++CompToCopyIdx )
@@ -5133,7 +5212,7 @@ static void CopyLightComponentProperties( const AActor& InOldActor, AActor& InNe
 	// Dont do anything if there is no valid light component to copy from
 	if( LightComponentToCopy )
 	{
-		TArray<UActorComponent*> NewActorComponents;
+		TInlineComponentArray<UActorComponent*> NewActorComponents;
 		InNewActor.GetComponents(NewActorComponents);
 
 		// Find a light component to overwrite in the new actor
@@ -5369,11 +5448,11 @@ void CopyActorComponentProperties( const AActor* SourceActor, AActor* DestActor,
 
 		// Construct a mapping from the default actor of its relevant component names to its actual components. Here relevant component
 		// names are those that match a name provided as a parameter.
-		TArray<UActorComponent*> CDOComponents;
+		TInlineComponentArray<UActorComponent*> CDOComponents;
 		SrcActorDefaultActor->GetComponents(CDOComponents);
 
 		TMap<FString, const UActorComponent*> NameToDefaultComponentMap; 
-		for ( TArray<UActorComponent*>::TConstIterator CompIter( CDOComponents ); CompIter; ++CompIter )
+		for ( TInlineComponentArray<UActorComponent*>::TConstIterator CompIter( CDOComponents ); CompIter; ++CompIter )
 		{
 			const UActorComponent* CurComp = *CompIter;
 			check( CurComp );
@@ -5387,11 +5466,11 @@ void CopyActorComponentProperties( const AActor* SourceActor, AActor* DestActor,
 
 		// Construct a mapping from the source actor of its relevant component names to its actual components. Here relevant component names
 		// are those that match a name provided as a parameter.
-		TArray<UActorComponent*> SourceComponents;
+		TInlineComponentArray<UActorComponent*> SourceComponents;
 		SourceActor->GetComponents(SourceComponents);
 
 		TMap<FString, const UActorComponent*> NameToSourceComponentMap;
-		for ( TArray<UActorComponent*>::TConstIterator CompIter( SourceComponents ); CompIter; ++CompIter )
+		for ( TInlineComponentArray<UActorComponent*>::TConstIterator CompIter( SourceComponents ); CompIter; ++CompIter )
 		{
 			const UActorComponent* CurComp = *CompIter;
 			check( CurComp );
@@ -5405,11 +5484,11 @@ void CopyActorComponentProperties( const AActor* SourceActor, AActor* DestActor,
 
 		bool bCopiedAnyProperty = false;
 
-		TArray<UActorComponent*> DestComponents;
+		TInlineComponentArray<UActorComponent*> DestComponents;
 		DestActor->GetComponents(DestComponents);
 
 		// Iterate through all of the destination actor's components to find the ones which should have properties copied into them.
-		for ( TArray<UActorComponent*>::TIterator DestCompIter( DestComponents ); DestCompIter; ++DestCompIter )
+		for ( TInlineComponentArray<UActorComponent*>::TIterator DestCompIter( DestComponents ); DestCompIter; ++DestCompIter )
 		{
 			UActorComponent* CurComp = *DestCompIter;
 			check( CurComp );
@@ -6918,7 +6997,8 @@ namespace EditorUtilities
 	// TargetComponents array is passed in populated to avoid repeated refetching and StartIndex 
 	// is updated as an optimization based on the assumption that the standard use case is iterating 
 	// over two component arrays that will be parallel in order
-	UActorComponent* FindMatchingComponentInstance( UActorComponent* SourceComponent, AActor* TargetActor, const TArray<UActorComponent*>& TargetComponents, int32& StartIndex )
+	template<class AllocatorType = FDefaultAllocator>
+	UActorComponent* FindMatchingComponentInstance( UActorComponent* SourceComponent, AActor* TargetActor, const TArray<UActorComponent*, AllocatorType>& TargetComponents, int32& StartIndex )
 	{
 		UActorComponent* TargetComponent = StartIndex < TargetComponents.Num() ? TargetComponents[ StartIndex ] : NULL;
 
@@ -6987,12 +7067,12 @@ namespace EditorUtilities
 
 	UActorComponent* FindMatchingComponentInstance( UActorComponent* SourceComponent, AActor* TargetActor )
 	{
-		TArray<UActorComponent*> TargetComponents;
 		UActorComponent* MatchingComponent = NULL;
 		int32 StartIndex = 0;
 
 		if (TargetActor)
 		{
+			TInlineComponentArray<UActorComponent*> TargetComponents;
 			TargetActor->GetComponents(TargetComponents);
 			MatchingComponent = FindMatchingComponentInstance( SourceComponent, TargetActor, TargetComponents, StartIndex );
 		}
@@ -7034,7 +7114,7 @@ namespace EditorUtilities
 					else if (SourceObjectPropertyValue->IsA(UActorComponent::StaticClass()) && InTargetObject->IsA(AActor::StaticClass()))
 					{
 						AActor* const TargetActor = Cast<AActor>(InTargetObject);
-						TArray<UActorComponent*> TargetComponents;
+						TInlineComponentArray<UActorComponent*> TargetComponents;
 						TargetActor->GetComponents(TargetComponents);
 
 						// We can try and fix-up an actor component reference from the PIE world to instead be the version from the persistent world
@@ -7203,8 +7283,8 @@ namespace EditorUtilities
 		}
 
 		// Copy component properties from source to target if they match. Note that the component lists may not be 1-1 due to context-specific components (e.g. editor-only sprites, etc.).
-		TArray<UActorComponent*> SourceComponents;
-		TArray<UActorComponent*> TargetComponents;
+		TInlineComponentArray<UActorComponent*> SourceComponents;
+		TInlineComponentArray<UActorComponent*> TargetComponents;
 
 		SourceActor->GetComponents(SourceComponents);
 		TargetActor->GetComponents(TargetComponents);

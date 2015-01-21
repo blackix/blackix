@@ -34,6 +34,7 @@
 #include "BlueprintEditorSettings.h" // for bShowActionMenuItemSignatures
 #include "SInlineEditableTextBlock.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Editor/UnrealEd/Public/Kismet2/ComponentEditorUtils.h"
 
 #define LOCTEXT_NAMESPACE "BlueprintPalette"
 
@@ -831,12 +832,12 @@ private:
 	 * 
 	 * @return Tooltip text for this toggle.
 	 */
-	FString GetVisibilityToggleToolTip() const
+	FText GetVisibilityToggleToolTip() const
 	{
-		FString ToolTip;
+		FText ToolTip = FText::GetEmpty();
 		if(GetVisibilityToggleState() != ECheckBoxState::Checked)
 		{
-			ToolTip =  LOCTEXT("VariablePrivacy_not_public_Tooltip", "Variable is not public and will not be editable on an instance of this Blueprint.").ToString();
+			ToolTip = LOCTEXT("VariablePrivacy_not_public_Tooltip", "Variable is not public and will not be editable on an instance of this Blueprint.");
 		}
 		else
 		{
@@ -846,11 +847,11 @@ private:
 			FBlueprintEditorUtils::GetBlueprintVariableMetaData( BlueprintObj, VarAction->GetVariableName(), NULL, TEXT("tooltip"), Result);
 			if(!Result.IsEmpty())
 			{
-				ToolTip = LOCTEXT("VariablePrivacy_is_public_Tooltip", "Variable is public and is editable on each instance of this Blueprint.").ToString();
+				ToolTip = LOCTEXT("VariablePrivacy_is_public_Tooltip", "Variable is public and is editable on each instance of this Blueprint.");
 			}
 			else
 			{
-				ToolTip = LOCTEXT("VariablePrivacy_is_public_no_tooltip_Tooltip", "Variable is public but MISSING TOOLTIP.").ToString();
+				ToolTip = LOCTEXT("VariablePrivacy_is_public_no_tooltip_Tooltip", "Variable is public but MISSING TOOLTIP.");
 			}
 		}
 		return ToolTip;
@@ -902,7 +903,7 @@ void SBlueprintPaletteItem::Construct(const FArguments& InArgs, FCreateWidgetFor
 	FString            IconToolTip = GraphAction->TooltipDescription;
 	FString			   IconDocLink, IconDocExcerpt;
 	GetPaletteItemIcon(GraphAction, Blueprint, IconBrush, IconColor, IconToolTip, IconDocLink, IconDocExcerpt);
-	TSharedRef<SWidget> IconWidget = CreateIconWidget(IconToolTip, IconBrush, IconColor, IconDocLink, IconDocExcerpt);
+	TSharedRef<SWidget> IconWidget = CreateIconWidget(FText::FromString(IconToolTip), IconBrush, IconColor, IconDocLink, IconDocExcerpt);
 
 	// Setup a meta tag for this node
 	FTutorialMetaData TagMeta("PaletteItem"); 
@@ -1111,7 +1112,7 @@ bool SBlueprintPaletteItem::OnNameTextVerifyChanged(const FText& InNewText, FTex
 		for (TArray<USCS_Node*>::TConstIterator NodeIt(Nodes); NodeIt; ++NodeIt)
 		{
 			USCS_Node* Node = *NodeIt;
-			if (Node->VariableName == OriginalName && !Node->IsValidVariableNameString(InNewText.ToString()))
+			if (Node->VariableName == OriginalName && !FComponentEditorUtils::IsValidVariableNameString(Node->ComponentTemplate, InNewText.ToString()))
 			{
 				OutErrorMessage = LOCTEXT("RenameFailed_NotValid", "This name is reserved for engine use.");
 				return false;

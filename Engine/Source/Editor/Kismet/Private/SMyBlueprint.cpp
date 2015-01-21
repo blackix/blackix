@@ -41,6 +41,8 @@
 #include "Components/TimelineComponent.h"
 #include "Engine/TimelineTemplate.h"
 
+#include "BlueprintEditorSettings.h"
+
 #define LOCTEXT_NAMESPACE "MyBlueprint"
 
 //////////////////////////////////////////////////////////////////////////
@@ -190,10 +192,17 @@ void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor
 		TSharedPtr<FExtender> Extender = MakeShareable(new FExtender);
 		Toolbar->AddNewToolbar(Extender);
 
-		FToolBarBuilder ToolbarBuilder(ToolKitCommandList, FMultiBoxCustomization::None, Extender);
-		ToolbarBuilder.BeginSection("MyBlueprint");
-		ToolbarBuilder.EndSection();
-		ToolbarBuilderWidget = ToolbarBuilder.MakeWidget();
+		if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+		{
+			ToolbarBuilderWidget = SNullWidget::NullWidget;
+		}
+		else
+		{
+			FToolBarBuilder ToolbarBuilder(ToolKitCommandList, FMultiBoxCustomization::None, Extender);
+			ToolbarBuilder.BeginSection("MyBlueprint");
+			ToolbarBuilder.EndSection();
+			ToolbarBuilderWidget = ToolbarBuilder.MakeWidget();
+		}
 
 		ToolKitCommandList->MapAction(FGenericCommands::Get().Rename,
 			FExecuteAction::CreateSP(this, &SMyBlueprint::OnRequestRenameOnActionNode),
@@ -207,14 +216,79 @@ void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor
 		ToolbarBuilderWidget = SNew(SBox);
 	}
 
+	TSharedPtr<SWidget> AddNewMenu = SNullWidget::NullWidget;
+	if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+	{
+		AddNewMenu = SNew(SComboButton)
+			.ComboButtonStyle(FEditorStyle::Get(), "ToolbarComboButton")
+			.ForegroundColor(FLinearColor::White)
+			.ToolTipText(LOCTEXT("AddNewToolTip", "Add a new Variable, Graph, Function, Macro, or Event Dispatcher."))
+			.OnGetMenuContent(this, &SMyBlueprint::CreateAddNewMenuWidget)
+			.HasDownArrow(true)
+			.ContentPadding(FMargin(1, 0, 2, 0))
+			.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("MyBlueprintAddNewCombo")))
+			.ButtonContent()
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FMargin(0, 1))
+				[
+					SNew(SImage)
+					.Image(FEditorStyle::GetBrush("Plus"))
+				]
+
+				+ SHorizontalBox::Slot()
+				.VAlign(VAlign_Center)
+				.AutoWidth()
+				.Padding(FMargin(2, 0, 2, 0))
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("AddNew", "Add New"))
+				]
+			];
+	}
+
+	FMenuBuilder ViewOptions(true, nullptr);
+
+	ViewOptions.AddMenuEntry(
+		LOCTEXT("ShowInheritedVariables", "Show Inherited Variables"),
+		LOCTEXT("ShowInheritedVariablesTooltip", "Should inherited variables from parent classes and blueprints be shown in the tree?"),
+		FSlateIcon(),
+		FUIAction( 
+			FExecuteAction::CreateSP( this, &SMyBlueprint::OnToggleShowInheritedVariables ),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP( this, &SMyBlueprint::IsShowingInheritedVariables )
+		),
+		NAME_None,
+		EUserInterfaceActionType::ToggleButton,
+		TEXT("MyBlueprint_ShowInheritedVariables")
+	);
+
+	ViewOptions.AddMenuEntry(
+		LOCTEXT("ShowEmptySections", "Show Empty Sections"),
+		LOCTEXT("ShowEmptySectionsTooltip", "Should we show empty sections? eg. Graphs, Functions...etc."),
+		FSlateIcon(),
+		FUIAction( 
+			FExecuteAction::CreateSP( this, &SMyBlueprint::OnToggleShowEmptySections ),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &SMyBlueprint::IsShowingEmptySections)
+		),
+		NAME_None,
+		EUserInterfaceActionType::ToggleButton,
+		TEXT("MyBlueprint_ShowEmptySections")
+	);
+
 	SAssignNew(FilterBox, SSearchBox)
 		.OnTextChanged( this, &SMyBlueprint::OnFilterTextChanged );
 
 	// create the main action list piece of this widget
-	TSharedRef<SWidget> MyBlueprintActionMenu = SAssignNew(GraphActionMenu, SGraphActionMenu, false)
+	SAssignNew(GraphActionMenu, SGraphActionMenu, false)
 		.OnGetFilterText(this, &SMyBlueprint::GetFilterText)
 		.OnCreateWidgetForAction(this, &SMyBlueprint::OnCreateWidgetForAction)
 		.OnCollectAllActions(this, &SMyBlueprint::CollectAllActions)
+		.OnCollectStaticSections(this, &SMyBlueprint::CollectStaticSections)
 		.OnActionDragged(this, &SMyBlueprint::OnActionDragged)
 		.OnCategoryDragged(this, &SMyBlueprint::OnCategoryDragged)
 		.OnActionSelected(this, &SMyBlueprint::OnGlobalActionSelected)
@@ -222,59 +296,85 @@ void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor
 		.OnContextMenuOpening(this, &SMyBlueprint::OnContextMenuOpening)
 		.OnCategoryTextCommitted(this, &SMyBlueprint::OnCategoryNameCommitted)
 		.OnCanRenameSelectedAction(this, &SMyBlueprint::CanRequestRenameOnActionNode)
-		.OnGetSectionTitle(this,&SMyBlueprint::OnGetSectionTitle)
-		.AlphaSortItems(false);
+		.OnGetSectionTitle(this, &SMyBlueprint::OnGetSectionTitle)
+		.OnGetSectionWidget(this, &SMyBlueprint::OnGetSectionWidget)
+		.AlphaSortItems(false)
+		.UseSectionStyling(true);
+
 
 	// now piece together all the content for this widget
 	ChildSlot
 	[
-		SNew(SBorder)
-		.Padding(4.0f)
-		.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
-		.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("MyBlueprintPanel")))
+		SNew(SVerticalBox)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
 		[
-			SNew(SVerticalBox)
+			SNew(SBorder)
+			.Padding(4.0f)
+			.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+			.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("MyBlueprintPanel")))
+			[
+				SNew(SVerticalBox)
 
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				ToolbarBuilderWidget.ToSharedRef()
-			]
-				
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				FilterBox.ToSharedRef()
-			]
-				
-			+ SVerticalBox::Slot()
-			.FillHeight(1.0f)
-			[
-				SAssignNew(ActionMenuContainer, SSplitter)
-				.Orientation(Orient_Vertical)
-
-				+ SSplitter::Slot()
+				+ SVerticalBox::Slot()
+				.AutoHeight()
 				[
-					MyBlueprintActionMenu
+					ToolbarBuilderWidget.ToSharedRef()
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 2, 0)
+					[
+						AddNewMenu.ToSharedRef()
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.VAlign(VAlign_Center)
+					[
+						FilterBox.ToSharedRef()
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(2, 0, 0, 0)
+					[
+						SNew(SComboButton)
+						.ComboButtonStyle(FEditorStyle::Get(), "ToolbarComboButton")
+						.ForegroundColor(FSlateColor::UseForeground())
+						.HasDownArrow(true)
+						.ContentPadding(FMargin(1, 0))
+						.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("ViewOptions")))
+						.MenuContent()
+						[
+							ViewOptions.MakeWidget()
+						]
+						.ButtonContent()
+						[
+							SNew(SImage)
+							.Image(FEditorStyle::GetBrush("GenericViewButton"))
+						]
+					]
 				]
 			]
+		]
+		
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SAssignNew(ActionMenuContainer, SSplitter)
+			.Orientation(Orient_Vertical)
 
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(FMargin(3.0f, 2.0f, 0.0f, 0.0f))
+			+ SSplitter::Slot()
 			[
-				SNew(SCheckBox)
-				.IsChecked(this, &SMyBlueprint::OnUserVarsCheckState)
-				.OnCheckStateChanged(this, &SMyBlueprint::OnUserVarsCheckStateChanged)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("ShowInheritedVariables", "Show inherited variables"))
-					.ToolTip(IDocumentation::Get()->CreateToolTip(
-						LOCTEXT("ShowInheritedVariablesTooltip", "Should inherited variables from parent classes and blueprints be shown in the tree?"),
-						NULL,
-						TEXT("Shared/Editors/BlueprintEditor"),
-						TEXT("MyBlueprint_ShowInheritedVariables")))
-				]
+				GraphActionMenu.ToSharedRef()
 			]
 		]
 	];
@@ -294,6 +394,16 @@ void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor
 	{
 		Refresh();
 	}
+
+	TMap<int32, bool> ExpandedSections;
+	ExpandedSections.Add(NodeSectionID::VARIABLE, true);
+	ExpandedSections.Add(NodeSectionID::FUNCTION, true);
+	ExpandedSections.Add(NodeSectionID::MACRO, true);
+	ExpandedSections.Add(NodeSectionID::DELEGATE, true);
+	ExpandedSections.Add(NodeSectionID::GRAPH, true);
+	ExpandedSections.Add(NodeSectionID::LOCAL_VARIABLE, true);
+
+	GraphActionMenu->SetSectionExpansion(ExpandedSections);
 }
 
 void SMyBlueprint::OnCategoryNameCommitted(const FText& InNewText, ETextCommit::Type InTextCommit, TWeakPtr< FGraphActionNode > InAction )
@@ -423,6 +533,109 @@ FText SMyBlueprint::OnGetSectionTitle( int32 InSectionID )
 	return SeperatorTitle;
 }
 
+TSharedRef<SWidget> SMyBlueprint::OnGetSectionWidget(TSharedRef<SWidget> RowWidget, int32 InSectionID)
+{
+	TWeakPtr<SWidget> WeakRowWidget = RowWidget;
+
+	FText AddNewText;
+
+	switch ( InSectionID )
+	{
+	case NodeSectionID::VARIABLE:
+		AddNewText = LOCTEXT("AddNewVariable", "Variable");
+		break;
+	case NodeSectionID::FUNCTION:
+		AddNewText = LOCTEXT("AddNewFunction", "Function");
+		break;
+	case NodeSectionID::MACRO:
+		AddNewText = LOCTEXT("AddNewMacro", "Macro");
+		break;
+	case NodeSectionID::DELEGATE:
+		AddNewText = LOCTEXT("AddNewDelegate", "Event Dispatcher");
+		break;
+	case NodeSectionID::GRAPH:
+		AddNewText = LOCTEXT("AddNewGraph", "New Graph");
+		break;
+	case NodeSectionID::LOCAL_VARIABLE:
+		AddNewText = LOCTEXT("AddNewLocalVariable", "Local Variable");
+		break;
+	default:
+		return SNullWidget::NullWidget;
+	}
+
+	return SNew(SButton)
+		.ButtonStyle(FEditorStyle::Get(), "RoundButton")
+		.ForegroundColor(FEditorStyle::GetSlateColor("DefaultForeground"))
+		.OnClicked(this, &SMyBlueprint::OnAddButtonClickedOnSection, InSectionID)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		.ContentPadding(FMargin(2, 0))
+		//.IsEnabled(this, &SMyBlueprint::OnAddButtonClickedOnSection)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(FMargin(0, 1))
+			[
+				SNew(SImage)
+				.Image(FEditorStyle::GetBrush("Plus"))
+			]
+
+			+ SHorizontalBox::Slot()
+			.VAlign(VAlign_Center)
+			.AutoWidth()
+			.Padding(FMargin(2,0,0,0))
+			[
+				SNew(STextBlock)
+				.Font(IDetailLayoutBuilder::GetDetailFontBold())
+				.Text(AddNewText)
+				.Visibility(this, &SMyBlueprint::OnGetSectionTextVisibility, WeakRowWidget)
+				.ShadowOffset(FVector2D(1,1))
+			]
+		];
+}
+
+FReply SMyBlueprint::OnAddButtonClickedOnSection(int32 InSectionID)
+{
+	switch ( InSectionID )
+	{
+	case NodeSectionID::VARIABLE:
+		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewVariable.ToSharedRef());
+		break;
+	case NodeSectionID::FUNCTION:
+		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewFunction.ToSharedRef());
+		break;
+	case NodeSectionID::MACRO:
+		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewMacroDeclaration.ToSharedRef());
+		break;
+	case NodeSectionID::DELEGATE:
+		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewDelegate.ToSharedRef());
+		break;
+	case NodeSectionID::GRAPH:
+		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewEventGraph.ToSharedRef());
+		break;
+	case NodeSectionID::LOCAL_VARIABLE:
+		//BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewLocalVariable.ToSharedRef());
+		OnAddNewLocalVariable();
+		break;
+	}
+
+	return FReply::Handled();
+}
+
+EVisibility SMyBlueprint::OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget) const
+{
+	if ( RowWidget.Pin()->IsHovered() )
+	{
+		return EVisibility::SelfHitTestInvisible;
+	}
+	else
+	{
+		return EVisibility::Collapsed;
+	}
+}
+
 bool SMyBlueprint::CanRequestRenameOnActionNode(TWeakPtr<FGraphActionNode> InSelectedNode) const
 {
 	bool bIsReadOnly = true;
@@ -491,24 +704,28 @@ void SMyBlueprint::Refresh()
 	GraphActionMenu->RefreshAllActions(true);
 	
 	bool bLocalActionsAreVisible = (GetLocalActionsListVisibility() == EVisibility::Visible);
-	if (bLocalActionsAreVisible)
-	{
-		if (!LocalGraphActionMenu.IsValid())
-		{
-			ActionMenuContainer->AddSlot()
-				.Value(0.33f)
-			[
-				ConstructLocalActionPanel()
-			];
-		}
-		check(LocalGraphActionMenu.IsValid());
-		LocalGraphActionMenu->RefreshAllActions(true);
-	}
-	else if (LocalGraphActionMenu.IsValid() && ensure(ActionMenuContainer->GetChildren()->Num() > 1))
-	{
-		ActionMenuContainer->RemoveAt(1);
-		LocalGraphActionMenu = NULL;
-	}
+
+	//if ( !GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+	//{
+	//	if ( bLocalActionsAreVisible )
+	//	{
+	//		if ( !LocalGraphActionMenu.IsValid() )
+	//		{
+	//			ActionMenuContainer->AddSlot()
+	//				.Value(0.33f)
+	//				[
+	//					ConstructLocalActionPanel()
+	//				];
+	//		}
+	//		check(LocalGraphActionMenu.IsValid());
+	//		LocalGraphActionMenu->RefreshAllActions(true);
+	//	}
+	//	else if ( LocalGraphActionMenu.IsValid() && ensure(ActionMenuContainer->GetChildren()->Num() > 1) )
+	//	{
+	//		ActionMenuContainer->RemoveAt(1);
+	//		LocalGraphActionMenu = nullptr;
+	//	}
+	//}
 }
 
 TSharedRef<SWidget> SMyBlueprint::OnCreateWidgetForAction(FCreateWidgetForActionData* const InCreateData)
@@ -671,6 +888,10 @@ void SMyBlueprint::GetLocalVariables(FGraphActionListBuilderBase& OutAllActions)
 				{
 					TSharedPtr<FEdGraphSchemaAction_K2LocalVar> NewVarAction = MakeShareable(new FEdGraphSchemaAction_K2LocalVar(Category, FText::FromName(Variable.VarName), TEXT(""), 0));
 					NewVarAction->SetVariableInfo(Variable.VarName, Func);
+					if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+					{
+						NewVarAction->SectionID = NodeSectionID::LOCAL_VARIABLE;
+					}
 					OutAllActions.AddAction(NewVarAction);
 				}
 			}
@@ -700,7 +921,7 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 	check(Blueprint);
 
 	EFieldIteratorFlags::SuperClassFlags FieldIteratorSuperFlag = EFieldIteratorFlags::IncludeSuper;
-	if(bShowUserVarsOnly)
+	if ( ShowUserVarsOnly() )
 	{
 		FieldIteratorSuperFlag = EFieldIteratorFlags::ExcludeSuper;
 	}
@@ -725,11 +946,11 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 				const int32 SortIndex = GetSortIndex( RootCategory ) + Action->SectionID;
 
 				static const FName DefaultCategory( TEXT( "Default" ));
-				if( RootCategory != DefaultCategory )
-				{
-					// Strip sections out of non default categories to enable them to be grouped together
-					Action->SectionID = NodeSectionID::USER_SORTED;
-				}
+				//if( RootCategory != DefaultCategory )
+				//{
+				//	// Strip sections out of non default categories to enable them to be grouped together
+				//	Action->SectionID = NodeSectionID::USER_SORTED;
+				//}
 				SortedActions.Add( SortIndex, Action );
 			}
 
@@ -826,10 +1047,17 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 
 		if (bShouldShowAsVar)
 		{
+			const bool bComponentProperty = Obj && Obj->PropertyClass ? Obj->PropertyClass->IsChildOf<UActorComponent>() : false;
+
+			// By default components go into the variable section under the component category unless a custom category is specified.
+			if ( bComponentProperty && CategoryName == NAME_None )
+			{
+				PropertyCategory = LOCTEXT("Components", "Components").ToString();
+			}
+
 			TSharedPtr<FEdGraphSchemaAction_K2Var> NewVarAction = MakeShareable(new FEdGraphSchemaAction_K2Var(PropertyCategory, PropertyDesc, PropertyTooltip.ToString(), 0));
 			NewVarAction->SetVariableInfo(PropertyName, Blueprint->SkeletonGeneratedClass);
-			const bool bComponentProperty = Obj && Obj->PropertyClass ? Obj->PropertyClass->IsChildOf<UActorComponent>() : false;
-			NewVarAction->SectionID = bComponentProperty ? NodeSectionID::COMPONENT : NodeSectionID::VARIABLE;
+			NewVarAction->SectionID = NodeSectionID::VARIABLE;
 			SortList.AddAction( UserCategoryName, NewVarAction );
 		}
 		else if (bShouldShowAsDelegate)
@@ -1043,17 +1271,58 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 		GetChildGraphs(Graph, OutAllActions);
 		GetChildEvents(Graph, NewFuncAction->SectionID, OutAllActions);
 	}
+
+	if ( GetLocalActionsListVisibility().IsVisible() )
+	{
+		GetLocalVariables(OutAllActions);
+	}
 }
 
-ECheckBoxState SMyBlueprint::OnUserVarsCheckState() const
+void SMyBlueprint::CollectStaticSections(TArray<int32>& StaticSectionIDs)
 {
-	return !bShowUserVarsOnly ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	if ( IsShowingEmptySections() )
+	{
+		StaticSectionIDs.Add(NodeSectionID::GRAPH);
+		StaticSectionIDs.Add(NodeSectionID::MACRO);
+		StaticSectionIDs.Add(NodeSectionID::FUNCTION);
+		StaticSectionIDs.Add(NodeSectionID::VARIABLE);
+		StaticSectionIDs.Add(NodeSectionID::DELEGATE);
+	}
+
+	if ( GetLocalActionsListVisibility().IsVisible() )
+	{
+		StaticSectionIDs.Add(NodeSectionID::LOCAL_VARIABLE);
+	}
 }
 
-void SMyBlueprint::OnUserVarsCheckStateChanged(ECheckBoxState InNewState)
+bool SMyBlueprint::IsShowingInheritedVariables() const
 {
-	bShowUserVarsOnly = (InNewState != ECheckBoxState::Checked);
+	return GetMutableDefault<UBlueprintEditorSettings>()->bShowInheritedVariables;
+}
+
+void SMyBlueprint::OnToggleShowInheritedVariables()
+{
+	UBlueprintEditorSettings* Settings = GetMutableDefault<UBlueprintEditorSettings>();
+	Settings->bShowInheritedVariables = !Settings->bShowInheritedVariables;
+	Settings->PostEditChange();
+	Settings->SaveConfig();
+
 	Refresh();
+}
+
+void SMyBlueprint::OnToggleShowEmptySections()
+{
+	UBlueprintEditorSettings* Settings = GetMutableDefault<UBlueprintEditorSettings>();
+	Settings->bShowEmptySections = !Settings->bShowEmptySections;
+	Settings->PostEditChange();
+	Settings->SaveConfig();
+
+	Refresh();
+}
+
+bool SMyBlueprint::IsShowingEmptySections() const
+{
+	return GetMutableDefault<UBlueprintEditorSettings>()->bShowEmptySections;
 }
 
 FReply SMyBlueprint::OnActionDragged( const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions, const FPointerEvent& MouseEvent )
@@ -1218,7 +1487,7 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 			{
 				FGraphDisplayInfo DisplayInfo;
 				GraphAction->EdGraph->GetSchema()->GetGraphDisplayInformation(*GraphAction->EdGraph, DisplayInfo);
-				Inspector->ShowDetailsForSingleObject(GraphAction->EdGraph, SKismetInspector::FShowDetailsOptions(DisplayInfo.PlainName.ToString()));
+				Inspector->ShowDetailsForSingleObject(GraphAction->EdGraph, SKismetInspector::FShowDetailsOptions(DisplayInfo.PlainName));
 			}
 		}
 		else if (InAction->GetTypeId() == FEdGraphSchemaAction_K2Delegate::StaticGetTypeId())
@@ -1226,14 +1495,14 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 			FEdGraphSchemaAction_K2Delegate* DelegateAction = (FEdGraphSchemaAction_K2Delegate*)InAction.Get();
 			if (UMulticastDelegateProperty* Property = DelegateAction->GetDelegatePoperty())
 			{
-				Inspector->ShowDetailsForSingleObject(Property, SKismetInspector::FShowDetailsOptions(Property->GetName()));
+				Inspector->ShowDetailsForSingleObject(Property, SKismetInspector::FShowDetailsOptions(FText::FromString(Property->GetName())));
 			}
 		}
 		else if (InAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId())
 		{
 			FEdGraphSchemaAction_K2Var* VarAction = (FEdGraphSchemaAction_K2Var*)InAction.Get();
 
-			SKismetInspector::FShowDetailsOptions Options(VarAction->GetVariableName().ToString());
+			SKismetInspector::FShowDetailsOptions Options(FText::FromName(VarAction->GetVariableName()));
 
 			Inspector->ShowDetailsForSingleObject(VarAction->GetProperty(), Options);
 		}
@@ -1241,7 +1510,7 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 		{
 			FEdGraphSchemaAction_K2LocalVar* VarAction = (FEdGraphSchemaAction_K2LocalVar*)InAction.Get();
 
-			SKismetInspector::FShowDetailsOptions Options(VarAction->GetVariableName().ToString());
+			SKismetInspector::FShowDetailsOptions Options(FText::FromName(VarAction->GetVariableName()));
 
 			Inspector->ShowDetailsForSingleObject(VarAction->GetProperty(), Options);
 		}
@@ -1249,7 +1518,7 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 		{
 			FEdGraphSchemaAction_K2Enum* EnumAction = (FEdGraphSchemaAction_K2Enum*)InAction.Get();
 
-			SKismetInspector::FShowDetailsOptions Options(EnumAction->GetPathName().ToString());
+			SKismetInspector::FShowDetailsOptions Options(FText::FromName(EnumAction->GetPathName()));
 			Options.bForceRefresh = true;
 
 			Inspector->ShowDetailsForSingleObject(EnumAction->Enum, Options);
@@ -1258,7 +1527,7 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 		{
 			FEdGraphSchemaAction_K2Struct* StructAction = (FEdGraphSchemaAction_K2Struct*)InAction.Get();
 
-			SKismetInspector::FShowDetailsOptions Options(StructAction->GetPathName().ToString());
+			SKismetInspector::FShowDetailsOptions Options(FText::FromName(StructAction->GetPathName()));
 			Options.bForceRefresh = true;
 
 			Inspector->ShowDetailsForSingleObject(StructAction->Struct, Options);
@@ -1266,7 +1535,7 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 		else if (InAction->GetTypeId() == FEdGraphSchemaAction_K2TargetNode::StaticGetTypeId() || InAction->GetTypeId() == FEdGraphSchemaAction_K2Event::StaticGetTypeId())
 		{
 			FEdGraphSchemaAction_K2TargetNode* TargetNodeAction = (FEdGraphSchemaAction_K2TargetNode*)InAction.Get();
-			SKismetInspector::FShowDetailsOptions Options(TargetNodeAction->NodeTemplate->GetNodeTitle(ENodeTitleType::EditableTitle).ToString());
+			SKismetInspector::FShowDetailsOptions Options(TargetNodeAction->NodeTemplate->GetNodeTitle(ENodeTitleType::EditableTitle));
 			Inspector->ShowDetailsForSingleObject(TargetNodeAction->NodeTemplate, Options);
 		}
 		else
@@ -1383,10 +1652,18 @@ FEdGraphSchemaAction_K2Var* SMyBlueprint::SelectionAsVar() const
 
 FEdGraphSchemaAction_K2LocalVar* SMyBlueprint::SelectionAsLocalVar() const
 {
-	if(LocalGraphActionMenu.IsValid())
+	if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
 	{
-		return SelectionAsType<FEdGraphSchemaAction_K2LocalVar>( LocalGraphActionMenu );
+		return SelectionAsType<FEdGraphSchemaAction_K2LocalVar>(GraphActionMenu);
 	}
+	else
+	{
+		if ( LocalGraphActionMenu.IsValid() )
+		{
+			return SelectionAsType<FEdGraphSchemaAction_K2LocalVar>(LocalGraphActionMenu);
+		}
+	}
+
 	return NULL;
 }
 
@@ -1506,7 +1783,7 @@ TSharedPtr<SWidget> SMyBlueprint::OnContextMenuOpening()
 			if ( ComponentProperty && ComponentProperty->PropertyClass &&
 				 ComponentProperty->PropertyClass->IsChildOf( UActorComponent::StaticClass() ) )
 			{
-				if( FBlueprintEditor::CanClassGenerateEvents( ComponentProperty->PropertyClass ))
+				if( FBlueprintEditorUtils::CanClassGenerateEvents( ComponentProperty->PropertyClass ))
 				{
 					TSharedPtr<FBlueprintEditor> BlueprintEditor(BlueprintEditorPtr.Pin());
 
@@ -1514,27 +1791,44 @@ TSharedPtr<SWidget> SMyBlueprint::OnContextMenuOpening()
 					// of events appropriate to the component.
 					MenuBuilder.AddSubMenu(	LOCTEXT("AddEventSubMenu", "Add Event"), 
 											LOCTEXT("AddEventSubMenu_ToolTip", "Add Event"), 
-											FNewMenuDelegate::CreateStatic(	&SSCSEditor::BuildMenuEventsSection, BlueprintEditor, ComponentProperty->PropertyClass, 
-											FGetSelectedObjectsDelegate::CreateSP(this, &SMyBlueprint::GetSelectedItemsForContextMenu)));
+											FNewMenuDelegate::CreateStatic(	&SSCSEditor::BuildMenuEventsSection,
+												BlueprintEditor->GetBlueprintObj(), ComponentProperty->PropertyClass, 
+												FCanExecuteAction::CreateSP(BlueprintEditor.Get(), &FBlueprintEditor::InEditingMode),
+												FGetSelectedObjectsDelegate::CreateSP(this, &SMyBlueprint::GetSelectedItemsForContextMenu)));
 				}
 			}
 		}
 	}
 	else
 	{
-		MenuBuilder.BeginSection("AddNewItem", LOCTEXT("AddOperations", "Add New"));
-		{
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewVariable);
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewLocalVariable);
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewFunction);
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewMacroDeclaration);
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewEventGraph);
-			MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewDelegate);
-		}
-		MenuBuilder.EndSection();
+		BuildAddNewMenu(MenuBuilder);
 	}
 
 	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> SMyBlueprint::CreateAddNewMenuWidget()
+{
+	const bool bShouldCloseWindowAfterMenuSelection = true;
+	FMenuBuilder MenuBuilder(bShouldCloseWindowAfterMenuSelection, BlueprintEditorPtr.Pin()->GetToolkitCommands());
+
+	BuildAddNewMenu(MenuBuilder);
+
+	return MenuBuilder.MakeWidget();
+}
+
+void SMyBlueprint::BuildAddNewMenu(FMenuBuilder& MenuBuilder)
+{
+	MenuBuilder.BeginSection("AddNewItem", LOCTEXT("AddOperations", "Add New"));
+	{
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewVariable);
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewLocalVariable);
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewFunction);
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewMacroDeclaration);
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewEventGraph);
+		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewDelegate);
+	}
+	MenuBuilder.EndSection();
 }
 
 bool SMyBlueprint::CanOpenGraph() const
@@ -1995,7 +2289,20 @@ bool SMyBlueprint::CanDuplicateAction() const
 			return GraphAction->EdGraph->GetSchema()->CanDuplicateGraph(GraphAction->EdGraph);
 		}
 	}
-	else if(SelectionAsVar() || SelectionAsLocalVar())
+	else if(FEdGraphSchemaAction_K2Var* VarAction = SelectionAsVar())
+	{
+		// if the property is not an allowable Blueprint variable type, do not allow the variable to be duplicated.
+		// Some actions (timelines) exist as variables but cannot be used in a user-defined variable.
+		const UObjectPropertyBase* ObjectProperty = Cast<const UObjectPropertyBase>(VarAction->GetProperty());
+		if (ObjectProperty &&
+			ObjectProperty->PropertyClass &&
+			!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(ObjectProperty->PropertyClass))
+		{
+			return false;
+		}
+		return true;
+	}
+	else if(SelectionAsLocalVar())
 	{
 		return true;
 	}

@@ -103,6 +103,8 @@
 #include "Engine/DataTable.h"
 #include "DataTableEditorUtils.h"
 
+#include "Kismet2/BlueprintEditorUtils.h"
+
 DEFINE_LOG_CATEGORY_STATIC(LogEditorFactories, Log, All);
 
 #define LOCTEXT_NAMESPACE "EditorFactories"
@@ -533,6 +535,24 @@ UObject* ULevelFactory::FactoryCreateText
 									Str, *ObjectClass);
 							}
 						}
+					}
+				}
+
+				// If we're pasting from a class that belongs to a map we need to duplicate the class and use that instead
+				if (FBlueprintEditorUtils::IsAnonymousBlueprintClass(TempClass))
+				{
+					UBlueprint* NewBP = DuplicateObject(CastChecked<UBlueprint>(TempClass->ClassGeneratedBy), World->GetCurrentLevel(), *FString::Printf(TEXT("%s_BPClass"), *ActorUniqueName.ToString()));
+					if (NewBP)
+					{
+						NewBP->ClearFlags(RF_Standalone);
+
+						FKismetEditorUtilities::CompileBlueprint(NewBP, false, true);
+
+						TempClass = NewBP->GeneratedClass;
+
+						// Since we changed the class we can't use an Archetype,
+						// however that is fine since we will have been editing the CDO anyways
+						Archetype = nullptr;
 					}
 				}
 
@@ -1949,6 +1969,11 @@ EReimportResult::Type UReimportSoundFactory::Reimport( UObject* Obj )
 	return EReimportResult::Succeeded;
 }
 
+int32 UReimportSoundFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 
 /*-----------------------------------------------------------------------------
 	USoundSurroundFactory.
@@ -2343,6 +2368,11 @@ EReimportResult::Type UReimportSoundSurroundFactory::Reimport( UObject* Obj )
 	EditorErrors.Notify(LOCTEXT("SurroundWarningDescription", "Some files could not be reimported."), EMessageSeverity::Warning);
 
 	return bSourceReimported ? EReimportResult::Succeeded : EReimportResult::Failed;
+}
+
+int32 UReimportSoundSurroundFactory::GetPriority() const
+{
+	return ImportPriority;
 }
 
 
@@ -5539,6 +5569,11 @@ EReimportResult::Type UReimportTextureFactory::Reimport( UObject* Obj )
 	return EReimportResult::Succeeded;
 }
 
+int32 UReimportTextureFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 
 /*-----------------------------------------------------------------------------
 UReimportFbxStaticMeshFactory.
@@ -5723,6 +5758,11 @@ EReimportResult::Type UReimportFbxStaticMeshFactory::Reimport( UObject* Obj )
 	}
 }
 
+int32 UReimportFbxStaticMeshFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 
 
 /*-----------------------------------------------------------------------------
@@ -5880,6 +5920,11 @@ EReimportResult::Type UReimportFbxSkeletalMeshFactory::Reimport( UObject* Obj )
 	}
 }
 
+int32 UReimportFbxSkeletalMeshFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 /*-----------------------------------------------------------------------------
 UReimportFbxAnimSequenceFactory
 -----------------------------------------------------------------------------*/ 
@@ -6024,6 +6069,11 @@ EReimportResult::Type UReimportFbxAnimSequenceFactory::Reimport( UObject* Obj )
 	Importer->ReleaseScene(); 
 
 	return EReimportResult::Succeeded;
+}
+
+int32 UReimportFbxAnimSequenceFactory::GetPriority() const
+{
+	return ImportPriority;
 }
 
 
@@ -6800,6 +6850,11 @@ EReimportResult::Type UReimportDestructibleMeshFactory::Reimport( UObject* Obj )
 	return EReimportResult::Succeeded;
 }
 
+int32 UReimportDestructibleMeshFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 #endif // #if WITH_APEX
 
 /*------------------------------------------------------------------------------
@@ -7155,13 +7210,13 @@ bool UDataTableFactory::ConfigureProperties()
 
 		TSharedRef<SWidget> MakeRowStructItemWidget(class UScriptStruct* Struct) const
 		{
-			return SNew(STextBlock).Text(Struct ? Struct->GetDisplayNameText().ToString() : FString());
+			return SNew(STextBlock).Text(Struct ? Struct->GetDisplayNameText() : FText::GetEmpty());
 		}
 
-		FString GetSelectedRowOptionText() const
+		FText GetSelectedRowOptionText() const
 		{
 			UScriptStruct* Struct = RowStructCombo.IsValid() ? RowStructCombo->GetSelectedItem() : NULL;
-			return Struct ? Struct->GetDisplayNameText().ToString() : FString();
+			return Struct ? Struct->GetDisplayNameText() : FText::GetEmpty();
 		}
 
 		FReply OnCreate()

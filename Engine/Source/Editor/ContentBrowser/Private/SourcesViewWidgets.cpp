@@ -61,6 +61,7 @@ void SAssetTreeItem::Construct( const FArguments& InArgs )
 			[
 				SAssignNew(InlineRenameWidget, SInlineEditableTextBlock)
 					.Text(this, &SAssetTreeItem::GetNameText)
+					.ToolTipText(this, &SAssetTreeItem::GetToolTipText)
 					.Font( FEditorStyle::GetFontStyle(bIsRoot ? "ContentBrowser.SourceTreeRootItemFont" : "ContentBrowser.SourceTreeItemFont") )
 					.HighlightText( InArgs._HighlightText )
 					.OnTextCommitted(this, &SAssetTreeItem::HandleNameCommitted)
@@ -73,7 +74,7 @@ void SAssetTreeItem::Construct( const FArguments& InArgs )
 
 	if( InlineRenameWidget.IsValid() )
 	{
-		TreeItem.Pin()->OnRenamedRequestEvent.AddSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
+		EnterEditingModeDelegateHandle = TreeItem.Pin()->OnRenamedRequestEvent.AddSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
 	}
 }
 
@@ -81,7 +82,7 @@ SAssetTreeItem::~SAssetTreeItem()
 {
 	if( InlineRenameWidget.IsValid() )
 	{
-		TreeItem.Pin()->OnRenamedRequestEvent.RemoveSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
+		TreeItem.Pin()->OnRenamedRequestEvent.Remove( EnterEditingModeDelegateHandle );
 	}
 }
 
@@ -287,6 +288,7 @@ void SAssetTreeItem::HandleNameCommitted( const FText& NewText, ETextCommit::Typ
 			const FString OldPath = TreeItemPtr->FolderPath;
 			FString Path;
 			TreeItemPtr->FolderPath.Split(TEXT("/"), &Path, NULL, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			TreeItemPtr->DisplayName = NewText;
 			TreeItemPtr->FolderName = NewText.ToString();
 			TreeItemPtr->FolderPath = Path + TEXT("/") + NewText.ToString();
 
@@ -316,7 +318,7 @@ bool SAssetTreeItem::IsValidAssetPath() const
 	if ( TreeItem.IsValid() )
 	{
 		// The classes folder is not a real path
-		return TreeItem.Pin()->FolderPath != TEXT("/Classes");
+		return !ContentBrowserUtils::IsClassPath(TreeItem.Pin()->FolderPath);
 	}
 	else
 	{
@@ -355,9 +357,23 @@ FSlateColor SAssetTreeItem::GetFolderColor() const
 
 FText SAssetTreeItem::GetNameText() const
 {
-	if ( TreeItem.IsValid() )
+	TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin();
+	if ( TreeItemPin.IsValid() )
 	{
-		return FText::FromString(TreeItem.Pin()->FolderName);
+		return TreeItemPin->DisplayName;
+	}
+	else
+	{
+		return FText();
+	}
+}
+
+FText SAssetTreeItem::GetToolTipText() const
+{
+	TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin();
+	if ( TreeItemPin.IsValid() )
+	{
+		return FText::FromString(TreeItemPin->FolderPath);
 	}
 	else
 	{
@@ -450,7 +466,7 @@ void SCollectionListItem::Construct( const FArguments& InArgs )
 	if(InlineRenameWidget.IsValid())
 	{
 		// This is broadcast when the context menu / input binding requests a rename
-		CollectionItem.Pin()->OnRenamedRequestEvent.AddSP(InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode);
+		EnterEditingModeDelegateHandle = CollectionItem.Pin()->OnRenamedRequestEvent.AddSP(InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode);
 	}
 }
 
@@ -458,7 +474,7 @@ SCollectionListItem::~SCollectionListItem()
 {
 	if(InlineRenameWidget.IsValid())
 	{
-		CollectionItem.Pin()->OnRenamedRequestEvent.RemoveSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
+		CollectionItem.Pin()->OnRenamedRequestEvent.Remove( EnterEditingModeDelegateHandle );
 	}
 }
 

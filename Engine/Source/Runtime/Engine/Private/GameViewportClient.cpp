@@ -2136,13 +2136,13 @@ void UGameViewportClient::ToggleShowCollision()
 	if (bIsShowingCollision)
 	{
 		NumViewportsShowingCollision++;
-		GetWorld()->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateUObject(this, &UGameViewportClient::ShowCollisionOnSpawnedActors));
+		ShowCollisionOnSpawnedActorsDelegateHandle = GetWorld()->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateUObject(this, &UGameViewportClient::ShowCollisionOnSpawnedActors));
 	}
 	else
 	{
 		NumViewportsShowingCollision--;
 		check(NumViewportsShowingCollision >= 0);
-		GetWorld()->RemoveOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateUObject(this, &UGameViewportClient::ShowCollisionOnSpawnedActors));
+		GetWorld()->RemoveOnActorSpawnedHandler(ShowCollisionOnSpawnedActorsDelegateHandle);
 	}
 
 	CollisionComponentVisibilityMap& Mapping = GetCollisionComponentVisibilityMap();
@@ -2207,7 +2207,7 @@ void UGameViewportClient::ShowCollisionOnSpawnedActors(AActor* Actor)
 {
 	CollisionComponentVisibilityMap& Mapping = GetCollisionComponentVisibilityMap();
 
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	check(Actor != nullptr);
 	Actor->GetComponents(Components);
 

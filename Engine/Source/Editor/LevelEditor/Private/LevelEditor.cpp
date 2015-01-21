@@ -42,7 +42,10 @@ FLevelEditorModule::FLevelEditorModule()
 
 TSharedRef<SDockTab> FLevelEditorModule::SpawnLevelEditor( const FSpawnTabArgs& InArgs )
 {
-	TSharedRef<SDockTab> LevelEditorTab = SNew(SDockTab) .TabRole(ETabRole::MajorTab) .ContentPadding( FMargin(0,2,0,0) );
+	TSharedRef<SDockTab> LevelEditorTab = SNew(SDockTab)
+		.TabRole(ETabRole::MajorTab)
+		.ContentPadding( FMargin(0) );
+
 	SetLevelEditorInstanceTab(LevelEditorTab);
 	TSharedPtr< SWindow > OwnerWindow = InArgs.GetOwnerWindow();
 	
@@ -153,10 +156,6 @@ void FLevelEditorModule::StartupModule()
 	ModeBarExtensibilityManager = MakeShareable(new FExtensibilityManager);
 
 	NotificationBarExtensibilityManager = MakeShareable(new FExtensibilityManager);
-
-	// Figure out if we recompile the level editor.
-	FString SourcePath = FPaths::Combine(*FPaths::EngineDir(), TEXT("Source/Editor/LevelEditor/Private"));
-	bCanBeRecompiled = IFileManager::Get().DirectoryExists(*SourcePath) && !GEngineVersion.IsPromotedBuild();
 
 	// Note this must come before any tab spawning because that can create the SLevelEditor and attempt to map commands
 	FLevelEditorCommands::Register();
@@ -553,21 +552,29 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 	ActionList.MapAction( Commands.Build,
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::Build_Execute ) );
 
+	ActionList.MapAction(
+		Commands.ConnectToSourceControl,
+		FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::ConnectToSourceControl_Clicked)
+		);
 
-	if (CanBeRecompiled())
-	{
-		ActionList.MapAction( Commands.RecompileLevelEditor,
-			FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::RecompileLevelEditor_Clicked ),
-			FCanExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::Recompile_CanExecute )
-			);
+	ActionList.MapAction(
+		Commands.ChangeSourceControlSettings,
+		FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::ConnectToSourceControl_Clicked)
+		);
 
-		ActionList.MapAction( Commands.ReloadLevelEditor,
-			FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::ReloadLevelEditor_Clicked ),
-			FCanExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::Reload_CanExecute )
-			);
-	}
+	ActionList.MapAction(
+		Commands.CheckOutModifiedFiles,
+		FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::CheckOutModifiedFiles_Clicked),
+		FCanExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::CheckOutModifiedFiles_CanExecute)
+		);
 
-	ActionList.MapAction( Commands.RecompileGameCode,
+	ActionList.MapAction(
+		Commands.SubmitToSourceControl,
+		FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::SubmitToSourceControl_Clicked),
+		FCanExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::SubmitToSourceControl_CanExecute)
+		);
+
+	ActionList.MapAction(Commands.RecompileGameCode,
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::RecompileGameCode_Clicked ),
 		FCanExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::Recompile_CanExecute )
 		);
@@ -602,6 +609,11 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 	ActionList.MapAction( 
 		Commands.GoToDocsForActor, 
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::GoToDocsForActor_Clicked )
+		);
+
+	ActionList.MapAction(
+		Commands.AddScriptBehavior,
+		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::AddScriptBehavior_Clicked )
 		);
 
 	ActionList.MapAction( 
@@ -958,6 +970,12 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 	ActionList.MapAction(
 		Commands.SelectAllActorsOfSameClassWithArchetype,
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::OnSelectAllActorsOfClass, (bool)true )
+		);
+
+	ActionList.MapAction(
+		Commands.SelectComponentOwnerActor,
+		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::OnSelectComponentOwnerActor ),
+		FCanExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::CanSelectComponentOwnerActor )
 		);
 
 	ActionList.MapAction(

@@ -129,7 +129,7 @@ bool AActor::CheckActorComponents()
 	DEFINE_LOG_CATEGORY_STATIC(LogCheckComponents, Warning, All);
 
 	bool bResult = true;
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 Index = 0; Index < Components.Num(); Index++)
@@ -158,9 +158,9 @@ bool AActor::CheckActorComponents()
 			}
 		}
 	}
-	for (int32 Index = 0; Index < SerializedComponents.Num(); Index++)
+	for (int32 Index = 0; Index < BlueprintCreatedComponents.Num(); Index++)
 	{
-		UActorComponent* Inner = SerializedComponents[Index];
+		UActorComponent* Inner = BlueprintCreatedComponents[Index];
 		if (!Inner)
 		{
 			continue;
@@ -568,7 +568,7 @@ void AActor::RegisterAllActorTickFunctions(bool bRegister, bool bDoComponents)
 
 		if (bDoComponents)
 		{
-			TArray<UActorComponent*> Components;
+			TInlineComponentArray<UActorComponent*> Components;
 			GetComponents(Components);
 
 			for (int32 Index = 0; Index < Components.Num(); Index++)
@@ -665,7 +665,7 @@ void AActor::Tick( float DeltaSeconds )
 		bool bOKToDestroy = true;
 
 		// @todo: naive implementation, needs improved
-		TArray<UActorComponent*> Components;
+		TInlineComponentArray<UActorComponent*> Components;
 		GetComponents(Components);
 
 		for (int32 CompIdx=0; CompIdx<Components.Num(); ++CompIdx)
@@ -751,20 +751,19 @@ void AActor::GetComponentsBoundingCylinder(float& OutCollisionRadius, float& Out
 	float Radius = 0.f;
 	float HalfHeight = 0.f;
 
-	TArray<UPrimitiveComponent*> Components;
-	GetComponents(Components);
-
-	for (int32 CompIdx = 0; CompIdx < Components.Num(); CompIdx++)
+	for (const UActorComponent* ActorComponent : GetComponents())
 	{
-		UPrimitiveComponent* PrimComp = Components[CompIdx];
-
-		// Only use collidable components to find collision bounding box.
-		if ((bIgnoreRegistration || PrimComp->IsRegistered()) && (bNonColliding || PrimComp->IsCollisionEnabled()))
+		const UPrimitiveComponent* PrimComp = Cast<const UPrimitiveComponent>(ActorComponent);
+		if (PrimComp)
 		{
-			float TestRadius, TestHalfHeight;
-			PrimComp->CalcBoundingCylinder(TestRadius, TestHalfHeight);
-			Radius = FMath::Max(Radius, TestRadius);
-			HalfHeight = FMath::Max(HalfHeight, TestHalfHeight);
+			// Only use collidable components to find collision bounding box.
+			if ((bIgnoreRegistration || PrimComp->IsRegistered()) && (bNonColliding || PrimComp->IsCollisionEnabled()))
+			{
+				float TestRadius, TestHalfHeight;
+				PrimComp->CalcBoundingCylinder(TestRadius, TestHalfHeight);
+				Radius = FMath::Max(Radius, TestRadius);
+				HalfHeight = FMath::Max(HalfHeight, TestHalfHeight);
+			}
 		}
 	}
 
@@ -842,17 +841,16 @@ FBox AActor::GetComponentsBoundingBox(bool bNonColliding) const
 {
 	FBox Box(0);
 
-	TArray<UPrimitiveComponent*> Components;
-	GetComponents(Components);
-
-	for(int32 CompIdx = 0; CompIdx < Components.Num(); CompIdx++)
+	for (const UActorComponent* ActorComponent : GetComponents())
 	{
-		UPrimitiveComponent* PrimComp = Components[CompIdx];
-
-		// Only use collidable components to find collision bounding box.
-		if( PrimComp->IsRegistered() && (bNonColliding || PrimComp->IsCollisionEnabled()) )
+		const UPrimitiveComponent* PrimComp = Cast<const UPrimitiveComponent>(ActorComponent);
+		if (PrimComp)
 		{
-			Box += PrimComp->Bounds.GetBox();
+			// Only use collidable components to find collision bounding box.
+			if (PrimComp->IsRegistered() && (bNonColliding || PrimComp->IsCollisionEnabled()))
+			{
+				Box += PrimComp->Bounds.GetBox();
+			}
 		}
 	}
 
@@ -902,7 +900,7 @@ void AActor::SetTickGroup(ETickingGroup NewTickGroup)
 
 void AActor::ClearComponentOverlaps()
 {
-	TArray<UPrimitiveComponent*> PrimitiveComponents;
+	TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents;
 	GetComponents(PrimitiveComponents);
 
 	// Remove owned components from overlap tracking
@@ -1038,7 +1036,7 @@ void AActor::GetOverlappingComponents(TArray<UPrimitiveComponent*>& OutOverlappi
  */
 static void MarkOwnerRelevantComponentsDirty(AActor* TheActor)
 {
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	TheActor->GetComponents(Components);
 
 	for (int32 i = 0; i < Components.Num(); i++)
@@ -1065,14 +1063,11 @@ float AActor::GetLastRenderTime() const
 {
 	// return most recent of Components' LastRenderTime
 	// @todo UE4 maybe check base component and components attached to it instead?
-	TArray<UPrimitiveComponent*> Components;
-	GetComponents(Components);
-
 	float LastRenderTime = -1000.f;
-	for( int32 i=0; i<Components.Num(); i++ )
+	for (const UActorComponent* ActorComponent : GetComponents())
 	{
-		UPrimitiveComponent* PrimComp = Components[i];
-		if(PrimComp->IsRegistered())
+		const UPrimitiveComponent* PrimComp = Cast<const UPrimitiveComponent>(ActorComponent);
+		if (PrimComp && PrimComp->IsRegistered())
 		{
 			LastRenderTime = FMath::Max(LastRenderTime, PrimComp->LastRenderTime);
 		}
@@ -1240,7 +1235,7 @@ void AActor::DetachSceneComponentsFromParent(USceneComponent* InParentComponent,
 {
 	if (InParentComponent != NULL)
 	{
-		TArray<USceneComponent*> Components;
+		TInlineComponentArray<USceneComponent*> Components;
 		GetComponents(Components);
 
 		for (int32 Index = 0; Index < Components.Num(); ++Index)
@@ -1294,10 +1289,10 @@ void AActor::GetAttachedActors(TArray<class AActor*>& OutActors) const
 	if (RootComponent != NULL)
 	{
 		// Current set of components to check
-		TArray< USceneComponent*, TInlineAllocator<8> > CompsToCheck;
+		TArray< USceneComponent*, TInlineAllocator<NumInlinedActorComponents> > CompsToCheck;
 
 		// Set of all components we have checked
-		TArray< USceneComponent*, TInlineAllocator<8> > CheckedComps;
+		TArray< USceneComponent*, TInlineAllocator<NumInlinedActorComponents> > CheckedComps;
 
 		CompsToCheck.Push(RootComponent);
 
@@ -1498,7 +1493,7 @@ void AActor::PrestreamTextures( float Seconds, bool bEnableStreaming, int32 Cine
 	}
 
 	// Iterate over all components of that actor
-	TArray<UMeshComponent*> Components;
+	TInlineComponentArray<UMeshComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 ComponentIndex=0; ComponentIndex < Components.Num(); ComponentIndex++)
@@ -1557,7 +1552,7 @@ FVector AActor::GetPlacementExtent() const
 	FVector Extent(0.f);
 	if( (RootComponent && GetRootComponent()->ShouldCollideWhenPlacing()) && bCollideWhenPlacing) 
 	{
-		TArray<USceneComponent*> Components;
+		TInlineComponentArray<USceneComponent*> Components;
 		GetComponents(Components);
 
 		FBox ActorBox(0.f);
@@ -1879,7 +1874,7 @@ void AActor::DisplayDebug(UCanvas* Canvas, const FDebugDisplayInfo& DebugDisplay
 	static FName NAME_Bones = FName(TEXT("Bones"));
 	if (DebugDisplay.IsDisplayOn(NAME_Animation) || DebugDisplay.IsDisplayOn(NAME_Bones))
 	{
-		TArray<USkeletalMeshComponent*> Components;
+		TInlineComponentArray<USkeletalMeshComponent*> Components;
 		GetComponents(Components);
 
 		if (DebugDisplay.IsDisplayOn(NAME_Animation))
@@ -1941,7 +1936,7 @@ void AActor::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 	if (bFindCameraComponentWhenViewTarget)
 	{
 		// Look for the first active camera component and use that for the view
-		TArray<UCameraComponent*> Cameras;
+		TInlineComponentArray<UCameraComponent*> Cameras;
 		GetComponents<UCameraComponent>(/*out*/ Cameras);
 
 		for (UCameraComponent* CameraComponent : Cameras)
@@ -1987,7 +1982,7 @@ enum ECollisionResponse AActor::GetComponentsCollisionResponseToChannel(enum ECo
 {
 	ECollisionResponse OutResponse = ECR_Ignore;
 
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 i = 0; i < Components.Num(); i++)
@@ -2118,7 +2113,7 @@ TArray<UActorComponent*> AActor::GetComponentsByClass(TSubclassOf<UActorComponen
 
 void AActor::DisableComponentsSimulatePhysics()
 {
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	GetComponents(Components);
 
 	for (UPrimitiveComponent* Component : Components)
@@ -2134,7 +2129,7 @@ void AActor::PostRegisterAllComponents()
 /** Util to call OnComponentCreated on components */
 static void DispatchOnComponentsCreated(AActor* NewActor)
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	NewActor->GetComponents(Components);
 
 	for (int32 Idx = 0; Idx < Components.Num(); Idx++)
@@ -2671,7 +2666,7 @@ void AActor::SetActorEnableCollision(bool bNewActorEnableCollision)
 		bActorEnableCollision = bNewActorEnableCollision;
 
 		// Notify components about the change
-		TArray<UActorComponent*> Components;
+		TInlineComponentArray<UActorComponent*> Components;
 		GetComponents(Components);
 
 		for(int32 CompIdx=0; CompIdx<Components.Num(); CompIdx++)
@@ -3076,7 +3071,7 @@ void AActor::DispatchPhysicsCollisionHit(const FRigidBodyCollisionInfo& MyInfo, 
 
 void AActor::UnregisterAllComponents()
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for(int32 CompIdx = 0; CompIdx < Components.Num(); CompIdx++)
@@ -3145,7 +3140,7 @@ bool AActor::IncrementalRegisterComponents(int32 NumComponentsToRegister)
 
 	int32 NumTotalRegisteredComponents = 0;
 	int32 NumRegisteredComponentsThisRun = 0;
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 	
 	for (int32 CompIdx = 0; CompIdx < Components.Num() && NumRegisteredComponentsThisRun < NumComponentsToRegister; CompIdx++)
@@ -3195,7 +3190,7 @@ bool AActor::HasValidRootComponent()
 void AActor::MarkComponentsAsPendingKill()
 {
 	// Iterate components and mark them all as pending kill.
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 Index = 0; Index < Components.Num(); Index++)
@@ -3220,7 +3215,7 @@ void AActor::ReregisterAllComponents()
 
 void AActor::UpdateComponentTransforms()
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 Idx = 0; Idx < Components.Num(); Idx++)
@@ -3235,7 +3230,7 @@ void AActor::UpdateComponentTransforms()
 
 void AActor::MarkComponentsRenderStateDirty()
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 Idx = 0; Idx < Components.Num(); Idx++)
@@ -3250,7 +3245,7 @@ void AActor::MarkComponentsRenderStateDirty()
 
 void AActor::InitializeComponents()
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (UActorComponent* ActorComp : Components)
@@ -3264,7 +3259,7 @@ void AActor::InitializeComponents()
 
 void AActor::UninitializeComponents()
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for (UActorComponent* ActorComp : Components)
@@ -3278,7 +3273,7 @@ void AActor::UninitializeComponents()
 
 void AActor::DrawDebugComponents(FColor const& BaseColor) const
 {
-	TArray<USceneComponent*> Components;
+	TInlineComponentArray<USceneComponent*> Components;
 	GetComponents(Components);
 
 	for(int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ComponentIndex++)
@@ -3307,7 +3302,7 @@ void AActor::DrawDebugComponents(FColor const& BaseColor) const
 
 void AActor::InvalidateLightingCacheDetailed(bool bTranslationOnly)
 {
-	TArray<UActorComponent*> Components;
+	TInlineComponentArray<UActorComponent*> Components;
 	GetComponents(Components);
 
 	for(int32 ComponentIndex = 0;ComponentIndex < Components.Num();ComponentIndex++)
@@ -3322,7 +3317,7 @@ void AActor::InvalidateLightingCacheDetailed(bool bTranslationOnly)
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// Validate that we didn't change it during this action
-	TArray<UActorComponent*> NewComponents;
+	TInlineComponentArray<UActorComponent*> NewComponents;
 	GetComponents(NewComponents);
 	check(Components == NewComponents);
 #endif
@@ -3337,7 +3332,7 @@ bool AActor::ActorLineTraceSingle(struct FHitResult& OutHit, const FVector& Star
 	OutHit.TraceEnd = End;
 	bool bHasHit = false;
 	
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 ComponentIndex=0; ComponentIndex<Components.Num(); ComponentIndex++)
@@ -3365,7 +3360,7 @@ float AActor::ActorGetDistanceToCollision(const FVector& Point, ECollisionChanne
 	ClosestPointOnCollision = Point;
 	float ClosestPointDistance = -1.f;
 
-	TArray<UPrimitiveComponent*> Components;
+	TInlineComponentArray<UPrimitiveComponent*> Components;
 	GetComponents(Components);
 
 	for (int32 ComponentIndex=0; ComponentIndex<Components.Num(); ComponentIndex++)
@@ -3483,21 +3478,25 @@ UMaterialInstanceDynamic* AActor::MakeMIDForMaterial(class UMaterialInterface* P
 	return NULL;
 }
 
+// deprecated
 float AActor::GetDistanceTo(AActor* OtherActor)
 {
 	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size() : 0.f;
 }
 
+// deprecated
 float AActor::GetHorizontalDistanceTo(AActor* OtherActor)
 {
 	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size2D() : 0.f;
 }
 
+// deprecated
 float AActor::GetVerticalDistanceTo(AActor* OtherActor)
 {
 	return OtherActor ? FMath::Abs((GetActorLocation().Z - OtherActor->GetActorLocation().Z)) : 0.f;
 }
 
+// deprecated
 float AActor::GetDotProductTo(AActor* OtherActor)
 {
 	if (OtherActor)
@@ -3510,7 +3509,49 @@ float AActor::GetDotProductTo(AActor* OtherActor)
 	return -2.0;
 }
 
+// deprecated
 float AActor::GetHorizontalDotProductTo(AActor* OtherActor)
+{
+	if (OtherActor)
+	{
+		FVector Dir = GetActorForwardVector();
+		FVector Offset = OtherActor->GetActorLocation() - GetActorLocation();
+		Offset = Offset.GetSafeNormal2D();
+		return FVector::DotProduct(Dir, Offset);
+	}
+	return -2.0;
+}
+
+
+
+float AActor::GetDistanceToActor(AActor* OtherActor) const
+{
+	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size() : 0.f;
+}
+
+float AActor::GetHorizontalDistanceToActor(AActor* OtherActor) const
+{
+	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size2D() : 0.f;
+}
+
+float AActor::GetVerticalDistanceToActor(AActor* OtherActor) const
+{
+	return OtherActor ? FMath::Abs((GetActorLocation().Z - OtherActor->GetActorLocation().Z)) : 0.f;
+}
+
+float AActor::GetDotProductToActor(AActor* OtherActor) const
+{
+	if (OtherActor)
+	{
+		FVector Dir = GetActorForwardVector();
+		FVector Offset = OtherActor->GetActorLocation() - GetActorLocation();
+		Offset = Offset.GetSafeNormal();
+		return FVector::DotProduct(Dir, Offset);
+	}
+	return -2.0;
+}
+
+float AActor::GetHorizontalDotProductToActor(AActor* OtherActor) const
 {
 	if (OtherActor)
 	{

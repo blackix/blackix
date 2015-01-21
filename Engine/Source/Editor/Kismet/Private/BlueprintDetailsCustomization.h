@@ -120,6 +120,10 @@ private:
 	void OnExposedToMatineeChanged(ECheckBoxState InNewState);
 	EVisibility ExposeToMatineeVisibility() const;
 
+	ECheckBoxState OnGetConfigVariableCheckboxState() const;
+	void OnSetConfigVariableState(ECheckBoxState InNewState);
+	EVisibility ExposeConfigVisibility() const;
+
 	FText OnGetMetaKeyValue(FName Key) const;
 	void OnMetaKeyValueChanged(const FText& NewMinValue, ETextCommit::Type CommitInfo, FName Key);
 	EVisibility RangeVisibility() const;
@@ -447,7 +451,7 @@ private:
 	FText AccessSpecifierProperName( uint32 AccessSpecifierFlag ) const;
 	bool IsAccessSpecifierVisible() const;
 	TSharedRef<ITableRow> HandleGenerateRowAccessSpecifier( TSharedPtr<FAccessSpecifierLabel> SpecifierName, const TSharedRef<STableViewBase>& OwnerTable );
-	FString GetCurrentAccessSpecifierName() const;
+	FText GetCurrentAccessSpecifierName() const;
 	void OnAccessSpecifierSelected( TSharedPtr<FAccessSpecifierLabel> SpecifierName, ESelectInfo::Type SelectInfo );
 
 	bool GetInstanceColorVisibility() const;
@@ -469,7 +473,7 @@ private:
 		{}
 	};
 
-	FString GetCurrentReplicatedEventString() const;
+	FText GetCurrentReplicatedEventString() const;
 	FText ReplicationSpecifierProperName( uint32 ReplicationSpecifierFlag ) const;
 	TSharedRef<ITableRow> OnGenerateReplicationComboWidget( TSharedPtr<FReplicationSpecifierLabel> InNetFlag, const TSharedRef<STableViewBase>& OwnerTable );
 	

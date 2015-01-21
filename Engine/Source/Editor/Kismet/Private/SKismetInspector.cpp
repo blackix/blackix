@@ -73,40 +73,50 @@ TSharedRef<SWidget> SKismetInspector::MakeContextualEditingWidget(struct FKismet
 	if (SelectionInfo.ObjectsForPropertyEditing.Num())
 	{
 		ContextualEditingWidget->AddSlot()
-			.FillHeight( 0.9f )
-			.VAlign( VAlign_Top )
+		.FillHeight( 0.9f )
+		.VAlign( VAlign_Top )
+		[
+			SNew( SBox )
+			.Visibility(this, &SKismetInspector::GetPropertyViewVisibility)
 			[
-				SNew( SBorder )
-				.Visibility(this, &SKismetInspector::GetPropertyViewVisibility)
-				.BorderImage( FEditorStyle::GetBrush("NoBorder") )
-				[
-					PropertyView.ToSharedRef()
-				]
-			];
+				PropertyView.ToSharedRef()
+			]
+		];
 
 		if (bShowPublicView)
 		{
 			ContextualEditingWidget->AddSlot()
-				.AutoHeight()
-				.VAlign( VAlign_Top )
+			.AutoHeight()
+			.VAlign( VAlign_Top )
+			[
+				SNew(SCheckBox)
+				.ToolTipText(LOCTEXT("TogglePublicView", "Toggle Public View"))
+				.IsChecked(this, &SKismetInspector::GetPublicViewCheckboxState)
+				.OnCheckStateChanged( this, &SKismetInspector::SetPublicViewCheckboxState)
 				[
-					SNew(SCheckBox)
-					.ToolTipText(LOCTEXT("TogglePublicView", "Toggle Public View"))
-					.IsChecked(this, &SKismetInspector::GetPublicViewCheckboxState)
-					.OnCheckStateChanged( this, &SKismetInspector::SetPublicViewCheckboxState)
-					[
-						SNew(STextBlock) .Text(LOCTEXT("PublicViewCheckboxLabel", "Public View"))
-					]
-				];
+					SNew(STextBlock)
+					.Text(LOCTEXT("PublicViewCheckboxLabel", "Public View"))
+				]
+			];
 		}
 	}
 
 	return ContextualEditingWidget;
 }
 
-FString SKismetInspector::GetContextualEditingWidgetTitle() const
+void SKismetInspector::SetOwnerTab(TSharedRef<SDockTab> Tab)
 {
-	FString Title = PropertyViewTitle;
+	OwnerTab = Tab;
+}
+
+TSharedPtr<SDockTab> SKismetInspector::GetOwnerTab() const
+{
+	return OwnerTab.Pin();
+}
+
+FText SKismetInspector::GetContextualEditingWidgetTitle() const
+{
+	FText Title = PropertyViewTitle;
 	if (Title.IsEmpty())
 	{
 		if (SelectedObjects.Num() == 1 && SelectedObjects[0].IsValid())
@@ -115,7 +125,7 @@ FString SKismetInspector::GetContextualEditingWidgetTitle() const
 
 			if (UEdGraphNode* Node = Cast<UEdGraphNode>(Object))
 			{
-				Title = Node->GetNodeTitle(ENodeTitleType::ListView).ToString();
+				Title = Node->GetNodeTitle(ENodeTitleType::ListView);
 			}
 			else if (USCS_Node* SCSNode = Cast<USCS_Node>(Object))
 			{
@@ -123,11 +133,11 @@ FString SKismetInspector::GetContextualEditingWidgetTitle() const
 				{
 					if (SCSNode->VariableName != NAME_None)
 					{
-						Title = FString::Printf(*LOCTEXT("TemplateFor", "Template for %s").ToString(), *(SCSNode->VariableName.ToString()));
+						Title = FText::Format(LOCTEXT("TemplateForFmt", "Template for {0}"), FText::FromName(SCSNode->VariableName));
 					}
 					else 
 					{
-						Title = FString::Printf(*LOCTEXT("Name_Template", "%s Template").ToString(), *(SCSNode->ComponentTemplate->GetClass()->GetName()));
+						Title = FText::Format(LOCTEXT("Name_TemplateFmt", "{0} Template"), FText::FromString(SCSNode->ComponentTemplate->GetClass()->GetName()));
 					}
 				}
 			}
@@ -136,13 +146,13 @@ FString SKismetInspector::GetContextualEditingWidgetTitle() const
 				// Edit the component template
 				if (UActorComponent* Template = K2Node->GetTemplateFromNode())
 				{
-					Title = FString::Printf(*LOCTEXT("Name_Template", "%s Template").ToString(), *(Template->GetClass()->GetName()));
+					Title = FText::Format(LOCTEXT("Name_TemplateFmt", "{0} Template"), FText::FromString(Template->GetClass()->GetName()));
 				}
 			}
 
 			if (Title.IsEmpty())
 			{
-				Title = UKismetSystemLibrary::GetDisplayName(Object);
+				Title = FText::FromString(UKismetSystemLibrary::GetDisplayName(Object));
 			}
 		}
 		else if (SelectedObjects.Num() > 1)
@@ -177,7 +187,7 @@ FString SKismetInspector::GetContextualEditingWidgetTitle() const
 
 			if (BaseClass)
 			{
-				Title = FString::Printf( *LOCTEXT("MultipleObjectsSelected", "%d %ss selected").ToString(), SelectedObjects.Num(), *BaseClass->GetName() );
+				Title = FText::Format(LOCTEXT("MultipleObjectsSelectedFmt", "{0} {1} selected"), FText::AsNumber(SelectedObjects.Num()), FText::FromString(BaseClass->GetName() + TEXT("s")));
 			}
 		}
 	}
@@ -202,8 +212,9 @@ void SKismetInspector::Construct(const FArguments& InArgs)
 	{
 		NotifyHook = Kismet2.Get();
 	}
-	FDetailsViewArgs DetailsViewArgs( /*bUpdateFromSelection=*/ false, /*bLockable=*/ false, /*bAllowSearch=*/ true, /*bObjectsUseNameArea=*/ true, /*bHideSelectionTip=*/ true, /*InNotifyHook=*/ NotifyHook, /*InSearchInitialKeyFocus=*/ false, /*InViewIdentifier=*/ InArgs._ViewIdentifier );
-	DetailsViewArgs.bHideActorNameArea = InArgs._HideNameArea;
+
+	FDetailsViewArgs::ENameAreaSettings NameAreaSettings = InArgs._HideNameArea ? FDetailsViewArgs::HideNameArea : FDetailsViewArgs::ObjectsUseNameArea;
+	FDetailsViewArgs DetailsViewArgs( /*bUpdateFromSelection=*/ false, /*bLockable=*/ false, /*bAllowSearch=*/ true, NameAreaSettings, /*bHideSelectionTip=*/ true, /*InNotifyHook=*/ NotifyHook, /*InSearchInitialKeyFocus=*/ false, /*InViewIdentifier=*/ InArgs._ViewIdentifier );
 
 	PropertyView = EditModule.CreateDetailView( DetailsViewArgs );
 		
@@ -266,18 +277,36 @@ void SKismetInspector::Construct(const FArguments& InArgs)
 	// Update based on the current (empty) selection set
 	TArray<UObject*> InitialSelectedObjects;
 	FKismetSelectionInfo SelectionInfo;
-	UpdateFromObjects(InitialSelectedObjects, SelectionInfo, SKismetInspector::FShowDetailsOptions(FString(), true));
+	UpdateFromObjects(InitialSelectedObjects, SelectionInfo, SKismetInspector::FShowDetailsOptions(FText::GetEmpty(), true));
 }
 
 void SKismetInspector::EnableComponentDetailsCustomization(bool bEnable)
 {
+	// An "empty" instanced customization that's intended to override any registered global details customization for
+	// the AActor class type. This will be applied -only- when the CDO is selected to the Details view in Components mode.
+	class FActorDetailsOverrideCustomization : public IDetailCustomization
+	{
+	public:
+		/** IDetailCustomization interface */
+		virtual void CustomizeDetails(IDetailLayoutBuilder& DetailLayout) override {}
+
+		static TSharedRef<class IDetailCustomization> MakeInstance()
+		{
+			return MakeShareable(new FActorDetailsOverrideCustomization());
+		}
+	};
+
 	if (bEnable)
 	{
+		FOnGetDetailCustomizationInstance ActorOverrideDetails = FOnGetDetailCustomizationInstance::CreateStatic(&FActorDetailsOverrideCustomization::MakeInstance);
+		PropertyView->RegisterInstancedCustomPropertyLayout(AActor::StaticClass(), ActorOverrideDetails);
+
 		FOnGetDetailCustomizationInstance LayoutComponentDetails = FOnGetDetailCustomizationInstance::CreateStatic(&FBlueprintComponentDetails::MakeInstance, Kismet2Ptr);
 		PropertyView->RegisterInstancedCustomPropertyLayout(UActorComponent::StaticClass(), LayoutComponentDetails);
 	}
 	else
 	{
+		PropertyView->UnregisterInstancedCustomPropertyLayout(AActor::StaticClass());
 		PropertyView->UnregisterInstancedCustomPropertyLayout(UActorComponent::StaticClass());
 	}
 }
@@ -342,6 +371,24 @@ void SKismetInspector::AddPropertiesRecursive(UProperty* Property)
 
 void SKismetInspector::UpdateFromObjects(const TArray<UObject*>& PropertyObjects, struct FKismetSelectionInfo& SelectionInfo, const FShowDetailsOptions& Options)
 {
+	// If we're using the unified blueprint editor, there's not an explicit point where
+	// we ender a kind of component editing mode, so instead, just look at what we're selecting.
+	// If we select a component, then enable the customization.
+	if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+	{
+		bool bEnableComponentCustomization = false;
+		for ( UObject* PropertyObject : PropertyObjects )
+		{
+			if ( PropertyObject->IsA<UActorComponent>() )
+			{
+				bEnableComponentCustomization = true;
+				break;
+			}
+		}
+
+		EnableComponentDetailsCustomization(bEnableComponentCustomization);
+	}
+
 	PropertyView->OnFinishedChangingProperties().Clear();
 	PropertyView->OnFinishedChangingProperties().Add( UserOnFinishedChangingProperties );
 
@@ -476,6 +523,7 @@ void SKismetInspector::UpdateFromObjects(const TArray<UObject*>& PropertyObjects
 	}
 
 	PropertyViewTitle = Options.ForcedTitle;
+	bShowComponents = Options.bShowComponents;
 
 	// Update our context-sensitive editing widget
 	ContextualEditingBorderWidget->SetContent( MakeContextualEditingWidget(SelectionInfo, Options) );
@@ -519,6 +567,13 @@ bool SKismetInspector::IsPropertyVisible( const FPropertyAndParent& PropertyAndP
 	{
 		// Actor variables can't have default values (because Blueprint templates are library elements that can 
 		// bridge multiple levels and different levels might not have the actor that the default is referencing).
+		return false;
+	}
+
+	bool bIsComponent = (ObjectProperty != nullptr && ObjectProperty->PropertyClass->IsChildOf(UActorComponent::StaticClass()));
+	if (!bShowComponents && bIsComponent)
+	{
+		// Don't show sub components properties, thats what selecting components in the component tree is for.
 		return false;
 	}
 

@@ -44,6 +44,7 @@ enum ELoadFlags
 	LOAD_ForDiff					= 0x00020000,	// Loading for diffing.
 	LOAD_NoSeekFreeLinkerDetatch	= 0x00040000,	// Do not detach linkers for this package when seek-free loading
 	LOAD_PackageForPIE				= 0x00080000,   // This package is being loaded for PIE, it must be flagged as such immediately
+	LOAD_DeferDependencyLoads       = 0x00100000,   // Do not load external (blueprint) dependencies (instead, track them for deferred loading)
 };
 
 //
@@ -269,6 +270,16 @@ typedef uint64 EClassCastFlags;
 #define CASTCLASS_UInt16Property				DECLARE_UINT64(0x0000000080000000)
 #define CASTCLASS_UDoubleProperty				DECLARE_UINT64(0x0000000100000000)
 #define CASTCLASS_UAssetClassProperty			DECLARE_UINT64(0x0000000200000000)
+#define CASTCLASS_UPackage						DECLARE_UINT64(0x0000000400000000)
+#define CASTCLASS_ULevel						DECLARE_UINT64(0x0000000800000000)
+#define CASTCLASS_AActor						DECLARE_UINT64(0x0000001000000000)
+#define CASTCLASS_APlayerController				DECLARE_UINT64(0x0000002000000000)
+#define CASTCLASS_APawn							DECLARE_UINT64(0x0000004000000000)
+#define CASTCLASS_USceneComponent				DECLARE_UINT64(0x0000008000000000)
+#define CASTCLASS_UPrimitiveComponent			DECLARE_UINT64(0x0000010000000000)
+#define CASTCLASS_USkinnedMeshComponent			DECLARE_UINT64(0x0000020000000000)
+#define CASTCLASS_USkeletalMeshComponent		DECLARE_UINT64(0x0000040000000000)
+#define CASTCLASS_UBlueprint					DECLARE_UINT64(0x0000080000000000)
 
 #define CASTCLASS_AllFlags						DECLARE_UINT64(0xFFFFFFFFFFFFFFFF)
 
@@ -390,13 +401,14 @@ enum EObjectFlags
 	RF_WasLoaded				=0x00080000,	///< Flagged on UObjects that were loaded
 	RF_TextExportTransient		=0x00100000,	///< Do not export object to text form (e.g. copy/paste). Generally used for sub-objects that can be regenerated from data in their parent object.
 	RF_LoadCompleted			=0x00200000,	///< Object has been completely serialized by linkerload at least once. DO NOT USE THIS FLAG, It should be replaced with RF_WasLoaded.
+	RF_InheritableComponentTemplate = 0x00400000, ///< Archetype of the object can be in its super class
 
 	// Special all and none masks
-	RF_AllFlags					=0x003fffff,	///< All flags, used mainly for error checking
+	RF_AllFlags					=0x00ffffff,	///< All flags, used mainly for error checking
 	RF_NoFlags					=0x00000000,	///< No flags, used to avoid a cast
 
 	// Predefined groups of the above
-	RF_Load						= RF_Public | RF_Standalone | RF_Native | RF_Transactional | RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject | RF_TextExportTransient, // Flags to load from Unrealfiles.
+	RF_Load						= RF_Public | RF_Standalone | RF_Native | RF_Transactional | RF_ClassDefaultObject | RF_ArchetypeObject | RF_DefaultSubObject | RF_TextExportTransient | RF_InheritableComponentTemplate, // Flags to load from Unrealfiles.
 	RF_PropagateToSubObjects	= RF_Public | RF_ArchetypeObject | RF_Transactional | RF_Transient,		// Sub-objects will inherit these flags from their SuperObject.
 
 	
@@ -1263,6 +1275,7 @@ typedef uint32 ERenameFlags;
 #define REN_DontCreateRedirectors (0x0010) // Don't create an object redirector, even if the class is marked RF_Public
 #define REN_NonTransactional	(0x0020) // Don't call Modify() on the objects, so they won't be stored in the transaction buffer
 #define REN_ForceGlobalUnique	(0x0040) // Force unique names across all packages not just while the scope of the new outer
+#define REN_SkipGeneratedClasses (0x0080) // Prevent renaming of any child generated classes and CDO's in blueprints
 
 /*-----------------------------------------------------------------------------
 	Misc.

@@ -11,6 +11,7 @@
 #include "Editor/UnrealEd/Public/STransformViewportToolbar.h"
 #include "EditorViewportCommands.h"
 #include "SEditorViewportToolBarMenu.h"
+#include "BlueprintEditorTabs.h"
 
 /*-----------------------------------------------------------------------------
    SSCSEditorViewportToolBar
@@ -224,6 +225,8 @@ EVisibility SSCSEditorViewport::GetWidgetVisibility() const
 
 TSharedRef<FEditorViewportClient> SSCSEditorViewport::MakeEditorViewportClient()
 {
+	FPreviewScene* PreviewScene = BlueprintEditorPtr.Pin()->GetPreviewScene();
+
 	// Construct a new viewport client instance.
 	ViewportClient = MakeShareable(new FSCSEditorViewportClient(BlueprintEditorPtr, PreviewScene));
 	ViewportClient->SetRealtime(true);
@@ -253,7 +256,7 @@ void SSCSEditorViewport::BindCommands()
 
 	BlueprintEditorPtr.Pin()->GetToolkitCommands()->MapAction(
 		FBlueprintEditorCommands::Get().EnableSimulation,
-		FExecuteAction::CreateSP(ViewportClient.Get(), &FSCSEditorViewportClient::ToggleIsSimulateEnabled),
+		FExecuteAction::CreateSP(this, &SSCSEditorViewport::ToggleIsSimulateEnabled),
 		FCanExecuteAction(),
 		FIsActionChecked::CreateSP(ViewportClient.Get(), &FSCSEditorViewportClient::GetIsSimulateEnabled));
 
@@ -278,6 +281,21 @@ void SSCSEditorViewport::BindCommands()
 void SSCSEditorViewport::Invalidate()
 {
 	ViewportClient->Invalidate();
+}
+
+void SSCSEditorViewport::ToggleIsSimulateEnabled()
+{
+	// If we're in unified BP editing mode, make the viewport visible when simulation is starting.
+	if ( GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
+	{
+		// Only trigger the switch if the simulation is starting.
+		if ( !ViewportClient->GetIsSimulateEnabled() )
+		{
+			BlueprintEditorPtr.Pin()->GetTabManager()->InvokeTab(FBlueprintEditorTabs::SCSViewportID);
+		}
+	}
+
+	ViewportClient->ToggleIsSimulateEnabled();
 }
 
 void SSCSEditorViewport::EnablePreview(bool bEnable)
@@ -335,7 +353,7 @@ void SSCSEditorViewport::Tick(const FGeometry& AllottedGeometry, const double In
 	SEditorViewport::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	// If the preview scene is no longer valid (i.e. all actors have destroyed themselves), then attempt to recreate the scene. This way we can "loop" certain "finite" Blueprints that might destroy themselves.
-	if(ViewportClient.IsValid() && (bPreviewNeedsUpdating || !ViewportClient->IsPreviewSceneValid()))
+	if(ViewportClient.IsValid() && bPreviewNeedsUpdating)
 	{
 		ViewportClient->InvalidatePreview(bResetCameraOnNextPreviewUpdate);
 
@@ -343,9 +361,4 @@ void SSCSEditorViewport::Tick(const FGeometry& AllottedGeometry, const double In
 		bPreviewNeedsUpdating = false;
 		bResetCameraOnNextPreviewUpdate = false;
 	}
-}
-
-AActor* SSCSEditorViewport::GetPreviewActor() const
-{
-	return ViewportClient->GetPreviewActor();
 }

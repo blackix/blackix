@@ -38,7 +38,9 @@
 #include "NewsFeed.h"
 #include "TutorialMetaData.h"
 #include "SDockTab.h"
-
+#include "ComponentsTree.h"
+#include "SSCSEditor.h"
+#include "ComponentEditorUtils.h"
 
 static const FName LevelEditorBuildAndSubmitTab("LevelEditorBuildAndSubmit");
 static const FName LevelEditorStatsViewerTab("LevelEditorStatsViewer");
@@ -95,8 +97,8 @@ void SLevelEditor::BindCommands()
 		FExecuteAction::CreateStatic< TWeakPtr< SLevelEditor > >( &FLevelEditorActionCallbacks::OpenLevelBlueprint, SharedThis( this ) ) );
 	
 	LevelEditorCommands->MapAction(
-		Actions.CreateClassBlueprint,
-		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::CreateClassBlueprint ) );
+		Actions.CreateBlueprintClass,
+		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::CreateBlueprintClass ) );
 
 	LevelEditorCommands->MapAction(
 		Actions.OpenContentBrowser,
@@ -143,6 +145,10 @@ void SLevelEditor::Initialize( const TSharedRef<SDockTab>& OwnerTab, const TShar
 	// Bind the level editor tab's label to the currently loaded level name string in the main frame
 	OwnerTab->SetLabel( TAttribute<FText>( this, &SLevelEditor::GetTabTitle) );
 
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked< FLevelEditorModule >(LevelEditorModuleName);
+
+	LevelEditorModule.OnActorSelectionChanged().AddSP(this, &SLevelEditor::OnActorSelectionChanged);
+
 	TSharedRef<SWidget> Widget2 = RestoreContentArea( OwnerTab, OwnerWindow );
 	TSharedRef<SWidget> Widget1 = FLevelEditorMenu::MakeLevelEditorMenu( LevelEditorCommands, SharedThis(this) );
 
@@ -173,6 +179,16 @@ void SLevelEditor::Initialize( const TSharedRef<SDockTab>& OwnerTab, const TShar
 			]
 #endif
 		]
+
+#if PLATFORM_MAC
+		// Without the in-window menu bar, we need some space between the tab bar and tab contents
+		+SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew( SBox )
+			.HeightOverride( 1.0f )
+		]
+#endif
 
 		+SVerticalBox::Slot()
 		.FillHeight( 1.0f )
@@ -486,35 +502,326 @@ TSharedRef<FTabManager> SLevelEditor::GetTabManager() const
 	return LevelEditorTabManager.ToSharedRef();
 }
 
-// @todo Slate TEMP to support both detail views
-static TSharedRef<SDockTab> SummonDetailsPanel( FName TabIdentifier )
+class SActorDetails : public SCompoundWidget, public FEditorUndoClient
 {
-	struct Local
+public:
+	SLATE_BEGIN_ARGS( SActorDetails )
+	{}
+	SLATE_END_ARGS()
+
+	void Construct( const FArguments& InArgs, const FName TabIdentifier )
 	{
-		static bool IsPropertyVisible( const FPropertyAndParent& PropertyAndParent )
+		struct Local
 		{
-			// For details views in the level editor all properties are the instanced versions
-			if (PropertyAndParent.Property.HasAllPropertyFlags(CPF_DisableEditOnInstance))
+			static bool IsPropertyVisible( const FPropertyAndParent& PropertyAndParent )
 			{
-				return false;
+				// For details views in the level editor all properties are the instanced versions
+				if (PropertyAndParent.Property.HasAllPropertyFlags(CPF_DisableEditOnInstance))
+				{
+					return false;
+				}
+
+				return true;
+			}
+		};
+
+		bSelectionGuard = false;
+
+		// Event subscriptions
+		USelection::SelectionChangedEvent.AddRaw(this, &SActorDetails::OnEditorSelectionChanged);
+
+		FPropertyEditorModule& PropPlugin = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+		FDetailsViewArgs DetailsViewArgs;
+		DetailsViewArgs.bUpdatesFromSelection = true;
+		DetailsViewArgs.bLockable = true;
+		DetailsViewArgs.NameAreaSettings = FDetailsViewArgs::ComponentsAndActorsUseNameArea;
+		DetailsViewArgs.NotifyHook = GUnrealEd;
+		DetailsViewArgs.ViewIdentifier = TabIdentifier;
+		DetailsViewArgs.bCustomNameAreaLocation = true;
+		DetailsViewArgs.bCustomFilterAreaLocation = true;
+
+		DetailsView = PropPlugin.CreateDetailView(DetailsViewArgs);
+
+		DetailsView->SetIsPropertyVisibleDelegate( FIsPropertyVisible::CreateStatic( &Local::IsPropertyVisible ) );
+
+		// Set up a delegate to call to add generic details to the view
+		DetailsView->SetGenericLayoutDetailsDelegate( FOnGetDetailCustomizationInstance::CreateStatic( &FLevelEditorGenericDetails::MakeInstance ) );
+
+		GEditor->RegisterForUndo(this);
+
+		SAssignNew(ComponentsBox, SBox)
+		.Visibility(EVisibility::Collapsed);
+
+		ComponentsBox->SetContent
+		(
+			SAssignNew(SCSEditor, SSCSEditor)
+			.EditorMode(SSCSEditor::EEditorMode::ActorInstance)
+			.ActorContext(this, &SActorDetails::GetSelectedActor)												// Get the instance of the actor in the world
+			.OnRootSelected(this, &SActorDetails::OnSCSEditorRootSelected)										// A selection of the root has been made
+			.OnSelectionUpdated(this, &SActorDetails::OnSCSEditorTreeViewSelectionChanged)						// A selection has been made in the tree view, so inform the level editor
+			//.OnHighlightPropertyInDetailsView(this, &SLevelEditor::OnSCSEditorHighlightPropertyInDetailsView)	// Also unsure and don't think it's needed
+		);
+
+		ChildSlot
+		[
+			SNew( SVerticalBox )
+			+SVerticalBox::Slot()
+			.Padding(0.0f, 0.0f, 0.0f, 2.0f)
+			.AutoHeight()
+			[
+				DetailsView->GetNameAreaWidget().ToSharedRef()
+			]
+			+ SVerticalBox::Slot()
+			.Padding(0.0f, 0.0f, 0.0f, 2.0f)
+			.AutoHeight()
+			[
+				DetailsView->GetFilterAreaWidget().ToSharedRef()
+			]
+			+SVerticalBox::Slot()
+			[
+				SAssignNew(DetailsSplitter, SSplitter)
+				.Orientation(Orient_Vertical)
+				+ SSplitter::Slot()
+				[
+					DetailsView.ToSharedRef()
+				]
+			]
+		];
+
+		DetailsSplitter->AddSlot(0)
+		.Value(.2f)
+		[
+			ComponentsBox.ToSharedRef()
+		];
+	}
+
+	~SActorDetails()
+	{
+		USelection::SelectionChangedEvent.RemoveAll(this);
+	}
+
+	void SetObjects( const TArray<UObject*>& InObjects )
+	{
+		if(!DetailsView->IsLocked() )
+		{
+			DetailsView->SetObjects( InObjects );
+			
+			bool bShowingComponents = false;
+			
+			if( GetDefault<UEditorExperimentalSettings>()->bInWorldBPEditing )
+			{
+				auto Actor = GetSelectedActor();
+				if (Actor)
+				{
+					bShowingComponents = true;
+
+					// Update the tree if a new actor is selected
+					if (GEditor->GetSelectedComponentCount() == 0)
+					{
+						SCSEditor->UpdateTree();
+					}
+				}
 			}
 
-			return true;
+			ComponentsBox->SetVisibility(bShowingComponents ? EVisibility::Visible : EVisibility::Collapsed);
 		}
-	};
+	}
 
-	FPropertyEditorModule& PropPlugin = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	const FDetailsViewArgs DetailsViewArgs( true, true, true, false, false, GUnrealEd, false, TabIdentifier );
-	TSharedRef<IDetailsView> DetailsView = PropPlugin.CreateDetailView( DetailsViewArgs );
+	virtual void PostUndo(bool bSuccess)
+	{
+		// Enable the selection guard to prevent OnTreeSelectionChanged() from altering the editor's component selection
+		TGuardValue<bool> SelectionGuard(bSelectionGuard, true);
 
-	DetailsView->SetIsPropertyVisibleDelegate( FIsPropertyVisible::CreateStatic( &Local::IsPropertyVisible ) );
+		// Refresh the tree and update the selection to match the world
+		SCSEditor->UpdateTree();
+		UpdateComponentTreeFromEditorSelection();
+	}
 
-	// Set up a delegate to call to add generic details to the view
-	DetailsView->SetGenericLayoutDetailsDelegate( FOnGetDetailCustomizationInstance::CreateStatic( &FLevelEditorGenericDetails::MakeInstance ) );
+	virtual void PostRedo(bool bSuccess)
+	{
+		PostUndo(bSuccess);
+	}
+
+private:
+
+	void OnEditorSelectionChanged(UObject* Object)
+	{
+		if (!bSelectionGuard && SCSEditor.IsValid())
+		{
+			// Make sure the selection set that changed is relevant to us
+			auto Selection = Cast<USelection>(Object);
+			if (Selection == GEditor->GetSelectedComponents() || Selection == GEditor->GetSelectedActors())
+			{
+				UpdateComponentTreeFromEditorSelection();
+
+				if (GEditor->GetSelectedComponentCount() == 0) // An actor was selected
+				{
+					// Ensure the selection flags are up to date for the components in the selected actor
+					for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
+					{
+						auto Actor = CastChecked<AActor>(*It);
+						GUnrealEd->SetActorSelectionFlags(Actor);
+					}
+				}
+			}
+		}
+	}
+	
+	AActor* GetSelectedActor() const
+	{
+		//@todo this won't work w/ multi-select
+		return Cast<AActor>(*GEditor->GetSelectedActorIterator());
+	}
+
+	void OnSCSEditorRootSelected(AActor* Actor)
+	{
+		if (!bSelectionGuard)
+		{
+			GEditor->SelectNone(true, true, false);
+			GEditor->SelectActor(Actor, true, true, true);
+		}
+	}
+
+	void OnSCSEditorTreeViewSelectionChanged(const TArray<FSCSEditorTreeNodePtrType>& SelectedNodes)
+	{
+		if (!bSelectionGuard && SelectedNodes.Num() > 0 )
+		{
+			auto Actor = GetSelectedActor();
+			if (Actor)
+			{
+				USelection* SelectedComponents = GEditor->GetSelectedComponents();
+
+				// Don't bother doing anything if the node selection already matches the current world selection
+				bool bSelectionChanged = GEditor->GetSelectedComponentCount() != SelectedNodes.Num();
+				if (!bSelectionChanged)
+				{
+					// Check to see if any of the selected nodes aren't already selected in the world
+					for (auto& SelectedNode : SelectedNodes)
+					{
+						UActorComponent* ComponentInstance = SelectedNode->FindComponentInstanceInActor(Actor);
+						if (ComponentInstance && !SelectedComponents->IsSelected(ComponentInstance))
+						{
+							// At least one of the selected nodes isn't selected in the world, so update the selection
+							bSelectionChanged = true;
+							break;
+						}
+					}
+				}
+				
+				if (bSelectionChanged)
+				{
+					// Enable the selection guard to prevent OnEditorSelectionChanged() from altering the contents of the SCSTreeWidget
+					TGuardValue<bool> SelectionGuard(bSelectionGuard, true);
+
+					// Update the editor's component selection to match the node selection
+					TArray<UObject*> DetailsObjects;
+					const FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "ClickingOnComponentInTree", "Clicking on Component (tree view)"));
+
+					SelectedComponents->Modify();
+					SelectedComponents->BeginBatchSelectOperation();
+					SelectedComponents->DeselectAll();
+
+					for (auto& SelectedNode : SelectedNodes)
+					{
+						if (SelectedNode.IsValid())
+						{
+							UActorComponent* ComponentInstance = SelectedNode->FindComponentInstanceInActor(Actor);
+							if (ComponentInstance)
+							{
+								DetailsObjects.Add(ComponentInstance);
+								SelectedComponents->Select(ComponentInstance);
+
+								// Ensure the selection override is bound for this component (including any attached editor-only children)
+								auto PrimComponent = Cast<UPrimitiveComponent>(ComponentInstance);
+								if (PrimComponent && !PrimComponent->SelectionOverrideDelegate.IsBound())
+								{
+									PrimComponent->SelectionOverrideDelegate = UPrimitiveComponent::FSelectionOverride::CreateUObject(GUnrealEd, &UUnrealEdEngine::IsComponentSelected);
+								}
+								else
+								{
+									//@todo move the selection override binding check to FComponentEditorUtils
+									auto SceneComponent = Cast<USceneComponent>(ComponentInstance);
+									if (SceneComponent)
+									{
+										for (auto Component : SceneComponent->AttachChildren)
+										{
+											PrimComponent = Cast<UPrimitiveComponent>(Component);
+											if (PrimComponent && !PrimComponent->SelectionOverrideDelegate.IsBound())
+											{
+												PrimComponent->SelectionOverrideDelegate = UPrimitiveComponent::FSelectionOverride::CreateUObject(GUnrealEd, &UUnrealEdEngine::IsComponentSelected);
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					SelectedComponents->EndBatchSelectOperation();
+
+					DetailsView->SetObjects(DetailsObjects);
+
+					GUnrealEd->SetActorSelectionFlags(Actor);
+					GUnrealEd->UpdatePivotLocationForSelection(true);
+					GEditor->RedrawLevelEditingViewports();
+				}
+			}
+		}
+	}
+	
+	void UpdateComponentTreeFromEditorSelection()
+	{
+		// Enable the selection guard to prevent OnTreeSelectionChanged() from altering the editor's component selection
+		TGuardValue<bool> SelectionGuard(bSelectionGuard, true);
+
+		auto& SCSTreeWidget = SCSEditor->SCSTreeWidget;
+		TArray<UObject*> DetailsObjects;
+
+		// Update the tree selection to match the level editor component selection
+		SCSTreeWidget->ClearSelection();
+		for (FSelectionIterator It(GEditor->GetSelectedComponentIterator()); It; ++It)
+		{
+			UActorComponent* Component = CastChecked<UActorComponent>(*It);
+
+			auto SCSTreeNode = SCSEditor->GetNodeFromActorComponent(Component, false);
+			if (SCSTreeNode.IsValid() && SCSTreeNode->GetComponentTemplate())
+			{
+				SCSTreeWidget->RequestScrollIntoView(SCSTreeNode);
+				SCSTreeWidget->SetItemSelection(SCSTreeNode, true);
+
+				auto ComponentTemplate = SCSTreeNode->GetComponentTemplate();
+				check(Component == ComponentTemplate);
+				DetailsObjects.Add(Component);
+			}
+		}
+
+		if (DetailsObjects.Num() > 0)
+		{
+			DetailsView->SetObjects(DetailsObjects);
+		}
+		else
+		{
+			//@todo Make sure the actor "root" is selected
+		}
+	}
+
+private:
+	TSharedPtr<SSplitter> DetailsSplitter;
+	TSharedPtr<IDetailsView> DetailsView;
+	TSharedPtr<SBox> ComponentsBox;
+	TSharedPtr<SSCSEditor> SCSEditor;
+
+	bool bSelectionGuard;
+};
+
+
+TSharedRef<SDockTab> SLevelEditor::SummonDetailsPanel( FName TabIdentifier )
+{
+	TSharedPtr<SActorDetails> ActorDetails;
 
 	FText Label = NSLOCTEXT( "LevelEditor", "DetailsTabTitle", "Details" );
 
-	return SNew( SDockTab )
+	TSharedRef<SDockTab> DocTab = SNew(SDockTab)
 		.Icon( FEditorStyle::GetBrush( "LevelEditor.Tabs.Details" ) )
 		.Label( Label )
 		.ToolTip( IDocumentation::Get()->CreateToolTip( Label, nullptr, "Shared/LevelEditor", "DetailsTab" ) )
@@ -522,11 +829,14 @@ static TSharedRef<SDockTab> SummonDetailsPanel( FName TabIdentifier )
 			SNew( SBox )
 			.AddMetaData<FTutorialMetaData>(FTutorialMetaData(TEXT("ActorDetails"), TEXT("LevelEditorSelectionDetails")))
 			[
-				DetailsView
+				SAssignNew( ActorDetails, SActorDetails, TabIdentifier )
 			]
 		];
-}
 
+	AllActorDetailPanels.Add( ActorDetails );
+
+	return DocTab;
+}
 /** Method to call when a tab needs to be spawned by the FLayoutService */
 TSharedRef<SDockTab> SLevelEditor::SpawnLevelEditorTab( const FSpawnTabArgs& Args, FName TabIdentifier, FString InitializationPayload )
 {
@@ -555,7 +865,7 @@ TSharedRef<SDockTab> SLevelEditor::SpawnLevelEditorTab( const FSpawnTabArgs& Arg
 			[
 				SNew(SHorizontalBox)
 				.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("LevelToolbar")))
-				+ SHorizontalBox::Slot()
+				+SHorizontalBox::Slot()
 				.FillWidth(1)
 				.VAlign(VAlign_Bottom)
 				.HAlign(HAlign_Left)
@@ -632,7 +942,6 @@ TSharedRef<SDockTab> SLevelEditor::SpawnLevelEditorTab( const FSpawnTabArgs& Arg
 			.Icon( FEditorStyle::GetBrush( "LevelEditor.Tabs.Outliner" ) )
 			.Label( Label )
 			.ToolTip( IDocumentation::Get()->CreateToolTip( Label, nullptr, "Shared/LevelEditor", "SceneOutlinerTab" ) )
-			.ContentPadding( 5 )
 			[
 				SNew(SBorder)
 				.Padding(4)
@@ -728,7 +1037,6 @@ TSharedRef<SDockTab> SLevelEditor::SpawnLevelEditorTab( const FSpawnTabArgs& Arg
 		return SNew( SDockTab )
 			.Icon( FEditorStyle::GetBrush( "LevelEditor.Tabs.StatsViewer" ) )
 			.Label( NSLOCTEXT("LevelEditor", "StatsViewerTabTitle", "Statistics") )
-			.ContentPadding( 5 )
 			[
 				StatsViewerModule.CreateStatsViewer()					
 			];
@@ -736,7 +1044,7 @@ TSharedRef<SDockTab> SLevelEditor::SpawnLevelEditorTab( const FSpawnTabArgs& Arg
 	else if ( TabIdentifier == "WorldSettingsTab" )
 	{
 		FPropertyEditorModule& PropPlugin = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-		FDetailsViewArgs DetailsViewArgs( false, false, true, false, false, GUnrealEd );
+		FDetailsViewArgs DetailsViewArgs( false, false, true, FDetailsViewArgs::HideNameArea, false, GUnrealEd );
 		DetailsViewArgs.bShowActorLabel = false;
 
 		WorldSettingsView = PropPlugin.CreateDetailView( DetailsViewArgs );
@@ -1425,5 +1733,21 @@ void SLevelEditor::HandleEditorMapChange( uint32 MapChangeFlags )
 	if (WorldSettingsView.IsValid())
 	{
 		WorldSettingsView->SetObject(GetWorld()->GetWorldSettings(), true);
+	}
+}
+
+void SLevelEditor::OnActorSelectionChanged( const TArray<UObject*>& NewSelection )
+{
+	for( auto It = AllActorDetailPanels.CreateIterator(); It; ++It )
+	{
+		TSharedPtr<SActorDetails> ActorDetails = It->Pin();
+		if( ActorDetails.IsValid() )
+		{
+			ActorDetails->SetObjects( NewSelection );
+		}
+		else
+		{
+			// remove stray entries here
+		}
 	}
 }

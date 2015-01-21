@@ -78,6 +78,9 @@ private:
 	/** Returns the text of the folder name */
 	FText GetNameText() const;
 
+	/** Returns the text to use for the folder tooltip */
+	FText GetToolTipText() const;
+
 	/** Returns the image for the border around this item. Used for drag/drop operations */
 	const FSlateBrush* GetBorderImage() const;
 
@@ -128,6 +131,9 @@ private:
 
 	/** Widget to display the name of the asset item and allows for renaming */
 	TSharedPtr< SInlineEditableTextBlock > InlineRenameWidget;
+
+	/** Handle to the registered EnterEditingMode delegate. */
+	FDelegateHandle EnterEditingModeDelegateHandle;
 };
 
 /** A single item in the collection list. */
@@ -231,4 +237,7 @@ private:
 
 	/** Widget to display the name of the collection item and allows for renaming */
 	TSharedPtr< SInlineEditableTextBlock > InlineRenameWidget;
+
+	/** Handle to the registered EnterEditingMode delegate. */
+	FDelegateHandle EnterEditingModeDelegateHandle;
 };

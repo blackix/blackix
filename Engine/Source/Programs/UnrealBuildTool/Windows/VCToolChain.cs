@@ -1284,6 +1284,15 @@ namespace UnrealBuildTool
 						ProducedItems.Add(PDBFile);
 					}
 
+					// Write a stripped PDB file for Rocket
+					if(UnrealBuildTool.BuildingRocket())
+					{
+						string StrippedPDBFilePath = Path.Combine(LinkEnvironment.Config.OutputDirectory, Path.GetFileNameWithoutExtension(OutputFile.AbsolutePath) + "-Stripped.pdb");
+						FileItem StrippedPDBFile = FileItem.GetItemByPath(StrippedPDBFilePath);
+						Arguments.AppendFormat(" /PDBSTRIPPED:\"{0}\"", StrippedPDBFilePath);
+						ProducedItems.Add(StrippedPDBFile);
+					}
+
 					// Write the MAP file to the output directory.			
 #if false					
 					if (true)
@@ -1409,7 +1418,7 @@ namespace UnrealBuildTool
 			return IncludePaths;
 		}
 
-        public override void AddFilesToManifest(ref FileManifest Manifest, UEBuildBinary Binary)
+        public override void AddFilesToManifest(BuildManifest Manifest, UEBuildBinary Binary)
         {
             // ok, this is pretty awful, we want the import libraries that go with the editor, only on the PC
             if (UnrealBuildTool.BuildingRocket() &&
@@ -1418,7 +1427,7 @@ namespace UnrealBuildTool
                 Binary.Config.Type == UEBuildBinaryType.DynamicLinkLibrary)
             {
                 // ok, this is pretty awful, we want the import libraries that go with the editor, only on the PC
-                Manifest.AddBinaryNames(Path.Combine(Binary.Config.IntermediateDirectory, Path.GetFileNameWithoutExtension(Binary.Config.OutputFilePath) + ".lib"), "");
+                Manifest.AddBuildProduct(Path.Combine(Binary.Config.IntermediateDirectory, Path.GetFileNameWithoutExtension(Binary.Config.OutputFilePath) + ".lib"), "");
             }
         }
 

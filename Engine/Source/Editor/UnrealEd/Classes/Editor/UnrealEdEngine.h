@@ -178,6 +178,7 @@ class UNREALED_API UUnrealEdEngine : public UEditorEngine, public FNotifyHook
 	virtual void SelectActor(AActor* Actor, bool InSelected, bool bNotify, bool bSelectEvenIfHidden=false) override;
 	virtual bool CanSelectActor(AActor* Actor, bool InSelected, bool bSelectEvenIfHidden=false, bool bWarnIfLevelLocked=false) const override;
 	virtual void SelectGroup(AGroupActor* InGroupActor, bool bForceSelection=false, bool bInSelected=true, bool bNotify=true) override;
+	virtual void SelectComponent(class UActorComponent* Component, bool bInSelected, bool bNotify, bool bSelectEvenIfHidden = false) override;
 	virtual void SelectBSPSurf(UModel* InModel, int32 iSurf, bool bSelected, bool bNoteSelectionChange) override;
 	virtual void SelectNone(bool bNoteSelectionChange, bool bDeselectBSPSurfs, bool WarnAboutManyActors=true) override;
 	virtual void NoteSelectionChange() override;
@@ -731,13 +732,18 @@ class UNREALED_API UUnrealEdEngine : public UEditorEngine, public FNotifyHook
 
 	/** OnEditorModeChanged delegate which looks for Matinee editor closing */
 	void OnMatineeEditorClosed( class FEdMode* Mode, bool IsEntering );
+
+	bool IsComponentSelected(const UPrimitiveComponent* PrimComponent);
 	
 protected:
 	EWriteDisallowedWarningState GetWarningStateForWritePermission(const FString& PackageName) const;
-
+	
 	/** The package auto-saver instance used by the editor */
 	TUniquePtr<IPackageAutoSaver> PackageAutoSaver;
 
 	/** Instance responsible for monitoring this editor's performance */
 	FPerformanceMonitor* PerformanceMonitor;
+
+	/** Handle to the registered OnMatineeEditorClosed delegate. */
+	FDelegateHandle OnMatineeEditorClosedDelegateHandle;
 };

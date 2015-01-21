@@ -59,6 +59,7 @@
 #include "SNotificationList.h"
 #include "NotificationManager.h"
 #include "EditorUndoClient.h"
+#include "DesktopPlatformModule.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogEditorServer, Log, All);
 
@@ -531,7 +532,7 @@ void UEditorEngine::LoadAndSelectAssets( TArray<FAssetData>& Assets, UClass* Typ
 bool UEditorEngine::UsePercentageBasedScaling() const
 {
 	// Use percentage based scaling if the user setting is enabled or more than component or actor is selected.  Multiplicative scaling doesn't work when more than one object is selected
-	return GetDefault<ULevelEditorViewportSettings>()->UsePercentageBasedScaling() || GetSelectedActorCount() > 1;
+	return GetDefault<ULevelEditorViewportSettings>()->UsePercentageBasedScaling() || GetSelectedActorCount() > 1 || GetSelectedComponentCount() > 1;
 }
 
 bool UEditorEngine::Exec_Brush( UWorld* InWorld, const TCHAR* Str, FOutputDevice& Ar )
@@ -1048,11 +1049,18 @@ void UEditorEngine::HandleTransactorBeforeRedoUndo( FUndoSessionContext SessionC
 {
 	//Get the list of all selected actors before the undo/redo is performed
 	OldSelectedActors.Empty();
-
-	for ( FSelectionIterator It( GEditor->GetSelectedActorIterator() ) ; It ; ++It )
+	for ( FSelectionIterator It( GetSelectedActorIterator() ) ; It ; ++It )
 	{
 		AActor* Actor = CastChecked<AActor>( *It );
 		OldSelectedActors.Add( Actor);
+	}
+
+	// Get the list of selected components as well
+	OldSelectedComponents.Empty();
+	for (FSelectionIterator It(GetSelectedComponentIterator()); It; ++It)
+	{
+		auto Component = CastChecked<UActorComponent>(*It);
+		OldSelectedComponents.Add(Component);
 	}
 }
 
@@ -1072,6 +1080,26 @@ void UEditorEngine::HandleTransactorUndo( FUndoSessionContext SessionContext, bo
 
 	BroadcastPostUndo(SessionContext.Context, SessionContext.PrimaryObject, Succeeded);
 	ShowUndoRedoNotification(FText::Format(NSLOCTEXT("UnrealEd", "UndoMessageFormat", "Undo: {0}"), SessionContext.Title), Succeeded);
+}
+
+bool UEditorEngine::AreEditorAnalyticsEnabled() const 
+{
+	return GetGameAgnosticSettings().bEditorAnalyticsEnabled;
+}
+
+void UEditorEngine::CreateStartupAnalyticsAttributes( TArray<FAnalyticsEventAttribute>& StartSessionAttributes ) const
+{
+	Super::CreateStartupAnalyticsAttributes( StartSessionAttributes );
+
+	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+	if(DesktopPlatform != nullptr)
+	{
+		// If this is false, CanOpenLauncher will only return true if the launcher is already installed on the users machine
+		const bool bIncludeLauncherInstaller = false;
+
+		bool bIsLauncherInstalled = DesktopPlatform->CanOpenLauncher(bIncludeLauncherInstaller);
+		StartSessionAttributes.Add(FAnalyticsEventAttribute(TEXT("IsLauncherInstalled"), bIsLauncherInstalled));
+	}
 }
 
 UTransactor* UEditorEngine::CreateTrans()
@@ -1094,54 +1122,105 @@ UTransactor* UEditorEngine::CreateTrans()
 void UEditorEngine::PostUndo (bool bSuccess)
 {
 	//Make sure that the proper objects display as selected
-	//Get the list of all selected actors after the operation
-	TArray<AActor*> SelectedActors;
-	for ( FSelectionIterator It( GEditor->GetSelectedActorIterator() ) ; It ; ++It )
+	if (GetSelectedComponentCount() > 0)
 	{
-		AActor* Actor = CastChecked<AActor>( *It );
-		//if this actor is NOT in a hidden level add it to the list - otherwise de-select it
-		if( FLevelUtils::IsLevelLocked( Actor ) == false )
+		//@todo Check to see if component owner is in a hidden level
+		
+		// Get a list of all selected components after the operation
+		TArray<UActorComponent*> SelectedComponents;
+		for (FSelectionIterator It(GetSelectedComponentIterator()); It; ++It)
 		{
-			SelectedActors.Add( Actor);
+			SelectedComponents.Add(CastChecked<UActorComponent>(*It));
 		}
-		else
+		
+		USelection* Selection = GetSelectedComponents();
+		Selection->BeginBatchSelectOperation();
+
+		//Deselect all of the actors that were selected prior to the operation
+		for (int32 OldSelectedComponentIndex = OldSelectedComponents.Num() - 1; OldSelectedComponentIndex >= 0; --OldSelectedComponentIndex)
 		{
-			GetSelectedActors()->Select( Actor, false );				
+			UActorComponent* Component = OldSelectedComponents[OldSelectedComponentIndex];
+
+			//To stop us from unselecting and then reselecting again (causing two force update components, we will remove (from both lists) any object that was selected and should continue to be selected
+			int32 FoundIndex;
+			if (SelectedComponents.Find(Component, FoundIndex))
+			{
+				OldSelectedComponents.RemoveAt(OldSelectedComponentIndex);
+				SelectedComponents.RemoveAt(FoundIndex);
+			}
+			else
+			{
+				// Deselect without any notification
+				SelectComponent(Component, false, false);
+				//Actor->UpdateComponentTransforms();
+			}
 		}
+
+		//Select all of the components left in SelectedComponents
+		for (int32 SelectedComponentIndex = 0; SelectedComponentIndex < SelectedComponents.Num(); ++SelectedComponentIndex)
+		{
+			UActorComponent* Component = SelectedComponents[SelectedComponentIndex];
+			SelectComponent(Component, true, false);	//false is to stop notify which is done below if bOpWasSuccessful
+			//Actor->UpdateComponentTransforms();
+		}
+
+		OldSelectedComponents.Empty();
+
+		// We want to broadcast the component SelectionChangedEvent even if the selection didn't actually change
+		Selection->MarkBatchDirty();
+		Selection->EndBatchSelectOperation();
 	}
-
-	USelection* Selection = GetSelectedActors();
-	Selection->BeginBatchSelectOperation();
-
-	//Deselect all of the actors that were selected prior to the operation
-	for ( int32 OldSelectedActorIndex = OldSelectedActors.Num()-1 ; OldSelectedActorIndex >= 0 ; --OldSelectedActorIndex )
+	else
 	{
-		AActor* Actor = OldSelectedActors[OldSelectedActorIndex];
-
-		//To stop us from unselecting and then reselecting again (causing two force update components, we will remove (from both lists) any object that was selected and should continue to be selected
-		int32 FoundIndex;
-		if (SelectedActors.Find(Actor, FoundIndex))
+		//Get the list of all selected actors after the operation
+		TArray<AActor*> SelectedActors;
+		for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
 		{
-			OldSelectedActors.RemoveAt(OldSelectedActorIndex);
-			SelectedActors.RemoveAt(FoundIndex);
+			AActor* Actor = CastChecked<AActor>(*It);
+			//if this actor is NOT in a hidden level add it to the list - otherwise de-select it
+			if (FLevelUtils::IsLevelLocked(Actor) == false)
+			{
+				SelectedActors.Add(Actor);
+			}
+			else
+			{
+				GetSelectedActors()->Select(Actor, false);
+			}
 		}
-		else
+
+		USelection* Selection = GetSelectedActors();
+		Selection->BeginBatchSelectOperation();
+
+		//Deselect all of the actors that were selected prior to the operation
+		for (int32 OldSelectedActorIndex = OldSelectedActors.Num() - 1; OldSelectedActorIndex >= 0; --OldSelectedActorIndex)
 		{
-			SelectActor( Actor, false, false );//First false is to deselect, 2nd is to notify
+			AActor* Actor = OldSelectedActors[OldSelectedActorIndex];
+
+			//To stop us from unselecting and then reselecting again (causing two force update components, we will remove (from both lists) any object that was selected and should continue to be selected
+			int32 FoundIndex;
+			if (SelectedActors.Find(Actor, FoundIndex))
+			{
+				OldSelectedActors.RemoveAt(OldSelectedActorIndex);
+				SelectedActors.RemoveAt(FoundIndex);
+			}
+			else
+			{
+				SelectActor(Actor, false, false);//First false is to deselect, 2nd is to notify
+				Actor->UpdateComponentTransforms();
+			}
+		}
+
+		//Select all of the actors in SelectedActors
+		for (int32 SelectedActorIndex = 0; SelectedActorIndex < SelectedActors.Num(); ++SelectedActorIndex)
+		{
+			AActor* Actor = SelectedActors[SelectedActorIndex];
+			SelectActor(Actor, true, false);	//false is to stop notify which is done below if bOpWasSuccessful
 			Actor->UpdateComponentTransforms();
 		}
-	}
 
-	//Select all of the actors in SelectedActors
-	for ( int32 SelectedActorIndex = 0 ; SelectedActorIndex < SelectedActors.Num() ; ++SelectedActorIndex )
-	{
-		AActor* Actor = SelectedActors[SelectedActorIndex];
-		SelectActor( Actor, true, false );	//false is to stop notify which is done below if bOpWasSuccessful
-		Actor->UpdateComponentTransforms();
+		OldSelectedActors.Empty();
+		Selection->EndBatchSelectOperation();
 	}
-
-	OldSelectedActors.Empty();
-	Selection->EndBatchSelectOperation();
 }
 
 bool UEditorEngine::UndoTransaction()
@@ -4157,13 +4236,17 @@ void UEditorEngine::MoveViewportCamerasToActor(AActor& Actor,  bool bActiveViewp
 
 	Actors.Add( &Actor );
 
-	MoveViewportCamerasToActor( Actors, bActiveViewportOnly );
+	MoveViewportCamerasToActor( Actors, TArray<UPrimitiveComponent*>(), bActiveViewportOnly );
 }
-
 
 void UEditorEngine::MoveViewportCamerasToActor(const TArray<AActor*> &Actors, bool bActiveViewportOnly)
 {
-	if( Actors.Num() == 0 )
+	MoveViewportCamerasToActor( Actors, TArray<UPrimitiveComponent*>(), bActiveViewportOnly );
+}
+
+void UEditorEngine::MoveViewportCamerasToActor(const TArray<AActor*> &Actors, const TArray<UPrimitiveComponent*>& Components, bool bActiveViewportOnly)
+{
+	if( Actors.Num() == 0 && Components.Num() == 0 )
 	{
 		return;
 	}
@@ -4178,116 +4261,140 @@ void UEditorEngine::MoveViewportCamerasToActor(const TArray<AActor*> &Actors, bo
 		}
 	}
 
+	struct ComponentTypeMatcher
+	{
+		ComponentTypeMatcher(UPrimitiveComponent* InComponentToMatch)
+			: ComponentToMatch(InComponentToMatch)
+		{}
+
+		bool operator()(const UClass* ComponentClass) const
+		{
+			return ComponentToMatch->IsA(ComponentClass);
+		}
+
+		UPrimitiveComponent* ComponentToMatch;
+	};
+
 	TArray<AActor*> InvisLevelActors;
 
 	TArray<UClass*> PrimitiveComponentTypesToIgnore;
 	PrimitiveComponentTypesToIgnore.Add( UShapeComponent::StaticClass() );
 	PrimitiveComponentTypesToIgnore.Add( UNavLinkRenderingComponent::StaticClass() );
 	PrimitiveComponentTypesToIgnore.Add( UDrawFrustumComponent::StaticClass() );
-
 	// Create a bounding volume of all of the selected actors.
 	FBox BoundingBox( 0 );
-	int32 NumActiveActors = 0;
-	for( int32 ActorIdx = 0; ActorIdx < Actors.Num(); ActorIdx++ )
+
+	if( Components.Num() > 0 )
 	{
-		AActor* Actor = Actors[ActorIdx];
-
-		if( Actor )
+		// First look at components
+		for(UPrimitiveComponent* PrimitiveComponent : Components)
 		{
-
-			// Don't allow moving the viewport cameras to actors in invisible levels
-			if ( !FLevelUtils::IsLevelVisible( Actor->GetLevel() ) )
+			if(PrimitiveComponent)
 			{
-				InvisLevelActors.Add( Actor );
-				continue;
-			}
-
-			const bool bActorIsEmitter = (Cast<AEmitter>(Actor) != NULL);
-	
-			if (bActorIsEmitter && bCustomCameraAlignEmitter)
-			{
-				const FVector DefaultExtent(CustomCameraAlignEmitterDistance,CustomCameraAlignEmitterDistance,CustomCameraAlignEmitterDistance);
-				const FBox DefaultSizeBox(Actor->GetActorLocation() - DefaultExtent, Actor->GetActorLocation() + DefaultExtent);
-				BoundingBox += DefaultSizeBox;
-			}
-			else
-			{
-				TArray<UPrimitiveComponent*> Components;
-				Actor->GetComponents(Components);
-
-				for(int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ++ComponentIndex)
+				if(!FLevelUtils::IsLevelVisible(PrimitiveComponent->GetComponentLevel()))
 				{
-					UPrimitiveComponent* PrimitiveComponent = Components[ComponentIndex];
+					continue;
+				}
 
-					if( PrimitiveComponent->IsRegistered() )
+				// Some components can have huge bounds but are not visible.  Ignore these components unless it is the only component on the actor 
+				const bool bIgnore = Components.Num() > 1 && PrimitiveComponentTypesToIgnore.IndexOfByPredicate(ComponentTypeMatcher(PrimitiveComponent)) != INDEX_NONE;
+
+				if(!bIgnore && PrimitiveComponent->IsRegistered())
+				{
+					BoundingBox += PrimitiveComponent->Bounds.GetBox();
+				}
+
+			}
+		}
+	}
+	else 
+	{
+		for(int32 ActorIdx = 0; ActorIdx < Actors.Num(); ActorIdx++)
+		{
+			AActor* Actor = Actors[ActorIdx];
+
+			if(Actor)
+			{
+
+				// Don't allow moving the viewport cameras to actors in invisible levels
+				if(!FLevelUtils::IsLevelVisible(Actor->GetLevel()))
+				{
+					InvisLevelActors.Add(Actor);
+					continue;
+				}
+
+				const bool bActorIsEmitter = (Cast<AEmitter>(Actor) != NULL);
+
+				if(bActorIsEmitter && bCustomCameraAlignEmitter)
+				{
+					const FVector DefaultExtent(CustomCameraAlignEmitterDistance, CustomCameraAlignEmitterDistance, CustomCameraAlignEmitterDistance);
+					const FBox DefaultSizeBox(Actor->GetActorLocation() - DefaultExtent, Actor->GetActorLocation() + DefaultExtent);
+					BoundingBox += DefaultSizeBox;
+				}
+				else
+				{
+					TInlineComponentArray<UPrimitiveComponent*> Components;
+					Actor->GetComponents(Components);
+
+					for(int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ++ComponentIndex)
 					{
-						struct ComponentTypeMatcher
-						{
-							ComponentTypeMatcher( UPrimitiveComponent* InComponentToMatch )
-								: ComponentToMatch( InComponentToMatch )
-							{}
+						UPrimitiveComponent* PrimitiveComponent = Components[ComponentIndex];
 
-							bool operator()(const UClass* ComponentClass) const
+						if(PrimitiveComponent->IsRegistered())
+						{
+
+							// Some components can have huge bounds but are not visible.  Ignore these components unless it is the only component on the actor 
+							const bool bIgnore = Components.Num() > 1 && PrimitiveComponentTypesToIgnore.IndexOfByPredicate(ComponentTypeMatcher(PrimitiveComponent)) != INDEX_NONE;
+
+							if(!bIgnore)
 							{
-								return ComponentToMatch->IsA(ComponentClass);
+								BoundingBox += PrimitiveComponent->Bounds.GetBox();
+							}
+						}
+					}
+
+					if(Actor->IsA<ABrush>() && GLevelEditorModeTools().IsModeActive(FBuiltinEditorModes::EM_Geometry))
+					{
+						FEdModeGeometry* GeometryMode = GLevelEditorModeTools().GetActiveModeTyped<FEdModeGeometry>(FBuiltinEditorModes::EM_Geometry);
+
+						TArray<FGeomVertex*> SelectedVertices;
+						TArray<FGeomPoly*> SelectedPolys;
+						TArray<FGeomEdge*> SelectedEdges;
+
+						GeometryMode->GetSelectedVertices(SelectedVertices);
+						GeometryMode->GetSelectedPolygons(SelectedPolys);
+						GeometryMode->GetSelectedEdges(SelectedEdges);
+
+						if(SelectedVertices.Num() + SelectedPolys.Num() + SelectedEdges.Num() > 0)
+						{
+							BoundingBox.Init();
+
+							for(FGeomVertex* Vertex : SelectedVertices)
+							{
+								BoundingBox += Vertex->GetWidgetLocation();
 							}
 
-							UPrimitiveComponent* ComponentToMatch;
-						};
+							for(FGeomPoly* Poly : SelectedPolys)
+							{
+								BoundingBox += Poly->GetWidgetLocation();
+							}
 
-						// Some components can have huge bounds but are not visible.  Ignore these components unless it is the only component on the actor 
-						const bool bIgnore = Components.Num() > 1 && PrimitiveComponentTypesToIgnore.IndexOfByPredicate(ComponentTypeMatcher(PrimitiveComponent)) != INDEX_NONE;
+							for(FGeomEdge* Edge : SelectedEdges)
+							{
+								BoundingBox += Edge->GetWidgetLocation();
+							}
 
-						if( !bIgnore )
-						{
-							BoundingBox += PrimitiveComponent->Bounds.GetBox();
+							// Zoom out a little bit so you can see the selection
+							BoundingBox = BoundingBox.ExpandBy(25);
 						}
-					}
-				}
-
-				if (Actor->IsA<ABrush>() && GLevelEditorModeTools().IsModeActive(FBuiltinEditorModes::EM_Geometry))
-				{
-					FEdModeGeometry* GeometryMode = GLevelEditorModeTools().GetActiveModeTyped<FEdModeGeometry>(FBuiltinEditorModes::EM_Geometry);
-
-					TArray<FGeomVertex*> SelectedVertices;
-					TArray<FGeomPoly*> SelectedPolys;
-					TArray<FGeomEdge*> SelectedEdges;
-
-					GeometryMode->GetSelectedVertices(SelectedVertices);
-					GeometryMode->GetSelectedPolygons(SelectedPolys);
-					GeometryMode->GetSelectedEdges(SelectedEdges);
-
-					if (SelectedVertices.Num() + SelectedPolys.Num() + SelectedEdges.Num() > 0)
-					{
-						BoundingBox.Init();
-
-						for (FGeomVertex* Vertex : SelectedVertices)
-						{
-							BoundingBox += Vertex->GetWidgetLocation();
-						}
-
-						for (FGeomPoly* Poly : SelectedPolys)
-						{
-							BoundingBox += Poly->GetWidgetLocation();
-						}
-
-						for (FGeomEdge* Edge : SelectedEdges)
-						{
-							BoundingBox += Edge->GetWidgetLocation();
-						}
-
-						// Zoom out a little bit so you can see the selection
-						BoundingBox = BoundingBox.ExpandBy(25);
 					}
 				}
 			}
-
-			NumActiveActors++;
 		}
 	}
 
 	// Make sure we had atleast one non-null actor in the array passed in.
-	if( NumActiveActors > 0 )
+	if( BoundingBox.GetSize() != FVector::ZeroVector )
 	{
 		if ( bActiveViewportOnly )
 		{
@@ -4607,15 +4714,24 @@ bool UEditorEngine::Exec_Camera( const TCHAR* Str, FOutputDevice& Ar )
 				Actors.Add( Actor );
 			}
 
-			if( Actors.Num() )
+			TArray<UPrimitiveComponent*> SelectedComponents;
+			for( FSelectionIterator It( GetSelectedComponentIterator() ); It; ++It )
 			{
-				MoveViewportCamerasToActor( Actors, bActiveViewportOnly );
-				Ar.Log( TEXT("Aligned camera to fit all selected actors.") );
+				UPrimitiveComponent* PrimitiveComp = Cast<UPrimitiveComponent>( *It );
+				if( PrimitiveComp )
+				{
+					SelectedComponents.Add( PrimitiveComp );
+				}
+			}
+
+			if( Actors.Num() || SelectedComponents.Num() )
+			{
+				MoveViewportCamerasToActor( Actors, SelectedComponents, bActiveViewportOnly );
 				return true;
 			}
 			else
 			{
-				Ar.Log( TEXT("Can't find target actor.") );
+				Ar.Log( TEXT("Can't find target actor or component.") );
 				return false;
 			}
 		}
@@ -4753,7 +4869,7 @@ void UEditorEngine::AssignReplacementComponentsByActors(TArray<AActor*>& ActorsT
 		// if we are clearing the replacement, then we don't need to find a component
 		if (Replacement)
 		{
-			TArray<UPrimitiveComponent*> Components;
+			TInlineComponentArray<UPrimitiveComponent*> Components;
 			Replacement->GetComponents(Components);
 
 			for (int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ComponentIndex++)
@@ -4773,7 +4889,7 @@ void UEditorEngine::AssignReplacementComponentsByActors(TArray<AActor*>& ActorsT
 	{
 		AActor* Actor = ActorsToReplace[ActorIndex];
 
-		TArray<UPrimitiveComponent*> Components;
+		TInlineComponentArray<UPrimitiveComponent*> Components;
 		Actor->GetComponents(Components);
 
 		for (int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ComponentIndex++)
@@ -5681,7 +5797,7 @@ bool UEditorEngine::HandleSetReplacementCommand( const TCHAR* Str, FOutputDevice
 	// attempt to set replacement component for all selected actors
 	for( FSelectedActorIterator It(InWorld); It; ++It )
 	{
-		TArray<UPrimitiveComponent*> Components;
+		TInlineComponentArray<UPrimitiveComponent*> Components;
 		It->GetComponents(Components);
 
 		for (int32 ComponentIndex = 0; ComponentIndex < Components.Num(); ComponentIndex++)
@@ -5921,7 +6037,7 @@ bool UEditorEngine::HandleSetDetailModeCommand( const TCHAR* Str, FOutputDevice&
 			AActor* Actor = static_cast<AActor*>( *It );
 			checkSlow( Actor->IsA(AActor::StaticClass()) );
 
-			TArray<UPrimitiveComponent*> Components;
+			TInlineComponentArray<UPrimitiveComponent*> Components;
 			Actor->GetComponents(Components);
 
 			for(int32 ComponentIndex = 0;ComponentIndex < Components.Num();ComponentIndex++)
@@ -5976,7 +6092,7 @@ bool UEditorEngine::HandleSetDetailModeViewCommand( const TCHAR* Str, FOutputDev
 			AActor* Actor = static_cast<AActor*>( *It );
 			checkSlow( Actor->IsA(AActor::StaticClass()) );
 
-			TArray<UPrimitiveComponent*> Components;
+			TInlineComponentArray<UPrimitiveComponent*> Components;
 			Actor->GetComponents(Components);
 
 			for(int32 ComponentIndex = 0;ComponentIndex < Components.Num();ComponentIndex++)

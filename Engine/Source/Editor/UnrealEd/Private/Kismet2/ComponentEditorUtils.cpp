@@ -41,7 +41,7 @@ USceneComponent* FComponentEditorUtils::GetSceneComponent( UObject* Object, UObj
 							USCS_Node* SCS_Node = SCSNodes[ SCSNodeIndex ];
 							if( SCS_Node && SCS_Node->ComponentTemplate == SubObject )
 							{
-								return SCS_Node->GetParentComponentTemplate( Blueprint );
+								return SCS_Node->GetParentComponentTemplate(Blueprint);
 							}
 						}
 					}
@@ -88,6 +88,57 @@ void FComponentEditorUtils::GetArchetypeInstances( UObject* Object, TArray<UObje
 			DefaultObject->GetArchetypeInstances(ArchetypeInstances);
 		}
 	}
+}
+
+bool FComponentEditorUtils::IsValidVariableNameString(const UActorComponent* InComponent, const FString& InString)
+{
+	// First test to make sure the string is not empty and does not equate to the DefaultSceneRoot node name
+	bool bIsValid = !InString.IsEmpty() && !InString.Equals(USimpleConstructionScript::DefaultSceneRootVariableName.ToString());
+	if(bIsValid && InComponent != NULL)
+	{
+		// Next test to make sure the string doesn't conflict with the format that MakeUniqueObjectName() generates
+		FString MakeUniqueObjectNamePrefix = FString::Printf(TEXT("%s_"), *InComponent->GetClass()->GetName());
+		if(InString.StartsWith(MakeUniqueObjectNamePrefix))
+		{
+			bIsValid = !InString.Replace(*MakeUniqueObjectNamePrefix, TEXT("")).IsNumeric();
+		}
+	}
+
+	return bIsValid;
+}
+
+FString FComponentEditorUtils::GenerateValidVariableName(TSubclassOf<UActorComponent> ComponentClass, AActor* ComponentOwner)
+{
+	check(ComponentOwner);
+
+	int32 Counter = 1;
+	FString ComponentTypeName = *ComponentClass->GetName().Replace(TEXT("Component"), TEXT(""));
+	FString ComponentInstanceName;
+
+	// Make sure that none of the components currently on the actor have the same name
+	TInlineComponentArray<UActorComponent*> Components;
+	ComponentOwner->GetComponents(Components);
+
+	bool bNameIsValid = false;
+	while (!bNameIsValid)
+	{
+		bNameIsValid = true;
+
+		// Try the name with the lowest possible number
+		ComponentInstanceName = FString::Printf(TEXT("%s%d"), *ComponentTypeName, Counter++);
+
+		// The name is valid if no other components in the owning actor have the same name
+		for (auto Component : Components)
+		{
+			if (Component->GetName() == ComponentInstanceName)
+			{
+				bNameIsValid = false;
+				break;
+			}
+		}
+	}
+
+	return ComponentInstanceName;
 }
 
 void FComponentEditorUtils::PropagateTransformPropertyChange(

@@ -91,19 +91,16 @@ FText UPaperTiledImporterFactory::GetToolTip() const
 
 bool UPaperTiledImporterFactory::FactoryCanImport(const FString& Filename)
 {
-	if (GetDefault<UPaperRuntimeSettings>()->bEnableTileMapEditing)
+	FString FileContent;
+	if (FFileHelper::LoadFileToString(/*out*/ FileContent, *Filename))
 	{
-		FString FileContent;
-		if (FFileHelper::LoadFileToString(/*out*/ FileContent, *Filename))
+		TSharedPtr<FJsonObject> DescriptorObject = ParseJSON(FileContent, FString(), /*bSilent=*/ true);
+		if (DescriptorObject.IsValid())
 		{
-			TSharedPtr<FJsonObject> DescriptorObject = ParseJSON(FileContent, FString(), /*bSilent=*/ true);
-			if (DescriptorObject.IsValid())
-			{
-				FTileMapFromTiled GlobalInfo;
-				ParseGlobalInfoFromJSON(DescriptorObject, /*out*/ GlobalInfo, FString(), /*bSilent=*/ true);
+			FTileMapFromTiled GlobalInfo;
+			ParseGlobalInfoFromJSON(DescriptorObject, /*out*/ GlobalInfo, FString(), /*bSilent=*/ true);
 
-				return GlobalInfo.IsValid();
-			}
+			return GlobalInfo.IsValid();
 		}
 	}
 
@@ -240,6 +237,11 @@ UObject* UPaperTiledImporterFactory::FactoryCreateText(UClass* InClass, UObject*
 			}
 		}
 
+		if (GlobalInfo.CreatedTileSetAssets.Num() > 0)
+		{
+			// Bind our selected tile set to the first tile set that was imported so something is already picked
+			Result->SelectedTileSet = GlobalInfo.CreatedTileSetAssets[0];
+		}
 
 		// Create the layers
 		for (const FTileLayerFromTiled& LayerData : GlobalInfo.Layers)
@@ -369,6 +371,11 @@ EReimportResult::Type UPaperTiledImporterFactory::Reimport(UObject* Obj)
 		ensureMsg(false, TEXT("Tile map reimport is not implemented yet"));
 	}
 	return EReimportResult::Failed;
+}
+
+int32 UPaperTiledImporterFactory::GetPriority() const
+{
+	return ImportPriority;
 }
 
 

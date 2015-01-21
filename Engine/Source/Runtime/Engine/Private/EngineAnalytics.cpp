@@ -6,9 +6,9 @@
 #include "Runtime/Analytics/Analytics/Public/Analytics.h"
 #include "Runtime/Analytics/Analytics/Public/Interfaces/IAnalyticsProvider.h"
 
-
 bool FEngineAnalytics::bIsInitialized;
 TSharedPtr<IAnalyticsProvider> FEngineAnalytics::Analytics;
+bool FEngineAnalytics::bShouldSendUsageEvents;
 
 #define DEBUG_ANALYTICS 0
 
@@ -110,7 +110,8 @@ FAnalytics::FProviderConfigurationDelegate& GetEngineAnalyticsOverrideConfigDele
  */
 IAnalyticsProvider& FEngineAnalytics::GetProvider()
 {
-	checkf(bIsInitialized && Analytics.IsValid(), TEXT("FEngineAnalytics::GetProvider called outside of Initialize/Shutdown."));
+	checkf(bIsInitialized && IsAvailable(), TEXT("FEngineAnalytics::GetProvider called outside of Initialize/Shutdown."));
+
 	return *Analytics.Get();
 }
  
@@ -119,19 +120,19 @@ void FEngineAnalytics::Initialize()
 	checkf(!bIsInitialized, TEXT("FEngineAnalytics::Initialize called more than once."));
 
 	// Never use analytics when running a commandlet tool
-	bool bShouldInitAnalytics = !IsRunningCommandlet();
+	const bool bShouldInitAnalytics = !IsRunningCommandlet();
 
 	check(GEngine);
 #if WITH_EDITORONLY_DATA
 	if (GIsEditor)
 	{
-		bShouldInitAnalytics = bShouldInitAnalytics && GEngine->bEditorAnalyticsEnabled;
+		bShouldSendUsageEvents = GEngine->AreEditorAnalyticsEnabled();
 	}
 	else
 #endif
 	{
 		// Outside of the editor, the only engine analytics usage is the hardware survey
-		bShouldInitAnalytics = bShouldInitAnalytics && GEngine->bHardwareSurveyEnabled;
+		bShouldSendUsageEvents = GEngine->bHardwareSurveyEnabled;
 	}
 
 	if (bShouldInitAnalytics)
@@ -203,7 +204,11 @@ void FEngineAnalytics::Initialize()
 			if (Analytics.IsValid())
 			{
 				Analytics->SetUserID(FPlatformMisc::GetUniqueDeviceId());
-				Analytics->StartSession();
+
+				TArray<FAnalyticsEventAttribute> StartSessionAttributes;
+				GEngine->CreateStartupAnalyticsAttributes( StartSessionAttributes );
+
+				Analytics->StartSession( StartSessionAttributes );
 			}
 		}
 #endif

@@ -29,6 +29,7 @@
 #include "ComponentVisualizer.h"
 #include "Editor/EditorLiveStreaming/Public/IEditorLiveStreaming.h"
 #include "SourceCodeNavigation.h"
+#include "AutoReimport/AutoReimportManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogUnrealEdEngine, Log, All);
 
@@ -208,7 +209,7 @@ void UUnrealEdEngine::MakeSortedSpriteInfo(TArray<FSpriteCategoryInfo>& OutSorte
 			const AActor* CurDefaultClassActor = Class->GetDefaultObject<AActor>();
 			if ( CurDefaultClassActor )
 			{
-				TArray<UActorComponent*> Components;
+				TInlineComponentArray<UActorComponent*> Components;
 				CurDefaultClassActor->GetComponents(Components);
 
 				for ( auto* Comp : Components )
@@ -510,7 +511,7 @@ void UUnrealEdEngine::OnPostWindowsMessage(FViewport* Viewport, uint32 Message)
 void UUnrealEdEngine::OnOpenMatinee()
 {
 	// Register a delegate to pickup when Matinee is closed.
-	GLevelEditorModeTools().OnEditorModeChanged().AddUObject( this, &UUnrealEdEngine::OnMatineeEditorClosed );
+	OnMatineeEditorClosedDelegateHandle = GLevelEditorModeTools().OnEditorModeChanged().AddUObject( this, &UUnrealEdEngine::OnMatineeEditorClosed );
 }
 
 
@@ -1058,7 +1059,7 @@ void UUnrealEdEngine::UpdateVolumeActorVisibility( UClass* InVolumeActorClass, F
 			AActor* ActorToUpdate = ActorsThatChanged[ ActorIdx ];
 
 			// Find all registered primitive components and update the scene proxy with the actors updated visibility map
-			TArray<UPrimitiveComponent*> PrimitiveComponents;
+			TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents;
 			ActorToUpdate->GetComponents(PrimitiveComponents);
 
 			for( int32 ComponentIdx = 0; ComponentIdx < PrimitiveComponents.Num(); ++ComponentIdx )
@@ -1126,7 +1127,7 @@ void UUnrealEdEngine::DrawComponentVisualizers(const FSceneView* View, FPrimitiv
 		if(Actor != NULL)
 		{
 			// Then iterate over components of that actor
-			TArray<UActorComponent*> Components;
+			TInlineComponentArray<UActorComponent*> Components;
 			Actor->GetComponents(Components);
 
 			for(int32 CompIdx=0; CompIdx<Components.Num(); CompIdx++)
@@ -1157,7 +1158,7 @@ void UUnrealEdEngine::DrawComponentVisualizersHUD(const FViewport* Viewport, con
 		if (Actor != NULL)
 		{
 			// Then iterate over components of that actor
-			TArray<UActorComponent*> Components;
+			TInlineComponentArray<UActorComponent*> Components;
 			Actor->GetComponents(Components);
 
 			for (int32 CompIdx = 0; CompIdx<Components.Num(); CompIdx++)
@@ -1242,6 +1243,6 @@ void UUnrealEdEngine::OnMatineeEditorClosed( FEdMode* Mode, bool IsEntering )
 		}
 
 		// Remove this delegate. 
-		GLevelEditorModeTools().OnEditorModeChanged().RemoveUObject( this, &UUnrealEdEngine::OnMatineeEditorClosed );
+		GLevelEditorModeTools().OnEditorModeChanged().Remove( OnMatineeEditorClosedDelegateHandle );
 	}	
 }

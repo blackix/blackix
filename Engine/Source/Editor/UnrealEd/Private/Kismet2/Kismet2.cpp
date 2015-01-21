@@ -865,45 +865,132 @@ bool FKismetEditorUtilities::CanCreateBlueprintOfClass(const UClass* Class)
 	return bCanCreateBlueprint && bIsValidClass;
 }
 
-UBlueprint* FKismetEditorUtilities::CreateBlueprintFromActor(const FString& Path, UObject* Object, bool bReplaceActor )
+UBlueprint* FKismetEditorUtilities::CreateBlueprintFromActor(const FString& Path, AActor* Actor, const bool bReplaceActor )
 {
-	UBlueprint* NewBlueprint = NULL;
+	UBlueprint* NewBlueprint = nullptr;
 
-	if (AActor* Actor = Cast<AActor>(Object))
+	// Create a blueprint
+	FString PackageName = Path;
+	FString AssetName = FPackageName::GetLongPackageAssetName(Path);
+
+	// If no AssetName was found, generate a unique asset name.
+	if(AssetName.Len() == 0)
 	{
-		// Create a blueprint
-		FString PackageName = Path;
-		FString AssetName = FPackageName::GetLongPackageAssetName(Path);
+		PackageName = FPackageName::GetLongPackagePath(Path);
+		FString BasePath = PackageName + TEXT("/") + LOCTEXT("BlueprintName_Default", "NewBlueprint").ToString();
+		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+		AssetToolsModule.Get().CreateUniqueAssetName(BasePath, TEXT(""), PackageName, AssetName);
+	}
 
+	UPackage* Package = CreatePackage(NULL, *PackageName);
 
-		// If no AssetName was found, generate a unique asset name.
-		if(AssetName.Len() == 0)
+	if(Package)
+	{
+		NewBlueprint = CreateBlueprintFromActor(FName(*AssetName), Package, Actor, bReplaceActor);
+	}
+
+	return NewBlueprint;
+}
+
+void FKismetEditorUtilities::AddComponentsToBlueprint(UBlueprint* Blueprint, const TArray<UActorComponent*>& Components)
+{
+	USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
+
+	TArray<UBlueprint*> ParentBPStack;
+	UBlueprint::GetBlueprintHierarchyFromClass(Blueprint->GeneratedClass, ParentBPStack);
+
+	TMap<USceneComponent*, USCS_Node*> SceneComponentsToAdd;
+	TMap<USceneComponent*, USCS_Node*> InstanceComponentToNodeMap;
+
+	AActor* Actor = nullptr;
+
+	for (UActorComponent* ActorComponent : Components)
+	{
+		if (Actor)
 		{
-			PackageName = FPackageName::GetLongPackagePath(Path);
-			FString BasePath = PackageName + TEXT("/") + LOCTEXT("BlueprintName_Default", "NewBlueprint").ToString();
-			FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-			AssetToolsModule.Get().CreateUniqueAssetName(BasePath, TEXT(""), PackageName, AssetName);
+			check(Actor == ActorComponent->GetOwner());
+		}
+		else
+		{
+			Actor = ActorComponent->GetOwner();
+			check(Actor);
 		}
 
-		UPackage* Package = CreatePackage(NULL, *PackageName);
+		USCS_Node* SCSNode = SCS->CreateNode(ActorComponent->GetClass());
+		UEditorEngine::CopyPropertiesForUnrelatedObjects(ActorComponent,SCSNode->ComponentTemplate);
 
-		if(Package)
+		// The easy part is non-scene component or the Root simply add it
+		if (!ActorComponent->IsA<USceneComponent>() || ActorComponent == Actor->GetRootComponent())
 		{
-			UActorFactory* FactoryToUse = GEditor->FindActorFactoryForActorClass( Actor->GetClass() );
-			const FName BlueprintName = FName(*AssetName);
+			SCS->AddNode(SCSNode);
+		}
+		else
+		{
+			USceneComponent* SceneComponent = CastChecked<USceneComponent>(ActorComponent);
+			check(SceneComponent->AttachParent);
 
-			if( FactoryToUse != NULL )
+			InstanceComponentToNodeMap.Add(SceneComponent,SCSNode);
+
+			// If we're attached to a blueprint component look it up as the variable name is the component name
+			if (SceneComponent->AttachParent->bCreatedByConstructionScript)
 			{
-				// Create the blueprint
-				UObject* Asset = FactoryToUse->GetAssetFromActorInstance(Actor);
-				// For Actors that don't have an asset associated with them, Asset will be null
-				NewBlueprint = FactoryToUse->CreateBlueprint( Asset, Package, BlueprintName, FName("CreateFromActor") );
+				USCS_Node* ParentSCSNode = nullptr;
+				for (UBlueprint* Blueprint : ParentBPStack)
+				{
+					ParentSCSNode = Blueprint->SimpleConstructionScript->FindSCSNode(SceneComponent->AttachParent->GetFName());
+					if (ParentSCSNode)
+					{
+						break;
+					}
+				}
+				check(ParentSCSNode);
+
+				if (ParentSCSNode->GetSCS() != SCS)
+				{
+					SCS->AddNode(SCSNode);
+				}
+
+				SCSNode->SetParent(ParentSCSNode);
 			}
-			else 
+			// If we're attached to a native component
+			else if (!Components.Contains(SceneComponent->AttachParent))
 			{
-				// We don't have a factory, but we can still try to create a blueprint for this actor class
-				NewBlueprint = FKismetEditorUtilities::CreateBlueprint( Object->GetClass(), Package, BlueprintName, EBlueprintType::BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass(), FName("CreateFromActor") );
+				SCS->AddNode(SCSNode);
+				SCSNode->SetParent(SceneComponent->AttachParent);
 			}
+			else
+			{
+				// Otherwise check if we've already created the parents' new SCS node and attach to that or cache it off to do next pass
+				USCS_Node** ParentSCSNode = InstanceComponentToNodeMap.Find(SceneComponent->AttachParent);
+				if (ParentSCSNode)
+				{
+					(*ParentSCSNode)->AddChildNode(SCSNode);
+				}
+				else
+				{
+					SceneComponentsToAdd.Add(SceneComponent, SCSNode);
+				}
+			}
+		}
+	}
+
+	// Hook up the remaining components nodes that the parent's node was missing when it was processed
+	for (auto ComponentIt = SceneComponentsToAdd.CreateConstIterator(); ComponentIt; ++ComponentIt)
+	{
+		InstanceComponentToNodeMap.FindChecked(ComponentIt.Key()->AttachParent)->AddChildNode(ComponentIt.Value());
+	}
+}
+
+UBlueprint* FKismetEditorUtilities::CreateBlueprintFromActor(const FName BlueprintName, UObject* Outer, AActor* Actor, const bool bReplaceActor )
+{
+	UBlueprint* NewBlueprint = nullptr;
+
+	if (Actor)
+	{
+		if (Outer)
+		{
+			// We don't have a factory, but we can still try to create a blueprint for this actor class
+			NewBlueprint = FKismetEditorUtilities::CreateBlueprint( Actor->GetClass(), Outer, BlueprintName, EBlueprintType::BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass(), FName("CreateFromActor") );
 		}
 
 		if(NewBlueprint)
@@ -912,12 +999,18 @@ UBlueprint* FKismetEditorUtilities::CreateBlueprintFromActor(const FString& Path
 			FAssetRegistryModule::AssetCreated(NewBlueprint);
 
 			// Mark the package dirty
-			Package->MarkPackageDirty();
+			Outer->MarkPackageDirty();
+
+			// If the source Actor has Instance Components we need to translate these in to SCS Nodes
+			if (Actor->InstanceComponents.Num() > 0)
+			{
+				AddComponentsToBlueprint(NewBlueprint, Actor->InstanceComponents);
+			}
 
 			if(NewBlueprint->GeneratedClass)
 			{
 				UObject* CDO = NewBlueprint->GeneratedClass->GetDefaultObject();
-				UEditorEngine::CopyPropertiesForUnrelatedObjects(Object, CDO);
+				UEditorEngine::CopyPropertiesForUnrelatedObjects(Actor, CDO);
 				if(AActor* CDOAsActor = Cast<AActor>(CDO))
 				{
 					if(USceneComponent* Scene = CDOAsActor->GetRootComponent())
@@ -931,6 +1024,9 @@ UBlueprint* FKismetEditorUtilities::CreateBlueprintFromActor(const FString& Path
 						// Ensure the light mass information is cleaned up
 						Scene->InvalidateLightingCache();
 					}
+
+					// Clear the instance properties array as we created SCS nodes for them
+					CDOAsActor->InstanceComponents.Empty();
 				}
 			}
 
@@ -974,7 +1070,7 @@ public:
 			USceneComponent* SingleSceneComp = NULL;
 			if(SelectedActors.Num() == 1)
 			{
-				TArray<UActorComponent*> Components;
+				TInlineComponentArray<UActorComponent*> Components;
 				SelectedActors[0]->GetComponents(Components);
 				for(UActorComponent* Component : Components)
 				{
@@ -1388,6 +1484,15 @@ TSharedPtr<class IBlueprintEditor> FKismetEditorUtilities::GetIBlueprintEditorFo
 		for (UObject* TestOuter = ObjectToFocusOn->GetOuter(); TestOuter; TestOuter = TestOuter->GetOuter())
 		{
 			TargetBP = Cast<UBlueprint>(TestOuter);
+
+			if(TargetBP == nullptr)
+			{
+				if(UBlueprintGeneratedClass* BPGeneratedClass = Cast<UBlueprintGeneratedClass>(TestOuter))
+				{
+					TargetBP = Cast<UBlueprint>(BPGeneratedClass->ClassGeneratedBy);
+				}
+			}
+
 			if (TargetBP != NULL)
 			{
 				break;

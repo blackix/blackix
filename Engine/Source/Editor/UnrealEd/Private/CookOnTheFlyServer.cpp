@@ -325,25 +325,36 @@ FName UCookOnTheFlyServer::GetCachedStandardPackageFileFName( const FName& Packa
 }
 
 
-FString UCookOnTheFlyServer::GetCachedPackageFilename( UPackage* Package ) const 
+FString UCookOnTheFlyServer::GetCachedPackageFilename( const UPackage* Package ) const 
 {
 	check( Package->GetName() == Package->GetFName().ToString() );
 	return Cache( Package->GetFName() ).PackageFilename;
 }
 
-FString UCookOnTheFlyServer::GetCachedStandardPackageFilename( UPackage* Package ) const 
+FString UCookOnTheFlyServer::GetCachedStandardPackageFilename( const UPackage* Package ) const 
 {
 	check( Package->GetName() == Package->GetFName().ToString() );
 	return Cache( Package->GetFName() ).StandardFilename;
 }
 
-FName UCookOnTheFlyServer::GetCachedStandardPackageFileFName( UPackage* Package ) const 
+FName UCookOnTheFlyServer::GetCachedStandardPackageFileFName( const UPackage* Package ) const 
 {
 	check( Package->GetName() == Package->GetFName().ToString() );
 	return Cache( Package->GetFName() ).StandardFileFName;
 }
 
-const FString& UCookOnTheFlyServer::GetCachedSandboxFilename( UPackage* Package, TAutoPtr<class FSandboxPlatformFile>& SandboxFile ) const 
+
+bool UCookOnTheFlyServer::ClearPackageFilenameCacheForPackage( const FName& PackageName ) const
+{
+	return PackageFilenameCache.Remove( PackageName ) >= 1;
+}
+
+bool UCookOnTheFlyServer::ClearPackageFilenameCacheForPackage( const UPackage* Package ) const
+{
+	return PackageFilenameCache.Remove( Package->GetFName() ) >= 1;
+}
+
+const FString& UCookOnTheFlyServer::GetCachedSandboxFilename( const UPackage* Package, TAutoPtr<class FSandboxPlatformFile>& SandboxFile ) const 
 {
 	FName PackageFName = Package->GetFName();
 	static TMap<FName, FString> CachedSandboxFilenames;
@@ -434,7 +445,7 @@ bool UCookOnTheFlyServer::StartNetworkFileServer( const bool BindAnyPort )
 	check( IsCookOnTheFlyMode() );
 	//GetDerivedDataCacheRef().WaitForQuiescence(false);
 
-	CreateSandboxFile();
+	InitializeSandbox();
 
 	ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
 	const TArray<ITargetPlatform*>& Platforms = TPM.GetCookingTargetPlatforms();
@@ -479,9 +490,6 @@ bool UCookOnTheFlyServer::StartNetworkFileServer( const bool BindAnyPort )
 	{
 		NetworkFileServers.Add( HttpFileServer );
 	}
-
-	// clean sandbox when we start the network file server
-	CleanSandbox(Platforms);
 
 	// loop while waiting for requests
 	GIsRequestingExit = false;
@@ -810,6 +818,11 @@ void UCookOnTheFlyServer::GenerateManifestInfo( UPackage* Package, const TArray<
 	}
 }
 
+bool UCookOnTheFlyServer::IsCookingInEditor() const 
+{
+	return CurrentCookMode == ECookMode::CookByTheBookFromTheEditor || CurrentCookMode == ECookMode::CookOnTheFlyFromTheEditor;;
+}
+
 bool UCookOnTheFlyServer::IsRealtimeMode() const 
 {
 	return CurrentCookMode == ECookMode::CookByTheBookFromTheEditor || CurrentCookMode == ECookMode::CookOnTheFlyFromTheEditor;
@@ -1109,7 +1122,7 @@ uint32 UCookOnTheFlyServer::TickCookOnTheSide( const float TimeSlice, uint32 &Co
 							const auto& Obj = ObjectsInPackage[I];
 							Obj->BeginCacheForCookedPlatformData( TargetPlatform );
 							
-							if ( Timer.IsTimeUp() && IsRealtimeMode() )
+							if ( Timer.IsTimeUp() )
 							{
 #if DEBUG_COOKONTHEFLY
 								UE_LOG(LogCook, Display, TEXT("Object %s took too long to cache"), *Obj->GetFullName());
@@ -1143,7 +1156,7 @@ uint32 UCookOnTheFlyServer::TickCookOnTheSide( const float TimeSlice, uint32 &Co
 				}
 				
 
-				if ( Timer.IsTimeUp() && IsRealtimeMode() && (bIsAllDataCached == false) )
+				if ( Timer.IsTimeUp() && (bIsAllDataCached == false) )
 				{
 					break; // break out of the target platform loop (can't break out of the main package tick loop here without requeing the request)
 				}
@@ -1246,7 +1259,8 @@ uint32 UCookOnTheFlyServer::TickCookOnTheSide( const float TimeSlice, uint32 &Co
 			{
 				// if we are processing unsolicited packages we can optionally not save these right now
 				// the unsolicited packages which we missed now will be picked up on next run
-				if ( (CurrentCookMode == ECookMode::CookOnTheFly || CurrentCookMode == ECookMode::CookByTheBookFromTheEditor) && (I >= FirstUnsolicitedPackage) )
+				// we want to do this in cook on the fly also, if there is a new network package request instead of saving unsolicited packages we can process the requested package
+				if ( (IsRealtimeMode() || IsCookOnTheFlyMode()) && (I >= FirstUnsolicitedPackage) )
 				{
 					bool bShouldFinishTick = false;
 
@@ -1428,6 +1442,10 @@ void UCookOnTheFlyServer::MarkPackageDirtyForCooker( UPackage *Package )
 		const FString Name = Package->GetPathName();
 		/*FString PackageFilename(GetPackageFilename(Package));
 		FPaths::MakeStandardFilename(PackageFilename);*/
+
+		ClearPackageFilenameCacheForPackage( Package );
+
+
 		FString PackageFilename = GetCachedStandardPackageFilename(Package);
 #if DEBUG_COOKONTHEFLY
 		UE_LOG(LogCook, Display, TEXT("Modification detected to package %s"), *PackageFilename);
@@ -1518,6 +1536,9 @@ bool UCookOnTheFlyServer::SaveCookedPackage( UPackage* Package, uint32 SaveFlags
 
 bool UCookOnTheFlyServer::ShouldCook(const FString& InFileName, const FName &InPlatformName)
 {
+	// this only does anything if we are using iterative cooking
+	return true;
+	/*
 	bool bDoCook = false;
 
 	FString PkgFile;
@@ -1570,7 +1591,7 @@ bool UCookOnTheFlyServer::ShouldCook(const FString& InFileName, const FName &InP
 		bDoCook |= bCookPackage;
 	}
 
-	return bDoCook;
+	return bDoCook;*/
 }
 
 bool UCookOnTheFlyServer::SaveCookedPackage( UPackage* Package, uint32 SaveFlags, bool& bOutWasUpToDate, TArray<FName> &TargetPlatformNames )
@@ -1784,13 +1805,11 @@ void UCookOnTheFlyServer::Initialize( ECookMode::Type DesiredCookMode, ECookInit
 		CookByTheBookOptions->bGenerateStreamingInstallManifests = IsCookFlagSet(ECookInitializationFlags::GenerateStreamingInstallManifest);
 	}
 
-
 	ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
 	const TArray<ITargetPlatform*>& Platforms = TPM.GetCookingTargetPlatforms();
 
 	// always generate the asset registry before starting to cook, for either method
 	GenerateAssetRegistry(Platforms);
-	
 }
 
 uint32 UCookOnTheFlyServer::NumConnections() const
@@ -2033,8 +2052,52 @@ bool UCookOnTheFlyServer::SaveCurrentIniSettings( const ITargetPlatform* TargetP
 	return true;
 }
 
-void UCookOnTheFlyServer::CleanSandbox(const TArray<ITargetPlatform*>& Platforms)
+void UCookOnTheFlyServer::PopulateCookedPackagesFromDisk( const TArray<ITargetPlatform*>& Platforms )
 {
+	// check each package to see if it's out of date
+	FPackageDependencyInfoModule& PDInfoModule = FModuleManager::LoadModuleChecked<FPackageDependencyInfoModule>("PackageDependencyInfo");
+
+	// list of directories to skip
+	TArray<FString> DirectoriesToSkip;
+	TArray<FString> DirectoriesToNotRecurse;
+
+	// See what files are out of date in the sandbox folder
+	for (int32 Index = 0; Index < Platforms.Num(); Index++)
+	{
+		ITargetPlatform* Target = Platforms[Index];
+		FString SandboxDirectory = GetSandboxDirectory(Target->PlatformName());
+		FName PlatformFName( *Target->PlatformName() );
+		// use the timestamp grabbing visitor
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		FLocalTimestampDirectoryVisitor Visitor(PlatformFile, DirectoriesToSkip, DirectoriesToNotRecurse, false);
+
+		PlatformFile.IterateDirectory(*SandboxDirectory, Visitor);
+
+		for (TMap<FString, FDateTime>::TIterator TimestampIt(Visitor.FileTimes); TimestampIt; ++TimestampIt)
+		{
+			FString CookedFilename = TimestampIt.Key();
+			FDateTime CookedTimestamp = TimestampIt.Value();
+			FString StandardCookedFilename = CookedFilename.Replace(*SandboxDirectory, *(FPaths::GetRelativePathToRoot()));
+			FDateTime DependentTimestamp;
+
+			if (PDInfoModule.DeterminePackageDependentTimeStamp(*(FPaths::GetBaseFilename(StandardCookedFilename, false)), DependentTimestamp) == true)
+			{
+				double Diff = (CookedTimestamp - DependentTimestamp).GetTotalSeconds();
+
+				if (Diff >= 0.0)
+				{
+					CookedPackages.Add(FFilePlatformRequest( FName(*StandardCookedFilename), PlatformFName) );
+				}
+			}
+		}
+	}
+}
+
+void UCookOnTheFlyServer::CleanSandbox( const bool bIterative )
+{
+	ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
+	const TArray<ITargetPlatform*>& Platforms = TPM.GetCookingTargetPlatforms();	
+
 	// before we can delete any cooked files we need to make sure that we have finished writing them
 	UPackage::WaitForAsyncFileWrites();
 
@@ -2051,8 +2114,7 @@ void UCookOnTheFlyServer::CleanSandbox(const TArray<ITargetPlatform*>& Platforms
 			CacheIniVersionStringsMap(Platform);
 		}
 
-
-		if (IsCookFlagSet(ECookInitializationFlags::Iterative) == false)
+		if (bIterative == false)
 		{
 			// for now we are going to wipe the cooked directory
 			for (int32 Index = 0; Index < Platforms.Num(); Index++)
@@ -2211,28 +2273,20 @@ void UCookOnTheFlyServer::CollectFilesToCook(TArray<FString>& FilesInPath, const
 {
 	TArray<FString> CookDirectories = InCookDirectories;
 	
-	if ( IsRealtimeMode() == false )
-	{
-		TArray<FString> MapList;
-		// Add the default map section
-		GEditor->LoadMapListFromIni(TEXT("AlwaysCookMaps"), MapList);
-
-		for ( const auto &IniMapSection : IniMapSections )
-		{
-			GEditor->LoadMapListFromIni(*IniMapSection, MapList);
-		}
-
-		for (int32 MapIdx = 0; MapIdx < MapList.Num(); MapIdx++)
-		{
-			AddFileToCook( FilesInPath, MapList[MapIdx]);
-		}
-	}
-	else
-	{
-		// if we are cooking in the editor then don't include the always cook maps list because we just want to cook whats in memory
-		check( CookMaps.Num() > 0 );
-	}
 	
+	TArray<FString> MapList;
+	// Add the default map section
+	GEditor->LoadMapListFromIni(TEXT("AlwaysCookMaps"), MapList);
+
+	for ( const auto &IniMapSection : IniMapSections )
+	{
+		GEditor->LoadMapListFromIni(*IniMapSection, MapList);
+	}
+
+	for (int32 MapIdx = 0; MapIdx < MapList.Num(); MapIdx++)
+	{
+		AddFileToCook( FilesInPath, MapList[MapIdx]);
+	}
 
 
 	// Also append any cookdirs from the project ini files; these dirs are relative to the game content directory
@@ -2381,6 +2435,13 @@ void UCookOnTheFlyServer::CollectFilesToCook(TArray<FString>& FilesInPath, const
 			}
 		}
 		if (PlatformEngineIni.GetString(TEXT("/Script/EngineSettings.GameMapsSettings"), TEXT("GlobalDefaultServerGameMode"), Obj))
+		{
+			if (Obj != FName(NAME_None).ToString())
+			{
+				AddFileToCook( FilesInPath, Obj);
+			}
+		}
+		if (PlatformEngineIni.GetString(TEXT("/Script/EngineSettings.GameMapsSettings"), TEXT("GameInstanceClass"), Obj))
 		{
 			if (Obj != FName(NAME_None).ToString())
 			{
@@ -2556,9 +2617,6 @@ void UCookOnTheFlyServer::CookByTheBookFinished()
 	const float TotalCookTime = (float)(FPlatformTime::Seconds() - CookByTheBookOptions->CookStartTime);
 	UE_LOG(LogCook, Display, TEXT("Cook by the book total time in tick %fs total time %f"), CookByTheBookOptions->CookTime, TotalCookTime);
 
-	check( SandboxFile );
-	SandboxFile = NULL;
-
 	CookByTheBookOptions->bRunning = false;
 }
 
@@ -2641,6 +2699,31 @@ void UCookOnTheFlyServer::CreateSandboxFile()
 	SandboxFile->Initialize(&FPlatformFileManager::Get().GetPlatformFile(), *FString::Printf(TEXT("-sandbox=\"%s\""), *OutputDirectory));
 }
 
+void UCookOnTheFlyServer::InitializeSandbox()
+{
+	if ( SandboxFile == NULL )
+	{
+		ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
+		const TArray<ITargetPlatform*>& TargetPlatforms = TPM.GetCookingTargetPlatforms();
+
+		CreateSandboxFile();
+
+		if ( IsCookFlagSet(ECookInitializationFlags::Iterative) )
+		{
+			PopulateCookedPackagesFromDisk(TargetPlatforms);
+		}
+
+		CleanSandbox(IsCookFlagSet(ECookInitializationFlags::Iterative));
+	}
+}
+
+void UCookOnTheFlyServer::TermSandbox()
+{
+	ClearAllCookedData();
+	ClearPackageFilenameCache();
+	SandboxFile = NULL;
+}
+
 void UCookOnTheFlyServer::StartCookByTheBook( const FCookByTheBookStartupOptions& CookByTheBookStartupOptions )
 {
 
@@ -2656,66 +2739,21 @@ void UCookOnTheFlyServer::StartCookByTheBook( const FCookByTheBookStartupOptions
 	const FString& BasedOnReleaseVersion = CookByTheBookStartupOptions.BasedOnReleaseVersion;
 
 	check( IsInGameThread() );
-
-	// can transition from cook on the fly to cook by the book from the editor
 	check( IsCookByTheBookMode() );
-
-	/// reference ini parsing code
-	/*FString SectionStr;
-	if (FParse::Value(InCmdParams, TEXT("MAPINISECTION="), SectionStr))
-	{
-		if (SectionStr.Contains(TEXT("+")))
-		{
-			TArray<FString> Sections;
-			SectionStr.ParseIntoArray(&Sections,TEXT("+"),true);
-			for (int32 Index = 0; Index < Sections.Num(); Index++)
-			{
-				LoadMapListFromIni(Sections[Index], OutMapList);
-			}
-		}
-		else
-		{
-			LoadMapListFromIni(SectionStr, OutMapList);
-		}
-	}*/
-	
-
-	/*
-	// copied from original cook commandlet
-	// need to fill these in
-	bCookAll = Switches.Contains(TEXT("COOKALL"));   // Cook everything
-	bLeakTest = Switches.Contains(TEXT("LEAKTEST"));   // Test for UObject leaks
-
-	*/
-
-
 
 	if ( CookByTheBookOptions->DlcName != DLCName )
 	{
 		// we are going to change the state of dlc we need to clean out our package filename cache (the generated filename cache is dependent on this key)
-		ClearPackageFilenameCache();
-		
 		CookByTheBookOptions->DlcName = DLCName;
 		check( OutputDirectoryOverride.Len() == 0 );
+
+		TermSandbox();
 	}
 
-	CreateSandboxFile();
+	InitializeSandbox();
 
-	// if we are cooking dlc then we don't need to clean sandbox
-	CleanSandbox(TargetPlatforms);
-	// deprecated is handled in the clean sandbox function above
-	/*TArray<ITargetPlatform*> ModifiedTargetPlatforms;
-	IniSettingsOutOfDate(TargetPlatforms, ModifiedTargetPlatforms);
-	for ( const auto& ModifiedTargetPlatform : ModifiedTargetPlatforms )
-	{
-		ClearPlatformCookedData( FName( *ModifiedTargetPlatform->PlatformName() ) );
-	}*/
-
-	if ( IsRealtimeMode() )
-	{
-		// from this point on (after we call CleanSandbox) if we are in the editor we can act iterative
-		CookFlags |= ECookInitializationFlags::Iterative;
-	}
+	// iteratively clean any old files out of the sandbox (check if ini settings are out of date and clean out any stale files)
+	CleanSandbox(true);
 
 	CookByTheBookOptions->bRunning = true;
 	CookByTheBookOptions->bCancel = false;
@@ -2878,7 +2916,7 @@ void UCookOnTheFlyServer::StartCookByTheBook( const FCookByTheBookStartupOptions
 
 void UCookOnTheFlyServer::HandleNetworkFileServerFileRequest( const FString& Filename, const FString &Platformname, TArray<FString>& UnsolicitedFiles )
 {
-	check( CurrentCookMode == ECookMode::CookOnTheFly );	
+	check( IsCookOnTheFlyMode() );	
 	
 	bool bIsCookable = FPackageName::IsPackageExtension(*FPaths::GetExtension(Filename, true));
 
