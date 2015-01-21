@@ -222,15 +222,6 @@ public:
 	virtual void ResetPosition() {}
 
 	/** 
-	 * Sets near and far clipping planes (NCP and FCP) for stereo rendering. Similar to 'stereo ncp= fcp' console command, but NCP and FCP set by this
-	 * call won't be saved in .ini file.
-	 *
-	 * @param NCP				(in) Near clipping plane, in centimeters
-	 * @param FCP				(in) Far clipping plane, in centimeters
-	 */
-	virtual void SetClippingPlanes(float NCP, float FCP) {}
-
-	/** 
 	 * Sets base orientation by setting yaw, pitch, roll, assuming that this is forward direction. 
 	 * Position is not changed. 
 	 *
@@ -257,19 +248,20 @@ public:
 	virtual FQuat GetBaseOrientation() const { return FQuat::Identity; }
 
 	/**
-	 * Sets HMD position offset that will be added to current HMD position, 
+	 * Overrides HMD base offset. Base offset is added to current HMD position, 
 	 * effectively moving the virtual camera by the specified offset. The addition
-	 * occurs after the HMD orientation and position are applied.
+	 * occurs BEFORE the base orientations is applied.
 	 *
 	 * @param PosOffset			(in) the vector to be added to HMD position.
 	 */
-	virtual void SetPositionOffset(const FVector& PosOffset) {}
+	virtual void SetBaseOffset(const FVector& PosOffset) {}
 
 	/**
-	 * Returns the currently set position offset, previously set by the 
-	 * SetPositionOffset call.
+	 * Returns the currently used base offset. The base offset is the vector that is added to the position 
+	 * BEFORE base orientation is applied. ResetOrientationAndPosition / ResetPosition methods sets the base
+	 * offset to recently read position.
 	 */
-	virtual FVector GetPositionOffset() const { return FVector::ZeroVector; }
+	virtual FVector GetBaseOffset() const { return FVector::ZeroVector; }
 
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) {}
 
@@ -344,6 +336,28 @@ public:
 	 * @param OutData	(out) SensorData structure to be filled in.
 	 */
 	virtual void GetRawSensorData(SensorData& OutData) { FMemory::MemSet(OutData, 0); }
+
+	/**
+	 * User profile structure.
+	 */
+	struct UserProfile
+	{
+		FString Name;
+		FString Gender;
+		float PlayerHeight;				// Height of the player, in meters
+		float EyeHeight;				// Height of the player's eyes, in meters
+		float IPD;						// Interpupillary distance, in meters
+		FVector2D EyeToNeckDistance;	// Eye-to-neck distance, X - horizontal, Y - vertical, in meters
+		TMap<FString, FString> ExtraFields; // extra fields in name / value pairs.
+	};
+
+	/** 
+	 * Returns currently used user profile.
+	 *
+	 * @param OutProfile	(out) UserProfile structure to hold data from the user profile.
+	 * @return (boolean)	True, if user profile was acquired. 
+	 */
+	virtual bool GetUserProfile(UserProfile& OutProfile) { return false; }
 
 private:
 	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */

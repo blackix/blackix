@@ -777,7 +777,7 @@ void FOculusRiftHMD::D3D11Bridge::Reset_RenderThread()
 		if (EyeTexture[eye].D3D11.pTexture)
 		{
 			EyeTexture[eye].D3D11.pTexture->Release();
-			EyeTexture[eye].D3D11.pTexture = (ID3D11Texture2D*)nullptr;
+			EyeTexture[eye].D3D11.pTexture = nullptr;
 		}
 		if (EyeTexture[eye].D3D11.pSRView)
 		{

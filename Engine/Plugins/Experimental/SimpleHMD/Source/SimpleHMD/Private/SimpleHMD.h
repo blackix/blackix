@@ -59,9 +59,6 @@ public:
 	virtual void SetBaseOrientation(const FQuat& BaseOrient) override;
 	virtual FQuat GetBaseOrientation() const override;
 
-	virtual void SetPositionOffset(const FVector& PosOff) override;
-	virtual FVector GetPositionOffset() const override;
-
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) override;
 	virtual void UpdateScreenSettings(const FViewport*) override;
 

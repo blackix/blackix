@@ -217,7 +217,6 @@ struct FSettings
 	/** HMD base values, specify forward orientation and zero pos offset */
 	OVR::Vector3f			BaseOffset;			// base position, in Oculus coords
 	FQuat					BaseOrientation;	// base orientation
-	FVector					PositionOffset;
 
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
@@ -393,6 +392,9 @@ public:
 		return false;
 #endif//OVR_SDK_RENDERING
 	}
+	virtual void SetScreenPercentage(float InScreenPercentage) override;
+	virtual float GetScreenPercentage() const override;
+	virtual void SetClippingPlanes(float NCP, float FCP) override;
 
     /** ISceneViewExtension interface */
     virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
@@ -417,16 +419,14 @@ public:
 	virtual void ResetOrientation(float Yaw = 0.f) override;
 	virtual void ResetPosition() override;
 
-	virtual void SetClippingPlanes(float NCP, float FCP) override;
-
 	virtual void SetBaseRotation(const FRotator& BaseRot) override;
 	virtual FRotator GetBaseRotation() const override;
 
 	virtual void SetBaseOrientation(const FQuat& BaseOrient) override;
 	virtual FQuat GetBaseOrientation() const override;
 
-	virtual void SetPositionOffset(const FVector& PosOff) override;
-	virtual FVector GetPositionOffset() const override;
+	virtual void SetBaseOffset(const FVector& PosOffset) override;
+	virtual FVector GetBaseOffset() const override;
 
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) override;
 	virtual void UpdateScreenSettings(const FViewport*) override;
@@ -439,6 +439,7 @@ public:
 	virtual void DrawDebug(UCanvas* Canvas) override;
 
 	virtual void GetRawSensorData(SensorData& OutData) override;
+	virtual bool GetUserProfile(UserProfile& OutProfile) override;
 
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);

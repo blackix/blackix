@@ -14,12 +14,12 @@ bool UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled()
 	return GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed();
 }
 
-bool UHeadMountedDisplayFunctionLibrary::EnableHMD(bool Enable)
+bool UHeadMountedDisplayFunctionLibrary::EnableHMD(bool bEnable)
 {
 	if (GEngine->HMDDevice.IsValid())
 	{
-		GEngine->HMDDevice->EnableHMD(Enable);
-		if (Enable)
+		GEngine->HMDDevice->EnableHMD(bEnable);
+		if (bEnable)
 		{
 			return GEngine->HMDDevice->EnableStereo(true);
 		}
@@ -91,11 +91,11 @@ bool UHeadMountedDisplayFunctionLibrary::IsInLowPersistenceMode()
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::EnableLowPersistenceMode(bool Enable)
+void UHeadMountedDisplayFunctionLibrary::EnableLowPersistenceMode(bool bEnable)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
-		GEngine->HMDDevice->EnableLowPersistenceMode(Enable);
+		GEngine->HMDDevice->EnableLowPersistenceMode(bEnable);
 	}
 }
 
@@ -117,35 +117,35 @@ void UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition(float Yaw, 
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::SetClippingPlanes(float NCP, float FCP)
+void UHeadMountedDisplayFunctionLibrary::SetClippingPlanes(float Near, float Far)
 {
 	if (GEngine->HMDDevice.IsValid())
 	{
-		GEngine->HMDDevice->SetClippingPlanes(NCP, FCP);
+		GEngine->HMDDevice->SetClippingPlanes(Near, Far);
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::SetBaseRotationAndPositionOffset(const FRotator& BaseRot, const FVector& PosOffset, EOrientPositionSelector::Type Options)
+void UHeadMountedDisplayFunctionLibrary::SetBaseRotationAndPositionOffset(const FRotator& Rotation, const FVector& PositionOffset, EOrientPositionSelector::Type Options)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
 		if (Options == EOrientPositionSelector::Orientation || EOrientPositionSelector::OrientationAndPosition)
 		{
-			GEngine->HMDDevice->SetBaseRotation(BaseRot);
+			GEngine->HMDDevice->SetBaseRotation(Rotation);
 		}
 		if (Options == EOrientPositionSelector::Position || EOrientPositionSelector::OrientationAndPosition)
 		{
-			GEngine->HMDDevice->SetPositionOffset(PosOffset);
+			GEngine->HMDDevice->SetBaseOffset(PositionOffset);
 		}
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset)
+void UHeadMountedDisplayFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& Rotation, FVector& PositionOffset)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
-		OutRot = GEngine->HMDDevice->GetBaseRotation();
-		OutPosOffset = GEngine->HMDDevice->GetPositionOffset();
+		Rotation = GEngine->HMDDevice->GetBaseRotation();
+		PositionOffset = GEngine->HMDDevice->GetBaseOffset();
 	}
 }
 
@@ -164,3 +164,53 @@ void UHeadMountedDisplayFunctionLibrary::GetRawSensorData(FVector& Accelerometer
 	}
 }
 
+bool UHeadMountedDisplayFunctionLibrary::GetUserProfile(FHmdUserProfile& Profile)
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		IHeadMountedDisplay::UserProfile Data;
+		if (GEngine->HMDDevice->GetUserProfile(Data))
+		{
+			Profile.Name = Data.Name;
+			Profile.Gender = Data.Gender;
+			Profile.PlayerHeight = Data.PlayerHeight;
+			Profile.EyeHeight = Data.EyeHeight;
+			Profile.IPD = Data.IPD;
+			Profile.EyeToNeckDistance = Data.EyeToNeckDistance;
+			Profile.ExtraFields.Reserve(Data.ExtraFields.Num());
+			for (TMap<FString, FString>::TIterator It(Data.ExtraFields); It; ++It)
+			{
+				Profile.ExtraFields.Add(FHmdUserProfileField(*It.Key(), *It.Value()));
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
+/** 
+ * Sets screen percentage to be used in VR mode.
+ *
+ * @param ScreenPercentage	(in) Specifies the screen percentage to be used in VR mode. Use 0.0f value to reset to default value.
+ */
+void UHeadMountedDisplayFunctionLibrary::SetScreenPercentage(float ScreenPercentage)
+{
+	if (GEngine->StereoRenderingDevice.IsValid())
+	{
+		GEngine->StereoRenderingDevice->SetScreenPercentage(ScreenPercentage);
+	}
+}
+
+/** 
+ * Returns screen percentage to be used in VR mode.
+ *
+ * @return (float)	The screen percentage to be used in VR mode.
+ */
+float UHeadMountedDisplayFunctionLibrary::GetScreenPercentage()
+{
+	if (GEngine->StereoRenderingDevice.IsValid())
+	{
+		return GEngine->StereoRenderingDevice->GetScreenPercentage();
+	}
+	return 0.0f;
+}

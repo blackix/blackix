@@ -86,4 +86,28 @@ public:
 	{
 		OrthoProjection[0] = OrthoProjection[1] = FMatrix::Identity;
 	}
+
+	/**
+	 * Sets screen percentage to be used for stereo rendering.
+	 *
+	 * @param ScreenPercentage	(in) Specifies the screen percentage to be used in VR mode. Use 0.0f value to reset to default value.
+	 */
+	virtual void SetScreenPercentage(float InScreenPercentage) {}
+	
+	/** 
+	 * Returns screen percentage to be used for stereo rendering.
+	 *
+	 * @return (float)	The screen percentage to be used in stereo mode. 0.0f, if default value is used.
+	 */
+	virtual float GetScreenPercentage() const { return 0.0f; }
+
+	/** 
+	 * Sets near and far clipping planes (NCP and FCP) for stereo rendering. Similar to 'stereo ncp= fcp' console command, but NCP and FCP set by this
+	 * call won't be saved in .ini file.
+	 *
+	 * @param NCP				(in) Near clipping plane, in centimeters
+	 * @param FCP				(in) Far clipping plane, in centimeters
+	 */
+	virtual void SetClippingPlanes(float NCP, float FCP) {}
+
 };

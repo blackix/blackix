@@ -109,7 +109,6 @@ FSettings::FSettings() :
 	, FarClippingPlane(0)
 	, BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
-	, PositionOffset(0,0,0)
 {
 	Flags.Raw = 0;
 	Flags.bHMDEnabled = true;
@@ -418,7 +417,7 @@ void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, F
 	FVector Pos;
 	PoseToOrientationAndPosition(cameraPose, Orient, Pos, *frame);
 	OutOrientation = (frame->DeltaControlOrientation * Orient).Rotator();
-	OutOrigin = frame->DeltaControlOrientation.RotateVector(Pos) + frame->Settings.PositionOffset;
+	OutOrigin = frame->DeltaControlOrientation.RotateVector(Pos);
 }
 
 bool FOculusRiftHMD::IsInLowPersistenceMode() const
@@ -1807,14 +1806,14 @@ FQuat FOculusRiftHMD::GetBaseOrientation() const
 	return Settings.BaseOrientation;
 }
 
-void FOculusRiftHMD::SetPositionOffset(const FVector& PosOff)
+void FOculusRiftHMD::SetBaseOffset(const FVector& PosOffset)
 {
-	Settings.PositionOffset = PosOff;
+	Settings.BaseOffset = ToOVRVector_U2M<OVR::Vector3f>(PosOffset, Settings.WorldToMetersScale);
 }
 
-FVector FOculusRiftHMD::GetPositionOffset() const
+FVector FOculusRiftHMD::GetBaseOffset() const
 {
-	return Settings.PositionOffset;
+	return ToFVector_M2U(Settings.BaseOffset, Settings.WorldToMetersScale);
 }
 
 FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassType, const float FOV) const
@@ -1981,13 +1980,33 @@ void FOculusRiftHMD::Startup()
 	// Initializes LibOVR. This LogMask_All enables maximum logging.
 	// Custom allocator can also be specified here.
 	// Actually, most likely, the ovr_Initialize is already called from PreInit.
-	ovr_Initialize();
+	int8 bWasInitialized = ovr_Initialize();
 
 #if !UE_BUILD_SHIPPING
 	// Should be changed to CAPI when available.
 	static OculusLog OcLog;
 	OVR::Log::SetGlobalLog(&OcLog);
 #endif //#if !UE_BUILD_SHIPPING
+
+	if (GIsEditor)
+	{
+		Settings.Flags.bHeadTrackingEnforced = true;
+	}
+
+	bool forced = true;
+	bool bInitialized = false;
+	if (!FParse::Param(FCommandLine::Get(), TEXT("forcedrift")))
+	{
+		bInitialized = InitDevice();
+		forced = false;
+	}
+
+	if (!forced && !bInitialized)
+	{
+		ovr_Shutdown();
+		Settings.Flags.InitStatus = 0;
+		return;
+	}
 
 	// Uncap fps to enable FPS higher than 62
 	GEngine->bSmoothFrameRate = false;
@@ -2009,19 +2028,6 @@ void FOculusRiftHMD::Startup()
 #endif
 #endif // #ifdef OVR_SDK_RENDERING
 
-	if (GIsEditor)
-	{
-		Settings.Flags.bHeadTrackingEnforced = true;
-		//AlternateFrameRateDivider = 2;
-	}
-
-	bool forced = true;
-	if (!FParse::Param(FCommandLine::Get(), TEXT("forcedrift")))
-	{
-		InitDevice();
-		forced = false;
-	}
-
 	if (forced || Hmd)
 	{
 		Settings.Flags.InitStatus |= FSettings::eInitialized;
@@ -2032,7 +2038,7 @@ void FOculusRiftHMD::Startup()
 
 void FOculusRiftHMD::Shutdown()
 {
-	if (!(Settings.Flags.InitStatus & FSettings::eStartupExecuted))
+	if (!(Settings.Flags.InitStatus & FSettings::eInitialized))
 	{
 		return;
 	}
@@ -2045,6 +2051,7 @@ void FOculusRiftHMD::Shutdown()
 	{
 		Plugin->ShutdownRendering();
 	});
+	FlushRenderingCommands();
 #endif // OVR_SDK_RENDERING
 	ReleaseDevice();
 	
@@ -2456,7 +2463,6 @@ void FOculusRiftHMD::OnBeginPlay()
 	if (GIsEditor)
 	{
 		DeltaControlRotation = FRotator::ZeroRotator;
-		Settings.PositionOffset = FVector::ZeroVector;
 		Settings.BaseOrientation = FQuat::Identity;
 		Settings.BaseOffset = OVR::Vector3f(0, 0, 0);
 		Settings.WorldToMetersScale = 100.f;
@@ -2487,6 +2493,61 @@ void FOculusRiftHMD::GetRawSensorData(SensorData& OutData)
 		OutData.Temperature		= ss.RawSensorData.Temperature;
 		OutData.TimeInSeconds   = ss.RawSensorData.TimeInSeconds;
 	}
+}
+
+bool FOculusRiftHMD::GetUserProfile(UserProfile& OutProfile) 
+{
+	InitDevice();
+	if (Hmd)
+	{
+		OutProfile.Name = ovrHmd_GetString(Hmd, OVR_KEY_USER, "");
+		OutProfile.Gender = ovrHmd_GetString(Hmd, OVR_KEY_GENDER, OVR_DEFAULT_GENDER);
+		OutProfile.PlayerHeight = ovrHmd_GetFloat(Hmd, OVR_KEY_PLAYER_HEIGHT, OVR_DEFAULT_PLAYER_HEIGHT);
+		OutProfile.EyeHeight = ovrHmd_GetFloat(Hmd, OVR_KEY_EYE_HEIGHT, OVR_DEFAULT_EYE_HEIGHT);
+		OutProfile.IPD = ovrHmd_GetFloat(Hmd, OVR_KEY_IPD, OVR_DEFAULT_IPD);
+		float neck2eye[2] = {OVR_DEFAULT_NECK_TO_EYE_HORIZONTAL, OVR_DEFAULT_NECK_TO_EYE_VERTICAL};
+		ovrHmd_GetFloatArray(Hmd, OVR_KEY_NECK_TO_EYE_DISTANCE, neck2eye, 2);
+		OutProfile.EyeToNeckDistance = FVector2D(neck2eye[0], neck2eye[1]);
+		OutProfile.ExtraFields.Reset();
+
+		int EyeRelief = ovrHmd_GetInt(Hmd, OVR_KEY_EYE_RELIEF_DIAL, OVR_DEFAULT_EYE_RELIEF_DIAL);
+		OutProfile.ExtraFields.Add(FString(OVR_KEY_EYE_RELIEF_DIAL)) = FString::FromInt(EyeRelief);
+		
+		float eye2nose[2] = { 0.f, 0.f };
+		ovrHmd_GetFloatArray(Hmd, OVR_KEY_EYE_TO_NOSE_DISTANCE, eye2nose, 2);
+		OutProfile.ExtraFields.Add(FString(OVR_KEY_EYE_RELIEF_DIAL"Horizontal")) = FString::SanitizeFloat(eye2nose[0]);
+		OutProfile.ExtraFields.Add(FString(OVR_KEY_EYE_RELIEF_DIAL"Vertical")) = FString::SanitizeFloat(eye2nose[1]);
+
+		float maxEye2Plate[2] = { 0.f, 0.f };
+		ovrHmd_GetFloatArray(Hmd, OVR_KEY_MAX_EYE_TO_PLATE_DISTANCE, maxEye2Plate, 2);
+		OutProfile.ExtraFields.Add(FString(OVR_KEY_MAX_EYE_TO_PLATE_DISTANCE"Horizontal")) = FString::SanitizeFloat(maxEye2Plate[0]);
+		OutProfile.ExtraFields.Add(FString(OVR_KEY_MAX_EYE_TO_PLATE_DISTANCE"Vertical")) = FString::SanitizeFloat(maxEye2Plate[1]);
+
+		OutProfile.ExtraFields.Add(FString(ovrHmd_GetString(Hmd, OVR_KEY_EYE_CUP, "")));
+		return true;
+	}
+	return false; 
+}
+
+void FOculusRiftHMD::SetScreenPercentage(float InScreenPercentage)
+{
+	Settings.ScreenPercentage = InScreenPercentage;
+	if (InScreenPercentage == 0.0f)
+	{
+		Settings.Flags.bOverrideScreenPercentage = false;
+		Flags.bApplySystemOverridesOnStereo = true;
+	}
+	else
+	{
+		Settings.Flags.bOverrideScreenPercentage = true;
+		Settings.ScreenPercentage = FMath::Clamp(InScreenPercentage, 30.f, 300.f);
+		Flags.bApplySystemOverridesOnStereo = true;
+	}
+}
+
+float FOculusRiftHMD::GetScreenPercentage() const
+{
+	return (Settings.Flags.bOverrideScreenPercentage) ? Settings.ScreenPercentage : 0.0f;
 }
 
 //////////////////////////////////////////////////////////////////////////

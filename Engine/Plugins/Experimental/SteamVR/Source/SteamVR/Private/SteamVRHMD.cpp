@@ -353,15 +353,6 @@ FQuat FSteamVRHMD::GetBaseOrientation() const
 	return FQuat::Identity;
 }
 
-void FSteamVRHMD::SetPositionOffset(const FVector& PosOff)
-{
-}
-
-FVector FSteamVRHMD::GetPositionOffset() const
-{
-	return FVector::ZeroVector;
-}
-
 void FSteamVRHMD::UpdateScreenSettings(const FViewport*)
 {
 }

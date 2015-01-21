@@ -229,15 +229,6 @@ FQuat FSimpleHMD::GetBaseOrientation() const
 	return FQuat::Identity;
 }
 
-void FSimpleHMD::SetPositionOffset(const FVector& PosOff)
-{
-}
-
-FVector FSimpleHMD::GetPositionOffset() const
-{
-	return FVector::ZeroVector;
-}
-
 void FSimpleHMD::DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize)
 {
 	float ClipSpaceQuadZ = 0.0f;
