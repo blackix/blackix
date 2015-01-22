@@ -182,6 +182,19 @@ void FOculusRiftHMD::OnStartGameFrame()
 {
 	Frame.Reset();
 	Frame.Flags.bFrameStarted = true;
+
+	if (Flags.bNeedDisableStereo)
+	{
+		Flags.bNeedDisableStereo = false;
+		DoEnableStereo(false, true);
+	}
+	else if (Flags.bNeedEnableStereo)
+	{
+		// If 'stereo on' was queued, handle it here.
+		Flags.bNeedEnableStereo = false; // reset it before Do..., since it could be queued up again.
+		DoEnableStereo(true, Flags.bEnableStereoToHmd);
+	}
+
 	if (!Settings.IsStereoEnabled() && !Settings.Flags.bHeadTrackingEnforced)
 	{
 		return;
@@ -196,11 +209,6 @@ void FOculusRiftHMD::OnStartGameFrame()
 		UpdateHmdCaps();
 	}
 
-	if (Flags.bNeedDisableStereo)
-	{
-		DoEnableStereo(false, true);
-		Flags.bNeedDisableStereo = false;
-	}
 	if (Flags.bApplySystemOverridesOnStereo)
 	{
 		ApplySystemOverridesOnStereo();
@@ -1451,26 +1459,43 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 		return false;
 	}
 
-	bool stereoEnabled = (Settings.Flags.bHMDEnabled) ? bStereo : false;
+	bool stereoToBeEnabled = (Settings.Flags.bHMDEnabled) ? bStereo : false;
 
-	if ((Settings.Flags.bStereoEnabled && stereoEnabled) || (!Settings.Flags.bStereoEnabled && !stereoEnabled))
+	if ((Settings.Flags.bStereoEnabled && stereoToBeEnabled) || (!Settings.Flags.bStereoEnabled && !stereoToBeEnabled))
 	{
 		// already in the desired mode
 		return Settings.Flags.bStereoEnabled;
 	}
-	if (!stereoEnabled)
+
+	TSharedPtr<SWindow> Window;
+	if (SceneVP)
+	{
+		Window = SceneVP->FindWindow();
+	}
+
+	if (!stereoToBeEnabled)
 	{
 		Frame.Settings.Flags.bStereoEnabled = false;
 	}
+	else
+	{
+		// check if we already have a window; if not, queue enable stereo to the next frames and exit
+		if (!Window.IsValid())
+		{
+			Flags.bNeedEnableStereo = true;
+			Flags.bEnableStereoToHmd = bApplyToHmd || !IsFullscreenAllowed();
+			return Settings.Flags.bStereoEnabled;
+		}
+	}
 
 	bool wasFullscreenAllowed = IsFullscreenAllowed();
-	if (OnOculusStateChange(stereoEnabled))
+	if (OnOculusStateChange(stereoToBeEnabled))
 	{
-		Settings.Flags.bStereoEnabled = stereoEnabled;
+		Settings.Flags.bStereoEnabled = stereoToBeEnabled;
 
 		if (SceneVP)
 		{
-			if (!IsFullscreenAllowed() && stereoEnabled)
+			if (!IsFullscreenAllowed() && stereoToBeEnabled)
 			{
 				if (Hmd)
 				{
@@ -1478,10 +1503,9 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 					SceneVP->SetViewportSize(Hmd->Resolution.w, Hmd->Resolution.h);
 				}
 			}
-			else if ((!wasFullscreenAllowed && !stereoEnabled))
+			else if ((!wasFullscreenAllowed && !stereoToBeEnabled))
 			{
 				// restoring original viewport size (to be equal to window size).
-				TSharedPtr<SWindow> Window = SceneVP->FindWindow();
 				if (Window.IsValid())
 				{
 					FVector2D size = Window->GetSizeInScreen();
@@ -1492,7 +1516,6 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 
 			if (SceneVP)
 			{
-				TSharedPtr<SWindow> Window = SceneVP->FindWindow();
 				if (Window.IsValid())
 				{
 					FVector2D size = Window->GetSizeInScreen();
@@ -1502,7 +1525,7 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 						SceneVP->SetViewportSize(size.X, size.Y);
 						Window->SetViewportSizeDrivenByWindow(true);
 
-						if (stereoEnabled)
+						if (stereoToBeEnabled)
 						{
 							EWindowMode::Type wm = (!GIsEditor) ? EWindowMode::Fullscreen : EWindowMode::WindowedFullscreen;
 							FVector2D size = Window->GetSizeInScreen();
@@ -1532,7 +1555,7 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 					{
 						// a special case when 'stereo on' or 'stereo hmd' is used in Direct mode. We must set proper window mode, otherwise
 						// it will be lost once window loses and regains the focus.
-						FSystemResolution::RequestResolutionChange(size.X, size.Y, (stereoEnabled) ? EWindowMode::WindowedMirror : EWindowMode::Windowed);
+						FSystemResolution::RequestResolutionChange(size.X, size.Y, (stereoToBeEnabled) ? EWindowMode::WindowedMirror : EWindowMode::Windowed);
 					}
 				}
 			}

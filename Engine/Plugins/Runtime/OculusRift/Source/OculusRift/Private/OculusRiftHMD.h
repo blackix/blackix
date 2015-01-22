@@ -700,6 +700,8 @@ private: // data
 			/** Indicates if it is necessary to update stereo rendering params */
 			bool64	bNeedUpdateStereoRenderingParams : 1;
 
+			bool64	bNeedEnableStereo : 1;
+			bool64  bEnableStereoToHmd : 1;
 			bool64	bNeedDisableStereo : 1;
 					
 			bool64	bApplySystemOverridesOnStereo : 1;
