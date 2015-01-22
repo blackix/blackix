@@ -76,7 +76,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 *
 	 * @return (Boolean)  status of HMD
 	 */
-	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static bool IsHeadMountedDisplayEnabled();
 
 	/**
@@ -85,7 +85,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param bEnable			(in) 'true' to enable HMD / stereo; 'false' otherwise
 	 * @return (Boolean)		True, if the request was successful.
 	 */
-	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static bool EnableHMD(bool bEnable);
 
 	/**
@@ -103,7 +103,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	/**
 	 * If the HMD supports positional tracking, whether or not we are currently being tracked	
 	 */
- 	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
+ 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static bool HasValidTrackingPosition();
 
 	/**
@@ -118,13 +118,13 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param NearPlane			(out) Near plane distance of the tracking volume, in world-space
 	 * @param FarPlane			(out) Far plane distance of the tracking volume, in world-space
 	 */
-	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static void GetPositionalTrackingCameraParameters(FVector& CameraOrigin, FRotator& CameraOrientation, float& HFOV, float& VFOV, float& CameraDistance, float& NearPlane, float&FarPlane);
 
 	/**
 	 * Returns true, if HMD is in low persistence mode. 'false' otherwise.
 	 */
-	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
 	static bool IsInLowPersistenceMode();
 
 	/**
@@ -175,7 +175,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Rotation			(out) Rotator object with base rotation
 	 * @param PositionOffset	(out) Base position (the position before ResetPosition is called).
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category = "Input|HeadMountedDisplay")
 	static void GetBaseRotationAndPositionOffset(FRotator& Rotation, FVector& PositionOffset);
 
 	/**
@@ -187,7 +187,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Temperature	(out) Temperature of the sensor in degrees Celsius.
 	 * @param TimeInSeconds	(out) Time when the reported IMU reading took place, in seconds.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category = "Input|HeadMountedDisplay")
 	static void GetRawSensorData(FVector& Accelerometer, FVector& Gyro, FVector& Magnetometer, float& Temperature, float& TimeInSeconds);
 
 	/**
@@ -196,7 +196,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Profile		(out) Structure to hold current user profile.
 	 * @return (boolean)	True, if user profile was acquired.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category = "Input|HeadMountedDisplay")
 	static bool GetUserProfile(FHmdUserProfile& Profile);
 
 	/** 
@@ -212,6 +212,6 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 *
 	 * @return (float)	The screen percentage to be used in VR mode.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintPure, Category = "Input|HeadMountedDisplay")
 	static float GetScreenPercentage();
 };
