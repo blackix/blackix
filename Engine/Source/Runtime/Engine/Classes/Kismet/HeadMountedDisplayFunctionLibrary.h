@@ -85,7 +85,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param bEnable			(in) 'true' to enable HMD / stereo; 'false' otherwise
 	 * @return (Boolean)		True, if the request was successful.
 	 */
-	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
 	static bool EnableHMD(bool bEnable);
 
 	/**
