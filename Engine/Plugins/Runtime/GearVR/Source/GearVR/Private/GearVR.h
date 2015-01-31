@@ -44,6 +44,7 @@ public:
 	static void PreInit();
 
 	/** IHeadMountedDisplay interface */
+	virtual void OnStartGameFrame() override;
 	virtual bool IsHMDConnected() override { return true; }
 	virtual bool IsHMDEnabled() const override;
 	virtual void EnableHMD(bool allow = true) override;
@@ -52,7 +53,7 @@ public:
 
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
-	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
+	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) override;
 	virtual float GetInterpupillaryDistance() const override;
@@ -195,7 +196,9 @@ private:
     /**
      * Updates the view point reflecting the current HMD orientation. 
      */
-	static void UpdatePlayerViewPoint(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& LastHmdPosition, const FQuat& DeltaControlOrientation, const FQuat& BaseViewOrientation, const FVector& BaseViewPosition, FRotator& ViewRotation, FVector& ViewLocation);
+	//static void UpdatePlayerViewPoint(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& LastHmdPosition, const FQuat& DeltaControlOrientation, const FQuat& BaseViewOrientation, const FVector& BaseViewPosition, FRotator& ViewRotation, FVector& ViewLocation);
+
+	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera);
 
 	/**
 	 * Converts quat from Oculus ref frame to Unreal
@@ -292,6 +295,9 @@ private:
 
 	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const;
 
+protected:
+	// A temp func (until ovrHmd_GetEyePoses is not introduced) that returns eye poses instead of head pose.
+	void GetEyePoses(const OVR::Vector3f hmdToEyeViewOffset[2], ovrPosef outEyePoses[2], ovrSensorState& outSensorState);
 private: // data
 
 	/** Whether or not the Oculus was successfully initialized */
@@ -399,12 +405,19 @@ private: // data
 	FQuat					CurHmdOrientation;
 
 	FRotator				DeltaControlRotation;    // same as DeltaControlOrientation but as rotator
-	FQuat					DeltaControlOrientation; // same as DeltaControlRotation but as quat
 
 	FVector					CurHmdPosition;
-
+	
 	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
 	FVector					LastHmdPosition;	// contains last APPLIED ON GT HMD position 
+	FVector					CameraScale3D;
+
+	ovrSensorState			CurSensorState;	    // sensor state read at the beginning of the frame
+	ovrPosef				CurEyeRenderPose[2];// eye render pose read at the beginning of the frame
+	ovrPosef				EyeRenderPose[2];	// eye render pose actually used
+	ovrPosef				HeadPose;			// position of head actually used
+
+	OVR::Vector3f			HmdToEyeViewOffset[2]; 
 
 	/** HMD base values, specify forward orientation and zero pos offset */
 	OVR::Vector3f			BaseOffset;      // base position, in Oculus coords
@@ -426,22 +439,28 @@ private: // data
 	// of the rendering thread under the StereoParamsLock.
 	struct FRenderParams
 	{
-		FVector					LastHmdPosition;	// contains last APPLIED ON GT HMD position 
-		FQuat					DeltaControlOrientation;
-		ovrPoseStatef			EyeRenderPose[2];
+		ovrPosef				CurEyeRenderPose[2];// most recent eye render poses
+		ovrPosef				CurHeadPose;		// current position of head
 
-		FQuat					CurHmdOrientation;
-		FVector					CurHmdPosition;
-		bool					bFrameBegun;
+		ovrPosef				EyeRenderPose[2];   // eye render poses used on a game thread
+		ovrPosef				HeadPose;			// position of head actually used on a game thread
+
+		bool					bFrameBegun : 1;
+		bool					bOrientationChanged : 1;
+		bool					bPositionChanged : 1;
 
 		FEngineShowFlags		ShowFlags; // a copy of showflags
 
 		FRenderParams(FGearVR* plugin);
-	} RenderParams_RenderThread;
+	} RenderParams;
 
 
 	/** True, if pos tracking is enabled */
-	bool						bHmdPosTracking;
+	bool						bHmdPosTracking : 1;
+	bool						bOrientationChanged : 1;
+	bool						bPositionChanged : 1;
+	bool						bPlayerControllerFollowsHmd : 1;
+	bool						bCameraScale3DAlreadySet : 1;
 };
 
 DEFINE_LOG_CATEGORY_STATIC(LogHMD, Log, All);

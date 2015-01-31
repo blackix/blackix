@@ -215,6 +215,7 @@ struct FSettings
 	FIntPoint	MirrorWindowSize;
 
 	/** HMD base values, specify forward orientation and zero pos offset */
+	FVector2D				NeckToEyeInMeters;  // neck-to-eye vector, in meters (X - horizontal, Y - vertical)
 	OVR::Vector3f			BaseOffset;			// base position, in Oculus coords
 	FQuat					BaseOrientation;	// base orientation
 
@@ -268,12 +269,12 @@ struct FGameFrame
 	float					WorldToMetersScale;
 	FVector					CameraScale3D;
 
-	FQuat					DeltaControlOrientation; // same as DeltaControlRotation but as quat
+	FRotator				CachedViewRotation[2]; // cached view rotations
 
 	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
 	FVector					LastHmdPosition;    // contains last APPLIED ON GT HMD position
 
-	ovrPosef				CurEyeRenderPose[2];// eye render pose read at the eginning of the frame
+	ovrPosef				CurEyeRenderPose[2];// eye render pose read at the beginning of the frame
 	ovrTrackingState		CurTrackingState;	// tracking state read at the beginning of the frame
 
 	ovrPosef				EyeRenderPose[2];	// eye render pose actually used
@@ -283,7 +284,9 @@ struct FGameFrame
 	{
 		struct
 		{
+			/** True, if game thread is finished */
 			bool64			bOutOfFrame : 1;
+			/** True, if game frame has started */
 			bool64			bFrameStarted : 1;
 
 			/** Whether ScreenPercentage usage is enabled */
@@ -292,9 +295,15 @@ struct FGameFrame
 			/** True, if vision is acquired at the moment */
 			bool64			bHaveVisionTracking : 1;
 
+			/** True, if HMD orientation was applied during the game thread */
 			bool64			bOrientationChanged : 1;
+			/** True, if HMD position was applied during the game thread */
 			bool64			bPositionChanged : 1;
+			/** True, if ApplyHmdRotation was used */
 			bool64			bPlayerControllerFollowsHmd : 1;
+
+			/** Indicates if CameraScale3D was already set by GetCurrentOrientAndPos */
+			bool64			bCameraScale3DAlreadySet : 1;
 		};
 		uint64 Raw;
 	} Flags;
@@ -345,13 +354,15 @@ public:
 
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
-	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
+	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 
 	virtual void SetInterpupillaryDistance(float NewInterpupillaryDistance) override;
 	virtual float GetInterpupillaryDistance() const override;
 	virtual void GetFieldOfView(float& OutHFOVInDegrees, float& OutVFOVInDegrees) const override;
 
 	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale) override;
+	virtual FVector GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale) override;
+
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
 	virtual void UpdatePlayerCamera(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
 
@@ -399,7 +410,7 @@ public:
     /** ISceneViewExtension interface */
     virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
-	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
+	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override;
     virtual void PreRenderView_RenderThread(FSceneView& InView) override;
 	virtual void PreRenderViewFamily_RenderThread(FSceneViewFamily& InViewFamily) override;
 
@@ -429,7 +440,7 @@ public:
 	virtual FVector GetBaseOffset() const override;
 
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) override;
-	virtual void UpdateScreenSettings(const FViewport*) override;
+	virtual void UpdatePostProcessSettings(FPostProcessSettings*) override;
 
 	virtual bool HandleInputKey(class UPlayerInput*, const FKey& Key, EInputEvent EventType, float AmountDepressed, bool bGamepad) override;
 
@@ -444,6 +455,8 @@ public:
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false);
 	void BeginRendering_RenderThread();
+
+	float GetActualScreenPercentage() const;
 
 #ifdef OVR_SDK_RENDERING
 	class BridgeBaseImpl : public FRHICustomPresent
@@ -681,7 +694,7 @@ private:
 	class FSceneViewport* FindSceneViewport();
 
 #if !UE_BUILD_SHIPPING
-	void DrawDebugTrackingCameraFrustum(class UWorld* InWorld, const FVector& ViewLocation);
+	void DrawDebugTrackingCameraFrustum(class UWorld* InWorld, const FRotator& ViewRotation, const FVector& ViewLocation);
 #endif // #if !UE_BUILD_SHIPPING
 
 	FGameFrame* GetFrame();
@@ -692,6 +705,8 @@ private: // data
 	FSettings		Settings;
 	FGameFrame		Frame;
 	ovrHmd			Hmd;
+
+	FRotator		DeltaControlRotation;  // used from ApplyHmdRotation
 
 	union
 	{
@@ -715,7 +730,6 @@ private: // data
 	} Flags;
 
 	FGameFrame				RenderFrame;
-	FRotator				DeltaControlRotation;    // same as DeltaControlOrientation but as rotator
 
 #ifdef OVR_SDK_RENDERING
 

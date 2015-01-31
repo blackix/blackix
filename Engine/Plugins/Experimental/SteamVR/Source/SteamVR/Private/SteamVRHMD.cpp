@@ -108,7 +108,7 @@ bool FSteamVRHMD::HasValidTrackingPosition()
 	return bHmdPosTracking && bHaveVisionTracking;
 }
 
-void FSteamVRHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+void FSteamVRHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
 {
 }
 
@@ -351,10 +351,6 @@ void FSteamVRHMD::SetBaseOrientation(const FQuat& BaseOrient)
 FQuat FSteamVRHMD::GetBaseOrientation() const
 {
 	return FQuat::Identity;
-}
-
-void FSteamVRHMD::UpdateScreenSettings(const FViewport*)
-{
 }
 
 bool FSteamVRHMD::IsStereoEnabled() const

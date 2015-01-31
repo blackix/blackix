@@ -166,7 +166,6 @@ void FGameFrame::Reset()
 {
 	Settings.Reset();
 	FMemory::MemSet(*this, 0);
-	DeltaControlOrientation = FQuat::Identity;
 	LastHmdOrientation = FQuat::Identity;
 	LastHmdPosition = FVector::ZeroVector;
 	CameraScale3D = FVector(1.0f, 1.0f, 1.0f);
@@ -182,6 +181,12 @@ void FOculusRiftHMD::OnStartGameFrame()
 {
 	Frame.Reset();
 	Frame.Flags.bFrameStarted = true;
+
+	if (!GWorld || !GWorld->IsGameWorld())
+	{
+		// ignore all non-game worlds
+		return;
+	}
 
 	if (Flags.bNeedDisableStereo)
 	{
@@ -255,16 +260,39 @@ void FOculusRiftHMD::OnStartGameFrame()
 			Flags.bHadVisionTracking = Frame.Flags.bHaveVisionTracking;
 		}
 #endif // OVR_VISION_ENABLED
+#if !UE_BUILD_SHIPPING
+		{ // used for debugging, do not remove
+			FQuat CurHmdOrientation;
+			FVector CurHmdPosition;
+			GetCurrentPose(CurHmdOrientation, CurHmdPosition, false, false);
+			//UE_LOG(LogHMD, Log, TEXT("BFPOSE: Pos %.3f %.3f %.3f, fr: %d"), CurHmdPosition.X, CurHmdPosition.Y, CurHmdPosition.Y,(int)Frame.FrameNumber);
+			//UE_LOG(LogHMD, Log, TEXT("BFPOSE: Yaw %.3f Pitch %.3f Roll %.3f, fr: %d"), CurHmdOrientation.Rotator().Yaw, CurHmdOrientation.Rotator().Pitch, CurHmdOrientation.Rotator().Roll,(int)Frame.FrameNumber);
+		}
+#endif
 	}
 }
 
 void FOculusRiftHMD::OnEndGameFrame()
 {
 	check(IsInGameThread());
+
+	Frame.Flags.bOutOfFrame = true;
+	Frame.Flags.bFrameStarted = false;
+
+	if (!GWorld || !GWorld->IsGameWorld())
+	{
+		// ignore all non-game worlds
+		return;
+	}
+
 	if (!Frame.Settings.IsStereoEnabled() && !Frame.Settings.Flags.bHeadTrackingEnforced)
 	{
 		return;
 	}
+	// make sure there was only one game worlds.
+	check(RenderFrame.FrameNumber != Frame.FrameNumber);
+
+	// make sure end frame matches the start
 	check(GFrameCounter == Frame.FrameNumber);
 
 	if (GFrameCounter == Frame.FrameNumber)
@@ -275,9 +303,6 @@ void FOculusRiftHMD::OnEndGameFrame()
 	{
 		RenderFrame.Reset();
 	}
-
-	Frame.Flags.bOutOfFrame = true;
-	Frame.Flags.bFrameStarted = false;
 }
 
 bool FOculusRiftHMD::IsHMDConnected()
@@ -293,6 +318,11 @@ bool FOculusRiftHMD::IsHMDConnected()
 FGameFrame* FOculusRiftHMD::GetFrame()
 {
 	check(IsInGameThread());
+	// A special case, when the game frame is over but rendering hasn't started yet
+	if (Frame.Flags.bOutOfFrame && RenderFrame.Flags.bOutOfFrame)
+	{
+		return &RenderFrame;
+	}
 	// Technically speaking, we should return the frame only if frame counters are equal.
 	// However, there are some calls UE makes from outside of the frame (for example, when 
 	// switching to/from fullscreen), thus, returning the previous frame in this case.
@@ -306,6 +336,11 @@ FGameFrame* FOculusRiftHMD::GetFrame()
 const FGameFrame* FOculusRiftHMD::GetFrame() const
 {
 	check(IsInGameThread());
+	// A special case, when the game frame is over but rendering hasn't started yet
+	if (Frame.Flags.bOutOfFrame && RenderFrame.Flags.bOutOfFrame)
+	{
+		return &RenderFrame;
+	}
 	// Technically speaking, we should return the frame only if frame counters are equal.
 	// However, there are some calls UE makes from outside of the frame (for example, when 
 	// switching to/from fullscreen), thus, returning the previous frame in this case.
@@ -372,7 +407,7 @@ bool FOculusRiftHMD::IsFullscreenAllowed()
 bool FOculusRiftHMD::DoesSupportPositionalTracking() const
 {
 #ifdef OVR_VISION_ENABLED
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && frame->Settings.Flags.bHmdPosTracking && (Settings.SupportedTrackingCaps & ovrTrackingCap_Position) != 0);
 #else
 	return false;
@@ -382,7 +417,7 @@ bool FOculusRiftHMD::DoesSupportPositionalTracking() const
 bool FOculusRiftHMD::HasValidTrackingPosition()
 {
 #ifdef OVR_VISION_ENABLED
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && frame->Settings.Flags.bHmdPosTracking && frame->Flags.bHaveVisionTracking);
 #else
 	return false;
@@ -391,15 +426,15 @@ bool FOculusRiftHMD::HasValidTrackingPosition()
 
 #define TRACKER_FOCAL_DISTANCE			1.00f // meters (focal point to origin for position)
 
-void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	if (!frame)
 	{
 		return;
 	}
 	OutOrigin = FVector::ZeroVector;
-	OutOrientation = FRotator::ZeroRotator;
+	OutOrientation = FQuat::Identity;
 	OutHFOV = OutVFOV = OutCameraDistance = OutNearPlane = OutFarPlane = 0;
 
 	if (!Hmd)
@@ -424,13 +459,14 @@ void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, F
 	FQuat Orient;
 	FVector Pos;
 	PoseToOrientationAndPosition(cameraPose, Orient, Pos, *frame);
-	OutOrientation = (frame->DeltaControlOrientation * Orient).Rotator();
-	OutOrigin = frame->DeltaControlOrientation.RotateVector(Pos);
+
+	OutOrientation = Orient;
+	OutOrigin = Pos;
 }
 
 bool FOculusRiftHMD::IsInLowPersistenceMode() const
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && frame->Settings.Flags.bLowPersistenceMode && (Settings.SupportedHmdCaps & ovrHmdCap_LowPersistence) != 0);
 }
 
@@ -453,7 +489,7 @@ void FOculusRiftHMD::SetInterpupillaryDistance(float NewInterpupillaryDistance)
 
 void FOculusRiftHMD::GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegrees) const
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	if (frame)
 	{
 		InOutHFOVInDegrees = FMath::RadiansToDegrees(frame->Settings.HFOVInRadians);
@@ -487,9 +523,10 @@ void FOculusRiftHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation,
 		CurrentPosition = FVector::ZeroVector;
 		return;
 	}
-	if (bUsePositionForPlayerCamera)
+	if (PositionScale != FVector::ZeroVector)
 	{
 		frame->CameraScale3D = PositionScale;
+		frame->Flags.bCameraScale3DAlreadySet = true;
 	}
 	GetCurrentPose(CurrentOrientation, CurrentPosition, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera);
 	if (bUseOrienationForPlayerCamera)
@@ -502,6 +539,19 @@ void FOculusRiftHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation,
 		frame->LastHmdPosition = CurrentPosition;
 		frame->Flags.bPositionChanged = bUsePositionForPlayerCamera;
 	}
+}
+
+FVector FOculusRiftHMD::GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale)
+{
+	const auto frame = GetFrame();
+	if (!frame)
+	{
+		return FVector::ZeroVector;
+	}
+	FVector UnrotatedPos = CurrentOrientation.Inverse().RotateVector(CurrentPosition);
+	UnrotatedPos.X -= frame->Settings.NeckToEyeInMeters.X * frame->WorldToMetersScale;
+	UnrotatedPos.Z -= frame->Settings.NeckToEyeInMeters.Y * frame->WorldToMetersScale;
+	return UnrotatedPos;
 }
 
 void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
@@ -522,8 +572,8 @@ void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& Curre
 	}
 
 	PoseToOrientationAndPosition(frame->CurTrackingState.HeadPose.ThePose, CurrentHmdOrientation, CurrentHmdPosition, *frame);
-	//UE_LOG(LogHMD, Log, TEXT("P: %.3f %.3f %.3f"), CurrentHmdPosition.X, CurrentHmdPosition.Y, CurrentHmdPosition.Y);
-	//UE_LOG(LogHMD, Log, TEXT("Yaw %.3f Pitch %.3f Roll %.3f"), CurrentHmdOrientation.Rotator().Yaw, CurrentHmdOrientation.Rotator().Pitch, CurrentHmdOrientation.Rotator().Roll);
+	//UE_LOG(LogHMD, Log, TEXT("CRPOSE: Pos %.3f %.3f %.3f"), CurrentHmdPosition.X, CurrentHmdPosition.Y, CurrentHmdPosition.Y);
+	//UE_LOG(LogHMD, Log, TEXT("CRPOSE: Yaw %.3f Pitch %.3f Roll %.3f"), CurrentHmdOrientation.Rotator().Yaw, CurrentHmdOrientation.Rotator().Pitch, CurrentHmdOrientation.Rotator().Roll);
 }
 
 void FOculusRiftHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
@@ -554,19 +604,13 @@ void FOculusRiftHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotat
 	// Same with roll.
 	DeltaControlRotation.Pitch = 0;
 	DeltaControlRotation.Roll = 0;
-	frame->DeltaControlOrientation = DeltaControlRotation.Quaternion();
+	const FQuat DeltaControlOrientation = DeltaControlRotation.Quaternion();
 
-	ViewRotation = FRotator(frame->DeltaControlOrientation * CurHmdOrientation);
+	ViewRotation = FRotator(DeltaControlOrientation * CurHmdOrientation);
 
 	frame->Flags.bPlayerControllerFollowsHmd = true;
 	frame->Flags.bOrientationChanged = true;
 	frame->Flags.bPositionChanged = true;
-#if !UE_BUILD_SHIPPING
-	if (frame->Settings.Flags.bDrawTrackingCameraFrustum && PC->GetPawnOrSpectator())
-	{
-		DrawDebugTrackingCameraFrustum(PC->GetWorld(), PC->GetPawnOrSpectator()->GetPawnViewLocation());
-	}
-#endif
 }
 
 void FOculusRiftHMD::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
@@ -576,9 +620,7 @@ void FOculusRiftHMD::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMi
 	{
 		return;
 	}
-	frame->LastHmdOrientation = FQuat::Identity;
-	frame->LastHmdPosition = FVector::ZeroVector;
-	if (POV.bFollowHmdPosition)
+	if (!frame->Flags.bCameraScale3DAlreadySet)
 	{
 		frame->CameraScale3D = POV.Scale3D;
 	}
@@ -591,42 +633,54 @@ void FOculusRiftHMD::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMi
 	FVector CurHmdPosition;
 	GetCurrentPose(CurHmdOrientation, CurHmdPosition, POV.bFollowHmdOrientation, POV.bFollowHmdPosition);
 
-	DeltaControlRotation = FRotator::ZeroRotator;
-	frame->DeltaControlOrientation = POV.Rotation.Quaternion();
+	const FQuat CurPOVOrientation = POV.Rotation.Quaternion();
 
 	if (POV.bFollowHmdOrientation)
 	{
 		// Apply HMD orientation to camera rotation.
-		POV.Rotation = FRotator(POV.Rotation.Quaternion() * CurHmdOrientation);
+		POV.Rotation = FRotator(CurPOVOrientation * CurHmdOrientation);
 		frame->LastHmdOrientation = CurHmdOrientation;
 		frame->Flags.bOrientationChanged = POV.bFollowHmdOrientation;
 	}
 
 	if (POV.bFollowHmdPosition)
 	{
-		const FVector vEyePosition = frame->DeltaControlOrientation.RotateVector(CurHmdPosition);
-		POV.Location += vEyePosition;
-		//UE_LOG(LogHMD, Log, TEXT("!!!! %d"), GFrameNumber);
+		const FQuat DeltaControlOrientation = CurPOVOrientation * CurHmdOrientation.Inverse();
+		const FVector vCamPosition = DeltaControlOrientation.RotateVector(CurHmdPosition);
+		POV.Location += vCamPosition;
 		frame->LastHmdPosition = CurHmdPosition;
 		frame->Flags.bPositionChanged = POV.bFollowHmdPosition;
 	}
 
-#if !UE_BUILD_SHIPPING
-	if (frame->Settings.Flags.bDrawTrackingCameraFrustum)
-	{
-		DrawDebugTrackingCameraFrustum(Camera->GetWorld(), POV.Location);
-	}
-#endif
+	//UE_LOG(LogHMD, Log, TEXT("UPDCAM: Pos %.3f %.3f %.3f"), POV.Location.X, POV.Location.Y, POV.Location.Y);
+	//UE_LOG(LogHMD, Log, TEXT("UPDCAM: Yaw %.3f Pitch %.3f Roll %.3f"), POV.Rotation.Yaw, POV.Rotation.Pitch, POV.Rotation.Roll);
 }
 
 #if !UE_BUILD_SHIPPING
-void FOculusRiftHMD::DrawDebugTrackingCameraFrustum(UWorld* World, const FVector& ViewLocation)
+void FOculusRiftHMD::DrawDebugTrackingCameraFrustum(UWorld* World, const FRotator& ViewRotation, const FVector& ViewLocation)
 {
+	const auto frame = GetFrame();
+	if (!frame)
+	{
+		return;
+	}
 	const FColor c = (HasValidTrackingPosition() ? FColor::Green : FColor::Red);
 	FVector origin;
-	FRotator rotation;
+	FQuat orient;
 	float hfovDeg, vfovDeg, nearPlane, farPlane, cameraDist;
-	GetPositionalTrackingCameraProperties(origin, rotation, hfovDeg, vfovDeg, cameraDist, nearPlane, farPlane);
+	GetPositionalTrackingCameraProperties(origin, orient, hfovDeg, vfovDeg, cameraDist, nearPlane, farPlane);
+
+	FVector HeadPosition;
+	FQuat HeadOrient;
+	PoseToOrientationAndPosition(frame->HeadPose, HeadOrient, HeadPosition, *frame);
+	const FQuat DeltaControlOrientation = ViewRotation.Quaternion() * HeadOrient.Inverse();
+
+	orient = DeltaControlOrientation * orient;
+	if (frame->Flags.bPositionChanged && !frame->Flags.bPlayerControllerFollowsHmd)
+	{
+		origin = origin - HeadPosition;
+	}
+	origin = DeltaControlOrientation.RotateVector(origin);
 
 	// Level line
 	//DrawDebugLine(World, ViewLocation, FVector(ViewLocation.X + 1000, ViewLocation.Y, ViewLocation.Z), FColor::Blue);
@@ -639,7 +693,8 @@ void FOculusRiftHMD::DrawDebugTrackingCameraFrustum(UWorld* World, const FVector
 	FVector coneBase3(-farPlane,-farPlane * FMath::Tan(hfov),-farPlane * FMath::Tan(vfov));
 	FVector coneBase4(-farPlane, farPlane * FMath::Tan(hfov),-farPlane * FMath::Tan(vfov));
 	FMatrix m(FMatrix::Identity);
-	m *= FRotationMatrix(rotation);
+	m = orient * m;
+	m *= FScaleMatrix(frame->CameraScale3D);
 	m *= FTranslationMatrix(origin);
 	m *= FTranslationMatrix(ViewLocation); // to location of pawn
 	coneTop = m.TransformPosition(coneTop);
@@ -687,7 +742,7 @@ void FOculusRiftHMD::DrawDebugTrackingCameraFrustum(UWorld* World, const FVector
 
 bool FOculusRiftHMD::IsChromaAbCorrectionEnabled() const
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && frame->Settings.Flags.bChromaAbCorrectionEnabled);
 }
 
@@ -1381,7 +1436,7 @@ void FOculusRiftHMD::RecordAnalytics()
 bool FOculusRiftHMD::IsPositionalTrackingEnabled() const
 {
 #ifdef OVR_VISION_ENABLED
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && frame->Settings.Flags.bHmdPosTracking);
 #else
 	return false;
@@ -1423,7 +1478,7 @@ bool FOculusRiftHMD::IsStereoEnabled() const
 {
 	if (IsInGameThread())
 	{
-		auto frame = GetFrame();
+		const auto frame = GetFrame();
 		if (frame)
 		{
 			return (frame->Settings.IsStereoEnabled());
@@ -1606,6 +1661,7 @@ bool FOculusRiftHMD::OnOculusStateChange(bool bIsEnabledNow)
 			UpdateStereoRenderingParams();
 			return true;
 		}
+		DeltaControlRotation = FRotator::ZeroRotator;
 	}
 	return false;
 }
@@ -1638,44 +1694,36 @@ void FOculusRiftHMD::SaveSystemValues()
 {
 	static IConsoleVariable* CVSyncVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"));
 	Settings.Flags.bSavedVSync = CVSyncVar->GetInt() != 0;
-
-	static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-	Settings.SavedScrPerc = CScrPercVar->GetFloat();
 }
 
 void FOculusRiftHMD::RestoreSystemValues()
 {
 	static IConsoleVariable* CVSyncVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"));
+	// todo: bad - cvars are a user wish, this should be changed
 	CVSyncVar->Set(Settings.Flags.bSavedVSync != 0);
 
-	static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-	CScrPercVar->Set(Settings.SavedScrPerc);
-
 	static IConsoleVariable* CFinishFrameVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.FinishCurrentFrame"));
+	// todo: bad - cvars are a user wish, this should be changed
 	CFinishFrameVar->Set(false);
 }
 
-void FOculusRiftHMD::UpdateScreenSettings(const FViewport*)
+void FOculusRiftHMD::UpdatePostProcessSettings(FPostProcessSettings* Settings)
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	if (frame && frame->Flags.bScreenPercentageEnabled)
 	{
-		// Set the current ScreenPercentage state
-		static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-		float DesiredSceeenPercentage;
-		if (frame->Settings.Flags.bOverrideScreenPercentage)
-		{
-			DesiredSceeenPercentage = frame->Settings.ScreenPercentage;
-		}
-		else
-		{
-			DesiredSceeenPercentage = frame->Settings.IdealScreenPercentage;
-		}
-		if (FMath::RoundToInt(CScrPercVar->GetFloat()) != FMath::RoundToInt(DesiredSceeenPercentage))
-		{
-			CScrPercVar->Set(DesiredSceeenPercentage);
-		}
+		Settings->ScreenPercentage = GetActualScreenPercentage();
 	}
+}
+
+float FOculusRiftHMD::GetActualScreenPercentage() const
+{
+	const auto frame = GetFrame();
+	if (frame)
+	{
+		return frame->Settings.Flags.bOverrideScreenPercentage ? frame->Settings.ScreenPercentage : frame->Settings.IdealScreenPercentage;
+	}
+	return 0.0f;
 }
 
 void FOculusRiftHMD::AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
@@ -1696,7 +1744,7 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 
 	if (IsInGameThread())
 	{
-		auto frame = GetFrame();
+		const auto frame = GetFrame();
 		if (!frame)
 		{
 			return;
@@ -1727,17 +1775,30 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 				PoseToOrientationAndPosition(frame->HeadPose, HeadOrient, HeadPosition, *frame);
 			}
 
-			FVector HmdToEyeOffset;
 			// apply stereo disparity to ViewLocation. Note, ViewLocation already contains HeadPose.Position, thus
 			// we just need to apply delta between EyeRenderPose.Position and the HeadPose.Position. 
 			// EyeRenderPose and HeadPose are captured by the same call to GetEyePoses.
-			HmdToEyeOffset = CurEyePosition - HeadPosition;
+			const FVector HmdToEyeOffset = CurEyePosition - HeadPosition;
+
+			// Calculate the difference between the final ViewRotation and EyeOrientation:
+			// we need to rotate the HmdToEyeOffset by this differential quaternion.
+			// When bPlayerControllerFollowsHmd == true, the DeltaControlOrientation already contains
+			// the proper value (see ApplyHmdRotation)
+			//FRotator r = ViewRotation - CurEyeOrient.Rotator();
+			const FQuat ViewOrient = ViewRotation.Quaternion();
+			const FQuat DeltaControlOrientation =  ViewOrient * CurEyeOrient.Inverse();
+
+			//UE_LOG(LogHMD, Log, TEXT("EYEROT: Yaw %.3f Pitch %.3f Roll %.3f"), CurEyeOrient.Rotator().Yaw, CurEyeOrient.Rotator().Pitch, CurEyeOrient.Rotator().Roll);
+			//UE_LOG(LogHMD, Log, TEXT("VIEROT: Yaw %.3f Pitch %.3f Roll %.3f"), ViewRotation.Yaw, ViewRotation.Pitch, ViewRotation.Roll);
+			//UE_LOG(LogHMD, Log, TEXT("DLTROT: Yaw %.3f Pitch %.3f Roll %.3f"), DeltaControlOrientation.Rotator().Yaw, DeltaControlOrientation.Rotator().Pitch, DeltaControlOrientation.Rotator().Roll);
 
 			// The HMDPosition already has HMD orientation applied.
 			// Apply rotational difference between HMD orientation and ViewRotation
 			// to HMDPosition vector. 
-			const FVector vEyePosition = frame->DeltaControlOrientation.RotateVector(HmdToEyeOffset);
+			const FVector vEyePosition = DeltaControlOrientation.RotateVector(HmdToEyeOffset);
 			ViewLocation += vEyePosition;
+			
+			//UE_LOG(LogHMD, Log, TEXT("DLTPOS: %.3f %.3f %.3f"), vEyePosition.X, vEyePosition.Y, vEyePosition.Z);
 		}
 	}
 }
@@ -1750,7 +1811,7 @@ void FOculusRiftHMD::ResetOrientationAndPosition(float yaw)
 
 void FOculusRiftHMD::ResetOrientation(float yaw)
 {
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	OVR::Quatf orientation;
 	if (frame)
 	{
@@ -1864,7 +1925,7 @@ FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassTy
 void FOculusRiftHMD::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
 {
 	OVR_UNUSED(RTHeight);
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	check(frame);
 
 	OrthoDistance /= frame->WorldToMetersScale; // This is meters from the camera (viewer) that we place the ortho plane.
@@ -1891,13 +1952,13 @@ void FOculusRiftHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	// over other players (for example, in Capture Flag).
 	// HmdOrientation should be initialized by GetCurrentOrientation (or
 	// user's own value).
-	FSceneView HmdView(*InView);
-
-	const FQuat DeltaOrient = HmdView.BaseHmdOrientation.Inverse() * Canvas->HmdOrientation;
-	HmdView.ViewRotation = FRotator(HmdView.ViewRotation.Quaternion() * DeltaOrient);
-
-	HmdView.UpdateViewMatrix();
-	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
+// 	FSceneView HmdView(*InView);
+// 
+// 	const FQuat DeltaOrient = HmdView.BaseHmdOrientation.Inverse() * Canvas->HmdOrientation;
+// 	HmdView.ViewRotation = FRotator(HmdView.ViewRotation.Quaternion() * DeltaOrient);
+// 
+// 	HmdView.UpdateViewMatrix();
+// 	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
 }
 
 //---------------------------------------------------
@@ -1943,6 +2004,13 @@ void FOculusRiftHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InVie
 #else
 	InViewFamily.bUseSeparateRenderTarget = ShouldUseSeparateRenderTarget();
 #endif
+
+	const int eyeIdx = (InView.StereoPass == eSSP_LEFT_EYE) ? 0 : 1;
+	frame->CachedViewRotation[eyeIdx] = InView.ViewRotation;
+}
+
+void FOculusRiftHMD::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
+{
 }
 
 bool FOculusRiftHMD::IsHeadTrackingAllowed() const
@@ -1954,7 +2022,7 @@ bool FOculusRiftHMD::IsHeadTrackingAllowed() const
 		return Hmd && (!EdEngine || EdEngine->bUseVRPreviewForPlayWorld || GetDefault<ULevelEditorPlaySettings>()->ViewportGetsHMDControl) &&	(Settings.Flags.bHeadTrackingEnforced || GEngine->IsStereoscopic3D());
 	}
 #endif//WITH_EDITOR
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	return (frame && Hmd && (frame->Settings.Flags.bHeadTrackingEnforced || GEngine->IsStereoscopic3D()));
 }
 
@@ -2291,6 +2359,11 @@ void FOculusRiftHMD::UpdateHmdRenderInfo()
 		Settings.InterpupillaryDistance = ovrHmd_GetFloat(Hmd, OVR_KEY_IPD, OVR_DEFAULT_IPD);
 	}
 
+	// cache eye to neck distance.
+	float neck2eye[2] = { OVR_DEFAULT_NECK_TO_EYE_HORIZONTAL, OVR_DEFAULT_NECK_TO_EYE_VERTICAL };
+	ovrHmd_GetFloatArray(Hmd, OVR_KEY_NECK_TO_EYE_DISTANCE, neck2eye, 2);
+	Settings.NeckToEyeInMeters = FVector2D(neck2eye[0], neck2eye[1]);
+
 	// Default texture size (per eye) is equal to half of W x H resolution. Will be overridden in SetupView.
 	Settings.SetViewportSize(Hmd->Resolution.w / 2, Hmd->Resolution.h);	
 
@@ -2484,7 +2557,6 @@ void FOculusRiftHMD::OnBeginPlay()
 	// This call make sense when 'Play' is used from the Editor;
 	if (GIsEditor)
 	{
-		DeltaControlRotation = FRotator::ZeroRotator;
 		Settings.BaseOrientation = FQuat::Identity;
 		Settings.BaseOffset = OVR::Vector3f(0, 0, 0);
 		Settings.WorldToMetersScale = 100.f;
@@ -2529,7 +2601,7 @@ bool FOculusRiftHMD::GetUserProfile(UserProfile& OutProfile)
 		OutProfile.IPD = ovrHmd_GetFloat(Hmd, OVR_KEY_IPD, OVR_DEFAULT_IPD);
 		float neck2eye[2] = {OVR_DEFAULT_NECK_TO_EYE_HORIZONTAL, OVR_DEFAULT_NECK_TO_EYE_VERTICAL};
 		ovrHmd_GetFloatArray(Hmd, OVR_KEY_NECK_TO_EYE_DISTANCE, neck2eye, 2);
-		OutProfile.EyeToNeckDistance = FVector2D(neck2eye[0], neck2eye[1]);
+		OutProfile.NeckToEyeDistance = FVector2D(neck2eye[0], neck2eye[1]);
 		OutProfile.ExtraFields.Reset();
 
 		int EyeRelief = ovrHmd_GetInt(Hmd, OVR_KEY_EYE_RELIEF_DIAL, OVR_DEFAULT_EYE_RELIEF_DIAL);
@@ -2588,6 +2660,8 @@ void FViewExtension::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InVie
 
 void FViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
+	check(IsInGameThread());
+
 	// save RenderFrame in this view extension to access it later on render thread
 	// (see PreRenderViewFamily_RenderThread)
 	RenderFrame = pPlugin->RenderFrame;

@@ -581,11 +581,14 @@ void APlayerCameraManager::UpdateViewTarget(FTViewTarget& OutVT, float DeltaTime
 		{
 			bool bSavedO = OutVT.POV.bFollowHmdOrientation;
 			bool bSavedP = OutVT.POV.bFollowHmdPosition;
+			FVector SavedScale = OutVT.POV.Scale3D;
 			OutVT.POV.bFollowHmdOrientation = bFollowHmdOrientation;
 			OutVT.POV.bFollowHmdPosition    = bFollowHmdPosition;
+			OutVT.POV.Scale3D				= GetTransform().GetScale3D();
 			GEngine->HMDDevice->UpdatePlayerCamera(this, OutVT.POV);
 			OutVT.POV.bFollowHmdOrientation = bSavedO;
 			OutVT.POV.bFollowHmdPosition    = bSavedP;
+			OutVT.POV.Scale3D				= SavedScale;
 			PCOwner->bFollowHmd = false; // do not apply HMD rot/pos by PlayerController in addition to camera manager
 		}
 	}

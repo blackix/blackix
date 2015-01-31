@@ -95,7 +95,7 @@ public:
 	/**
 	 * If the HMD supports positional tracking via a camera, this returns the frustum properties (all in game-world space) of the tracking camera.
 	 */
-	virtual void	GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const = 0;	
+	virtual void	GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const = 0;	
 
 	/**
 	 * Accessors to modify the interpupillary distance (meters)
@@ -105,8 +105,25 @@ public:
 
     /**
      * Get the current orientation and position reported by the HMD.
-     */
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector& PositionScale = FVector(1.0f, 1.0f, 1.0f)) = 0;
+	 *
+	 * @param CurrentOrientation	(out) The device's current rotation
+	 * @param CurrentPosition		(out) The device's current position, in its own tracking space
+	 * @param bUseOrienationForPlayerCamera	(in) Should be set to 'true' if the orientation is going to be used to update orientation of the camera manually.
+	 * @param bUsePositionForPlayerCamera	(in) Should be set to 'true' if the position is going to be used to update position of the camera manually.
+	 * @param PositionScale			(in) The 3D scale that will be applied to position.
+	 */
+    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector& PositionScale = FVector::ZeroVector) = 0;
+
+	/** 
+	 * A helper function that calculates the estimated neck position using the specified orientation and position 
+	 * (for example, reported by GetCurrentOrientationAndPosition()).
+	 *
+	 * @param CurrentOrientation	(in) The device's current rotation
+	 * @param CurrentPosition		(in) The device's current position, in its own tracking space
+	 * @param PositionScale			(in) The 3D scale that will be applied to position.
+	 * @return			The estimated neck position, calculated using NeckToEye vector from User Profile. Same coordinate space as CurrentPosition.
+	 */
+	virtual FVector GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale = FVector::ZeroVector) { return FVector::ZeroVector; }
 
     /**
      * Get the ISceneViewExtension for this HMD, or none.
@@ -266,10 +283,16 @@ public:
 	virtual void DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize) {}
 
 	/**
-	 * This method is able to change screen settings (such as rendering scale) right before
-	 * any drawing occurs. It is called at the beginning of UGameViewportClient::Draw() method.
+	 * This method is able to change screen settings right before any drawing occurs. 
+	 * It is called at the beginning of UGameViewportClient::Draw() method.
+	 * We might remove this one as UpdatePostProcessSettings should be able to capture all needed cases
 	 */
-	virtual void UpdateScreenSettings(const FViewport* InViewport) = 0;
+	virtual void UpdateScreenSettings(const FViewport* InViewport) {}
+
+	/**
+	 * Allows to override the PostProcessSettings in the last moment e.g. allows up sampled 3D rendering
+	 */
+	virtual void UpdatePostProcessSettings(FPostProcessSettings*) {}
 
 	/**
 	 * Draw desired debug information related to the HMD system.
@@ -347,7 +370,7 @@ public:
 		float PlayerHeight;				// Height of the player, in meters
 		float EyeHeight;				// Height of the player's eyes, in meters
 		float IPD;						// Interpupillary distance, in meters
-		FVector2D EyeToNeckDistance;	// Eye-to-neck distance, X - horizontal, Y - vertical, in meters
+		FVector2D NeckToEyeDistance;	// Neck-to-eye distance, X - horizontal, Y - vertical, in meters
 		TMap<FString, FString> ExtraFields; // extra fields in name / value pairs.
 	};
 

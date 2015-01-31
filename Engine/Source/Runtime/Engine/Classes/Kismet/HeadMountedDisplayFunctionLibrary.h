@@ -55,15 +55,15 @@ struct FHmdUserProfile
 	UPROPERTY(BlueprintReadWrite, Category = "Input|HeadMountedDisplay")
 	float IPD;
 
-	/** Eye-to-neck distance, in meters. X - horizontal, Y - vertical. */
+	/** Neck-to-eye distance, in meters. X - horizontal, Y - vertical. */
 	UPROPERTY(BlueprintReadWrite, Category = "Input|HeadMountedDisplay")
-	FVector2D EyeToNeckDistance;
+	FVector2D NeckToEyeDistance;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Input|HeadMountedDisplay")
 	TArray<FHmdUserProfileField> ExtraFields;
 
 	FHmdUserProfile() : 
-		PlayerHeight(0.f), EyeHeight(0.f), IPD(0.f), EyeToNeckDistance(FVector2D::ZeroVector) {}
+		PlayerHeight(0.f), EyeHeight(0.f), IPD(0.f), NeckToEyeDistance(FVector2D::ZeroVector) {}
 };
 
 UCLASS()
@@ -93,12 +93,13 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 *
 	 * @param DeviceRotation	(out) The device's current rotation
 	 * @param DevicePosition	(out) The device's current position, in its own tracking space
+	 * @param NeckPosition		(out) The estimated neck position, calculated using NeckToEye vector from User Profile. Same coordinate space as DevicePosition.
 	 * @param bUseOrienationForPlayerCamera	(in) Should be set to 'true' if the orientation is going to be used to update orientation of the camera manually.
 	 * @param bUsePositionForPlayerCamera	(in) Should be set to 'true' if the position is going to be used to update position of the camera manually.
-	 * @param PositionScale		(in) The 3D scale that will be applied to position in the case if bUsePositionForPlayerCamera is set to true.
+	 * @param PositionScale		(in) The 3D scale that will be applied to position.
 	 */
 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
-	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector PositionScale = FVector(1.0f, 1.0f, 1.0f));
+	static void GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, FVector& NeckPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector PositionScale = FVector::ZeroVector);
 
 	/**
 	 * If the HMD supports positional tracking, whether or not we are currently being tracked	
@@ -111,7 +112,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * This allows an in-game representation of the legal positional tracking range.  All values will be zeroed if the camera is not available or the HMD does not support it.
 	 *
 	 * @param CameraOrigin		(out) Origin, in world-space, of the tracking camera
-	 * @param CameraOrientation (out) Rotation, in world-space, of the tracking camera
+	 * @param CameraRotation	(out) Rotation, in world-space, of the tracking camera
 	 * @param HFOV				(out) Field-of-view, horizontal, in degrees, of the valid tracking zone of the camera
 	 * @param VFOV				(out) Field-of-view, vertical, in degrees, of the valid tracking zone of the camera
 	 * @param CameraDistance	(out) Nominal distance to camera, in world-space
@@ -119,7 +120,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param FarPlane			(out) Far plane distance of the tracking volume, in world-space
 	 */
 	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
-	static void GetPositionalTrackingCameraParameters(FVector& CameraOrigin, FRotator& CameraOrientation, float& HFOV, float& VFOV, float& CameraDistance, float& NearPlane, float&FarPlane);
+	static void GetPositionalTrackingCameraParameters(FVector& CameraOrigin, FRotator& CameraRotation, float& HFOV, float& VFOV, float& CameraDistance, float& NearPlane, float&FarPlane);
 
 	/**
 	 * Returns true, if HMD is in low persistence mode. 'false' otherwise.

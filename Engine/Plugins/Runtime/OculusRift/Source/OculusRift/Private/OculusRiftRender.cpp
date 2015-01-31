@@ -171,7 +171,8 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 		ovrPosef EyeRenderPose[2];
 		ovrHmd_GetEyePoses(Hmd, RenderParams.Frame.FrameNumber, hmdToEyeViewOffset, EyeRenderPose, &ts);
 
-		// if !bOrientationChanged && !bPositionChanged then we still need to read new eye pose (for timewarp)
+		// Take new EyeRenderPose is bUpdateOnRT.
+		// if !bOrientationChanged && !bPositionChanged then we still need to use new eye pose (for timewarp)
 		if (RenderParams.Frame.Settings.Flags.bUpdateOnRT || 
 			(!RenderParams.Frame.Flags.bOrientationChanged && !RenderParams.Frame.Flags.bPositionChanged))
 		{
@@ -199,15 +200,26 @@ void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
 		const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
 		FQuat	CurrentEyeOrientation;
 		FVector	CurrentEyePosition;
-
 		PoseToOrientationAndPosition(RenderParams.CurEyeRenderPose[eyeIdx], CurrentEyeOrientation, CurrentEyePosition, RenderParams.Frame);
+
+		FQuat ViewOrientation = View.ViewRotation.Quaternion();
+
+		// recalculate delta control orientation; it should match the one we used in CalculateStereoViewOffset on a game thread.
+		FVector GameEyePosition;
+		FQuat GameEyeOrient;
+		PoseToOrientationAndPosition(RenderParams.Frame.EyeRenderPose[eyeIdx], GameEyeOrient, GameEyePosition, RenderParams.Frame);
+		const FQuat DeltaControlOrientation =  ViewOrientation * GameEyeOrient.Inverse();
+		// make sure we use the same viewrotation as we had on a game thread
+		check(View.ViewRotation == RenderParams.Frame.CachedViewRotation[eyeIdx]);
 
 		if (RenderParams.Frame.Flags.bOrientationChanged)
 		{
 			// Apply updated orientation to corresponding View at recalc matrices.
 			// The updated position will be applied from inside of the UpdateViewMatrix() call.
 			const FQuat DeltaOrient = View.BaseHmdOrientation.Inverse() * CurrentEyeOrientation;
-			View.ViewRotation = FRotator(View.ViewRotation.Quaternion() * DeltaOrient);
+			View.ViewRotation = FRotator(ViewOrientation * DeltaOrient);
+			
+			//UE_LOG(LogHMD, Log, TEXT("VIEWDLT: Yaw %.3f Pitch %.3f Roll %.3f"), DeltaOrient.Rotator().Yaw, DeltaOrient.Rotator().Pitch, DeltaOrient.Rotator().Roll);
 		}
 
 		if (!RenderParams.Frame.Flags.bPositionChanged)
@@ -222,8 +234,11 @@ void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
 		// Apply rotational difference between HMD orientation and ViewRotation
 		// to HMDPosition vector. 
 		// PositionOffset should be already applied to View.ViewLocation on GT in PlayerCameraUpdate.
-		const FVector vEyePosition = RenderParams.Frame.DeltaControlOrientation.RotateVector(CurrentEyePosition - View.BaseHmdLocation);
+		const FVector DeltaPosition = CurrentEyePosition - View.BaseHmdLocation;
+		const FVector vEyePosition = DeltaControlOrientation.RotateVector(DeltaPosition);
 		View.ViewLocation += vEyePosition;
+
+		//UE_LOG(LogHMD, Log, TEXT("VDLTPOS: %.3f %.3f %.3f"), vEyePosition.X, vEyePosition.Y, vEyePosition.Z);
 
 		if (RenderParams.Frame.Flags.bOrientationChanged || RenderParams.Frame.Flags.bPositionChanged)
 		{
@@ -279,8 +294,7 @@ void FOculusRiftHMD::CalculateRenderTargetSize(const FViewport& Viewport, uint32
 
 	if (Viewport.GetClient()->GetEngineShowFlags()->ScreenPercentage)
 	{
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.ScreenPercentage"));
-		float value = CVar->GetValueOnGameThread();
+		float value = GetActualScreenPercentage();
 		if (value > 0.0f)
 		{
 			InOutSizeX = FMath::CeilToInt(InOutSizeX * value / 100.f);
@@ -357,7 +371,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 {
 #if !UE_BUILD_SHIPPING
 	check(IsInGameThread());
-	auto frame = GetFrame();
+	const auto frame = GetFrame();
 	if (frame)
 	{
 		if (frame->Settings.Flags.bDrawGrid)
@@ -498,8 +512,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 
 			Y += RowHeight;
-			static IConsoleVariable* CScrPercVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-			int32 sp = (int32)CScrPercVar->GetFloat();
+			int32 sp = (int32)GetActualScreenPercentage();
 			Str = FString::Printf(TEXT("SP: %d"), sp);
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 
@@ -562,6 +575,11 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 			Y += RowHeight;
 		}
+	}
+
+	if (frame->Settings.Flags.bDrawTrackingCameraFrustum)
+	{
+		DrawDebugTrackingCameraFrustum(GWorld, Canvas->SceneView->ViewRotation, Canvas->SceneView->ViewLocation);
 	}
 #endif // #if !UE_BUILD_SHIPPING
 }
@@ -1055,7 +1073,7 @@ void FOculusRiftHMD::OGLBridge::UpdateViewport(const FViewport& Viewport, FRHIVi
 	const uint32 RTSizeY = RT->GetSizeY();
 	GLuint RTTexId = *(GLuint*)RT->GetNativeResource();
 
-	auto frame = Plugin->GetFrame();
+	const auto frame = Plugin->GetFrame();
 
 	if (frame && 
 		(EyeTexture[0].OGL.TexId != RTTexId ||

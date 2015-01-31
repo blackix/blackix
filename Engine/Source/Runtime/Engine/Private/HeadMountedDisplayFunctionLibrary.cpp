@@ -4,6 +4,8 @@
 #include "Kismet/HeadMountedDisplayFunctionLibrary.h"
 #include "HeadMountedDisplay.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogUHeadMountedDisplay, Log, All);
+
 UHeadMountedDisplayFunctionLibrary::UHeadMountedDisplayFunctionLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -32,17 +34,21 @@ bool UHeadMountedDisplayFunctionLibrary::EnableHMD(bool bEnable)
 	return false;
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector PositionScale)
+void UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(FRotator& DeviceRotation, FVector& DevicePosition, FVector& NeckPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector PositionScale)
 {
 	if(GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{
 		FQuat OrientationAsQuat;
-		FVector Position(0.f);
 
-		GEngine->HMDDevice->GetCurrentOrientationAndPosition(OrientationAsQuat, Position, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera, PositionScale);
+		GEngine->HMDDevice->GetCurrentOrientationAndPosition(OrientationAsQuat, DevicePosition, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera, PositionScale);
 
 		DeviceRotation = OrientationAsQuat.Rotator();
-		DevicePosition = Position;
+
+		NeckPosition = GEngine->HMDDevice->GetNeckPosition(OrientationAsQuat, DevicePosition, PositionScale);
+
+		//UE_LOG(LogUHeadMountedDisplay, Log, TEXT("POS: %.3f %.3f %.3f"), DevicePosition.X, DevicePosition.Y, DevicePosition.Z);
+		//UE_LOG(LogUHeadMountedDisplay, Log, TEXT("NECK: %.3f %.3f %.3f"), NeckPosition.X, NeckPosition.Y, NeckPosition.Z);
+		//UE_LOG(LogUHeadMountedDisplay, Log, TEXT("ROT: sYaw %.3f Pitch %.3f Roll %.3f"), DeviceRotation.Yaw, DeviceRotation.Pitch, DeviceRotation.Roll);
 	}
 	else
 	{
@@ -61,17 +67,19 @@ bool UHeadMountedDisplayFunctionLibrary::HasValidTrackingPosition()
 	return false;
 }
 
-void UHeadMountedDisplayFunctionLibrary::GetPositionalTrackingCameraParameters(FVector& CameraOrigin, FRotator& CameraOrientation, float& HFOV, float& VFOV, float& CameraDistance, float& NearPlane, float&FarPlane)
+void UHeadMountedDisplayFunctionLibrary::GetPositionalTrackingCameraParameters(FVector& CameraOrigin, FRotator& CameraRotation, float& HFOV, float& VFOV, float& CameraDistance, float& NearPlane, float&FarPlane)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed() && GEngine->HMDDevice->DoesSupportPositionalTracking())
 	{
+		FQuat CameraOrientation;
 		GEngine->HMDDevice->GetPositionalTrackingCameraProperties(CameraOrigin, CameraOrientation, HFOV, VFOV, CameraDistance, NearPlane, FarPlane);
+		CameraRotation = CameraOrientation.Rotator();
 	}
 	else
 	{
 		// No HMD, zero the values
 		CameraOrigin = FVector::ZeroVector;
-		CameraOrientation = FRotator::ZeroRotator;
+		CameraRotation = FRotator::ZeroRotator;
 		HFOV = VFOV = 0.f;
 		NearPlane = 0.f;
 		FarPlane = 0.f;
@@ -176,7 +184,7 @@ bool UHeadMountedDisplayFunctionLibrary::GetUserProfile(FHmdUserProfile& Profile
 			Profile.PlayerHeight = Data.PlayerHeight;
 			Profile.EyeHeight = Data.EyeHeight;
 			Profile.IPD = Data.IPD;
-			Profile.EyeToNeckDistance = Data.EyeToNeckDistance;
+			Profile.NeckToEyeDistance = Data.NeckToEyeDistance;
 			Profile.ExtraFields.Reserve(Data.ExtraFields.Num());
 			for (TMap<FString, FString>::TIterator It(Data.ExtraFields); It; ++It)
 			{

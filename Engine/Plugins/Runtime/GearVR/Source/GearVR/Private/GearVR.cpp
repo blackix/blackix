@@ -101,6 +101,20 @@ void FGearVR::PreInit()
 	}
 }
 
+void FGearVR::OnStartGameFrame()
+{
+	bOrientationChanged = bPositionChanged = bPlayerControllerFollowsHmd = bCameraScale3DAlreadySet = false;
+	CameraScale3D = FVector(1.0f, 1.0f, 1.0f);
+
+	GetEyePoses(HmdToEyeViewOffset, CurEyeRenderPose, CurSensorState);
+
+	check(GWorld);
+	if (!bWorldToMetersOverride)
+	{
+		WorldToMetersScale = GWorld->GetWorldSettings()->WorldToMeters;
+	}
+}
+
 bool FGearVR::IsHMDEnabled() const
 {
 	return bHMDEnabled;
@@ -153,7 +167,7 @@ bool FGearVR::HasValidTrackingPosition()
 	return false;
 }
 
-void FGearVR::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+void FGearVR::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
 {
 }
 
@@ -184,37 +198,73 @@ void FGearVR::GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegree
 	InOutVFOVInDegrees = FMath::RadiansToDegrees(VFOVInRadians);
 }
 
+void FGearVR::GetEyePoses(const OVR::Vector3f hmdToEyeViewOffset[2], ovrPosef outEyePoses[2], ovrSensorState& outSensorState)
+{
+	outSensorState = ovrHmd_GetSensorState(OvrHmd, ovr_GetTimeInSeconds() + MotionPredictionInSeconds, true);
+
+	OVR::Posef hmdPose = (OVR::Posef)outSensorState.Predicted.Pose;
+	OVR::Vector3f transl0 = hmdPose.Orientation.Rotate(-((OVR::Vector3f)hmdToEyeViewOffset[0])) + hmdPose.Position;
+	OVR::Vector3f transl1 = hmdPose.Orientation.Rotate(-((OVR::Vector3f)hmdToEyeViewOffset[1])) + hmdPose.Position;
+
+	// Currently HmdToEyeViewOffset is only a 3D vector
+	// (Negate HmdToEyeViewOffset because offset is a view matrix offset and not a camera offset)
+	outEyePoses[0].Orientation = outEyePoses[1].Orientation = outSensorState.Predicted.Pose.Orientation;
+	outEyePoses[0].Position = transl0;
+	outEyePoses[1].Position = transl1;
+}
+
 void FGearVR::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const
 {
 	OutOrientation = ToFQuat(InPose.Orientation);
 
 	// correct position according to BaseOrientation and BaseOffset. Note, if VISION is disabled then BaseOffset is always a zero vector.
-	OutPosition = BaseOrientation.Inverse().RotateVector(ToFVector_M2U(Vector3f(InPose.Position) - BaseOffset));
+	OutPosition = BaseOrientation.Inverse().RotateVector(ToFVector_M2U(Vector3f(InPose.Position) - BaseOffset) * CameraScale3D);
 
 	// apply base orientation correction to OutOrientation
 	OutOrientation = BaseOrientation.Inverse() * OutOrientation;
 	OutOrientation.Normalize();
 }
 
-void FGearVR::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
+void FGearVR::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, 
+	bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
 {
 	const ovrSensorState ss = ovrHmd_GetSensorState(OvrHmd, ovr_GetTimeInSeconds() + MotionPredictionInSeconds, true);
 	const ovrPosef& pose = ss.Predicted.Pose;
 
-	PoseToOrientationAndPosition(pose, CurrentOrientation, CurrentPosition);
+	if (PositionScale != FVector::ZeroVector)
+	{
+		CameraScale3D = PositionScale;
+		bCameraScale3DAlreadySet = true;
+	}
+	GetCurrentPose(CurrentOrientation, CurrentPosition, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera);
+	if (bUseOrienationForPlayerCamera)
+	{
+		LastHmdOrientation = CurrentOrientation;
+		bOrientationChanged = bUseOrienationForPlayerCamera;
+	}
+	if (bUsePositionForPlayerCamera)
+	{
+		LastHmdPosition = CurrentPosition;
+		bPositionChanged = bUsePositionForPlayerCamera;
+	}
 }
 
-void FGearVR::UpdatePlayerViewPoint(const FQuat& CurrentOrientation, const FVector& CurrentPosition, 
-									const FVector& LastHmdPosition, const FQuat& DeltaControlOrientation, 
-									const FQuat& BaseViewOrientation, const FVector& BaseViewPosition, 
-									FRotator& ViewRotation, FVector& ViewLocation)
+void FGearVR::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
 {
-	const FQuat DeltaOrient = BaseViewOrientation.Inverse() * CurrentOrientation;
-	ViewRotation = FRotator(ViewRotation.Quaternion() * DeltaOrient);
+	check(IsInGameThread());
 
-	// Apply delta between current HMD position and the LastHmdPosition to ViewLocation
-	const FVector vHMDPositionDelta = DeltaControlOrientation.RotateVector(CurrentPosition - LastHmdPosition);
-	ViewLocation += vHMDPositionDelta;
+	if (bUseOrienationForPlayerCamera || bUsePositionForPlayerCamera)
+	{
+		// if this pose is going to be used for camera update then save it.
+		// This matters only if bUpdateOnRT is OFF.
+		EyeRenderPose[0] = CurEyeRenderPose[0];
+		EyeRenderPose[1] = CurEyeRenderPose[1];
+		HeadPose = CurSensorState.Predicted.Pose;
+	}
+
+	PoseToOrientationAndPosition(CurSensorState.Predicted.Pose, CurrentHmdOrientation, CurrentHmdPosition);
+	//UE_LOG(LogHMD, Log, TEXT("CRPOSE: Pos %.3f %.3f %.3f"), CurrentHmdPosition.X, CurrentHmdPosition.Y, CurrentHmdPosition.Y);
+	//UE_LOG(LogHMD, Log, TEXT("CRPOSE: Yaw %.3f Pitch %.3f Roll %.3f"), CurrentHmdOrientation.Rotator().Yaw, CurrentHmdOrientation.Rotator().Pitch, CurrentHmdOrientation.Rotator().Roll);
 }
 
 void FGearVR::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
@@ -223,7 +273,11 @@ void FGearVR::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
 
 	ViewRotation.Normalize();
 
-	GetCurrentOrientationAndPosition(CurHmdOrientation, CurHmdPosition);
+	CameraScale3D = FVector(1.0f, 1.0f, 1.0f);
+
+	FQuat CurHmdOrientation;
+	FVector CurHmdPosition;
+	GetCurrentPose(CurHmdOrientation, CurHmdPosition, true, true);
 	LastHmdOrientation = CurHmdOrientation;
 
 	const FRotator DeltaRot = ViewRotation - PC->GetControlRotation();
@@ -233,29 +287,51 @@ void FGearVR::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
 	// Same with roll.
 	DeltaControlRotation.Pitch = 0;
 	DeltaControlRotation.Roll = 0;
-	DeltaControlOrientation = DeltaControlRotation.Quaternion();
+	const FQuat DeltaControlOrientation = DeltaControlRotation.Quaternion();
 
 	ViewRotation = FRotator(DeltaControlOrientation * CurHmdOrientation);
+
+	bPlayerControllerFollowsHmd = true;
+	bOrientationChanged = true;
+	bPositionChanged = true;
 }
 
 void FGearVR::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalViewInfo& POV)
 {
 	ConditionalLocker lock(bUpdateOnRT, &UpdateOnRTLock);
 
-	GetCurrentOrientationAndPosition(CurHmdOrientation, CurHmdPosition);
-	LastHmdOrientation = CurHmdOrientation;
+	LastHmdOrientation = FQuat::Identity;
+	LastHmdPosition = FVector::ZeroVector;
+	if (POV.bFollowHmdPosition)
+	{
+		CameraScale3D = POV.Scale3D;
+	}
 
-	static const FName NAME_Fixed = FName(TEXT("Fixed"));
-	static const FName NAME_ThirdPerson = FName(TEXT("ThirdPerson"));
-	static const FName NAME_FreeCam = FName(TEXT("FreeCam"));
-	static const FName NAME_FreeCam_Default = FName(TEXT("FreeCam_Default"));
-	static const FName NAME_FirstPerson = FName(TEXT("FirstPerson"));
+	FQuat	CurHmdOrientation;
+	FVector CurHmdPosition;
+	GetCurrentPose(CurHmdOrientation, CurHmdPosition, POV.bFollowHmdOrientation, POV.bFollowHmdPosition);
 
-	DeltaControlRotation = POV.Rotation;
-	DeltaControlOrientation = DeltaControlRotation.Quaternion();
+	const FQuat CurPOVOrientation = POV.Rotation.Quaternion();
 
-	// Apply HMD orientation to camera rotation.
-	POV.Rotation = FRotator(POV.Rotation.Quaternion() * CurHmdOrientation);
+	if (POV.bFollowHmdOrientation)
+	{
+		// Apply HMD orientation to camera rotation.
+		POV.Rotation = FRotator(CurPOVOrientation * CurHmdOrientation);
+		LastHmdOrientation = CurHmdOrientation;
+		bOrientationChanged = POV.bFollowHmdOrientation;
+	}
+
+	if (POV.bFollowHmdPosition)
+	{
+		const FQuat DeltaControlOrientation = CurPOVOrientation * CurHmdOrientation.Inverse();
+		const FVector vCamPosition = DeltaControlOrientation.RotateVector(CurHmdPosition);
+		POV.Location += vCamPosition;
+		LastHmdPosition = CurHmdPosition;
+		bPositionChanged = POV.bFollowHmdPosition;
+	}
+
+	//UE_LOG(LogHMD, Log, TEXT("UPDCAM: Pos %.3f %.3f %.3f"), POV.Location.X, POV.Location.Y, POV.Location.Y);
+	//UE_LOG(LogHMD, Log, TEXT("UPDCAM: Yaw %.3f Pitch %.3f Roll %.3f"), POV.Rotation.Yaw, POV.Rotation.Pitch, POV.Rotation.Roll);
 }
 
 bool FGearVR::IsChromaAbCorrectionEnabled() const
@@ -727,35 +803,58 @@ void FGearVR::AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, u
 
 void FGearVR::CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation)
 {
-	ConditionalLocker lock(bUpdateOnRT, &UpdateOnRTLock);
-	if (bNeedUpdateStereoRenderingParams)
-		UpdateStereoRenderingParams();
+	//ConditionalLocker lock(bUpdateOnRT, &UpdateOnRTLock);
 
-	if( StereoPassType != eSSP_FULL )
+	if( IsInGameThread() && StereoPassType != eSSP_FULL )
 	{
-		check(WorldToMeters != 0.f)
+		if (bNeedUpdateStereoRenderingParams)
+			UpdateStereoRenderingParams();
+
+		if (!bOrientationChanged)
+		{
+			UE_LOG(LogHMD, Log, TEXT("Orientation wasn't applied to a camera in frame %d"), GFrameCounter);
+		}
 
 		const int idx = (StereoPassType == eSSP_LEFT_EYE) ? 0 : 1;
-		float EyeMul = (StereoPassType == eSSP_LEFT_EYE) ? -1.0f : 1.0f;
-		const float PassEyeOffset = InterpupillaryDistance * EyeMul * 0.5f * WorldToMeters;
 
-		const FVector TotalOffset = FVector(0, PassEyeOffset, 0);
+		FVector CurEyePosition;
+		FQuat CurEyeOrient;
+		PoseToOrientationAndPosition(EyeRenderPose[idx], CurEyeOrient, CurEyePosition);
 
-		ViewLocation += ViewRotation.Quaternion().RotateVector(TotalOffset);
+		FVector HeadPosition = FVector::ZeroVector;
+		// If we use PlayerController->bFollowHmd then we must apply full EyePosition (HeadPosition == 0).
+		// Otherwise, we will apply only a difference between EyePosition and HeadPosition, since
+		// HeadPosition is supposedly already applied.
+		if (!bPlayerControllerFollowsHmd)
+		{
+			FQuat HeadOrient;
+			PoseToOrientationAndPosition(HeadPose, HeadOrient, HeadPosition);
+		}
+
+		// apply stereo disparity to ViewLocation. Note, ViewLocation already contains HeadPose.Position, thus
+		// we just need to apply delta between EyeRenderPose.Position and the HeadPose.Position. 
+		// EyeRenderPose and HeadPose are captured by the same call to GetEyePoses.
+		const FVector HmdToEyeOffset = CurEyePosition - HeadPosition;
+
+		// Calculate the difference between the final ViewRotation and EyeOrientation:
+		// we need to rotate the HmdToEyeOffset by this differential quaternion.
+		// When bPlayerControllerFollowsHmd == true, the DeltaControlOrientation already contains
+		// the proper value (see ApplyHmdRotation)
+		//FRotator r = ViewRotation - CurEyeOrient.Rotator();
+		const FQuat ViewOrient = ViewRotation.Quaternion();
+		const FQuat DeltaControlOrientation =  ViewOrient * CurEyeOrient.Inverse();
+
+		//UE_LOG(LogHMD, Log, TEXT("EYEROT: Yaw %.3f Pitch %.3f Roll %.3f"), CurEyeOrient.Rotator().Yaw, CurEyeOrient.Rotator().Pitch, CurEyeOrient.Rotator().Roll);
+		//UE_LOG(LogHMD, Log, TEXT("VIEROT: Yaw %.3f Pitch %.3f Roll %.3f"), ViewRotation.Yaw, ViewRotation.Pitch, ViewRotation.Roll);
+		//UE_LOG(LogHMD, Log, TEXT("DLTROT: Yaw %.3f Pitch %.3f Roll %.3f"), DeltaControlOrientation.Rotator().Yaw, DeltaControlOrientation.Rotator().Pitch, DeltaControlOrientation.Rotator().Roll);
 
 		// The HMDPosition already has HMD orientation applied.
 		// Apply rotational difference between HMD orientation and ViewRotation
 		// to HMDPosition vector. 
+		const FVector vEyePosition = DeltaControlOrientation.RotateVector(HmdToEyeOffset);
+		ViewLocation += vEyePosition;
 
-		const FVector vHMDPosition = DeltaControlOrientation.RotateVector(CurHmdPosition);
-		ViewLocation += vHMDPosition;
-		LastHmdPosition = CurHmdPosition;
-	}
-	else if (bHeadTrackingEnforced)
-	{
-		const FVector vHMDPosition = DeltaControlOrientation.RotateVector(CurHmdPosition);
-		ViewLocation += vHMDPosition;
-		LastHmdPosition = CurHmdPosition;
+		//UE_LOG(LogHMD, Log, TEXT("DLTPOS: %.3f %.3f %.3f"), vEyePosition.X, vEyePosition.Y, vEyePosition.Z);
 	}
 }
 
@@ -812,7 +911,7 @@ void FGearVR::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	// user's own value).
 	FSceneView HmdView(*InView);
 
-	UpdatePlayerViewPoint(Canvas->HmdOrientation, FVector(0.f), FVector::ZeroVector, FQuat::Identity, HmdView.BaseHmdOrientation, HmdView.BaseHmdLocation, HmdView.ViewRotation, HmdView.ViewLocation);
+	//UpdatePlayerViewPoint(Canvas->HmdOrientation, FVector(0.f), FVector::ZeroVector, FQuat::Identity, HmdView.BaseHmdOrientation, HmdView.BaseHmdLocation, HmdView.ViewRotation, HmdView.ViewLocation);
 
 	HmdView.UpdateViewMatrix();
 	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
@@ -833,7 +932,8 @@ void FGearVR::SetupViewFamily(FSceneViewFamily& InViewFamily)
 void FGearVR::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
 {
 	InView.BaseHmdOrientation = LastHmdOrientation;
-	InView.BaseHmdLocation = FVector(0.f);
+	InView.BaseHmdLocation =	LastHmdPosition;
+
 	if (!bWorldToMetersOverride)
 	{
 		WorldToMetersScale = InView.WorldToMetersScale;
@@ -899,16 +999,19 @@ FGearVR::FGearVR()
 	, FarClippingPlane(0)
 	, CurHmdOrientation(FQuat::Identity)
 	, DeltaControlRotation(FRotator::ZeroRotator)
-	, DeltaControlOrientation(FQuat::Identity)
 	, CurHmdPosition(FVector::ZeroVector)
 	, LastHmdOrientation(FQuat::Identity)
 	, LastHmdPosition(FVector::ZeroVector)
+	, CameraScale3D(FVector(1.0f, 1.0f, 1.0f))
 	, BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
 	, OvrInited_RenderThread(0)
 	, EyeViewportSize(0, 0)
-	, RenderParams_RenderThread(getThis())
+	, RenderParams(getThis())
 	, bHmdPosTracking(false)
+	, bOrientationChanged(false)
+	, bPositionChanged(false)
+	, bPlayerControllerFollowsHmd(false)
 {
 	OvrMobile = nullptr;
 	Startup();
@@ -1073,6 +1176,9 @@ void FGearVR::UpdateStereoRenderingParams()
 		// 2D elements offset
 		if (!bOverride2D)
 		{
+			HmdToEyeViewOffset[0] = HmdToEyeViewOffset[1] = OVR::Vector3f(0,0,0);
+			HmdToEyeViewOffset[0].x = InterpupillaryDistance * 0.5f;
+			HmdToEyeViewOffset[1].x = -InterpupillaryDistance * 0.5f;
 #if 0 //@todo: gearvr
 			float ScreenSizeInMeters[2]; // 0 - width, 1 - height
 			float LensSeparationInMeters;
@@ -1192,27 +1298,53 @@ void FGearVR::PreRenderView_RenderThread(FSceneView& View)
 {
 	check(IsInRenderingThread());
 
-	if (!RenderParams_RenderThread.ShowFlags.Rendering)
-		return;
-
-	const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
-
-	FQuat	CurrentHmdOrientation = RenderParams_RenderThread.CurHmdOrientation;
-	FVector	CurrentHmdPosition = RenderParams_RenderThread.CurHmdPosition;
-
-//  	// Get new predicted pose to corresponding eye.
-//  	ovrPosef eyeRenderPose;//@ = ovrHmd_GetEyePose(Hmd, eyeIdx);
-//  	PoseToOrientationAndPosition(eyeRenderPose, CurrentHmdOrientation, CurrentHmdPosition);
-//  	RenderParams_RenderThread.EyeRenderPose[eyeIdx] = eyeRenderPose;
-
-	if (bUpdateOnRT)
+	if (RenderParams.ShowFlags.Rendering && bUpdateOnRT)
 	{
-		// Apply updated pose to corresponding View at recalc matrices.
-		UpdatePlayerViewPoint(CurrentHmdOrientation, CurrentHmdPosition, 
-			RenderParams_RenderThread.LastHmdPosition, RenderParams_RenderThread.DeltaControlOrientation,
-			View.BaseHmdOrientation, View.BaseHmdLocation,
-			View.ViewRotation, View.ViewLocation);
-		View.UpdateViewMatrix();
+		const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
+		FQuat	CurrentEyeOrientation;
+		FVector	CurrentEyePosition;
+		PoseToOrientationAndPosition(RenderParams.CurEyeRenderPose[eyeIdx], CurrentEyeOrientation, CurrentEyePosition);
+
+		FQuat ViewOrientation = View.ViewRotation.Quaternion();
+
+		// recalculate delta control orientation; it should match the one we used in CalculateStereoViewOffset on a game thread.
+		FVector GameEyePosition;
+		FQuat GameEyeOrient;
+		PoseToOrientationAndPosition(RenderParams.EyeRenderPose[eyeIdx], GameEyeOrient, GameEyePosition);
+		const FQuat DeltaControlOrientation =  ViewOrientation * GameEyeOrient.Inverse();
+
+		if (RenderParams.bOrientationChanged)
+		{
+			// Apply updated orientation to corresponding View at recalc matrices.
+			// The updated position will be applied from inside of the UpdateViewMatrix() call.
+			const FQuat DeltaOrient = View.BaseHmdOrientation.Inverse() * CurrentEyeOrientation;
+			View.ViewRotation = FRotator(ViewOrientation * DeltaOrient);
+
+			//UE_LOG(LogHMD, Log, TEXT("VDLTROT: Yaw %.3f Pitch %.3f Roll %.3f"), DeltaOrient.Rotator().Yaw, DeltaOrient.Rotator().Pitch, DeltaOrient.Rotator().Roll);
+		}
+
+		if (!RenderParams.bPositionChanged)
+		{
+			// if no positional change applied then we still need to calculate proper stereo disparity.
+			// use the current head pose for this calculation instead of the one that was saved on a game thread.
+			FQuat HeadOrientation;
+			PoseToOrientationAndPosition(RenderParams.CurHeadPose, HeadOrientation, View.BaseHmdLocation);
+		}
+
+		// The HMDPosition already has HMD orientation applied.
+		// Apply rotational difference between HMD orientation and ViewRotation
+		// to HMDPosition vector. 
+		// PositionOffset should be already applied to View.ViewLocation on GT in PlayerCameraUpdate.
+		const FVector DeltaPosition = CurrentEyePosition - View.BaseHmdLocation;
+		const FVector vEyePosition = DeltaControlOrientation.RotateVector(DeltaPosition);
+		View.ViewLocation += vEyePosition;
+
+		//UE_LOG(LogHMD, Log, TEXT("VDLTPOS: %.3f %.3f %.3f"), vEyePosition.X, vEyePosition.Y, vEyePosition.Z);
+
+		if (RenderParams.bOrientationChanged || RenderParams.bPositionChanged)
+		{
+			View.UpdateViewMatrix();
+		}
 	}
 }
 
@@ -1227,51 +1359,65 @@ void FGearVR::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFamily)
 		pGearVRBridge->bFirstTime = false;
 	}
 
-	RenderParams_RenderThread.ShowFlags = ViewFamily.EngineShowFlags;
+	RenderParams.ShowFlags = ViewFamily.EngineShowFlags;
 
-	RenderParams_RenderThread.bFrameBegun = true;
+	RenderParams.bFrameBegun = true;
 
 	// get latest orientation/position and cache it
-	if (bUpdateOnRT)
 	{
 		Lock::Locker lock(&UpdateOnRTLock);
+		RenderParams.bOrientationChanged = bOrientationChanged;
+		RenderParams.bPositionChanged = bPositionChanged;
+		RenderParams.EyeRenderPose[0] = EyeRenderPose[0];
+		RenderParams.EyeRenderPose[1] = EyeRenderPose[1];
+		RenderParams.HeadPose = HeadPose;
+		RenderParams.CurHeadPose = HeadPose;
 
-		const ovrSensorState ss = ovrHmd_GetSensorState(OvrHmd, ovr_GetTimeInSeconds(), true);
+		ovrPosef NewEyeRenderPose[2];
+		ovrSensorState ss;
+		GetEyePoses(HmdToEyeViewOffset, NewEyeRenderPose, ss);
+
 		const ovrPosef& pose = ss.Predicted.Pose;
-
-		PoseToOrientationAndPosition(pose, RenderParams_RenderThread.CurHmdOrientation, RenderParams_RenderThread.CurHmdPosition);
-
-		RenderParams_RenderThread.EyeRenderPose[0] = ss.Predicted;
-		RenderParams_RenderThread.EyeRenderPose[1] = ss.Predicted;
 
 		check(pGearVRBridge);
 		pGearVRBridge->SwapParms.Images[0][0].Pose = ss.Predicted;
 		pGearVRBridge->SwapParms.Images[1][0].Pose = ss.Predicted;
 
-		RenderParams_RenderThread.LastHmdPosition = LastHmdPosition;
-		RenderParams_RenderThread.DeltaControlOrientation = DeltaControlOrientation;
+		// Take new EyeRenderPose is bUpdateOnRT.
+		// if !bOrientationChanged && !bPositionChanged then we still need to use new eye pose (for timewarp)
+		if (bUpdateOnRT || 
+			(!bOrientationChanged && !bPositionChanged))
+		{
+			RenderParams.CurHeadPose = pose;
+			FMemory::MemCopy(RenderParams.CurEyeRenderPose, NewEyeRenderPose);
+		}
+		else
+		{
+			FMemory::MemCopy(RenderParams.CurEyeRenderPose, EyeRenderPose);
+			// use previous EyeRenderPose for proper timewarp when !bUpdateOnRt
+			pGearVRBridge->SwapParms.Images[0][0].Pose.Pose = RenderParams.HeadPose;
+			pGearVRBridge->SwapParms.Images[1][0].Pose.Pose = RenderParams.HeadPose;
+		}
 	}
 
-	RenderParams_RenderThread.bFrameBegun = true;
+	RenderParams.bFrameBegun = true;
 }
 
 void FGearVR::FinishRenderingFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	if (RenderParams_RenderThread.bFrameBegun)
+	if (RenderParams.bFrameBegun)
 	{
 		check(IsInRenderingThread());
 
-		RenderParams_RenderThread.bFrameBegun = false;
+		RenderParams.bFrameBegun = false;
 	}
 }
 
-
-
 FGearVR::FRenderParams::FRenderParams(FGearVR* plugin)
 	: 
-	  CurHmdOrientation(FQuat::Identity)
-	, CurHmdPosition(FVector::ZeroVector)
-	, bFrameBegun(false)
+	bFrameBegun(false)
+	, bOrientationChanged(false)
+	, bPositionChanged(false)
 	, ShowFlags(ESFIM_All0)
 {
 }
@@ -1449,7 +1595,7 @@ void FGearVR::FGearVRBridge::FinishRendering()
 		glBindTexture( GL_TEXTURE_2D, 0 );
 	}
 
-	if (Plugin->RenderParams_RenderThread.bFrameBegun)
+	if (Plugin->RenderParams.bFrameBegun)
 	{
  		// Finish the frame and let OVR do buffer swap (Present) and flush/sync.
 		if (Plugin->OvrMobile)
@@ -1505,14 +1651,14 @@ void FGearVR::FGearVRBridge::Reset()
 		glDeleteTextures(6, &SwapChainTextures[0][0]);
 	}
 
-	Plugin->RenderParams_RenderThread.bFrameBegun = false;
+	Plugin->RenderParams.bFrameBegun = false;
 	bInitialized = false;
 }
 
 void FGearVR::FGearVRBridge::OnBackBufferResize()
 {
 	// if we are in the middle of rendering: prevent from calling EndFrame
-	Plugin->RenderParams_RenderThread.bFrameBegun = false;
+	Plugin->RenderParams.bFrameBegun = false;
 }
 
 void FGearVR::FGearVRBridge::UpdateViewport(const FViewport& Viewport, FRHIViewport* ViewportRHI)
@@ -1531,11 +1677,11 @@ void FGearVR::FGearVRBridge::UpdateViewport(const FViewport& Viewport, FRHIViewp
  //	const Matrix4f proj = Matrix4f::PerspectiveRH( FOV, 1.0f, 1.0f, 100.0f);
  	SwapParms.Images[0][0].TexCoordsFromTanAngles = TanAngleMatrixFromProjection( proj );
 // 	SwapParms.Images[0][0].TexId = RTTexId;
-// 	SwapParms.Images[0][0].Pose = Plugin->RenderParams_RenderThread.EyeRenderPose[0];
+// 	SwapParms.Images[0][0].Pose = Plugin->RenderParams.EyeRenderPose[0];
 // 
  	SwapParms.Images[1][0].TexCoordsFromTanAngles = TanAngleMatrixFromProjection( proj );
 // 	SwapParms.Images[1][0].TexId = RTTexId;
-// 	SwapParms.Images[1][0].Pose = Plugin->RenderParams_RenderThread.EyeRenderPose[1];
+// 	SwapParms.Images[1][0].Pose = Plugin->RenderParams.EyeRenderPose[1];
 
 #if 0	// split screen stereo
 	for ( int i = 0 ; i < 2 ; i++ )

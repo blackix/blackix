@@ -26,11 +26,11 @@ public:
 	 */
 	FCanvasItem(const FVector2D& InPosition)
 		: Position(InPosition)
+		, StereoDepth(0)
 		, BlendMode(SE_BLEND_Opaque)
 		, bFreezeTime(false)
 		, BatchedElementParameters(NULL)
-		, Color(FLinearColor::White)
-		, StereoDepth(0) {}
+		, Color( FLinearColor::White ) {};
 
 	virtual void Draw( FCanvas* InCanvas ) = 0;
 

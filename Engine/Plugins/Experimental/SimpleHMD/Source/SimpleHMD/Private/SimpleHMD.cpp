@@ -76,7 +76,7 @@ bool FSimpleHMD::HasValidTrackingPosition()
 	return false;
 }
 
-void FSimpleHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FRotator& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+void FSimpleHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
 {
 }
 
@@ -262,10 +262,6 @@ void FSimpleHMD::DrawDistortionMesh_RenderThread(struct FRenderingCompositePassC
 
 	DrawIndexedPrimitiveUP(Context.RHICmdList, PT_TriangleList, 0, NumVerts, NumTris, &Indices,
 		sizeof(Indices[0]), &Verts, sizeof(Verts[0]));
-}
-	
-void FSimpleHMD::UpdateScreenSettings(const FViewport*)
-{
 }
 
 bool FSimpleHMD::IsStereoEnabled() const
