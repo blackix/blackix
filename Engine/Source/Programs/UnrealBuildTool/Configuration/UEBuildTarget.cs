@@ -230,10 +230,6 @@ namespace UnrealBuildTool
 				{
 					Platform = ParsedPlatform;
 				}
-				else if (Arguments[ArgumentIndex].ToLowerInvariant().StartsWith("-overridetargetappname="))
-				{
-					AdditionalDefinitions.Add(Arguments[ArgumentIndex]);
-				}
 				else
 				{
 					switch (Arguments[ArgumentIndex].ToUpperInvariant())
@@ -659,9 +655,6 @@ namespace UnrealBuildTool
 		/** The name of the application the target is part of. */
 		public string AppName;
 
-		/** AppName overriden from the commandline */
-		private static string OverridenAppName;
-
 		/** The name of the game the target is part of - can be empty */
 		public string GameName;
 
@@ -765,13 +758,6 @@ namespace UnrealBuildTool
 			List<OnlyModule> InOnlyModules,
 			bool bInEditorRecompile)
 		{
-			string CmdlineAppName = null;
-			const string OverrideTargetAppNameSwitch = "-overridetargetappname=";
-			if ((CmdlineAppName = InAdditionalDefinitions.Find(x => x.StartsWith(OverrideTargetAppNameSwitch))) != null)
-			{
-				OverridenAppName = CmdlineAppName.Substring(OverrideTargetAppNameSwitch.Length);
-			}
-
 			AppName = InAppName;
 			GameName = InGameName;
 			Platform = InPlatform;
@@ -994,23 +980,11 @@ namespace UnrealBuildTool
 		protected void CleanTarget(List<UEBuildBinary> Binaries, CPPTargetPlatform Platform, BuildManifest Manifest)
 		{
 			{
-				var TargetFilename = RulesCompiler.GetTargetFilename(GameName);
 				var LocalTargetName = (TargetType == TargetRules.TargetType.Program) ? AppName : GameName;
-
 				Log.TraceVerbose("Cleaning target {0} - AppName {1}", LocalTargetName, AppName);
-				Log.TraceVerbose("\tTargetFilename {0}", TargetFilename);
 
-				var TargetFolder = "";
-				if (String.IsNullOrEmpty(TargetFilename) == false)
-				{
-					var TargetInfo = new FileInfo(TargetFilename);
-					TargetFolder = TargetInfo.Directory.FullName;
-					var SourceIdx = TargetFolder.LastIndexOf("\\Source");
-					if (SourceIdx != -1)
-					{
-						TargetFolder = TargetFolder.Substring(0, SourceIdx + 1);
-					}
-				}
+				var TargetFilename = RulesCompiler.GetTargetFilename(GameName);
+				Log.TraceVerbose("\tTargetFilename {0}", TargetFilename);
 
 				// Collect all files to delete.
 				var AdditionalFileExtensions = new string[] { ".lib", ".exp", ".dll.response" };
@@ -1087,6 +1061,7 @@ namespace UnrealBuildTool
 					}
 				}
 
+
 				//
 				{
 					var AppEnginePath = Path.Combine(PlatformEngineBuildDataFolder, LocalTargetName, Configuration.ToString());
@@ -1097,6 +1072,13 @@ namespace UnrealBuildTool
 				}
 
 				// Clean the intermediate directory
+				if( !String.IsNullOrEmpty( ProjectIntermediateDirectory ) )
+				{
+					if (Directory.Exists(ProjectIntermediateDirectory))
+					{
+						CleanDirectory(ProjectIntermediateDirectory);
+					}
+				}
 				if (!UnrealBuildTool.RunningRocket())
 				{
 					// This is always under Rocket installation folder
@@ -2383,11 +2365,8 @@ namespace UnrealBuildTool
 			{
 				Prefix = "lib";
 			}
-			if (!string.IsNullOrEmpty(OverridenAppName) && BinaryType == UEBuildBinaryType.Executable)
-			{
-				OutBinaryPath = Path.Combine(BaseDirectory, String.Format("{2}{0}{1}", OverridenAppName, BinaryExtension, Prefix));
-			}
-			else if (LocalConfig == UnrealTargetConfiguration.Development || bForceNameAsForDevelopment)
+
+			if (LocalConfig == UnrealTargetConfiguration.Development || bForceNameAsForDevelopment)
 			{
 				OutBinaryPath = Path.Combine(BaseDirectory, String.Format("{3}{0}{1}{2}", BinaryName, BinarySuffix, BinaryExtension, Prefix));
 			}

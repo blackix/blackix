@@ -64,6 +64,7 @@ ActorFactory.cpp:
 #include "Engine/Polys.h"
 #include "Components/VectorFieldComponent.h"
 #include "Animation/AnimBlueprintGeneratedClass.h"
+#include "Kismet2/ComponentEditorUtils.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogActorFactory, Log, All);
 
@@ -323,6 +324,38 @@ FQuat UActorFactoryStaticMesh::AlignObjectToSurfaceNormal(const FVector& InSurfa
 {
 	// Meshes align the Z (up) axis with the surface normal
 	return FindActorAlignmentRotation(ActorRotation, FVector(0.f, 0.f, 1.f), InSurfaceNormal);
+}
+
+/*-----------------------------------------------------------------------------
+UActorFactoryBasicShape
+-----------------------------------------------------------------------------*/
+UActorFactoryBasicShape::UActorFactoryBasicShape(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	DisplayName = LOCTEXT("UActorFactoryBasicShapeDisplayName", "Basic Shape");
+	NewActorClass = AStaticMeshActor::StaticClass();
+	bUseSurfaceOrientation = true;
+}
+
+void UActorFactoryBasicShape::PostSpawnActor(UObject* Asset, AActor* NewActor)
+{
+	// Change properties
+	UStaticMesh* StaticMesh = CastChecked<UStaticMesh>(Asset);
+	GEditor->SetActorLabelUnique(NewActor, StaticMesh->GetName());
+
+	AStaticMeshActor* StaticMeshActor = CastChecked<AStaticMeshActor>(NewActor);
+	UStaticMeshComponent* StaticMeshComponent = StaticMeshActor->GetStaticMeshComponent();
+
+	if( StaticMeshComponent )
+	{
+		StaticMeshComponent->UnregisterComponent();
+
+		StaticMeshComponent->StaticMesh = StaticMesh;
+		StaticMeshComponent->StaticMeshDerivedDataKey = StaticMesh->RenderData->DerivedDataKey;
+		StaticMeshComponent->SetMaterial(0, LoadObject<UMaterial>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")));
+		// Init Component
+		StaticMeshComponent->RegisterComponent();
+	}
 }
 
 /*-----------------------------------------------------------------------------
@@ -1117,7 +1150,7 @@ static UBillboardComponent* CreateEditorOnlyBillboardComponent(AActor* ActorOwne
 	// Create a new billboard component to serve as a visualization of the actor until there is another primitive component
 	UBillboardComponent* BillboardComponent = ConstructObject<UBillboardComponent>(UBillboardComponent::StaticClass(), ActorOwner, NAME_None, RF_Transactional);
 
-	BillboardComponent->Sprite = LoadObject<UTexture2D>(nullptr, TEXT("/Engine/EditorResources/S_Actor.S_Actor"));
+	BillboardComponent->Sprite = LoadObject<UTexture2D>(nullptr, TEXT("/Engine/EditorResources/EmptyActor.EmptyActor"));
 	BillboardComponent->RelativeScale3D = FVector(0.5f, 0.5f, 0.5f);
 	BillboardComponent->Mobility = EComponentMobility::Movable;
 	BillboardComponent->AlwaysLoadOnClient = false;
@@ -1148,24 +1181,23 @@ AActor* UActorFactoryEmptyActor::SpawnActor( UObject* Asset, ULevel* InLevel, co
 	AActor* NewActor = nullptr;
 	if(GetDefault<UEditorExperimentalSettings>()->bInWorldBPEditing) 
 	{
-	// Spawn a temporary actor for dragging around
-	AActor* NewActor = Super::SpawnActor(Asset, InLevel, Location, Rotation, ObjectFlags, Name);
+		// Spawn a temporary actor for dragging around
+		NewActor = Super::SpawnActor(Asset, InLevel, Location, Rotation, ObjectFlags, Name);
 
-	USceneComponent* RootComponent = ConstructObject<USceneComponent>(USceneComponent::StaticClass(), NewActor, FName("Root"), RF_Transactional);
-	RootComponent->Mobility = EComponentMobility::Movable;
-	RootComponent->SetWorldLocationAndRotation(Location, Rotation);
-	NewActor->SetRootComponent(RootComponent);
+		USceneComponent* RootComponent = ConstructObject<USceneComponent>(USceneComponent::StaticClass(), NewActor, USceneComponent::GetDefaultSceneRootVariableName(), RF_Transactional);
+		RootComponent->Mobility = EComponentMobility::Movable;
+		RootComponent->bVisualizeComponent = true;
+		RootComponent->SetWorldLocationAndRotation(Location, Rotation);
 
-		UBillboardComponent* BillboardComponent	= CreateEditorOnlyBillboardComponent(NewActor, RootComponent);
+		NewActor->SetRootComponent(RootComponent);
+		NewActor->AddInstanceComponent(RootComponent);
 
-	NewActor->InstanceComponents.Add(RootComponent);
-	NewActor->InstanceComponents.Add(BillboardComponent);
-
-	return NewActor;
-}
+		RootComponent->RegisterComponent();
+	}
 
 	return NewActor;
 }
+
 
 
 /*-----------------------------------------------------------------------------
@@ -1215,8 +1247,8 @@ AActor* UActorFactoryPawn::SpawnActor(UObject* Asset, ULevel* InLevel, const FVe
 	AActor* NewActor = nullptr;
 	if(GetDefault<UEditorExperimentalSettings>()->bInWorldBPEditing)
 	{
-			NewActor = Super::SpawnActor(Asset, InLevel, Location, Rotation, ObjectFlags, Name);
-		}
+		NewActor = Super::SpawnActor(Asset, InLevel, Location, Rotation, ObjectFlags, Name);
+	}
 
 	return NewActor;
 }

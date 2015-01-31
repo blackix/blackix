@@ -131,6 +131,8 @@ public:
 
 void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor> InBlueprintEditor, const UBlueprint* InBlueprint )
 {
+	bNeedsRefresh = false;
+
 	BlueprintEditorPtr = InBlueprintEditor;
 	EdGraph = nullptr;
 	
@@ -404,6 +406,18 @@ void SMyBlueprint::Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor
 	ExpandedSections.Add(NodeSectionID::LOCAL_VARIABLE, true);
 
 	GraphActionMenu->SetSectionExpansion(ExpandedSections);
+
+	FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &SMyBlueprint::OnObjectPropertyChanged);
+}
+
+void SMyBlueprint::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if(bNeedsRefresh)
+	{
+		Refresh();
+	}
 }
 
 void SMyBlueprint::OnCategoryNameCommitted(const FText& InNewText, ETextCommit::Type InTextCommit, TWeakPtr< FGraphActionNode > InAction )
@@ -546,6 +560,37 @@ TSharedRef<SWidget> SMyBlueprint::OnGetSectionWidget(TSharedRef<SWidget> RowWidg
 		break;
 	case NodeSectionID::FUNCTION:
 		AddNewText = LOCTEXT("AddNewFunction", "Function");
+
+		if ( OverridableFunctionActions.Num() > 0 )
+		{
+			return SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SAssignNew(FunctionSectionButton, SComboButton)
+					.Visibility(this, &SMyBlueprint::OnGetSectionTextVisibility, WeakRowWidget, InSectionID)
+					.ButtonStyle(FEditorStyle::Get(), "RoundButton")
+					.ForegroundColor(FEditorStyle::GetSlateColor("DefaultForeground"))
+					.ContentPadding(FMargin(2, 0))
+					.OnGetMenuContent(this, &SMyBlueprint::OnGetFunctionListMenu)
+					.HasDownArrow(true)
+					.ButtonContent()
+					[
+						SNew(STextBlock)
+						.Font(IDetailLayoutBuilder::GetDetailFontBold())
+						.Text(LOCTEXT("Override", "Override"))
+						.ShadowOffset(FVector2D(1, 1))
+					]
+				]
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(2, 0,0,0)
+				[
+					CreateAddToSectionButton(InSectionID, WeakRowWidget, AddNewText)
+				];
+		}
+
 		break;
 	case NodeSectionID::MACRO:
 		AddNewText = LOCTEXT("AddNewMacro", "Macro");
@@ -563,14 +608,18 @@ TSharedRef<SWidget> SMyBlueprint::OnGetSectionWidget(TSharedRef<SWidget> RowWidg
 		return SNullWidget::NullWidget;
 	}
 
+	return CreateAddToSectionButton(InSectionID, WeakRowWidget, AddNewText);
+}
+
+TSharedRef<SWidget> SMyBlueprint::CreateAddToSectionButton(int32 InSectionID, TWeakPtr<SWidget> WeakRowWidget, FText AddNewText)
+{
 	return SNew(SButton)
 		.ButtonStyle(FEditorStyle::Get(), "RoundButton")
 		.ForegroundColor(FEditorStyle::GetSlateColor("DefaultForeground"))
+		.ContentPadding(FMargin(2, 0))
 		.OnClicked(this, &SMyBlueprint::OnAddButtonClickedOnSection, InSectionID)
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)
-		.ContentPadding(FMargin(2, 0))
-		//.IsEnabled(this, &SMyBlueprint::OnAddButtonClickedOnSection)
 		[
 			SNew(SHorizontalBox)
 
@@ -590,7 +639,7 @@ TSharedRef<SWidget> SMyBlueprint::OnGetSectionWidget(TSharedRef<SWidget> RowWidg
 				SNew(STextBlock)
 				.Font(IDetailLayoutBuilder::GetDetailFontBold())
 				.Text(AddNewText)
-				.Visibility(this, &SMyBlueprint::OnGetSectionTextVisibility, WeakRowWidget)
+				.Visibility(this, &SMyBlueprint::OnGetSectionTextVisibility, WeakRowWidget, InSectionID)
 				.ShadowOffset(FVector2D(1,1))
 			]
 		];
@@ -616,7 +665,6 @@ FReply SMyBlueprint::OnAddButtonClickedOnSection(int32 InSectionID)
 		BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewEventGraph.ToSharedRef());
 		break;
 	case NodeSectionID::LOCAL_VARIABLE:
-		//BlueprintEditorPtr.Pin()->GetToolkitCommands()->ExecuteAction(FBlueprintEditorCommands::Get().AddNewLocalVariable.ToSharedRef());
 		OnAddNewLocalVariable();
 		break;
 	}
@@ -624,9 +672,16 @@ FReply SMyBlueprint::OnAddButtonClickedOnSection(int32 InSectionID)
 	return FReply::Handled();
 }
 
-EVisibility SMyBlueprint::OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget) const
+EVisibility SMyBlueprint::OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget, int32 InSectionID) const
 {
-	if ( RowWidget.Pin()->IsHovered() )
+	bool ShowText = RowWidget.Pin()->IsHovered();
+	if ( InSectionID == NodeSectionID::FUNCTION && FunctionSectionButton.IsValid() && FunctionSectionButton->IsOpen() )
+	{
+		ShowText = true;
+	}
+
+	// If the row is currently hovered, or a menu is being displayed for a button, keep the button expanded.
+	if ( ShowText )
 	{
 		return EVisibility::SelfHitTestInvisible;
 	}
@@ -634,6 +689,37 @@ EVisibility SMyBlueprint::OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget
 	{
 		return EVisibility::Collapsed;
 	}
+}
+
+TSharedRef<SWidget> SMyBlueprint::OnGetFunctionListMenu()
+{
+	const bool bShouldCloseWindowAfterMenuSelection = true;
+	FMenuBuilder MenuBuilder(bShouldCloseWindowAfterMenuSelection, BlueprintEditorPtr.Pin()->GetToolkitCommands());
+
+	BuildOverridableFunctionsMenu(MenuBuilder);
+
+	TSharedRef<SWidget> MenuWidget = MenuBuilder.MakeWidget();
+
+	return MenuWidget;
+}
+
+void SMyBlueprint::BuildOverridableFunctionsMenu(FMenuBuilder& MenuBuilder)
+{
+	MenuBuilder.BeginSection("OverrideFunction", LOCTEXT("OverrideFunction", "Override Function"));
+	{
+		for ( auto& OverrideAction : OverridableFunctionActions )
+		{
+			MenuBuilder.AddMenuEntry(
+				OverrideAction->MenuDescription,
+				FText::FromString(OverrideAction->TooltipDescription),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateSP(this, &SMyBlueprint::ImplementFunction, OverrideAction)),
+				NAME_None,
+				EUserInterfaceActionType::Button
+				);
+		}
+	}
+	MenuBuilder.EndSection();
 }
 
 bool SMyBlueprint::CanRequestRenameOnActionNode(TWeakPtr<FGraphActionNode> InSelectedNode) const
@@ -701,31 +787,9 @@ bool SMyBlueprint::CanRequestRenameOnActionNode(TWeakPtr<FGraphActionNode> InSel
 
 void SMyBlueprint::Refresh()
 {
-	GraphActionMenu->RefreshAllActions(true);
-	
-	bool bLocalActionsAreVisible = (GetLocalActionsListVisibility() == EVisibility::Visible);
+	bNeedsRefresh = false;
 
-	//if ( !GetDefault<UEditorExperimentalSettings>()->bUnifiedBlueprintEditor )
-	//{
-	//	if ( bLocalActionsAreVisible )
-	//	{
-	//		if ( !LocalGraphActionMenu.IsValid() )
-	//		{
-	//			ActionMenuContainer->AddSlot()
-	//				.Value(0.33f)
-	//				[
-	//					ConstructLocalActionPanel()
-	//				];
-	//		}
-	//		check(LocalGraphActionMenu.IsValid());
-	//		LocalGraphActionMenu->RefreshAllActions(true);
-	//	}
-	//	else if ( LocalGraphActionMenu.IsValid() && ensure(ActionMenuContainer->GetChildren()->Num() > 1) )
-	//	{
-	//		ActionMenuContainer->RemoveAt(1);
-	//		LocalGraphActionMenu = nullptr;
-	//	}
-	//}
+	GraphActionMenu->RefreshAllActions(true);
 }
 
 TSharedRef<SWidget> SMyBlueprint::OnCreateWidgetForAction(FCreateWidgetForActionData* const InCreateData)
@@ -736,8 +800,8 @@ TSharedRef<SWidget> SMyBlueprint::OnCreateWidgetForAction(FCreateWidgetForAction
 TSharedRef<SWidget> SMyBlueprint::ConstructLocalActionPanel()
 {
 	return SNew(SVerticalBox)
-		+SVerticalBox::Slot()
-			.AutoHeight()
+		+ SVerticalBox::Slot()
+		.AutoHeight()
 		[
 			SNew( SBorder )
 				.Visibility(this, &SMyBlueprint::GetLocalActionsListVisibility)
@@ -1012,7 +1076,8 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 	// Initialise action sorting instance
 	FGraphActionSort SortList( Blueprint->CategorySorting );
 	// List of names of functions we implement
-	TArray<FName> ImplementedFunctions;
+	ImplementedFunctionCache.Empty();
+
 	// Grab Variables
 	for (TFieldIterator<UProperty> PropertyIt(Blueprint->SkeletonGeneratedClass, FieldIteratorSuperFlag); PropertyIt; ++PropertyIt)
 	{
@@ -1081,7 +1146,7 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 				{
 					NewFuncAction->EdGraph = Graph;
 				}
-				ImplementedFunctions.AddUnique(PropertyName);
+				ImplementedFunctionCache.Add(PropertyName);
 			}
 		}
 	}
@@ -1123,7 +1188,7 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 		GetChildGraphs(Graph, OutAllActions);
 		GetChildEvents(Graph, NewFuncAction->SectionID, OutAllActions);
 
-		ImplementedFunctions.AddUnique(Graph->GetFName());
+		ImplementedFunctionCache.Add(Graph->GetFName());
 	}
 	// Grab macros implemented by the blueprint
 	for (int32 i = 0; i < Blueprint->MacroGraphs.Num(); i++)
@@ -1147,20 +1212,22 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 		GetChildGraphs(Graph, OutAllActions);
 		GetChildEvents(Graph, NewFuncAction->SectionID, OutAllActions);
 
-		ImplementedFunctions.AddUnique(FunctionName);
+		ImplementedFunctionCache.Add(FunctionName);
 	}
 
-	// Show potentially overridable functions
-	for (TFieldIterator<UFunction> FunctionIt(Blueprint->ParentClass, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
+	OverridableFunctionActions.Reset();
+
+	// Cache potentially overridable functions
+	for ( TFieldIterator<UFunction> FunctionIt(Blueprint->ParentClass, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt )
 	{
 		const UFunction* Function = *FunctionIt;
 		const FName FunctionName = Function->GetFName();
 
-		if (UEdGraphSchema_K2::CanKismetOverrideFunction(Function) && !ImplementedFunctions.Contains(FunctionName) && !UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function) && !FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, CastChecked<UClass>(Function->GetOuter()), Function->GetFName()))
+		if ( UEdGraphSchema_K2::CanKismetOverrideFunction(Function) && !ImplementedFunctionCache.Contains(FunctionName) && !UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function) && !FBlueprintEditorUtils::FindOverrideForFunction(Blueprint, CastChecked<UClass>(Function->GetOuter()), Function->GetFName()) )
 		{
 			FString FunctionTooltip = UK2Node_CallFunction::GetDefaultTooltipForFunction(Function);
 			FText FunctionDesc = FText::FromString(Function->GetMetaData(TEXT("FriendlyName")));
-			if (FunctionDesc.IsEmpty())
+			if ( FunctionDesc.IsEmpty() )
 			{
 				FunctionDesc = FText::FromString(Function->GetName());
 			}
@@ -1170,7 +1237,10 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 			TSharedPtr<FEdGraphSchemaAction_K2Graph> NewFuncAction = MakeShareable(new FEdGraphSchemaAction_K2Graph(EEdGraphSchemaAction_K2Graph::Function, FunctionCategory, FunctionDesc, FunctionTooltip, 1));
 			NewFuncAction->FuncName = FunctionName;
 			NewFuncAction->SectionID = NodeSectionID::FUNCTION_OVERRIDABLE;
-			OutAllActions.AddAction(NewFuncAction);
+
+			OverridableFunctionActions.Add(NewFuncAction);
+
+			//OutAllActions.AddAction(NewFuncAction);
 		}
 	}
 
@@ -1188,7 +1258,7 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 			FString FunctionDesc = FunctionName.ToString();
 			
 			FString FunctionCategory;
-			if(UFunction* Function = Blueprint->SkeletonGeneratedClass->FindFunctionByName(Graph->GetFName()))
+			if ( UFunction* Function = Blueprint->SkeletonGeneratedClass->FindFunctionByName(Graph->GetFName()) )
 			{
 				FunctionCategory = Function->GetMetaData(FBlueprintMetadata::MD_FunctionCategory);
 			}
@@ -1218,7 +1288,7 @@ void SMyBlueprint::CollectAllActions(FGraphActionListBuilderBase& OutAllActions)
 					const UFunction* Function = *FunctionIt;
 					const FName FunctionName = Function->GetFName();
 
-					if (UEdGraphSchema_K2::CanKismetOverrideFunction(Function) && !ImplementedFunctions.Contains(FunctionName) && !UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function))
+					if ( UEdGraphSchema_K2::CanKismetOverrideFunction(Function) && !ImplementedFunctionCache.Contains(FunctionName) && !UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function) )
 					{
 						FString FunctionTooltip = Function->GetToolTipText().ToString();
 						FString FunctionDesc = Function->GetMetaData(TEXT("FriendlyName"));
@@ -1282,11 +1352,28 @@ void SMyBlueprint::CollectStaticSections(TArray<int32>& StaticSectionIDs)
 {
 	if ( IsShowingEmptySections() )
 	{
-		StaticSectionIDs.Add(NodeSectionID::GRAPH);
-		StaticSectionIDs.Add(NodeSectionID::MACRO);
-		StaticSectionIDs.Add(NodeSectionID::FUNCTION);
-		StaticSectionIDs.Add(NodeSectionID::VARIABLE);
-		StaticSectionIDs.Add(NodeSectionID::DELEGATE);
+		TSharedPtr<FBlueprintEditor> BlueprintEditor = BlueprintEditorPtr.Pin();
+		
+		if ( BlueprintEditor->NewDocument_IsVisibleForType(FBlueprintEditor::CGT_NewEventGraph) )
+		{
+			StaticSectionIDs.Add(NodeSectionID::GRAPH);
+		}
+		if ( BlueprintEditor->NewDocument_IsVisibleForType(FBlueprintEditor::CGT_NewMacroGraph) )
+		{
+			StaticSectionIDs.Add(NodeSectionID::MACRO);
+		}
+		if ( BlueprintEditor->NewDocument_IsVisibleForType(FBlueprintEditor::CGT_NewFunctionGraph) )
+		{
+			StaticSectionIDs.Add(NodeSectionID::FUNCTION);
+		}
+		if ( BlueprintEditor->NewDocument_IsVisibleForType(FBlueprintEditor::CGT_NewVariable) )
+		{
+			StaticSectionIDs.Add(NodeSectionID::VARIABLE);
+		}
+		if ( BlueprintEditor->FBlueprintEditor::AddNewDelegateIsVisible() )
+		{
+			StaticSectionIDs.Add(NodeSectionID::DELEGATE);
+		}
 	}
 
 	if ( GetLocalActionsListVisibility().IsVisible() )
@@ -1460,16 +1547,17 @@ void SMyBlueprint::OnActionSelected( const TArray< TSharedPtr<FEdGraphSchemaActi
 	UBlueprint* CurrentBlueprint = Blueprint;
 	TSharedPtr<SKismetInspector> CurrentInspector = Inspector.Pin();
 
-	if( BlueprintEditorPtr.IsValid() )
+	TSharedPtr<FBlueprintEditor> BlueprintEditor = BlueprintEditorPtr.Pin();
+
+	if ( BlueprintEditor.IsValid() )
 	{
-		if (BlueprintEditorPtr.Pin()->GetUISelectionState() == FBlueprintEditor::GraphPanel)
+		if ( InAction.IsValid() )
 		{
-			// clear graph panel selection
-			BlueprintEditorPtr.Pin()->ClearSelectionInAllEditors();
+			BlueprintEditor->SetUISelectionState(FBlueprintEditor::SelectionState_MyBlueprint);
 		}
-		BlueprintEditorPtr.Pin()->GetUISelectionState() = InAction.IsValid() ? FBlueprintEditor::MyBlueprint : FBlueprintEditor::NoSelection;
-		CurrentBlueprint = BlueprintEditorPtr.Pin()->GetBlueprintObj();
-		CurrentInspector = BlueprintEditorPtr.Pin()->GetInspector();
+
+		CurrentBlueprint = BlueprintEditor->GetBlueprintObj();
+		CurrentInspector = BlueprintEditor->GetInspector();
 	}
 
 	OnActionSelectedHelper( InAction, Blueprint, CurrentInspector.ToSharedRef() );
@@ -1549,15 +1637,19 @@ void SMyBlueprint::OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAct
 	}
 }
 
-void SMyBlueprint::OnActionDoubleClicked( const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions )
+void SMyBlueprint::OnActionDoubleClicked(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions)
 {
-	if( !BlueprintEditorPtr.IsValid() )
+	if ( !BlueprintEditorPtr.IsValid() )
 	{
 		return;
 	}
 
-	TSharedPtr<FEdGraphSchemaAction> InAction( InActions.Num() > 0 ? InActions[0] : NULL );
+	TSharedPtr<FEdGraphSchemaAction> InAction(InActions.Num() > 0 ? InActions[0] : NULL);
+	ExecuteAction(InAction);
+}
 
+void SMyBlueprint::ExecuteAction(TSharedPtr<FEdGraphSchemaAction> InAction)
+{
 	UBlueprint* Blueprint = BlueprintEditorPtr.Pin()->GetBlueprintObj();
 	if(InAction.IsValid())
 	{
@@ -1623,6 +1715,8 @@ template<class SchemaActionType> SchemaActionType* SelectionAsType( const TShare
 	if ( SelectedAction.IsValid() &&
 		 SelectedAction->GetTypeId() == SchemaActionType::StaticGetTypeId() )
 	{
+		// TODO Why not? StaticCastSharedPtr<>()
+
 		Selection = (SchemaActionType*)SelectedActions[0].Get();
 	}
 
@@ -1824,6 +1918,17 @@ void SMyBlueprint::BuildAddNewMenu(FMenuBuilder& MenuBuilder)
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewVariable);
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewLocalVariable);
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewFunction);
+
+		if ( OverridableFunctionActions.Num() > 0 )
+		{
+			MenuBuilder.AddSubMenu(
+				LOCTEXT("OverrideFunction", "Override Function"),
+				FText::GetEmpty(),
+				FNewMenuDelegate::CreateSP(this, &SMyBlueprint::BuildOverridableFunctionsMenu),
+				false,
+				FSlateIcon(FEditorStyle::GetStyleSetName(), "BlueprintEditor.AddNewFunction.Small"));
+		}
+
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewMacroDeclaration);
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewEventGraph);
 		MenuBuilder.AddMenuEntry(FBlueprintEditorCommands::Get().AddNewDelegate);
@@ -1902,38 +2007,48 @@ bool SMyBlueprint::CanImplementFunction() const
 
 void SMyBlueprint::OnImplementFunction()
 {
-	if (FEdGraphSchemaAction_K2Graph* GraphAction = SelectionAsGraph())
+	if ( FEdGraphSchemaAction_K2Graph* GraphAction = SelectionAsGraph() )
 	{
-		check(GetBlueprintObj()->SkeletonGeneratedClass);
-		UFunction* OverrideFunc = FindField<UFunction>(GetBlueprintObj()->SkeletonGeneratedClass, GraphAction->FuncName);
-		if (OverrideFunc == NULL)
+		ImplementFunction(GraphAction);
+	}
+}
+
+void SMyBlueprint::ImplementFunction(TSharedPtr<FEdGraphSchemaAction_K2Graph> GraphAction)
+{
+	ImplementFunction(GraphAction.Get());
+}
+
+void SMyBlueprint::ImplementFunction(FEdGraphSchemaAction_K2Graph* GraphAction)
+{
+	check(GetBlueprintObj()->SkeletonGeneratedClass);
+	UFunction* OverrideFunc = FindField<UFunction>(GetBlueprintObj()->SkeletonGeneratedClass, GraphAction->FuncName);
+	if (OverrideFunc == NULL)
+	{
+		// maybe it's from a native interface, check those too
+		for ( UClass* TempClass=GetBlueprintObj()->ParentClass; (NULL != TempClass) && (NULL == OverrideFunc); TempClass=TempClass->GetSuperClass() )
 		{
-			// maybe it's from a native interface, check those too
-			for ( UClass* TempClass=GetBlueprintObj()->ParentClass; (NULL != TempClass) && (NULL == OverrideFunc); TempClass=TempClass->GetSuperClass() )
+			for (int32 Idx=0; Idx<TempClass->Interfaces.Num(); ++Idx)
 			{
-				for (int32 Idx=0; Idx<TempClass->Interfaces.Num(); ++Idx)
+				FImplementedInterface const& I = TempClass->Interfaces[Idx];
+				if (!I.bImplementedByK2)
 				{
-					FImplementedInterface const& I = TempClass->Interfaces[Idx];
-					if (!I.bImplementedByK2)
+					OverrideFunc = FindField<UFunction>(I.Class, GraphAction->FuncName);
+					if (OverrideFunc)
 					{
-						OverrideFunc = FindField<UFunction>(I.Class, GraphAction->FuncName);
-						if (OverrideFunc)
-						{
-							// found it, done
-							break;
-						}
+						// found it, done
+						break;
 					}
 				}
 			}
 		}
-		check(OverrideFunc);
-		UClass* const OverrideFuncClass = CastChecked<UClass>(OverrideFunc->GetOuter());
-
-		// Implement the function graph
-		UEdGraph* const NewGraph = FBlueprintEditorUtils::CreateNewGraph(GetBlueprintObj(), GraphAction->FuncName, UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
-		FBlueprintEditorUtils::AddFunctionGraph(GetBlueprintObj(), NewGraph, /*bIsUserCreated=*/ false, OverrideFuncClass);
-		BlueprintEditorPtr.Pin()->OpenDocument(NewGraph, FDocumentTracker::OpenNewDocument);
 	}
+	check(OverrideFunc);
+	UClass* const OverrideFuncClass = CastChecked<UClass>(OverrideFunc->GetOuter());
+
+	// Implement the function graph
+	UEdGraph* const NewGraph = FBlueprintEditorUtils::CreateNewGraph(GetBlueprintObj(), GraphAction->FuncName, UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+	FBlueprintEditorUtils::AddFunctionGraph(GetBlueprintObj(), NewGraph, /*bIsUserCreated=*/ false, OverrideFuncClass);
+	BlueprintEditorPtr.Pin()->OpenDocument(NewGraph, FDocumentTracker::OpenNewDocument);
 }
 
 void SMyBlueprint::OnFindEntry()

@@ -44,10 +44,9 @@ struct FTemplateItem
 
 	FString		ClassTypes;
 	FString		AssetTypes;
-	bool		bHasFeaturePack;
-	FTemplateItem(FText InName, FText InDescription, bool bInGenerateCode, FName InType, FString InSortKey, FString InProjectFile, TSharedPtr<FSlateBrush> InThumbnail, TSharedPtr<FSlateBrush> InPreviewImage,FString InClassTypes, FString InAssetTypes, bool InHasFeaturePack)
+	FTemplateItem(FText InName, FText InDescription, bool bInGenerateCode, FName InType, FString InSortKey, FString InProjectFile, TSharedPtr<FSlateBrush> InThumbnail, TSharedPtr<FSlateBrush> InPreviewImage,FString InClassTypes, FString InAssetTypes)
 		: Name(InName), Description(InDescription), bGenerateCode(bInGenerateCode), Type(InType), SortKey(MoveTemp(InSortKey)), ProjectFile(MoveTemp(InProjectFile)), Thumbnail(InThumbnail), PreviewImage(InPreviewImage)
-		, ClassTypes(InClassTypes), AssetTypes(InAssetTypes), bHasFeaturePack(InHasFeaturePack)
+		, ClassTypes(InClassTypes), AssetTypes(InAssetTypes)
 	{}
 };
 
@@ -254,20 +253,8 @@ public:
 					.WidthOverride(ThumbnailSize)
 					.HeightOverride(ThumbnailSize)
 					[
-						SNew(SOverlay)
-						+SOverlay::Slot()
-						[
-							SNew(SImage)
-							.Image(this, &STemplateTile::GetThumbnail)
-						]
-						+ SOverlay::Slot()
-						.HAlign(HAlign_Right)
-						.VAlign(VAlign_Bottom)
-						[
-							SNew(SImage)
-							.Visibility(this, &STemplateTile::GetHasFeaturePackVisibility)
-							.Image(FEditorStyle::GetBrush("GameProjectDialog.FeaturePackThumbnail"))
-						]
+						SNew(SImage)
+						.Image(this, &STemplateTile::GetThumbnail)
 					]
 				]
 
@@ -302,17 +289,6 @@ private:
 		return FEditorStyle::GetBrush("GameProjectDialog.DefaultGameThumbnail.Small");
 	}
 	
-	/** Returns visible if this item has an equivalent feature pack available */
-	EVisibility GetHasFeaturePackVisibility() const
-	{
-		auto ItemPtr = Item.Pin();
-		EVisibility Vis = EVisibility::Hidden;
-		if (ItemPtr.IsValid() )
-		{
-			Vis = ItemPtr->bHasFeaturePack == true ? EVisibility::Visible : EVisibility::Collapsed;
-		}
-		return Vis;
-	}
 };
 
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
@@ -323,7 +299,7 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 	bLastGlobalValidityCheckSuccessful = true;
 	bLastNameAndLocationValidityCheckSuccessful = true;
 	bPreventPeriodicValidityChecksUntilNextChange = false;
-	bCopyStarterContent = true;
+	bCopyStarterContent = false;
 
 	IHardwareTargetingModule& HardwareTargeting = IHardwareTargetingModule::Get();
 
@@ -395,11 +371,13 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 						SNew(SVerticalBox)
 
 						+ SVerticalBox::Slot()
-						//.Padding(FMargin(0, 0, 0, 15))
+						.Padding(FMargin(0, 0, 0, 15))
 						.AutoHeight()
 						[
-							SNew(STextBlock)
-							.Text(LOCTEXT("ProjectTemplateDescription", "First, choose a template to use as a starting point for your new project:"))
+							SNew(SRichTextBlock)
+							.Text(LOCTEXT("ProjectTemplateDescription", "Choose a <RichTextBlock.BoldHighlight>template</> to use as a starting point for your new project.  Any of these features can be added later by clicking <RichTextBlock.BoldHighlight>Add New Feature Pack</> in <RichTextBlock.BoldHighlight>Content Browser</>."))
+							.AutoWrapText(true)
+ 							.DecoratorStyleSet(&FEditorStyle::Get())
 							.ToolTip(IDocumentation::Get()->CreateToolTip(LOCTEXT("TemplateChoiceTooltip", "A template consists of a little bit of player control logic (either as a Blueprint or in C++), input bindings, and appropriate prototyping assets."), NULL, TEXT("Shared/Editor/NewProjectWizard"), TEXT("TemplateChoice")))
 						]
 
@@ -578,8 +556,10 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 								.AutoHeight()
 								.Padding(FMargin(0, 0, 0, 15.f))
 								[
-									SNew(STextBlock)
-									.Text(LOCTEXT("ProjectSettingsDescription", "Next, choose some settings for your project. Don't worry, you can choose later or change these at any time in [Project Settings - Target Hardware]\nItems that are marked with an FP icon are availabe as a feature pack and the components of these can be added to a project at any time\nNote also that you can add the starter content after you have created your project."))
+									SNew(SRichTextBlock)
+									.Text(LOCTEXT("ProjectSettingsDescription", "Choose some <RichTextBlock.BoldHighlight>settings</> for your project.  Don't worry, you can change these later in the <RichTextBlock.BoldHighlight>Target Hardware</> section of <RichTextBlock.BoldHighlight>Project Settings</>.  You can also add the <RichTextBlock.BoldHighlight>Starter Content</> to your project later using <RichTextBlock.BoldHighlight>Content Browser</>."))
+									.AutoWrapText(true)
+ 									.DecoratorStyleSet(&FEditorStyle::Get())
 									.ToolTip(IDocumentation::Get()->CreateToolTip(LOCTEXT("HardwareTargetTooltip", "These settings will choose good defaults for a number of other settings in the project such as post-processing flags and touch input emulation using the mouse."), NULL, TEXT("Shared/Editor/NewProjectWizard"), TEXT("TargetHardware")))
 								]
 
@@ -648,8 +628,10 @@ void SNewProjectWizard::Construct( const FArguments& InArgs )
 								.AutoHeight()
 								.Padding(FMargin(0, 0, 0, 15.f))
 								[
-									SNew(STextBlock)
-									.Text(LOCTEXT("ProjectPathDescription", "Finally, choose a location for your project to be stored:"))
+									SNew(SRichTextBlock)
+									.Text(LOCTEXT("ProjectPathDescription", "Select a <RichTextBlock.BoldHighlight>location</> for your project to be stored."))
+									.AutoWrapText(true)
+ 									.DecoratorStyleSet(&FEditorStyle::Get())
 									.ToolTip(IDocumentation::Get()->CreateToolTip(LOCTEXT("ProjectPathDescriptionTooltip", "All of your project content and code will be stored here."), NULL, TEXT("Shared/Editor/NewProjectWizard"), TEXT("ProjectPath")))
 								]
 
@@ -1156,8 +1138,7 @@ void SNewProjectWizard::FindTemplateProjects()
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectThumbnail") ) ),
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectPreview") ) ),
 		TEXT(""),		// No class types
-		TEXT(""),		// No asset types,
-		false			// No equivalent feature pack
+		TEXT("")		// No asset types
 		)) );
 
 	Templates.FindOrAdd(FTemplateCategory::CodeCategoryName).Add(MakeShareable(new FTemplateItem(
@@ -1169,8 +1150,7 @@ void SNewProjectWizard::FindTemplateProjects()
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BasicCodeThumbnail") ) ),
 		MakeShareable( new FSlateBrush( *FEditorStyle::GetBrush("GameProjectDialog.BlankProjectPreview") ) ),
 		TEXT(""),		// No class types
-		TEXT(""),		// No asset types
-		false			// No equivalent feature pack
+		TEXT("")		// No asset types
 		)) );
 
 	// Now discover and all data driven templates
@@ -1229,8 +1209,7 @@ void SNewProjectWizard::FindTemplateProjects()
 					FText TemplateDescription = TemplateDefs->GetLocalizedDescription();
 					FString ClassTypes = TemplateDefs->ClassTypes;
 					FString AssetTypes = TemplateDefs->AssetTypes;
-					bool bHasFeaturePack = TemplateDefs->bHasFeaturePack;
-
+					
 					// If no template name was specified for the current culture, just use the project name
 					if ( TemplateName.IsEmpty() )
 					{
@@ -1284,8 +1263,7 @@ void SNewProjectWizard::FindTemplateProjects()
 						ThumbnailBrush,
 						PreviewBrush,
 						ClassTypes,
-						AssetTypes,
-						bHasFeaturePack
+						AssetTypes
 					)));
 				}
 			}

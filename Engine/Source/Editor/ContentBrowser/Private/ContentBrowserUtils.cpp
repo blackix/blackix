@@ -1028,6 +1028,53 @@ bool ContentBrowserUtils::AssetHasCustomThumbnail( const FAssetData& AssetData )
 	return false;
 }
 
+ContentBrowserUtils::ECBFolderCategory ContentBrowserUtils::GetFolderCategory( const FString& InPath )
+{
+	static const FString ClassesPrefix = TEXT("/Classes_");
+	static const FString GameClassesPrefix = TEXT("/Classes_Game");
+	static const FString EngineClassesPrefix = TEXT("/Classes_Engine");
+
+	const bool bIsClassDir = InPath.StartsWith(ClassesPrefix);
+	if(bIsClassDir)
+	{
+		const bool bIsGameClassDir = InPath.StartsWith(GameClassesPrefix);
+		if(bIsGameClassDir)
+		{
+			return ECBFolderCategory::GameClasses;
+		}
+
+		const bool bIsEngineClassDir = InPath.StartsWith(EngineClassesPrefix);
+		if(bIsEngineClassDir)
+		{
+			return ECBFolderCategory::EngineClasses;
+		}
+
+		return ECBFolderCategory::PluginClasses;
+	}
+	else
+	{
+		const bool bIsEngineContent = IsEngineFolder(InPath);
+		if(bIsEngineContent)
+		{
+			return ECBFolderCategory::EngineContent;
+		}
+
+		const bool bIsPluginContent = IsPluginFolder(InPath);
+		if(bIsPluginContent)
+		{
+			return ECBFolderCategory::PluginContent;
+		}
+
+		const bool bIsDeveloperContent = IsDevelopersFolder(InPath);
+		if(bIsDeveloperContent)
+		{
+			return ECBFolderCategory::DeveloperContent;
+		}
+
+		return ECBFolderCategory::GameContent;
+	}
+}
+
 bool ContentBrowserUtils::IsEngineFolder( const FString& InPath )
 {
 	return InPath.StartsWith(TEXT("/Engine")) || InPath == TEXT("Engine");
@@ -1178,11 +1225,16 @@ FText ContentBrowserUtils::GetRootDirDisplayName(const FString& FolderPath)
 	}
 	else if(CleanFolderPath == GameFolderName)
 	{
-		LocalizedFolderName = LOCTEXT("GameFolderName", "Game");
+		//LocalizedFolderName = LOCTEXT("GameFolderName", "Game");
 	}
 	else
 	{
 		LocalizedFolderName = FText::FromString(CleanFolderPath);
+	}
+
+	if(LocalizedFolderName.IsEmpty())
+	{
+		return (bIsClassDir) ? LOCTEXT("ClassesFolder", "C++ Classes") : LOCTEXT("ContentFolder", "Content");
 	}
 
 	return FText::Format((bIsClassDir) ? LOCTEXT("ClassesFolderFmt", "{0} C++ Classes") : LOCTEXT("ContentFolderFmt", "{0} Content"), LocalizedFolderName);

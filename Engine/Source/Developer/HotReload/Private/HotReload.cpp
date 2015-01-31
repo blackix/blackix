@@ -72,7 +72,7 @@ public:
 	virtual bool IsCurrentlyCompiling() const override { return ModuleCompileProcessHandle.IsValid(); }
 	virtual void RequestStopCompilation() override { bRequestCancelCompilation = true; }
 	virtual void AddHotReloadFunctionRemap(Native NewFunctionPointer, Native OldFunctionPointer) override;	
-	virtual void RebindPackages(TArray< UPackage* > Packages, TArray< FName > DependentModules, const bool bWaitForCompletion, FOutputDevice &Ar) override;
+	virtual ECompilationResult::Type RebindPackages(TArray< UPackage* > Packages, TArray< FName > DependentModules, const bool bWaitForCompletion, FOutputDevice &Ar) override;
 	virtual ECompilationResult::Type DoHotReloadFromEditor() override;
 	virtual FHotReloadEvent& OnHotReload() override { return HotReloadEvent; }	
 	virtual FModuleCompilerStartedEvent& OnModuleCompilerStarted() override { return ModuleCompilerStartedEvent; }
@@ -476,7 +476,7 @@ bool FHotReloadModule::RecompileModule(const FName InModuleName, const bool bRel
 	Args.Add( TEXT("CodeModuleName"), FText::FromName( InModuleName ) );
 	const FText StatusUpdate = FText::Format( NSLOCTEXT("ModuleManager", "Recompile_SlowTaskName", "Compiling {CodeModuleName}..."), Args );
 
-	FScopedSlowTask SlowTask(1, StatusUpdate);
+	FScopedSlowTask SlowTask(2, StatusUpdate);
 	SlowTask.MakeDialog();
 
 	ModuleCompilerStartedEvent.Broadcast();
@@ -488,6 +488,8 @@ bool FHotReloadModule::RecompileModule(const FName InModuleName, const bool bRel
 	// the module without actually having to unload it first.
 	const bool bWasModuleLoaded = FModuleManager::Get().IsModuleLoaded( InModuleName );
 	const bool bUseRollingModuleNames = bWasModuleLoaded;
+
+	SlowTask.EnterProgressFrame();
 
 	bool bWasSuccessful = true;
 	if( bUseRollingModuleNames )
@@ -510,6 +512,8 @@ bool FHotReloadModule::RecompileModule(const FName InModuleName, const bool bRel
 		bWasSuccessful = RecompileModuleDLLs(ModulesToRecompile, Ar, bFailIfGeneratedCodeChanges, bForceCodeProject);		
 	}
 
+	SlowTask.EnterProgressFrame();
+	
 	if( bWasSuccessful )
 	{
 		// Shutdown the module if it's already running
@@ -739,7 +743,7 @@ ECompilationResult::Type FHotReloadModule::DoHotReloadInternal(bool bRecompileFi
 	return Result;
 }
 
-void FHotReloadModule::RebindPackages(TArray<UPackage*> InPackages, TArray<FName> DependentModules, const bool bWaitForCompletion, FOutputDevice &Ar)
+ECompilationResult::Type FHotReloadModule::RebindPackages(TArray<UPackage*> InPackages, TArray<FName> DependentModules, const bool bWaitForCompletion, FOutputDevice &Ar)
 {
 	ECompilationResult::Type Result = ECompilationResult::Unknown;
 	double Duration = 0.0;
@@ -748,6 +752,8 @@ void FHotReloadModule::RebindPackages(TArray<UPackage*> InPackages, TArray<FName
 		Result = RebindPackagesInternal(InPackages, DependentModules, bWaitForCompletion, Ar);
 	}
 	RecordAnalyticsEvent(TEXT("Rebind"), Result, Duration, InPackages.Num(), DependentModules.Num());
+
+	return Result;
 }
 
 ECompilationResult::Type FHotReloadModule::RebindPackagesInternal(TArray<UPackage*> InPackages, TArray<FName> DependentModules, const bool bWaitForCompletion, FOutputDevice &Ar)

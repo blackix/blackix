@@ -43,7 +43,7 @@
 #include "AnimationUtils.h"
 #include "AudioDecompress.h"
 #include "LevelEditor.h"
-#include "SCreateAssetFromActor.h"
+#include "SCreateAssetFromObject.h"
 
 #include "Editor/ActorPositioning.h"
 
@@ -2555,7 +2555,7 @@ bool FReimportManager::CanReimport( UObject* Obj ) const
 	return false;
 }
 
-bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing )
+bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing, bool bShowNotification )
 {
 	// Warn that were about to reimport, so prep for it
 	PreReimport.Broadcast( Obj );
@@ -2570,7 +2570,6 @@ bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing )
 			bHandlersNeedSorting = false;
 		}
 		
-		bool bShowNotification = true;
 		bool bValidSourceFilename = false;
 		TArray<FString> SourceFilenames;
 
@@ -5141,8 +5140,13 @@ void UEditorEngine::ReplaceActors(UActorFactory* Factory, const FAssetData& Asse
 			NewActor->MarkPackageDirty();
 
 			// Replace references in the level script Blueprint with the new Actor
-			ULevelScriptBlueprint* LSB = NewActor->GetLevel()->GetLevelScriptBlueprint(true);
-			FBlueprintEditorUtils::ReplaceAllActorRefrences(LSB, OldActor, NewActor);
+			const bool bDontCreate = true;
+			ULevelScriptBlueprint* LSB = NewActor->GetLevel()->GetLevelScriptBlueprint(bDontCreate);
+			if( LSB )
+			{
+				// Only if the level script blueprint exists would there be references.  
+				FBlueprintEditorUtils::ReplaceAllActorRefrences(LSB, OldActor, NewActor);
+			}
 
 			GEditor->Layers->DisassociateActorFromLayers( OldActor );
 			World->EditorDestroyActor(OldActor, true);
@@ -5689,10 +5693,10 @@ void UEditorEngine::ConvertActors( const TArray<AActor*>& ActorsToConvert, UClas
 			.ToolTipText(LOCTEXT("SelectPathTooltip", "Select the path where the static mesh will be created"))
 			.ClientSize(FVector2D(400, 400));
 
-		TSharedPtr<SCreateAssetFromActor> CreateAssetFromActorWidget;
+		TSharedPtr<SCreateAssetFromObject> CreateAssetFromActorWidget;
 		CreateAssetFromActorWindow->SetContent
 			(
-			SAssignNew(CreateAssetFromActorWidget, SCreateAssetFromActor, CreateAssetFromActorWindow)
+			SAssignNew(CreateAssetFromActorWidget, SCreateAssetFromObject, CreateAssetFromActorWindow)
 			.AssetFilenameSuffix(TEXT("StaticMesh"))
 			.HeadingText(LOCTEXT("ConvertBrushesToStaticMesh_Heading", "Static Mesh Name:"))
 			.CreateButtonText(LOCTEXT("ConvertBrushesToStaticMesh_ButtonLabel", "Create Static Mesh"))
@@ -5767,6 +5771,7 @@ void UEditorEngine::DoConvertActors( const TArray<AActor*>& ActorsToConvert, UCl
 		if( BrushList.Num() )
 		{
 			AActor* ConvertedBrushActor = ConvertBrushesToStaticMesh(InStaticMeshPackageName, BrushList, CachePivotLocation);
+			ConvertedActors.Add(ConvertedBrushActor);
 
 			// If only one brush is being converted, reattach it to whatever it was attached to before.
 			// Multiple brushes become impossible to reattach due to the single actor returned.
@@ -7384,7 +7389,7 @@ namespace EditorUtilities
 											{
 												// Ensure that this instance will be included in any undo/redo operations, and record it into the transaction buffer.
 												// Note: We don't do this for components that originate from script, because they will be re-instanced from the template after an undo, so there is no need to record them.
-												if(!ComponentArchetypeInstance->bCreatedByConstructionScript)
+												if(ComponentArchetypeInstance->CreationMethod != EComponentCreationMethod::ConstructionScript)
 												{
 													ComponentArchetypeInstance->SetFlags(RF_Transactional);
 													ComponentArchetypeInstance->Modify();

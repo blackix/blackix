@@ -30,6 +30,7 @@
 #include "Editor/Kismet/Public/FindInBlueprintManager.h"
 
 #include "BlueprintEditor.h"
+#include "BlueprintEditorSettings.h"
 #include "Editor/UnrealEd/Public/Kismet2/Kismet2NameValidators.h"
 
 #include "DefaultValueHelper.h"
@@ -49,6 +50,10 @@
 #define LOCTEXT_NAMESPACE "Blueprint"
 
 DEFINE_LOG_CATEGORY(LogBlueprintDebug);
+
+DECLARE_CYCLE_STAT(TEXT("Notify Blueprint Changed"), EKismetCompilerStats_NotifyBlueprintChanged, STATGROUP_KismetCompiler);
+DECLARE_CYCLE_STAT(TEXT("Mark Blueprint as Structurally Modified"), EKismetCompilerStats_MarkBlueprintasStructurallyModified, STATGROUP_KismetCompiler);
+DECLARE_CYCLE_STAT(TEXT("Refresh External DependencyNodes"), EKismetCompilerStats_RefreshExternalDependencyNodes, STATGROUP_KismetCompiler);
 
 FBlueprintEditorUtils::FFixLevelScriptActorBindingsEvent FBlueprintEditorUtils::FixLevelScriptActorBindingsEvent;
 
@@ -319,7 +324,7 @@ void FBlueprintEditorUtils::RefreshAllNodes(UBlueprint* Blueprint)
 
 void FBlueprintEditorUtils::RefreshExternalBlueprintDependencyNodes(UBlueprint* Blueprint, UStruct* RefreshOnlyChild)
 {
-	BP_SCOPED_COMPILER_EVENT_NAME(TEXT("Refresh External Dependency Nodes"));
+	BP_SCOPED_COMPILER_EVENT_STAT(EKismetCompilerStats_RefreshExternalDependencyNodes);
 
 	if (!Blueprint || !Blueprint->HasAllFlags(RF_LoadCompleted))
 	{
@@ -1229,14 +1234,6 @@ UClass* FBlueprintEditorUtils::RegenerateBlueprintClass(UBlueprint* Blueprint, U
 			Blueprint->Status = BS_UpToDate;
 		}
 
-#if WITH_EDITOR
-		// Do not want to run this code without the editor present nor when running commandlets.
-		if(GEditor && GIsEditor && !IsRunningCommandlet())
-		{
-			FFindInBlueprintSearchManager::Get().AddOrUpdateBlueprintSearchMetadata(Blueprint);
-		}
-#endif
-
 		if (ReplaceBlueprintWithClass)
 		{
 			FEditoronlyBlueprintHelper::ShouldBeFixed(Blueprint, true);
@@ -1432,7 +1429,7 @@ void FBlueprintEditorUtils::PostDuplicateBlueprint(UBlueprint* Blueprint)
 	{
 		check(Blueprint->GeneratedClass != NULL);
 		{
-			// Grab the old CDO, which contains the blueprint defaults
+			// Grab the old CDO, which contains the class defaults
 			UClass* OldBPGCAsClass = Blueprint->GeneratedClass;
 			UBlueprintGeneratedClass* OldBPGC = (UBlueprintGeneratedClass*)(OldBPGCAsClass);
 			UObject* OldCDO = OldBPGC->GetDefaultObject();
@@ -1646,7 +1643,7 @@ void FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(UBlueprint* Blue
 		FCompilerResultsLog Results;
 		Results.bLogInfoOnly = Blueprint->bIsRegeneratingOnLoad;
 
-		BP_SCOPED_COMPILER_EVENT_NAME(TEXT("Mark Blueprint as Structurally Modified"));
+		BP_SCOPED_COMPILER_EVENT_STAT(EKismetCompilerStats_MarkBlueprintasStructurallyModified);
 
 		TArray<UEdGraph*> AllGraphs;
 		Blueprint->GetAllGraphs(AllGraphs);
@@ -1674,7 +1671,8 @@ void FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(UBlueprint* Blue
 		}
 		UpdateDelegatesInBlueprint(Blueprint);
 
-		{ BP_SCOPED_COMPILER_EVENT_NAME(TEXT("Notify Blueprint Changed"));
+		{
+			BP_SCOPED_COMPILER_EVENT_STAT(EKismetCompilerStats_NotifyBlueprintChanged);
 
 			// Notify any interested parties that the blueprint has changed
 			Blueprint->BroadcastChanged();
@@ -6086,7 +6084,7 @@ TSharedRef<SWidget> FBlueprintEditorUtils::ConstructBlueprintParentClassPicker( 
 
 	TSharedPtr<FBlueprintReparentFilter> Filter = MakeShareable(new FBlueprintReparentFilter);
 	Options.ClassFilter = Filter;
-	Options.ViewerTitleString = LOCTEXT("ReparentBblueprint", "Reparent blueprint");
+	Options.ViewerTitleString = LOCTEXT("ReparentBlueprint", "Reparent blueprint");
 
 	// Only allow parenting to base blueprints.
 	Options.bIsBlueprintBaseOnly = true;
@@ -7139,6 +7137,36 @@ void FBlueprintEditorUtils::PostSetupObjectPinType(UBlueprint* InBlueprint, FBPV
 			// bridge multiple levels and different levels might not have the actor that the default is referencing).
 			InOutVarDesc.PropertyFlags |= CPF_DisableEditOnTemplate;
 		}
+	}
+}
+
+FText FBlueprintEditorUtils::GetFriendlyClassDisplayName(const UClass* Class)
+{
+	if (Class != nullptr)
+	{
+		return Class->GetDisplayNameText();
+	}
+	else
+	{
+		return LOCTEXT("ClassIsNull", "None");
+	}
+}
+
+FString FBlueprintEditorUtils::GetClassNameWithoutSuffix(const UClass* Class)
+{
+	if (Class != nullptr)
+	{
+		FString Result = Class->GetName();
+		if (Class->ClassGeneratedBy != nullptr)
+		{
+			Result.RemoveFromEnd(TEXT("_C"), ESearchCase::CaseSensitive);
+		}
+
+		return Result;
+	}
+	else
+	{
+		return LOCTEXT("ClassIsNull", "None").ToString();
 	}
 }
 

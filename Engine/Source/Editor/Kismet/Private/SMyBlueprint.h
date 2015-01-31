@@ -57,6 +57,9 @@ public:
 	void Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor> InBlueprintEditor, const UBlueprint* InBlueprint = nullptr);
 	void SetInspector( TSharedPtr<SKismetInspector> InInspector ) { Inspector = InInspector ; }
 
+	/* SWidget interface */
+	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime);
+
 	/* Reset the last pin type settings to default. */
 	void ResetLastPinType();
 
@@ -151,16 +154,20 @@ private:
 	void OnGlobalActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
 	void OnLocalActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
 	void OnActionDoubleClicked(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
+	void ExecuteAction(TSharedPtr<FEdGraphSchemaAction> InAction);
 	TSharedPtr<SWidget> OnContextMenuOpening();
 
 	TSharedRef<SWidget> CreateAddNewMenuWidget();
 	void BuildAddNewMenu(FMenuBuilder& MenuBuilder);
+	TSharedRef<SWidget> CreateAddToSectionButton(int32 InSectionID, TWeakPtr<SWidget> WeakRowWidget, FText AddNewText);
 
 	void OnCategoryNameCommitted(const FText& InNewText, ETextCommit::Type InTextCommit, TWeakPtr< struct FGraphActionNode > InAction );
 	bool CanRequestRenameOnActionNode(TWeakPtr<struct FGraphActionNode> InSelectedNode) const;
 	FText OnGetSectionTitle( int32 InSectionID );
 	TSharedRef<SWidget> OnGetSectionWidget( TSharedRef<SWidget> RowWidget, int32 InSectionID );
-	EVisibility OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget) const;
+	EVisibility OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget, int32 InSectionID) const;
+	TSharedRef<SWidget> OnGetFunctionListMenu();
+	void BuildOverridableFunctionsMenu(FMenuBuilder& MenuBuilder);
 	FReply OnAddButtonClickedOnSection(int32 InSectionID);
 
 	/** Support functions for checkbox to manage displaying user variables only */
@@ -182,6 +189,8 @@ private:
 	void OnFocusNode();
 	void OnFocusNodeInNewTab();
 	void OnImplementFunction();
+	void ImplementFunction(TSharedPtr<FEdGraphSchemaAction_K2Graph> GraphAction);
+	void ImplementFunction(FEdGraphSchemaAction_K2Graph* GraphAction);
 	bool CanImplementFunction() const;
 	void OnFindEntry();
 	bool CanFindEntry() const;
@@ -217,6 +226,12 @@ private:
 	void OnDeleteDelegate(FEdGraphSchemaAction_K2Delegate* InDelegateAction);
 
 	UEdGraph* GetFocusedGraph() const;
+
+	/** Delegate to hook us into non-structural Blueprint object post-change events */
+	void OnObjectPropertyChanged(UObject* InObject, FPropertyChangedEvent& InPropertyChangedEvent)
+	{
+		bNeedsRefresh = (InObject == Blueprint);
+	}
 private:
 	/** Pointer back to the blueprint editor that owns us */
 	TWeakPtr<FBlueprintEditor> BlueprintEditorPtr;
@@ -226,6 +241,15 @@ private:
 
 	/** Graph Action Menu for displaying all local variables */
 	TSharedPtr<class SGraphActionMenu> LocalGraphActionMenu;
+
+	/** The +Function button in the function section */
+	TSharedPtr<SComboButton> FunctionSectionButton;
+
+	/** When we rebuild the view of members, we cache (but don't display) any overridable functions for user in popup menus. */
+	TArray< TSharedPtr<FEdGraphSchemaAction_K2Graph> > OverridableFunctionActions;
+
+	/** When we refresh the list of functions we cache off the implemented ones to ask questions for overridable functions. */
+	TSet<FName> ImplementedFunctionCache;
 
 	/** The last pin type used (including the function editor last pin type) */
 	FEdGraphPinType LastPinType;
@@ -251,4 +275,7 @@ private:
 
 	/** The Kismet Inspector used to display properties: */
 	TWeakPtr<SKismetInspector> Inspector;
+
+	/** Flag to indicate whether or not we need to refresh the panel */
+	bool bNeedsRefresh;
 };

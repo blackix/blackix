@@ -550,6 +550,27 @@ bool UUnrealEdEngine::edactDeleteSelected( UWorld* InWorld, bool bVerifyDeletion
 
 	GetSelectedActors()->Modify();
 
+	if (GetSelectedComponentCount() > 0)
+	{
+		bool bComponentWasDeleted = false;
+		// Delete selected components if they are an Instance component
+		for (FSelectionIterator It(GetSelectedComponentIterator()); It; ++It)
+		{
+			UActorComponent* CurActorComp = CastChecked<UActorComponent>(*It);
+			if (CurActorComp->CreationMethod == EComponentCreationMethod::Instance)
+			{
+				CurActorComp->Modify();
+				CurActorComp->DestroyComponent(true);
+				bComponentWasDeleted = true;
+			}
+		}
+		if (bComponentWasDeleted)
+		{
+			NoteSelectionChange();
+		}
+		return bComponentWasDeleted;
+	}
+
 	// Fire ULevel::LevelDirtiedEvent when falling out of scope.
 	FScopedLevelDirtied			LevelDirtyCallback;
 

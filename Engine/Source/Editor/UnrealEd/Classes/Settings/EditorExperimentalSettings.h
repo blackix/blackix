@@ -37,6 +37,10 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = Tools, meta = ( DisplayName = "Single Layout Blueprint Editor" ))
 	bool bUnifiedBlueprintEditor;
 
+	/** Enable being able to subclass components in blueprints */
+	UPROPERTY(EditAnywhere, config, Category=Tools)
+	bool bBlueprintableComponents;
+
 	/** The Messaging Debugger provides a visual utility for debugging the messaging system. */
 	UPROPERTY(EditAnywhere, config, Category=Tools, meta=(DisplayName="Messaging Debugger"))
 	bool bMessagingDebugger;
@@ -85,10 +89,6 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = AI, meta = (DisplayName = "Environment Querying System"))
 	bool bEQSEditor;
 	
-	/** Enables Git source control plugin */
-	UPROPERTY(EditAnywhere, config, Category = "Source Control", meta = (DisplayName = "Git Source Control plugin (requires editor restart)"))
-	bool bGitSourceControl;
-
 	/**
 	 * Returns an event delegate that is executed when a setting has changed.
 	 *

@@ -13,6 +13,7 @@
 #include "SWidgetSwitcher.h"
 #include "GameFramework/Volume.h"
 #include "Engine/PostProcessVolume.h"
+#include "AssetToolsModule.h"
 
 /**
  * These are the tab indexes, if the tabs are reorganized you need to adjust the
@@ -41,43 +42,37 @@ public:
 	SLATE_BEGIN_ARGS( SPlacementAssetThumbnail )
 		: _Width( 32 )
 		, _Height( 32 )
+		, _AlwaysUseGenericThumbnail( false )
+		, _AssetTypeColorOverride()
 	{}
 
 	SLATE_ARGUMENT( uint32, Width )
 
 	SLATE_ARGUMENT( uint32, Height )
 
+	SLATE_ARGUMENT( FName, ClassThumbnailBrushOverride )
+
+	SLATE_ARGUMENT( bool, AlwaysUseGenericThumbnail )
+
+	SLATE_ARGUMENT( TOptional<FLinearColor>, AssetTypeColorOverride )
 	SLATE_END_ARGS()
 
-	void Construct( const FArguments& InArgs, const FAssetData& InAsset )
+	void Construct( const FArguments& InArgs, const FAssetData& InAsset)
 	{
 		Asset = InAsset;
 
 		FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>( "LevelEditor" );
 		TSharedPtr<FAssetThumbnailPool> ThumbnailPool = LevelEditorModule.GetFirstLevelEditor()->GetThumbnailPool();
 
-		Thumbnail = MakeShareable( new FAssetThumbnail( Asset, InArgs._Width, InArgs._Height, ThumbnailPool ) );
+		Thumbnail = MakeShareable(new FAssetThumbnail(Asset, InArgs._Width, InArgs._Height, ThumbnailPool));
 
-		bool bAllowFadeIn = false;
-		bool bForceGenericThumbnail = false;
-		EThumbnailLabel::Type ThumbnailLabel = EThumbnailLabel::ClassName;
-		const TAttribute< FText >& HighlightedText = TAttribute< FText >( FText::GetEmpty() );
-		const TAttribute< FLinearColor >& HintColorAndOpacity = FLinearColor( 0.0f, 0.0f, 0.0f, 0.0f );
-		bool AllowHintText = true;
-		FName ClassThumbnailBrushOverride = NAME_None;
-		bool ShowBackground = false;
-
+		FAssetThumbnailConfig Config;
+		Config.bForceGenericThumbnail = InArgs._AlwaysUseGenericThumbnail;
+		Config.ClassThumbnailBrushOverride = InArgs._ClassThumbnailBrushOverride;
+		Config.AssetTypeColorOverride = InArgs._AssetTypeColorOverride;
 		ChildSlot
 		[
-			Thumbnail->MakeThumbnailWidget(
-			bAllowFadeIn,
-			bForceGenericThumbnail,
-			ThumbnailLabel,
-			HighlightedText,
-			HintColorAndOpacity,
-			AllowHintText,
-			ClassThumbnailBrushOverride,
-			ShowBackground )
+			Thumbnail->MakeThumbnailWidget( Config )
 		];
 	}
 
@@ -183,6 +178,9 @@ void SPlacementAssetEntry::Construct(const FArguments& InArgs, UActorFactory* In
 					.HeightOverride( 35 )
 					[
 						SNew( SPlacementAssetThumbnail, AssetData )
+						.ClassThumbnailBrushOverride( InArgs._ClassThumbnailBrushOverride )
+						.AlwaysUseGenericThumbnail( InArgs._AlwaysUseGenericThumbnail )
+						.AssetTypeColorOverride( InArgs._AssetTypeColorOverride )
 					]
 				]
 			]
@@ -584,10 +582,14 @@ TSharedRef< SWidget > BuildDraggableAssetWidget( UClass* InAssetClass )
 	return SNew( SPlacementAssetEntry, Factory, AssetData );
 }
 
-TSharedRef< SWidget > BuildDraggableAssetWidget( UClass* InAssetClass, const FAssetData& InAssetData )
+
+TSharedRef< SWidget > BuildDraggableAssetWidget( UClass* InAssetClass, const FAssetData& InAssetData, FName InClassThumbnailBrushOverride = NAME_None, TOptional<FLinearColor> InAssetTypeColorOverride = TOptional<FLinearColor>() ) 
 {
 	UActorFactory* Factory = GEditor->FindActorFactoryByClass( InAssetClass );
-	return SNew( SPlacementAssetEntry, Factory, InAssetData );
+	return SNew( SPlacementAssetEntry, Factory, InAssetData )
+		.ClassThumbnailBrushOverride( InClassThumbnailBrushOverride )
+		.AlwaysUseGenericThumbnail(true)
+		.AssetTypeColorOverride( InAssetTypeColorOverride );
 }
 
 TSharedRef< SWidget > SPlacementModeTools::BuildLightsWidget()
@@ -666,10 +668,19 @@ TSharedRef< SWidget > SPlacementModeTools::BuildVisualWidget()
 
 TSharedRef< SWidget > SPlacementModeTools::BuildBasicWidget()
 {
-	TSharedRef<SVerticalBox> VerticalBox = SNew( SVerticalBox )
+	// Get color for basic shapes.  It should appear like all the other basic types
+	TOptional<FLinearColor> BasicShapeColorOverride;
+	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
+	TSharedPtr<IAssetTypeActions> AssetTypeActions;
+	AssetTypeActions = AssetToolsModule.Get().GetAssetTypeActionsForClass(UClass::StaticClass()).Pin();
+	if( AssetTypeActions.IsValid() )
+	{
+		BasicShapeColorOverride = TOptional<FLinearColor>( AssetTypeActions->GetTypeColor() );
+	}
+	
 
 	// Basics
-	
+	TSharedRef<SVerticalBox> VerticalBox = SNew( SVerticalBox )
 	+SVerticalBox::Slot()
 	.AutoHeight()
 	[
@@ -679,6 +690,30 @@ TSharedRef< SWidget > SPlacementModeTools::BuildBasicWidget()
 	.AutoHeight()
 	[
 		BuildDraggableAssetWidget( UActorFactoryPlayerStart::StaticClass() )
+	]
+	+ SVerticalBox::Slot()
+	.AutoHeight()
+	[
+		// Cube
+		BuildDraggableAssetWidget(UActorFactoryBasicShape::StaticClass(), FAssetData( LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube"))), FName("ClassThumbnail.Cube"), BasicShapeColorOverride )
+	]
+	+ SVerticalBox::Slot()
+	.AutoHeight()
+	[
+		// Sphere
+		BuildDraggableAssetWidget(UActorFactoryBasicShape::StaticClass(), FAssetData(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Sphere.Sphere"))), FName("ClassThumbnail.Sphere"), BasicShapeColorOverride )
+	]
+	+ SVerticalBox::Slot()
+	.AutoHeight()
+	[
+		// Cylinder
+		BuildDraggableAssetWidget(UActorFactoryBasicShape::StaticClass(), FAssetData(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cylinder.Cylinder"))), FName("ClassThumbnail.Cylinder"), BasicShapeColorOverride )
+	]
+	+ SVerticalBox::Slot()
+	.AutoHeight()
+	[
+		// Cone
+		BuildDraggableAssetWidget(UActorFactoryBasicShape::StaticClass(), FAssetData(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cone.Cone"))), FName("ClassThumbnail.Cone"), BasicShapeColorOverride )
 	]
 	+ SVerticalBox::Slot()
 	.AutoHeight()

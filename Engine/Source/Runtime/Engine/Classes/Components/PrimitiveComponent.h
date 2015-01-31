@@ -109,8 +109,15 @@ public:
 	/**
 	 * Default UObject constructor.
 	 */
+	UPrimitiveComponent();
+
 	UPrimitiveComponent(const FObjectInitializer& ObjectInitializer);
 
+private:
+	/** Initialize the component to its default settings */
+	void InitializePrimitiveComponentDefaults();
+
+public:
 	// Rendering
 	
 	/**
@@ -214,11 +221,11 @@ public:
 	uint32 bReceivesDecals:1;
 
 	/** If this is True, this component won't be visible when the view actor is the component's owner, directly or indirectly. */
-	UPROPERTY(EditDefaultsOnly, AdvancedDisplay, BlueprintReadOnly, Category=Rendering)
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Rendering)
 	uint32 bOwnerNoSee:1;
 
 	/** If this is True, this component will only be visible when the view actor is the component's owner, directly or indirectly. */
-	UPROPERTY(EditDefaultsOnly, AdvancedDisplay, BlueprintReadOnly, Category=Rendering)
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Rendering)
 	uint32 bOnlyOwnerSee:1;
 
 	/** Treat this primitive as part of the background for occlusion purposes. This can be used as an optimization to reduce the cost of rendering skyboxes, large ground planes that are part of the vista, etc. */
@@ -394,6 +401,12 @@ public:
 	/** Cached navigation relevancy flag for collision updates */
 	uint32 bNavigationRelevant : 1;
 
+	/** 
+	 * Shadowed mobility setting used e.g. to assist with physics scene initialization at runtime.
+	 * It will usually match the value of the 'Mobility' property, except e.g. during UCS execution.
+	 */
+	TEnumAsByte<EComponentMobility::Type> PhysicsMobility;
+
 protected:
 
 	/** Returns true if all descendant components that we can possibly collide with use relative location and rotation. */
@@ -553,15 +566,24 @@ public:
 	 */
 	virtual bool ComponentOverlapMulti(TArray<struct FOverlapResult>& OutOverlaps, const class UWorld* World, const FVector& Pos, const FRotator& Rot, ECollisionChannel TestChannel, const struct FComponentQueryParams& Params, const struct FCollisionObjectQueryParams& ObjectQueryParams = FCollisionObjectQueryParams::DefaultObjectQueryParam) const;
 
-	/** Event called when a component is touched */
+	/** 
+	 *	Event called when a component collides with something (or is collided with). 
+	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled for this component
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FComponentHitSignature OnComponentHit;
 
-	/** Event called when something overlaps this component */
+	/** 
+	 *	Event called when something starts to overlaps this component. 
+	 *	@note Both this component and the other one must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FComponentBeginOverlapSignature OnComponentBeginOverlap;
 
-	/** Event called when something ends overlapping this component */
+	/** 
+	 *	Event called when something stops overlapping this component 
+	 *	@note Both this component and the other one must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FComponentEndOverlapSignature OnComponentEndOverlap;
 
@@ -922,6 +944,7 @@ public:
 #endif
 
 	// Begin UActorComponent Interface
+	virtual void OnComponentCreated() override;
 	virtual void InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly) override;
 	virtual bool IsEditorOnly() const override;
 	virtual bool ShouldCreatePhysicsState() const override;
@@ -1272,6 +1295,7 @@ public:
 	virtual ECollisionChannel GetCollisionObjectType() const override;
 	virtual const FCollisionResponseContainer& GetCollisionResponseToChannels() const override;
 	virtual FVector GetComponentVelocity() const override;
+	virtual void SetMobility(EComponentMobility::Type NewMobility) override;
 	//End USceneComponent Interface
 
 	/**

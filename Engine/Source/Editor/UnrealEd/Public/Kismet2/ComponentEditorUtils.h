@@ -8,7 +8,7 @@
 class UNREALED_API FComponentEditorUtils
 {
 public:
-
+	
 	static class USceneComponent* GetSceneComponent(class UObject* Object, class UObject* SubObject = NULL);
 
 	static void GetArchetypeInstances(class UObject* Object, TArray<class UObject*>& ArchetypeInstances);
@@ -16,8 +16,38 @@ public:
 	/** Test whether or not the given string is a valid variable name string for the given component instance */
 	static bool IsValidVariableNameString(const UActorComponent* InComponent, const FString& InString);
 
+	/** 
+	 * Test whether or not the given string is already the name string of a component on the the actor
+	 * Optionally excludes an existing component from the check (ex. a component currently being renamed)
+	 * @return True if the InString is an available name for a component of ComponentOwner
+	 */
+	static bool IsComponentNameAvailable(const FString& InString, AActor* ComponentOwner, const UActorComponent* ComponentToIgnore = nullptr);
+		
 	/** Generate a valid variable name string for the given component instance */
 	static FString GenerateValidVariableName(TSubclassOf<UActorComponent> InComponentClass, AActor* ComponentOwner);
+
+	/** Generate a valid variable name string for the given component instance based on the name of the asset referenced by the component */
+	static FString GenerateValidVariableNameFromAsset(UObject* Asset, AActor* ComponentOwner);
+
+	/**
+	 * Ensures that the selection override delegate is properly bound for the supplied component
+	 * This includes any attached editor-only primitive components (such as billboard visualizers)
+	 * 
+	 * @param SceneComponent The component to set the selection override for
+	 * @param bBind Whether the override should be bound
+	 */
+	static void BindComponentSelectionOverride(USceneComponent* SceneComponent, bool bBind);
+
+	/**
+	 * Attempts to apply a material to a component at the specified slot.
+	 *
+	 * @param SceneComponent The component to which we should attempt to apply the material
+	 * @param MaterialToApply The material to apply to the component
+	 * @param OptionalMaterialSlot The material slot on the component to which the material should be applied. -1 to apply to all slots on the component.
+	 *
+	 * @return	True if the material was successfully applied to the component.
+	 */
+	static bool AttemptApplyMaterialToComponent( USceneComponent* SceneComponent, UMaterialInterface* MaterialToApply, int32 OptionalMaterialSlot = -1 );
 
 	struct FTransformData
 	{
@@ -31,6 +61,9 @@ public:
 		FRotator Rot;
 		FVector Scale;
 	};
+
+	/** Potentially transforms the delta to be applied to a component into the appropriate space */
+	static void AdjustComponentDelta(USceneComponent* Component, FVector& Drag, FRotator& Rotation);
 
 	// Given a template, propagates a default transform change to all instances of the template
 	static void PropagateTransformPropertyChange(class USceneComponent* InSceneComponentTemplate, const FTransformData& OldDefaultTransform, const FTransformData& NewDefaultTransform, TSet<class USceneComponent*>& UpdatedComponents);
@@ -60,7 +93,7 @@ public:
 		{
 			// Ensure that this instance will be included in any undo/redo operations, and record it into the transaction buffer.
 			// Note: We don't do this for components that originate from script, because they will be re-instanced from the template after an undo, so there is no need to record them.
-			if(!InSceneComponent->bCreatedByConstructionScript)
+			if(InSceneComponent->CreationMethod != EComponentCreationMethod::ConstructionScript)
 			{
 				InSceneComponent->SetFlags(RF_Transactional);
 				InSceneComponent->Modify();

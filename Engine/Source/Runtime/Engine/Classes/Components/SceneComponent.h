@@ -82,10 +82,24 @@ class ENGINE_API USceneComponent : public UActorComponent
 	GENERATED_BODY()
 public:
 
+	/** The name to use for the default scene root variable */
+	static const FName& GetDefaultSceneRootVariableName();
+
 	/**
 	 * Default UObject constructor.
 	 */
+	USceneComponent();
+
+	/**
+	 * UObject constructor that takes an ObjectInitializer
+	 */
 	USceneComponent(const FObjectInitializer& ObjectInitializer);
+
+private:
+	/** Initialize the component to its default settings */
+	void InitializeDefaults();
+
+public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -147,8 +161,18 @@ protected:
 	// Transient flag that temporarily disables UpdateOverlaps within DetachFromParent().
 	uint32 bDisableDetachmentUpdateOverlaps:1;
 
-public:
+#if WITH_EDITORONLY_DATA
+protected:
+	/** Editor only component used to display the sprite so as to be able to see the location of the Audio Component  */
+	UPROPERTY(transient)
+	class UBillboardComponent* SpriteComponent;
 
+public:
+	UPROPERTY()
+	uint32 bVisualizeComponent:1;
+#endif
+
+public:
 	/** How often this component is allowed to move, used to make various optimizations. Only safe to set in constructor, use SetMobility() during runtime. */
 	UPROPERTY(Category=Mobility, EditAnywhere, BlueprintReadOnly)
 	TEnumAsByte<EComponentMobility::Type> Mobility;
@@ -496,11 +520,11 @@ public:
 	// Begin ActorComponent interface
 	virtual void OnRegister() override;
 	virtual void UpdateComponentToWorld(bool bSkipPhysicsMove = false) override final;
+	virtual void DestroyComponent(bool bPromoteChildren = false) override;
 	virtual void OnComponentDestroyed() override;
 	virtual void ApplyWorldOffset(const FVector& InOffset, bool bWorldShift) override;
 	virtual class FComponentInstanceDataBase* GetComponentInstanceData() const override;
 	virtual FName GetComponentInstanceDataType() const override;
-	virtual void ApplyComponentInstanceData(class FComponentInstanceDataBase* ComponentInstanceData ) override;
 	// End ActorComponent interface
 
 	// Begin UObject Interface
@@ -796,6 +820,9 @@ public:
 			
 	virtual ~FSceneComponentInstanceData()
 	{}
+
+	virtual void ApplyToComponent(UActorComponent* Component) override;
+	virtual void FindAndReplaceInstances(const TMap<UObject*, UObject*>& OldToNewInstanceMap) override;
 
 	TArray<USceneComponent*> AttachedInstanceComponents;
 };

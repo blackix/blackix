@@ -10,17 +10,6 @@
 
 FMacWindow::~FMacWindow()
 {
-	// While on Windows invalid HWNDs fail silently, accessing an invalid NSWindow is fatal.
-	// So instead we release the window here.
-	if(WindowHandle)
-	{
-		NSWindow* Window = WindowHandle;
-		dispatch_async(dispatch_get_main_queue(), ^{
-			SCOPED_AUTORELEASE_POOL;
-			[Window release];
-		});
-		WindowHandle = nil;
-	}
 }
 
 TSharedRef<FMacWindow> FMacWindow::Make()
@@ -263,6 +252,17 @@ void FMacWindow::ReshapeWindow( int32 X, int32 Y, int32 Width, int32 Height )
 			if ( !NSEqualRects(WindowHandle.PreFullScreenRect, NewRect) )
 			{
 				WindowHandle.PreFullScreenRect = NewRect;
+				MainThreadCall(^{
+					FMacCursor* MacCursor = (FMacCursor*)MacApplication->Cursor.Get();
+					if ( MacCursor )
+					{
+						NSSize WindowSize = [WindowHandle frame].size;
+						NSSize ViewSize = [WindowHandle openGLFrame].size;
+						float WidthScale = ViewSize.width / WindowSize.width;
+						float HeightScale = ViewSize.height / WindowSize.height;
+						MacCursor->SetMouseScaling(FVector2D(WidthScale, HeightScale));
+					}
+				}, UE4ResizeEventMode, true);
 				FMacEvent::SendToGameRunLoop([NSNotification notificationWithName:NSWindowDidResizeNotification object:WindowHandle], EMacEventSendMethod::Sync, @[ NSDefaultRunLoopMode, UE4ResizeEventMode, UE4ShowEventMode, UE4FullscreenEventMode ]);
 			}
 		}
@@ -305,32 +305,14 @@ void FMacWindow::BringToFront( bool bForce )
 
 void FMacWindow::Destroy()
 {
-	if( WindowHandle )
+	if (WindowHandle)
 	{
 		SCOPED_AUTORELEASE_POOL;
-		FCocoaWindow* Window = WindowHandle;
-
 		bIsClosed = true;
-
-		if( MacApplication->OnWindowDestroyed( Window ) )
-		{
-			// This FMacWindow may have been destructed by now & so the WindowHandle will probably be invalid memory.
-			bool const bIsKey = [Window isKeyWindow];
-			
-			// Then change the focus to something useful, either the previous in the stack
-			TSharedPtr<FMacWindow> KeyWindow = MacApplication->GetKeyWindow();
-			if( KeyWindow.IsValid() && bIsKey && KeyWindow->GetOSWindowHandle() && ![(FCocoaWindow*)KeyWindow->GetOSWindowHandle() isMiniaturized] )
-			{
-				// Activate specified previous window if still present, provided it isn't minimized
-				KeyWindow->SetWindowFocus();
-			}
-			
-			// Close the window
-			MainThreadCall(^{
-				SCOPED_AUTORELEASE_POOL;
-				[Window destroy];
-			}, UE4CloseEventMode, true);
-		}
+		[WindowHandle setAlphaValue:0.0f];
+		[WindowHandle setBackgroundColor:[NSColor clearColor]];
+		MacApplication->OnWindowDestroyed(WindowHandle);
+		WindowHandle = nullptr;
 	}
 }
 

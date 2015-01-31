@@ -117,16 +117,7 @@ void UUnrealEdEngine::Init(IEngineLoop* InEngineLoop)
 	UEditorExperimentalSettings const* ExperimentalSettings =  GetDefault<UEditorExperimentalSettings>();
 	ECookInitializationFlags BaseCookingFlags = ECookInitializationFlags::AutoTick | ECookInitializationFlags::AsyncSave;
 	BaseCookingFlags |= ExperimentalSettings->bIterativeCookingForLaunchOn ? ECookInitializationFlags::Iterative : ECookInitializationFlags::None;
-
-	if ( !ExperimentalSettings->bDisableCookInEditor)
-	{
-		CookServer = ConstructObject<UCookOnTheFlyServer>( UCookOnTheFlyServer::StaticClass() );
-		CookServer->Initialize( ECookMode::CookByTheBookFromTheEditor, BaseCookingFlags );
-
-		FCoreUObjectDelegates::OnObjectPropertyChanged.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectPropertyChanged);
-		FCoreUObjectDelegates::OnObjectModified.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectModified);
-	}
-	else if ( ExperimentalSettings->bCookOnTheSide )
+	if ( ExperimentalSettings->bCookOnTheSide )
 	{
 		CookServer = ConstructObject<UCookOnTheFlyServer>( UCookOnTheFlyServer::StaticClass() );
 		CookServer->Initialize( ECookMode::CookOnTheFlyFromTheEditor, BaseCookingFlags );
@@ -134,14 +125,69 @@ void UUnrealEdEngine::Init(IEngineLoop* InEngineLoop)
 
 		FCoreUObjectDelegates::OnObjectPropertyChanged.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectPropertyChanged);
 		FCoreUObjectDelegates::OnObjectModified.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectModified);
+		FCoreUObjectDelegates::OnObjectSaved.AddUObject( CookServer, &UCookOnTheFlyServer::OnObjectSaved );
+	}
+	else if ( !ExperimentalSettings->bDisableCookInEditor)
+	{
+		CookServer = ConstructObject<UCookOnTheFlyServer>( UCookOnTheFlyServer::StaticClass() );
+		CookServer->Initialize( ECookMode::CookByTheBookFromTheEditor, BaseCookingFlags );
+
+		FCoreUObjectDelegates::OnObjectPropertyChanged.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectPropertyChanged);
+		FCoreUObjectDelegates::OnObjectModified.AddUObject(CookServer, &UCookOnTheFlyServer::OnObjectModified);
+		FCoreUObjectDelegates::OnObjectSaved.AddUObject( CookServer, &UCookOnTheFlyServer::OnObjectSaved );
 	}
 }
 
-bool UUnrealEdEngine::CanCookByTheBookInEditor() const 
-{ 
+bool CanCookForPlatformInThisProcess( const FString& PlatformName )
+{
+	////////////////////////////////////////
+	// hack remove this hack when we properly support changing the mobileHDR setting 
+	// check if our mobile hdr setting in memory is different from the one which is saved in the config file
+	
+	bool ConfigSetting = false;
+	if ( !GConfig->GetBool( TEXT("/Script/Engine.RendererSettings"), TEXT("r.MobileHDR"), ConfigSetting, GEngineIni) )
+	{
+		// if we can't get the config setting then don't risk it
+		return false;
+	}
+
+	// this was stolen from void IsMobileHDR()
+	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
+	const bool CurrentRSetting = MobileHDRCvar->GetValueOnAnyThread() == 1;
+
+	if ( CurrentRSetting != ConfigSetting )
+	{
+		return false;
+	}
+	////////////////////////////////////////
+	return true;
+}
+
+
+bool UUnrealEdEngine::CanCookByTheBookInEditor(const FString& PlatformName) const 
+{ 	
+	if ( CanCookForPlatformInThisProcess(PlatformName) == false )
+	{
+		return false;
+	}
+
 	if ( CookServer )
 	{
 		return CookServer->GetCookMode() == ECookMode::CookByTheBookFromTheEditor; 
+	}
+	return false;
+}
+
+bool UUnrealEdEngine::CanCookOnTheFlyInEditor(const FString& PlatformName) const
+{
+	if ( CanCookForPlatformInThisProcess(PlatformName) == false )
+	{
+		return false;
+	}
+
+	if ( CookServer )
+	{
+		return CookServer->GetCookMode() == ECookMode::CookOnTheFlyFromTheEditor;
 	}
 	return false;
 }

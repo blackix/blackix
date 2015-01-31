@@ -364,7 +364,7 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 
 			// Sources View
 			+ SSplitter::Slot()
-			.Value(0.3f)
+			.Value(0.15f)
 			[
 				SNew(SVerticalBox)
 				.Visibility( this, &SContentBrowser::GetSourcesViewVisibility )
@@ -419,9 +419,10 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 
 					// Collection View
 					+ SSplitter::Slot()
-					.Value(0.1f)
+					.Value(0.9f)
 					[
 						SNew(SBorder)
+						.Visibility( this, &SContentBrowser::GetCollectionViewVisibility )
 						.Padding(FMargin(3))
 						.BorderImage( FEditorStyle::GetBrush("ToolPanel.GroupBorder") )
 						[
@@ -484,7 +485,6 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 							.ContentPadding(0)
 							.ToolTipText( LOCTEXT( "AddFilterToolTip", "Add an asset filter." ) )
 							.OnGetMenuContent( this, &SContentBrowser::MakeAddFilterMenu )
-							.IsEnabled( this, &SContentBrowser::IsFilterMenuEnabled )
 							.HasDownArrow( true )
 							.ContentPadding( FMargin( 1, 0 ) )
 							.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("ContentBrowserFiltersCombo")))
@@ -561,6 +561,7 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 	AssetContextMenu->SetOnDuplicateRequested( FAssetContextMenu::FOnDuplicateRequested::CreateSP(this, &SContentBrowser::OnDuplicateRequested) );
 	AssetContextMenu->SetOnAssetViewRefreshRequested( FAssetContextMenu::FOnAssetViewRefreshRequested::CreateSP( this, &SContentBrowser::OnAssetViewRefreshRequested) );
 
+
 	// Select /Game by default
 	FSourcesData DefaultSourcesData;
 	TArray<FString> SelectedPaths;
@@ -584,6 +585,16 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 	AssetRegistryModule.Get().OnPathRemoved().AddSP(this, &SContentBrowser::HandlePathRemoved);
 
+	FContentBrowserModule& ContentBrowserModule = FModuleManager::GetModuleChecked<FContentBrowserModule>( TEXT("ContentBrowser") );
+	ContentBrowserModule.GetAllAssetViewViewMenuExtenders().Add( 
+		FContentBrowserMenuExtender::CreateLambda( [&]()
+		{
+			TSharedRef<FExtender> Extender = MakeShareable( new FExtender );
+
+			Extender->AddMenuExtension( FName("Folders"), EExtensionHook::After, nullptr, FMenuExtensionDelegate::CreateSP( this, &SContentBrowser::ExtendAssetViewMenu ) );
+			return Extender;
+		})
+	);
 	// Update the breadcrumb trail path
 	UpdatePath();
 }
@@ -614,6 +625,37 @@ void SContentBrowser::BindCommands()
 	Commands->MapAction( FContentBrowserCommands::Get().DirectoryUp, FUIAction(
 		FExecuteAction::CreateSP( this, &SContentBrowser::OnDirectoryUp )
 		));
+}
+
+void SContentBrowser::ExtendAssetViewMenu( FMenuBuilder& MenuBuilder )
+{
+	MenuBuilder.AddMenuEntry(
+		LOCTEXT("ShowCollectionOption", "Show Collections"),
+		LOCTEXT("ShowCollectionOptionToolTip", "Show the collections list in the view."),
+		FSlateIcon(),
+		FUIAction(
+		FExecuteAction::CreateSP(this, &SContentBrowser::ToggleShowCollections),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateSP(this, &SContentBrowser::IsShowingCollections)
+		),
+		NAME_None,
+		EUserInterfaceActionType::ToggleButton
+		);
+}
+
+void SContentBrowser::ToggleShowCollections()
+{
+	return GetMutableDefault<UContentBrowserSettings>()->SetDisplayCollections(!GetDefault<UContentBrowserSettings>()->GetDisplayCollections());
+}
+
+bool SContentBrowser::IsShowingCollections() const
+{
+	return GetDefault<UContentBrowserSettings>()->GetDisplayCollections();
+}
+
+EVisibility SContentBrowser::GetCollectionViewVisibility() const
+{
+	return IsShowingCollections() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 FText SContentBrowser::GetHighlightedText() const
@@ -684,19 +726,34 @@ void SContentBrowser::SyncToAssets( const TArray<FAssetData>& AssetDataList, con
 		for (int32 AssetIdx = AssetDataList.Num() - 1; AssetIdx >= 0 && ( !bDisplayDev || !bDisplayEngine || !bDisplayPlugins ); --AssetIdx)
 		{
 			const FAssetData& Item = AssetDataList[AssetIdx];
-			if ( !bDisplayDev && ContentBrowserUtils::IsDevelopersFolder( Item.PackagePath.ToString() ) )
+
+			FString PackagePath;
+			if ( Item.AssetClass == NAME_Class )
+			{
+				// Classes are found in the /Classes_ roots
+				TSharedRef<FNativeClassHierarchy> NativeClassHierarchy = FContentBrowserSingleton::Get().GetNativeClassHierarchy();
+				NativeClassHierarchy->GetClassPath(Cast<UClass>(Item.GetAsset()), PackagePath, false/*bIncludeClassName*/);
+			}
+			else
+			{
+				// All other assets are found by their package path
+				PackagePath = Item.PackagePath.ToString();
+			}
+
+			const ContentBrowserUtils::ECBFolderCategory FolderCategory = ContentBrowserUtils::GetFolderCategory( PackagePath );
+			if ( !bDisplayDev && FolderCategory == ContentBrowserUtils::ECBFolderCategory::DeveloperContent )
 			{
 				bDisplayDev = true;
 				GetMutableDefault<UContentBrowserSettings>()->SetDisplayDevelopersFolder(true, true);
 				bRepopulate = true;
 			}
-			else if ( !bDisplayEngine && ContentBrowserUtils::IsEngineFolder( Item.PackagePath.ToString() ) )
+			else if ( !bDisplayEngine && (FolderCategory == ContentBrowserUtils::ECBFolderCategory::EngineContent || FolderCategory == ContentBrowserUtils::ECBFolderCategory::EngineClasses) )
 			{
 				bDisplayEngine = true;
 				GetMutableDefault<UContentBrowserSettings>()->SetDisplayEngineFolder(true, true);
 				bRepopulate = true;
 			}
-			else if ( !bDisplayPlugins && ContentBrowserUtils::IsPluginFolder( Item.PackagePath.ToString() ) )
+			else if ( !bDisplayPlugins && (FolderCategory == ContentBrowserUtils::ECBFolderCategory::PluginContent || FolderCategory == ContentBrowserUtils::ECBFolderCategory::PluginClasses) )
 			{
 				bDisplayPlugins = true;
 				GetMutableDefault<UContentBrowserSettings>()->SetDisplayPluginFolders(true, true);
@@ -1102,11 +1159,13 @@ void SContentBrowser::NewAssetRequested(const FString& SelectedPath, TWeakObject
 
 void SContentBrowser::NewClassRequested(const FString& SelectedPath)
 {
-	TSharedRef<FNativeClassHierarchy> NativeClassHierarchy = FContentBrowserSingleton::Get().GetNativeClassHierarchy();
-
 	// Parse out the on disk location for the currently selected path, this will then be used as the default location for the new class (if a valid project module location)
 	FString ExistingFolderPath;
-	NativeClassHierarchy->GetFileSystemPath(SelectedPath, ExistingFolderPath);
+	if (!SelectedPath.IsEmpty())
+	{
+		TSharedRef<FNativeClassHierarchy> NativeClassHierarchy = FContentBrowserSingleton::Get().GetNativeClassHierarchy();
+		NativeClassHierarchy->GetFileSystemPath(SelectedPath, ExistingFolderPath);
+	}
 
 	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog(nullptr, ExistingFolderPath, FGlobalTabmanager::Get()->GetRootWindow());
 }
@@ -1338,12 +1397,8 @@ TSharedRef<SWidget> SContentBrowser::MakeAddNewContextMenu(bool bShowGetContent,
 		}
 	}
 
-	// Only add the class items if we have a class path selected
-	FNewAssetOrClassContextMenu::FOnNewClassRequested OnNewClassRequested;
-	if(NumClassPaths > 0)
-	{
-		OnNewClassRequested = FNewAssetOrClassContextMenu::FOnNewClassRequested::CreateSP(this, &SContentBrowser::NewClassRequested);
-	}
+	// This menu always lets you create classes, but uses your default project source folder if the selected path is invalid for creating classes
+	FNewAssetOrClassContextMenu::FOnNewClassRequested OnNewClassRequested = FNewAssetOrClassContextMenu::FOnNewClassRequested::CreateSP(this, &SContentBrowser::NewClassRequested);
 
 	FNewAssetOrClassContextMenu::MakeContextMenu(
 		MenuBuilder, 
@@ -1400,17 +1455,6 @@ FText SContentBrowser::GetAddNewToolTipText() const
 	}
 	
 	return LOCTEXT( "AddNewToolTip_NoPath", "No path is selected as an add target." );
-}
-
-bool SContentBrowser::IsFilterMenuEnabled() const
-{
-	const FSourcesData& SourcesData = AssetViewPtr->GetSourcesData();
-
-	int32 NumAssetPaths, NumClassPaths;
-	ContentBrowserUtils::CountPathTypes(SourcesData.PackagePaths, NumAssetPaths, NumClassPaths);
-
-	// We can only filter when have something other than class paths selected (or nothing selected, for collections)
-	return !(NumClassPaths > 0 && NumAssetPaths == 0) || SourcesData.PackagePaths.Num() == 0;
 }
 
 TSharedRef<SWidget> SContentBrowser::MakeAddFilterMenu()

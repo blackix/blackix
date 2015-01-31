@@ -171,7 +171,7 @@ public:
 				const FVector BaseLocation = WToL.TransformPosition(Gizmo->GetActorLocation());
 				const float ScaleXY = LandscapeInfo->DrawScale.X;
 
-				MeshRT = FTranslationMatrix(FVector(-W / ScaleXY + 0.5, -H / ScaleXY + 0.5, 0)) * FRotationTranslationMatrix(FRotator(0, Gizmo->GetActorRotation().Yaw, 0), FVector(BaseLocation.X, BaseLocation.Y, 0)) * LToW.ToMatrixWithScale();
+				MeshRT = FTranslationMatrix(FVector(-W / ScaleXY + 0.5, -H / ScaleXY + 0.5, 0) * GizmoScale3D) * FRotationTranslationMatrix(FRotator(0, Gizmo->GetActorRotation().Yaw, 0), FVector(BaseLocation.X, BaseLocation.Y, 0)) * LToW.ToMatrixWithScale();
 				HeightmapRenderProxy = new FLandscapeGizmoMeshRenderProxy( Gizmo->GizmoMeshMaterial->GetRenderProxy(false), BaseLocation.Z + L, BaseLocation.Z, Gizmo->GizmoTexture, FLinearColor(Gizmo->TextureScale.X, Gizmo->TextureScale.Y, 0, 0), WToL );
 
 				GizmoRenderProxy = (Gizmo->DataType != LGT_None) ? Gizmo->GizmoDataMaterial->GetRenderProxy(false) : Gizmo->GizmoMaterial->GetRenderProxy(false);
@@ -659,6 +659,16 @@ void ALandscapeGizmoActiveActor::ClearGizmoData()
 	DataType = LGT_None;
 	SelectedData.Empty();
 	LayerInfos.Empty();
+
+	// If the clipboard contains copied gizmo data, clear it also
+	FString ClipboardString;
+	FPlatformMisc::ClipboardPaste(ClipboardString);
+	const TCHAR* Str = *ClipboardString;
+	if (FParse::Command(&Str, TEXT("GizmoData=")))
+	{
+		FPlatformMisc::ClipboardCopy(TEXT(""));
+	}
+
 	ReregisterAllComponents();
 }
 

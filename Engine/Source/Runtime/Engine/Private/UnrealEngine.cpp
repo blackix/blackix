@@ -2653,7 +2653,7 @@ bool UEngine::HandleHotReloadCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 		PackagesToRebind.Add( Package );
 		const bool bWaitForCompletion = true;	// Always wait when hotreload is initiated from the console
 		IHotReloadInterface& HotReloadSupport = FModuleManager::LoadModuleChecked<IHotReloadInterface>("HotReload");
-		HotReloadSupport.RebindPackages(PackagesToRebind, TArray<FName>(), bWaitForCompletion, Ar);
+		const ECompilationResult::Type CompilationResult = HotReloadSupport.RebindPackages(PackagesToRebind, TArray<FName>(), bWaitForCompletion, Ar);
 	}
 	return true;
 }
@@ -10151,6 +10151,39 @@ struct FFindInstancedReferenceSubobjectHelper
 			}
 		}
 	}
+
+	static void Duplicate(UObject* OldObject, UObject* NewObject, TMap<UObject*, UObject*>& ReferenceReplacementMap, TArray<UObject*>& DuplicatedObjects)
+	{
+		if (OldObject->GetClass()->HasAnyClassFlags(CLASS_HasInstancedReference) &&
+			NewObject->GetClass()->HasAnyClassFlags(CLASS_HasInstancedReference))
+		{
+			TSet<UObject*> OldEditInlineObjects;
+			Get(OldObject->GetClass(), reinterpret_cast<uint8*>(OldObject), OldEditInlineObjects);
+			if (OldEditInlineObjects.Num())
+			{
+				TSet<UObject*> NewEditInlineObjects;
+				Get(NewObject->GetClass(), reinterpret_cast<uint8*>(NewObject), NewEditInlineObjects);
+				for (auto Obj : NewEditInlineObjects)
+				{
+					const bool bProperOuter = (Obj->GetOuter() == OldObject);
+					const bool bEditInlineNew = Obj->GetClass()->HasAnyClassFlags(CLASS_EditInlineNew | CLASS_DefaultToInstanced);
+					if (bProperOuter && bEditInlineNew)
+					{
+						const bool bKeptByOld = OldEditInlineObjects.Contains(Obj);
+						const bool bNotHandledYet = !ReferenceReplacementMap.Contains(Obj);
+						if (bKeptByOld && bNotHandledYet)
+						{
+							UObject* NewEditInlineSubobject = StaticDuplicateObject(Obj, NewObject, NULL);
+							ReferenceReplacementMap.Add(Obj, NewEditInlineSubobject);
+
+							// We also need to make sure to fixup any properties here
+							DuplicatedObjects.Add(NewEditInlineSubobject);
+						}
+					}
+				}
+			}
+		}
+	}
 };
 
 void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* NewObject, FCopyPropertiesForUnrelatedObjectsParams Params)
@@ -10219,6 +10252,8 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 
 	TArray<UObject*> ComponentsOnNewObject;
 	{
+		TArray<UObject*> EditInlineSubobjectsOfComponents;
+
 		// Find all instanced objects of the old CDO, and save off their modified properties to be later applied to the newly instanced objects of the new CDO
 		NewObject->CollectDefaultSubobjects(ComponentsOnNewObject,true);
 
@@ -10267,6 +10302,7 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 					}
 				}
 				FObjectReader Reader(NewInstance, Record.SavedProperties, true, true);
+				FFindInstancedReferenceSubobjectHelper::Duplicate(Record.OldInstance, NewInstance, ReferenceReplacementMap, EditInlineSubobjectsOfComponents);
 			}
 			else
 			{
@@ -10287,38 +10323,11 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 				}
 			}
 		}
+		ComponentsOnNewObject.Append(EditInlineSubobjectsOfComponents);
 	}
 
-	if (OldObject->GetClass()->HasAnyClassFlags(CLASS_HasInstancedReference) &&
-		NewObject->GetClass()->HasAnyClassFlags(CLASS_HasInstancedReference))
-	{
-		TSet<UObject*> OldEditInlineObjects;
-		FFindInstancedReferenceSubobjectHelper::Get(OldObject->GetClass(), reinterpret_cast<uint8*>(OldObject), OldEditInlineObjects);
-		if (OldEditInlineObjects.Num())
-		{
-			TSet<UObject*> NewEditInlineObjects;
-			FFindInstancedReferenceSubobjectHelper::Get(NewObject->GetClass(), reinterpret_cast<uint8*>(NewObject), NewEditInlineObjects);
-			for (auto Obj : NewEditInlineObjects)
-			{
-				const bool bProperOuter = (Obj->GetOuter() == OldObject);
-				const bool bEditInlineNew = Obj->GetClass()->HasAnyClassFlags(CLASS_EditInlineNew | CLASS_DefaultToInstanced);
-				if (bProperOuter && bEditInlineNew)
-				{
-					const bool bKeptByOld = OldEditInlineObjects.Contains(Obj);
-					const bool bNotHandledYet = !ReferenceReplacementMap.Contains(Obj);
-					if (bKeptByOld && bNotHandledYet)
-					{
-						UObject* NewEditInlineSubobject = StaticDuplicateObject(Obj, NewObject, NULL);
-						ReferenceReplacementMap.Add(Obj, NewEditInlineSubobject);
+	FFindInstancedReferenceSubobjectHelper::Duplicate(OldObject, NewObject, ReferenceReplacementMap, ComponentsOnNewObject);
 
-						// We also need to make sure to fixup any properties here
-						ComponentsOnNewObject.Add(NewEditInlineSubobject);
-					}
-				}
-			}
-		}
-	}
-	
 	// Replace anything with an outer of the old object with NULL, unless it already has a replacement
 	TArray<UObject*> ObjectsInOuter;
 	GetObjectsWithOuter(OldObject, ObjectsInOuter, true);

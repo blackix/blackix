@@ -1864,7 +1864,8 @@ void FBlueprintGraphArgumentLayout::GenerateHeaderRowContent( FDetailWidgetRow& 
 				.Schema(K2Schema)
 				.bAllowExec(TargetNode->CanModifyExecutionWires())
 				.bAllowWildcard(ShouldAllowWildcard(TargetNode))
-				.IsEnabled(!ShouldPinBeReadOnly())
+				.bAllowArrays(!ShouldPinBeReadOnly())
+				.IsEnabled(!ShouldPinBeReadOnly(true))
 				.Font( IDetailLayoutBuilder::GetDetailFont() )
 		]
 		+SHorizontalBox::Slot()
@@ -2003,7 +2004,7 @@ FReply FBlueprintGraphArgumentLayout::OnArgMoveDown()
 	return FReply::Handled();
 }
 
-bool FBlueprintGraphArgumentLayout::ShouldPinBeReadOnly() const
+bool FBlueprintGraphArgumentLayout::ShouldPinBeReadOnly(bool bIsEditingPinType/* = false*/) const
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 
@@ -2017,19 +2018,19 @@ bool FBlueprintGraphArgumentLayout::ShouldPinBeReadOnly() const
 		else
 		{
 			// Check if pin editing is read only
-			return IsPinEditingReadOnly();
+			return IsPinEditingReadOnly(bIsEditingPinType);
 		}
 	}
 	
 	return false;
 }
 
-bool FBlueprintGraphArgumentLayout::IsPinEditingReadOnly() const
+bool FBlueprintGraphArgumentLayout::IsPinEditingReadOnly(bool bIsEditingPinType/* = false*/) const
 {
 	if(UEdGraph* NodeGraph = TargetNode->GetGraph())
 	{
-		// Math expression should not be modified directly, do not let the user tweak the parameters
-		if ( Cast<UK2Node_MathExpression>(NodeGraph->GetOuter()) )
+		// Math expression should not be modified directly (except for the pin type), do not let the user tweak the parameters
+		if (!bIsEditingPinType && Cast<UK2Node_MathExpression>(NodeGraph->GetOuter()) )
 		{
 			return true;
 		}
@@ -2119,7 +2120,7 @@ void FBlueprintGraphArgumentLayout::PinInfoChanged(const FEdGraphPinType& PinTyp
 		if (GraphActionDetailsPtr.IsValid())
 		{
 			GraphActionDetailsPtr.Pin()->GetMyBlueprint().Pin()->GetLastFunctionPinTypeUsed() = PinType;
-			if( !ShouldPinBeReadOnly() )
+			if( !ShouldPinBeReadOnly(true) )
 			{
 				GraphActionDetailsPtr.Pin()->OnParamsChanged(TargetNode);
 			}
@@ -2129,7 +2130,7 @@ void FBlueprintGraphArgumentLayout::PinInfoChanged(const FEdGraphPinType& PinTyp
 
 void FBlueprintGraphArgumentLayout::OnPrePinInfoChange(const FEdGraphPinType& PinType)
 {
-	if( !ShouldPinBeReadOnly() && TargetNode )
+	if( !ShouldPinBeReadOnly(true) && TargetNode )
 	{
 		TargetNode->Modify();
 	}
@@ -4226,7 +4227,7 @@ void FBlueprintGlobalOptionsDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		for (TFieldIterator<UProperty> PropertyIt(Blueprint->GetClass(), EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 		{
 			UProperty* Property = *PropertyIt;
-			if(FObjectEditorUtils::GetCategory(Property) != TEXT("BlueprintOption"))
+			if(FObjectEditorUtils::GetCategory(Property) != TEXT("BlueprintOptions"))
 			{
 				DetailLayout.HideProperty(DetailLayout.GetProperty(Property->GetFName()));
 			}
@@ -4327,6 +4328,13 @@ void FBlueprintComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLa
 	{
 		IDetailCategoryBuilder& VariableCategory = DetailLayout.EditCategory("Variable", LOCTEXT("VariableDetailsCategory", "Variable"), ECategoryPriority::Variable);
 
+		VariableNameEditableTextBox = SNew(SEditableTextBox)
+			.Text(this, &FBlueprintComponentDetails::OnGetVariableText)
+			.OnTextChanged(this, &FBlueprintComponentDetails::OnVariableTextChanged)
+			.OnTextCommitted(this, &FBlueprintComponentDetails::OnVariableTextCommitted)
+			.IsReadOnly(!CachedNodePtr->CanRename())
+			.Font(IDetailLayoutBuilder::GetDetailFont());
+
 		VariableCategory.AddCustomRow(LOCTEXT("BlueprintComponentDetails_VariableNameLabel", "Variable Name"))
 		.NameContent()
 		[
@@ -4336,12 +4344,7 @@ void FBlueprintComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLa
 		]
 		.ValueContent()
 		[
-			SAssignNew(VariableNameEditableTextBox, SEditableTextBox)
-			.Text(this, &FBlueprintComponentDetails::OnGetVariableText)
-			.OnTextChanged( this, &FBlueprintComponentDetails::OnVariableTextChanged)
-			.OnTextCommitted( this, &FBlueprintComponentDetails::OnVariableTextCommitted)
-			.IsReadOnly(CachedNodePtr->IsNative() || CachedNodePtr->IsInherited() || CachedNodePtr->IsDefaultSceneRoot())
-			.Font(IDetailLayoutBuilder::GetDetailFont())
+			VariableNameEditableTextBox.ToSharedRef()
 		];
 
 		VariableCategory.AddCustomRow(LOCTEXT("BlueprintComponentDetails_VariableTooltipLabel", "Tooltip"))
@@ -4491,6 +4494,10 @@ void FBlueprintComponentDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLa
 				]
 			];
 	}
+
+	// Don't show tick properties for components in the blueprint details
+	TSharedPtr<IPropertyHandle> PrimaryTickProperty = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UActorComponent, PrimaryComponentTick));
+	PrimaryTickProperty->MarkHiddenByCustomization();
 }
 
 UClass* FBlueprintComponentDetails::FindCommonBaseClassFromSelected() const
@@ -4625,7 +4632,7 @@ bool FBlueprintComponentDetails::OnVariableCategoryChangeEnabled() const
 {
 	check(CachedNodePtr.IsValid());
 
-	return !CachedNodePtr->IsNative() && !CachedNodePtr->IsInherited();
+	return !CachedNodePtr->CanRename();
 }
 
 FText FBlueprintComponentDetails::OnGetVariableCategoryText() const
@@ -4731,41 +4738,6 @@ void FBlueprintComponentDetails::PopulateVariableCategories()
 			}
 		}
 	}
-}
-
-bool FBlueprintComponentDetails::IsNodeAttachable() const
-{
-	check(CachedNodePtr.IsValid());
-
-	// See if node is an attachable type
-	bool bCanAttach = false;	
-	if (!CachedNodePtr->IsRoot())
-	{
-		// check component is the correct type
-		if (USceneComponent* SceneComponent = Cast<USceneComponent>(CachedNodePtr->GetComponentTemplate()))
-		{
-			check(BlueprintEditorPtr.IsValid());
-			TSharedPtr<SSCSEditor> Editor = BlueprintEditorPtr.Pin()->GetSCSEditor();
-			check( Editor.IsValid() );
-
-			USCS_Node* SCS_Node = CachedNodePtr->GetSCSNode();
-			if (SCS_Node != NULL && Editor->IsNodeInSimpleConstructionScript(SCS_Node))
-			{
-				FSCSEditorTreeNodePtrType ParentFNode = CachedNodePtr->GetParent();
-				
-				// check parent is of the right type
-				if (ParentFNode.IsValid())
-				{
-					if (USceneComponent* ParentComponent = Cast<USceneComponent>(ParentFNode->GetComponentTemplate()))
-					{
-						bCanAttach = ParentComponent->HasAnySockets();
-					}
-				}
-			}
-		}
-	}
-	
-	return bCanAttach;
 }
 
 FText FBlueprintComponentDetails::GetSocketName() const

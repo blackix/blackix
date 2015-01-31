@@ -1279,18 +1279,60 @@ private:
 void UEditorEngine::HandleStageStarted(const FString& InStage, TWeakPtr<SNotificationItem> NotificationItemPtr)
 {
 	FFormatNamedArguments Arguments;
-	Arguments.Add(TEXT("StageName"), FText::FromString(InStage));
-	Arguments.Add(TEXT("DeviceName"), FText::FromString(PlayUsingLauncherDeviceName));
-
 	FText NotificationText;
-	if(PlayUsingLauncherDeviceName.Len() == 0)
+	if (InStage.Contains(TEXT("Cooking")) || InStage.Contains(TEXT("Cook Task")))
 	{
-		NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotificationNoDevice", "{StageName} for launch..."), Arguments);
+		FString PlatformName = PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@")));
+		if (PlatformName.Contains(TEXT("NoEditor")))
+		{
+			PlatformName = PlatformName.Left(PlatformName.Find(TEXT("NoEditor")));
+		}
+		Arguments.Add(TEXT("PlatformName"), FText::FromString(PlatformName));
+		NotificationText = FText::Format(LOCTEXT("LauncherTaskProcessingNotification", "Processing Assets for {PlatformName}..."), Arguments);
 	}
-	else
+	else if (InStage.Contains(TEXT("Build Task")))
 	{
-		NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotification", "{StageName} for launch on {DeviceName}..."), Arguments);
+		FString PlatformName = PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@")));
+		if (PlatformName.Contains(TEXT("NoEditor")))
+		{
+			PlatformName = PlatformName.Left(PlatformName.Find(TEXT("NoEditor")));
+		}
+		Arguments.Add(TEXT("PlatformName"), FText::FromString(PlatformName));
+		if (FRocketSupport::IsRocket() || !bPlayUsingLauncherHasCode || !FSourceCodeNavigation::IsCompilerAvailable())
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskValidateNotification", "Validating Executable for {PlatformName}..."), Arguments);
+		}
+		else
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskBuildNotification", "Building Executable for {PlatformName}..."), Arguments);
+		}
 	}
+	else if (InStage.Contains(TEXT("Deploy Task")))
+	{
+		Arguments.Add(TEXT("DeviceName"), FText::FromString(PlayUsingLauncherDeviceName));
+		if(PlayUsingLauncherDeviceName.Len() == 0)
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotificationNoDevice", "Deploying Executable and Assets..."), Arguments);
+		}
+		else
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotification", "Deploying Executable and Assets to {DeviceName}..."), Arguments);
+		}
+	}
+	else if (InStage.Contains(TEXT("Run Task")))
+	{
+		Arguments.Add(TEXT("GameName"), FText::FromString(FApp::GetGameName()));
+		Arguments.Add(TEXT("DeviceName"), FText::FromString(PlayUsingLauncherDeviceName));
+		if(PlayUsingLauncherDeviceName.Len() == 0)
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotificationNoDevice", "Running {GameName}..."), Arguments);
+		}
+		else
+		{
+			NotificationText = FText::Format(LOCTEXT("LauncherTaskStageNotification", "Running {GameName} on {DeviceName}..."), Arguments);
+		}
+	}
+
 	NotificationItemPtr.Pin()->SetText(NotificationText);
 }
 
@@ -1404,16 +1446,42 @@ void UEditorEngine::PlayUsingLauncher()
 
 		// does the project have any code?
 		FGameProjectGenerationModule& GameProjectModule = FModuleManager::LoadModuleChecked<FGameProjectGenerationModule>(TEXT("GameProjectGeneration"));
-		bool bHasCode = GameProjectModule.Get().ProjectHasCodeFiles();
+		bPlayUsingLauncherHasCode = GameProjectModule.Get().ProjectHasCodeFiles();
 
 		// Setup launch profile, keep the setting here to a minimum.
 		ILauncherProfileRef LauncherProfile = LauncherServicesModule.CreateProfile(TEXT("Play On Device"));
-		LauncherProfile->SetBuildGame(bHasCode && FSourceCodeNavigation::IsCompilerAvailable());
-		LauncherProfile->SetCookMode(CanCookByTheBookInEditor() ? ELauncherProfileCookModes::ByTheBookInEditor : ELauncherProfileCookModes::ByTheBook);
-		LauncherProfile->SetIncrementalCooking(true);
+		LauncherProfile->SetBuildGame(bPlayUsingLauncherHasCode && FSourceCodeNavigation::IsCompilerAvailable());
+
+		// select the quickest cook mode based on which in editor cook mode is enabled
+		bool bIncrimentalCooking = true;
 		LauncherProfile->AddCookedPlatform(PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@"))));
+		ELauncherProfileCookModes::Type CurrentLauncherCookMode = ELauncherProfileCookModes::ByTheBook;
+		bool bCanCookByTheBookInEditor = true;
+		bool bCanCookOnTheFlyInEditor = true;
+		for ( const auto &PlatformName : LauncherProfile->GetCookedPlatforms() )
+		{
+			if ( CanCookByTheBookInEditor(PlatformName) == false )
+			{
+				bCanCookByTheBookInEditor = false;
+			}
+			if ( CanCookOnTheFlyInEditor(PlatformName)== false )
+			{
+				bCanCookOnTheFlyInEditor = false;
+			}
+		}
+		if ( bCanCookByTheBookInEditor )
+		{
+			CurrentLauncherCookMode = ELauncherProfileCookModes::ByTheBookInEditor;
+		}
+		if ( bCanCookOnTheFlyInEditor )
+		{
+			CurrentLauncherCookMode = ELauncherProfileCookModes::OnTheFlyInEditor;
+			bIncrimentalCooking = false;
+		}
+		LauncherProfile->SetCookMode( CurrentLauncherCookMode );
+		LauncherProfile->SetIncrementalCooking(bIncrimentalCooking);
 		LauncherProfile->SetDeployedDeviceGroup(DeviceGroup);
-		LauncherProfile->SetIncrementalDeploying(true);
+		LauncherProfile->SetIncrementalDeploying(bIncrimentalCooking);
 		LauncherProfile->SetEditorExe(FUnrealEdMisc::Get().GetExecutableForCommandlets());
 
 		const FString DummyDeviceName(FString::Printf(TEXT("All_iOS_On_%s"), FPlatformProcess::ComputerName()));
@@ -1422,14 +1490,31 @@ void UEditorEngine::PlayUsingLauncher()
 			LauncherProfile->SetLaunchMode(ELauncherProfileLaunchModes::DefaultRole);
 		}
 
+		if ( LauncherProfile->GetCookMode() == ELauncherProfileCookModes::OnTheFlyInEditor || LauncherProfile->GetCookMode() == ELauncherProfileCookModes::OnTheFly )
+		{
+			LauncherProfile->SetDeploymentMode(ELauncherProfileDeploymentModes::FileServer);
+		}
+
 		TArray<FString> MapNames;
 		FWorldContext & EditorContext = GetEditorWorldContext();
-		if (EditorContext.World()->WorldComposition || (LauncherProfile->GetCookMode() == ELauncherProfileCookModes::ByTheBookInEditor) )
+		if (EditorContext.World()->WorldComposition || (LauncherProfile->GetCookMode() == ELauncherProfileCookModes::ByTheBookInEditor) || (LauncherProfile->GetCookMode() == ELauncherProfileCookModes::OnTheFlyInEditor) )
 		{
 			// Open world composition from original folder
 			// Or if using by book in editor don't need to resave the package just cook it by the book 
 			FString MapName = EditorContext.World()->GetOutermost()->GetName();
 			MapNames.Add(MapName);
+
+
+			// Daniel: Only reason we actually need to save any packages is because if a new package is created it won't be on disk yet and CookOnTheFly will early out if the package doesn't exist (even though it could be in memory and not require loading at all)
+			//			future me can optimize this by either adding extra allowances to CookOnTheFlyServer code or only saving packages which doesn't exist if it becomes a problem
+			// if this returns false, it means we should stop what we're doing and return to the editor
+			bool bPromptUserToSave = true;
+			bool bSaveMapPackages = false;
+			bool bSaveContentPackages = true;
+			if (!FEditorFileUtils::SaveDirtyPackages(bPromptUserToSave, bSaveMapPackages, bSaveContentPackages))
+			{
+				return;
+			}
 		}
 		else
 		{
@@ -1439,7 +1524,7 @@ void UEditorEngine::PlayUsingLauncher()
 			{
 				GEditor->CancelRequestPlaySession();
 				return;
-		}
+			}
 		}
 	
 		FString InitialMapName;
@@ -1458,8 +1543,6 @@ void UEditorEngine::PlayUsingLauncher()
 
 		if ( LauncherProfile->GetCookMode() == ELauncherProfileCookModes::ByTheBookInEditor )
 		{
-			// check( GEditor != NULL );
-
 			TArray<ITargetPlatform*> TargetPlatforms;
 			for ( const auto &PlatformName : LauncherProfile->GetCookedPlatforms() )
 			{
@@ -1468,8 +1551,6 @@ void UEditorEngine::PlayUsingLauncher()
 				// crashes if two requests are inflight but we can support having multiple platforms cooking at once
 				TargetPlatforms.Add( TargetPlatform ); 
 			}
-
-
 			const TArray<FString> &CookedMaps = LauncherProfile->GetCookedMaps();
 
 			// const TArray<FString>& CookedMaps = ChainState.Profile->GetCookedMaps();
@@ -1493,12 +1574,6 @@ void UEditorEngine::PlayUsingLauncher()
 
 		// create notification item
 		FText LaunchingText = LOCTEXT("LauncherTaskInProgressNotificationNoDevice", "Launching...");
-		if(PlayUsingLauncherDeviceName.Len() > 0)
-		{
-			FFormatNamedArguments Arguments;
-			Arguments.Add(TEXT("Device"), FText::FromString(PlayUsingLauncherDeviceName));
-			LaunchingText = FText::Format( LOCTEXT("LauncherTaskInProgressNotification", "Launching on {Device}..."), Arguments);
-		}
 		FNotificationInfo Info(LaunchingText);
 
 		Info.Image = FEditorStyle::GetBrush(TEXT("MainFrame.CookContent"));
@@ -1523,7 +1598,7 @@ void UEditorEngine::PlayUsingLauncher()
 
 		// analytics for launch on
 		int32 ErrorCode = 0;
-		FEditorAnalytics::ReportEvent(TEXT( "Editor.LaunchOn.Started" ), PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@"))), bHasCode);
+		FEditorAnalytics::ReportEvent(TEXT( "Editor.LaunchOn.Started" ), PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@"))), bPlayUsingLauncherHasCode);
 
 		NotificationItem->SetCompletionState(SNotificationItem::CS_Pending);
 		
@@ -1535,9 +1610,9 @@ void UEditorEngine::PlayUsingLauncher()
 			GEditor->PlayEditorSound(TEXT("/Engine/EditorSounds/Notifications/CompileStart_Cue.CompileStart_Cue"));
 			GEditor->LauncherWorker->OnOutputReceived().AddStatic(HandleOutputReceived);
 			GEditor->LauncherWorker->OnStageStarted().AddUObject(this, &UEditorEngine::HandleStageStarted, NotificationItemPtr);
-			GEditor->LauncherWorker->OnStageCompleted().AddUObject(this, &UEditorEngine::HandleStageCompleted, bHasCode, NotificationItemPtr);
-			GEditor->LauncherWorker->OnCompleted().AddUObject(this, &UEditorEngine::HandleLaunchCompleted, bHasCode, NotificationItemPtr, MessageLog);
-			GEditor->LauncherWorker->OnCanceled().AddUObject(this, &UEditorEngine::HandleLaunchCanceled, bHasCode, NotificationItemPtr);
+			GEditor->LauncherWorker->OnStageCompleted().AddUObject(this, &UEditorEngine::HandleStageCompleted, bPlayUsingLauncherHasCode, NotificationItemPtr);
+			GEditor->LauncherWorker->OnCompleted().AddUObject(this, &UEditorEngine::HandleLaunchCompleted, bPlayUsingLauncherHasCode, NotificationItemPtr, MessageLog);
+			GEditor->LauncherWorker->OnCanceled().AddUObject(this, &UEditorEngine::HandleLaunchCanceled, bPlayUsingLauncherHasCode, NotificationItemPtr);
 		}
 		else
 		{
@@ -1552,7 +1627,7 @@ void UEditorEngine::PlayUsingLauncher()
 			// analytics for launch on
 			TArray<FAnalyticsEventAttribute> ParamArray;
 			ParamArray.Add(FAnalyticsEventAttribute(TEXT("Time"), 0.0));
-			FEditorAnalytics::ReportEvent(TEXT( "Editor.LaunchOn.Failed" ), PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@"))), bHasCode, EAnalyticsErrorCodes::LauncherFailed, ParamArray );
+			FEditorAnalytics::ReportEvent(TEXT( "Editor.LaunchOn.Failed" ), PlayUsingLauncherDeviceId.Left(PlayUsingLauncherDeviceId.Find(TEXT("@"))), bPlayUsingLauncherHasCode, EAnalyticsErrorCodes::LauncherFailed, ParamArray );
 		}
 	}
 }
@@ -2927,7 +3002,42 @@ void UEditorEngine::ToggleBetweenPIEandSIE( bool bNewSession )
 					AuthGameMode->RemovePlayerControllerFromPlayerCount(PC);
 					PC->PlayerState->bOnlySpectator = false;
 					AuthGameMode->NumPlayers++;
-					AuthGameMode->RestartPlayer(PC);
+
+					bool bNeedsRestart = true;
+					if (PC->GetPawn() == NULL)
+					{
+						// Use the "auto-possess" pawn in the world, if there is one.
+						for (FConstPawnIterator Iterator = World->GetPawnIterator(); Iterator; ++Iterator)
+						{
+							APawn* Pawn = *Iterator;
+							if (Pawn && Pawn->AutoPossessPlayer == EAutoReceiveInput::Player0)
+							{
+								if (Pawn->Controller == nullptr)
+								{
+									PC->Possess(Pawn);
+									bNeedsRestart = false;
+								}
+								break;
+							}
+						}
+					}
+
+					if (bNeedsRestart)
+					{
+						AuthGameMode->RestartPlayer(PC);
+
+						if (PC->GetPawn())
+						{
+							// If there was no player start, then try to place the pawn where the camera was.						
+							if (PC->StartSpot == nullptr || Cast<AWorldSettings>(PC->StartSpot.Get()))
+							{
+								const FVector Location = EditorViewportClient.GetViewLocation();
+								const FRotator Rotation = EditorViewportClient.GetViewRotation();
+								PC->SetControlRotation(Rotation);
+								PC->GetPawn()->TeleportTo(Location, Rotation);
+							}
+						}
+					}
 				}
 
 				OnSwitchWorldsForPIE(false);

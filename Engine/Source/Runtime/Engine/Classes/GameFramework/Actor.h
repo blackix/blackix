@@ -71,10 +71,20 @@ class ENGINE_API AActor : public UObject
 public:
 
 	/**
-	 * Default UObject constructor.
+	 * Default constructor for AActor
+	 */
+	AActor();
+
+	/**
+	 * Constructor for AActor that takes an ObjectInitializer
 	 */
 	AActor(const FObjectInitializer& ObjectInitializer);
 
+private:
+	/** Called from the constructor to initialize the class to its default settings */
+	void InitializeDefaults();
+
+public:
 	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/**
@@ -475,7 +485,7 @@ public:
 	uint32 bIgnoresOriginShifting:1;
 	
 	/** Array of tags that can be used for grouping and categorizing. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Tags)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category=Actor)
 	TArray<FName> Tags;
 
 	/** Bitflag to represent which views this actor is hidden in, via per-view layer visibility. */
@@ -493,11 +503,17 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Game|Damage")
 	FTakePointDamageSignature OnTakePointDamage;
 	
-	/** Called when another actor begins to overlap this actor. */
+	/** 
+	 *	Called when another actor begins to overlap this actor. 
+	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FActorBeginOverlapSignature OnActorBeginOverlap;
 
-	/** Called when another actor ends overlap with this actor. */
+	/** 
+	 *	Called when another actor steps overlapping this actor. 
+	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FActorEndOverlapSignature OnActorEndOverlap;
 
@@ -533,7 +549,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Input|Touch Input")
 	FActorEndTouchOverSignature OnInputTouchLeave;
 
-	/** Called when this actor is involved in a blocking collision. */
+	/** 
+	 *	Called when this Actor hits (or is hit by) something solid. 
+	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled.
+	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FActorHitSignature OnActorHit;
 
@@ -687,47 +706,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Utilities|Orientation")
 	FVector GetActorScale3D() const;
 
-	/** Deprecated in favor of const/pure versions below. */
-	DEPRECATED(4.8, "AActor::GetDistanceTo will be removed. Use AActor::GetDistanceToActor instead.")
-	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetDistanceToActor instead"), Category = "Utilities|Transformation")
-	float GetDistanceTo(AActor* OtherActor);
-	
-	DEPRECATED(4.8, "AActor::GetHorizontalDistanceTo will be removed. Use AActor::GetHorizontalDistanceToActor instead.")
-	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetHorizontalDistanceToActor instead"), Category = "Utilities|Transformation")
-	float GetHorizontalDistanceTo(AActor* OtherActor);
-	
-	DEPRECATED(4.8, "AActor::GetVerticalDistanceTo will be removed. Use AActor::GetVerticalDistanceToActor instead.")
-	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetVerticalDistanceToActor instead"), Category = "Utilities|Transformation")
-	float GetVerticalDistanceTo(AActor* OtherActor);
-	
-	DEPRECATED(4.8, "AActor::GetDotProductTo will be removed. Use AActor::GetDotProductToActor instead.")
-	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetDotProductToActor instead"), Category = "Utilities|Transformation")
-	float GetDotProductTo(AActor* OtherActor);
-	
-	DEPRECATED(4.8, "AActor::GetHorizontalDotProductTo will be removed. Use AActor::GetHorizontalDotProductToActor instead.")
-	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage = "Use the pure node GetHorizontalDotProductToActor instead"), Category = "Utilities|Transformation")
-	float GetHorizontalDotProductTo(AActor* OtherActor);
-
 	/** Returns the distance from this Actor to OtherActor. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetDistanceToActor(AActor* OtherActor) const;
+	float GetDistanceTo(const AActor* OtherActor) const;
 
 	/** Returns the distance from this Actor to OtherActor, ignoring Z. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetHorizontalDistanceToActor(AActor* OtherActor) const;
+	float GetHorizontalDistanceTo(const AActor* OtherActor) const;
 
 	/** Returns the distance from this Actor to OtherActor, ignoring XY. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetVerticalDistanceToActor(AActor* OtherActor) const;
+	float GetVerticalDistanceTo(const AActor* OtherActor) const;
 
 	/** Returns the dot product from this Actor to OtherActor. Returns -2.0 on failure. Returns 0.0 for coincidental actors. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetDotProductToActor(AActor* OtherActor) const;
+	float GetDotProductTo(const AActor* OtherActor) const;
 
 	/** Returns the dot product from this Actor to OtherActor, ignoring Z. Returns -2.0 on failure. Returns 0.0 for coincidental actors. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetHorizontalDotProductToActor(AActor* OtherActor) const;
-
+	float GetHorizontalDotProductTo(const AActor* OtherActor) const;
 
 	/**
 	 * Adds a delta to the location of this actor in world space.
@@ -1018,11 +1015,17 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "Tick"))
 	virtual void ReceiveTick(float DeltaSeconds);
 
-	/** Event when this actor overlaps another actor. */
+	/** 
+	 *	Event when this actor overlaps another actor. 
+	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "ActorBeginOverlap"), Category="Collision")
 	virtual void ReceiveActorBeginOverlap(AActor* OtherActor);
 
-	/** Event when an actor no longer overlaps another actor, and they have separated. */
+	/** 
+	 *	Event when an actor no longer overlaps another actor, and they have separated. 
+	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
+	 */
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "ActorEndOverlap"), Category="Collision")
 	virtual void ReceiveActorEndOverlap(AActor* OtherActor);
 
@@ -1074,7 +1077,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Collision", meta=(UnsafeDuringActorConstruction="true"))
 	void GetOverlappingComponents(TArray<UPrimitiveComponent*>& OverlappingComponents) const;
 
-	/** Event when this actor bumps into a blocking object, or blocks another actor that bumps into it. */
+	/** 
+	 *	Event when this actor bumps into a blocking object, or blocks another actor that bumps into it. 
+	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled.
+	 */
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "Hit"), Category="Collision")
 	virtual void ReceiveHit(class UPrimitiveComponent* MyComp, AActor* Other, class UPrimitiveComponent* OtherComp, bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit);
 
@@ -1212,7 +1218,7 @@ public:
 	 * this is a template for no other reason than to delay compilation until USceneComponent is defined
 	 */ 
 	template<class T>
-	static FORCEINLINE FVector GetActorLocation(T* RootComponent)
+	static FORCEINLINE FVector GetActorLocation(const T* RootComponent)
 	{
 		FVector Result(0.f);
 		if( RootComponent != NULL )
@@ -1614,7 +1620,12 @@ public:
 	/** accessor for the value of bCanEverTick */
 	FORCEINLINE bool CanEverTick() const { return PrimaryActorTick.bCanEverTick; }
 
-	/** Called from main actor tick function to implement custom code at the appropriate point in the tick */
+	/** 
+	 *	Function called every frame on this Actor. Override this function to implement custom logic to be executed every frame.
+	 *	Note that Tick is disabled by default, and you will need to check PrimaryActorTick.bCanEverTick is set to true to enable it.
+	 *
+	 *	@param	DeltaSeconds	Game time elapsed since last call to Tick
+	 */
 	virtual void Tick( float DeltaSeconds );
 
 	/** If true, actor is ticked even if TickType==LEVELTICK_ViewportsOnly	 */
@@ -2127,7 +2138,7 @@ public:
 
 	/* Gets all the components that inherit from the given class.
 		Currently returns an array of UActorComponent which must be cast to the correct type. */
-	UFUNCTION(BlueprintCallable, Category="Actor", meta=(ComponentClass="ActorComponent"))
+	UFUNCTION(BlueprintCallable, Category = "Actor", meta = (ComponentClass = "ActorComponent"), meta=(DeterminesOutputType="ComponentClass"))
 	TArray<UActorComponent*> GetComponentsByClass(TSubclassOf<UActorComponent> ComponentClass) const;
 
 	/** Templatized version for syntactic nicety. */
@@ -2240,9 +2251,24 @@ public:
 	UPROPERTY(TextExportTransient, NonTransactional)
 	TArray<UActorComponent*> BlueprintCreatedComponents;
 
+private:
 	/** Array of ActorComponents that have been added by the user on a per-instance basis. */
-	UPROPERTY()
+	UPROPERTY(Instanced)
 	TArray<UActorComponent*> InstanceComponents;
+
+public:
+
+	/** Adds a component to the instance components array */
+	void AddInstanceComponent(UActorComponent* Component);
+
+	/** Removes a component from the instance components array */
+	void RemoveInstanceComponent(UActorComponent* Component);
+
+	/** Clears the instance components array */
+	void ClearInstanceComponents(bool bDestroyComponents);
+
+	/** Returns the instance components array */
+	const TArray<UActorComponent*>& GetInstanceComponents() const;
 
 public:
 	//=============================================================================
@@ -2346,11 +2372,11 @@ FORCEINLINE FVector AActor::GetSimpleCollisionCylinderExtent() const
 	bool SetActorLocationAndRotation(FVector NewLocation, FRotator NewRotation, bool bSweep=false, FHitResult* OutSweepHitResult=nullptr) { return Super::SetActorLocationAndRotation(NewLocation, NewRotation, bSweep, OutSweepHitResult); } \
 	virtual bool TeleportTo( const FVector& DestLocation, const FRotator& DestRotation, bool bIsATest, bool bNoCheck ) override { return Super::TeleportTo(DestLocation, DestRotation, bIsATest, bNoCheck); } \
 	virtual FVector GetVelocity() const override { return Super::GetVelocity(); } \
-	float GetHorizontalDistanceToActor(AActor* OtherActor)  const { return Super::GetHorizontalDistanceToActor(OtherActor); } \
-	float GetVerticalDistanceToActor(AActor* OtherActor)  const { return Super::GetVerticalDistanceToActor(OtherActor); } \
-	float GetDotProductToActor(AActor* OtherActor) const { return Super::GetDotProductToActor(OtherActor); } \
-	float GetHorizontalDotProductToActor(AActor* OtherActor) const { return Super::GetHorizontalDotProductToActor(OtherActor); } \
-	float GetDistanceToActor(AActor* OtherActor) const { return Super::GetDistanceToActor(OtherActor); }
+	float GetHorizontalDistanceTo(AActor* OtherActor)  { return Super::GetHorizontalDistanceTo(OtherActor); } \
+	float GetVerticalDistanceTo(AActor* OtherActor)  { return Super::GetVerticalDistanceTo(OtherActor); } \
+	float GetDotProductTo(AActor* OtherActor) { return Super::GetDotProductTo(OtherActor); } \
+	float GetHorizontalDotProductTo(AActor* OtherActor) { return Super::GetHorizontalDotProductTo(OtherActor); } \
+	float GetDistanceTo(AActor* OtherActor) { return Super::GetDistanceTo(OtherActor); }
 
 
 

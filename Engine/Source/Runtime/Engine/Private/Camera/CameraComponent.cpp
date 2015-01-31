@@ -41,6 +41,22 @@ UCameraComponent::UCameraComponent(const FObjectInitializer& ObjectInitializer)
 	SetDeprecatedControllerViewRotation(*this, bUsePawnControlRotation);
 }
 
+#if WITH_EDITORONLY_DATA
+void UCameraComponent::OnComponentDestroyed()
+{
+	Super::OnComponentDestroyed();
+
+	if (ProxyMeshComponent)
+	{
+		ProxyMeshComponent->DestroyComponent();
+	}
+	if (DrawFrustum)
+	{
+		DrawFrustum->DestroyComponent();
+	}
+}
+#endif
+
 void UCameraComponent::OnRegister()
 {
 #if WITH_EDITORONLY_DATA
@@ -53,7 +69,7 @@ void UCameraComponent::OnRegister()
 		ProxyMeshComponent->bHiddenInGame = true;
 		ProxyMeshComponent->CastShadow = false;
 		ProxyMeshComponent->PostPhysicsComponentTick.bCanEverTick = false;
-		ProxyMeshComponent->bCreatedByConstructionScript = bCreatedByConstructionScript;
+		ProxyMeshComponent->CreationMethod = CreationMethod;
 		ProxyMeshComponent->RegisterComponentWithWorld(GetWorld());
 	}
 
@@ -63,7 +79,7 @@ void UCameraComponent::OnRegister()
 		DrawFrustum->AttachTo(this);
 		DrawFrustum->AlwaysLoadOnClient = false;
 		DrawFrustum->AlwaysLoadOnServer = false;
-		DrawFrustum->bCreatedByConstructionScript = bCreatedByConstructionScript;
+		DrawFrustum->CreationMethod = CreationMethod;
 		DrawFrustum->RegisterComponentWithWorld(GetWorld());
 	}
 

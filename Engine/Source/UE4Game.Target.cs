@@ -35,11 +35,6 @@ public class UE4GameTarget : TargetRules
 		{
 			OutExtraModuleNames.Add("GameMenuBuilder");
 
-			if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Mac)
-			{
-				OutExtraModuleNames.Add("WebBrowser");
-			}
-
 			if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
 			{
 				OutExtraModuleNames.Add("OnlineSubsystemNull");
@@ -142,4 +137,8 @@ public class UE4GameTarget : TargetRules
     {
         return new List<UnrealTargetConfiguration> { UnrealTargetConfiguration.Development, UnrealTargetConfiguration.Shipping, UnrealTargetConfiguration.Test };
     }
+	public override bool GUBP_BuildWindowsXPMonolithics()
+	{
+		return true;
+	}
 }

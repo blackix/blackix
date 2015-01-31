@@ -198,6 +198,77 @@ private:
 	TSet<FString> ActorLabels;
 };
 
+/** 
+ * Represents an actor or a component for use in editor functionality such as snapping which can operate on either type
+ */
+struct FActorOrComponent
+{
+	AActor* Actor;
+	USceneComponent* Component;
+
+	FActorOrComponent()
+		: Actor( nullptr )
+		, Component( nullptr )
+	{}
+
+	FActorOrComponent( AActor* InActor )
+		: Actor( InActor )
+		, Component( nullptr )
+	{}
+
+	FActorOrComponent( USceneComponent* InComponent )
+		: Actor( nullptr )
+		, Component( InComponent )
+	{}
+
+	UWorld* GetWorld() const
+	{
+		return Actor ? Actor->GetWorld() : Component->GetWorld();
+	}
+
+	bool operator==( const FActorOrComponent& Other ) const
+	{
+		return Actor == Other.Actor && Component == Other.Component;
+	}
+
+	const FBoxSphereBounds& GetBounds() const
+	{
+		return Actor ? Actor->GetRootComponent()->Bounds : Component->Bounds;
+	}
+
+	FVector GetWorldLocation() const
+	{
+		return Actor ? Actor->GetActorLocation() : Component->GetComponentLocation();
+	}
+
+	void SetWorldLocation( const FVector& NewLocation )
+	{
+		if( Actor )
+		{
+			Actor->SetActorLocation( NewLocation );
+		}
+		else
+		{
+			Component->SetWorldLocation( NewLocation );
+		}
+	}
+
+	void SetWorldRotation( const FRotator& NewRotation )
+	{
+		if(Actor)
+		{
+			Actor->SetActorRotation(NewRotation);
+		}
+		else
+		{
+			Component->SetWorldRotation(NewRotation);
+		}
+	}
+
+	/** @return true if this is a valid actor or component but not both */
+	bool IsValid() const { return (Actor != nullptr) ^ (Component != nullptr);}
+};
+
 /**
  * Engine that drives the Editor.
  * Separate from UGameEngine because it may have much different functionality than desired for an instance of a game itself.
@@ -287,10 +358,6 @@ class UNREALED_API UEditorEngine : public UEngine
 
 	UPROPERTY(EditAnywhere, config, Category=Advanced)
 	uint32 GodMode:1;
-
-	/** The location to autosave to. */
-	UPROPERTY(EditAnywhere, config, Category=Advanced)
-	FString AutoSaveDir;
 
 	UPROPERTY(EditAnywhere, config, Category=Advanced)
 	uint32 InvertwidgetZAxis:1;
@@ -881,7 +948,7 @@ public:
 	 * @param InDestination		The destination actor we want to move this actor to, NULL assumes we just want to go towards the floor
 	 * @return					Whether or not the actor was moved.
 	 */
-	bool SnapActorTo( AActor* InActor, const bool InAlign, const bool InUseLineTrace, const bool InUseBounds, const bool InUsePivot, const AActor* InDestination = NULL );
+	bool SnapObjectTo( FActorOrComponent Object, const bool InAlign, const bool InUseLineTrace, const bool InUseBounds, const bool InUsePivot, FActorOrComponent InDestination = FActorOrComponent() );
 
 	/**
 	 * Snaps the view of the camera to that of the provided actor.
@@ -1481,7 +1548,12 @@ public:
 	/**
 	 * Can the editor do cook by the book in the editor process space
 	 */
-	virtual bool CanCookByTheBookInEditor() const { return false; }
+	virtual bool CanCookByTheBookInEditor(const FString& PlatformName ) const { return false; }
+
+	/**
+	 * Can the editor act as a cook on the fly server
+	 */
+	virtual bool CanCookOnTheFlyInEditor(const FString& PlatformName) const { return false; }
 
 	/**
 	 * Start cook by the book in the editor process space
@@ -2499,6 +2571,8 @@ public:
 	 void FlagModifyAllSelectedSurfacesInLevels( UWorld* InWorld );
 	 
 private:
+	/** Checks for UWorld garbage collection leaks and reports any that are found */
+	void CheckForWorldGCLeaks( UWorld* NewWorld, UPackage* WorldPackage );
 
 	/**
 	 * This destroys the given world.
@@ -2650,6 +2724,7 @@ private:
 	/** The platform to run on (as selected in dreop down) */
 	FString PlayUsingLauncherDeviceId;
 	FString PlayUsingLauncherDeviceName;
+	bool bPlayUsingLauncherHasCode;
 
 	/** List of files we are deferring adding to source control */
 	TArray<FString> DeferredFilesToAddToSourceControl;

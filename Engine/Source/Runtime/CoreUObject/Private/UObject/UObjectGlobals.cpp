@@ -1365,6 +1365,14 @@ UObject* StaticDuplicateObject(UObject const* SourceObject, UObject* DestOuter, 
 	{
 		Parameters.DestName = FName(DestName, FNAME_Add, true);
 	}
+	else if (SourceObject->GetOuter() != DestOuter)
+	{
+		// try to keep the object name consistent if possible
+		if (FindObjectFast<UObject>(DestOuter, SourceObject->GetFName()) == nullptr)
+		{
+			Parameters.DestName = SourceObject->GetFName();
+		}
+	}
 
 	if ( DestClass == NULL )
 	{
@@ -2197,9 +2205,15 @@ UObject* StaticConstructObject
 		(
 			!InTemplate || 
 			(InName != NAME_None && InTemplate == UObject::GetArchetypeFromRequiredInfo(InClass, InOuter, InName, InFlags))
-		);
-	bool bRecycledSubobject = false;
-	Result = StaticAllocateObject(InClass, InOuter, InName, InFlags, bIsNativeFromCDO, &bRecycledSubobject);
+		);	
+#if WITH_HOT_RELOAD
+	// Do not recycle subobjects when performing hot-reload as they may contain old property values.
+	const bool bCanRecycleSubobjects = bIsNativeFromCDO && !GIsHotReload;
+#else
+	const bool bCanRecycleSubobjects = bIsNativeFromCDO;
+#endif
+	bool bRecycledSubobject = false;	
+	Result = StaticAllocateObject(InClass, InOuter, InName, InFlags, bCanRecycleSubobjects, &bRecycledSubobject);
 	check(Result != NULL);
 	// Don't call the constructor on recycled subobjects, they haven't been destroyed.
 	if (!bRecycledSubobject)

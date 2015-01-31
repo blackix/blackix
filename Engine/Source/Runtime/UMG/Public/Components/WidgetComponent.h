@@ -30,12 +30,13 @@ public:
 	virtual FCollisionShape GetCollisionShape(float Inflation) const override;
 	virtual void OnRegister() override;
 	virtual void OnUnregister() override;
-	virtual void DestroyComponent() override;
+	virtual void DestroyComponent(bool bPromoteChildren = false) override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 
 	virtual FComponentInstanceDataBase* GetComponentInstanceData() const override;
 	virtual FName GetComponentInstanceDataType() const override;
-	virtual void ApplyComponentInstanceData(FComponentInstanceDataBase* ComponentInstanceData) override;
+
+	void ApplyComponentInstanceData(class FWidgetComponentInstanceData* ComponentInstanceData);
 
 	// Begin UObject
 	virtual void PostLoad() override;
@@ -71,7 +72,7 @@ public:
 	TArray<FWidgetAndPointer> GetHitWidgetPath( const FHitResult& HitResult, bool bIgnoreEnabledStatus );
 
 	/** @return The render target to which the user widget is rendered */
-	UTextureRenderTarget2D* GetRenderTarget() const { return RenderTarget; };
+	UTextureRenderTarget2D* GetRenderTarget() const { return RenderTarget; }
 
 	/** @return The dynamic material instance used to render the user widget */
 	UMaterialInstanceDynamic* GetMaterialInstance() const { return MaterialInstance; }
@@ -80,10 +81,20 @@ public:
 	TSharedPtr<SWidget> GetSlateWidget() const;
 
 	/** @return The draw size of the quad in the world */
-	const FIntPoint& GetDrawSize() const { return DrawSize; }
+	UFUNCTION(BlueprintCallable, Category=UI)
+	FVector2D GetDrawSize() const;
+
+	/** Sets the draw size of the quad in the world */
+	UFUNCTION(BlueprintCallable, Category=UI)
+	void SetDrawSize(FVector2D Size);
 
 	/** @return The max distance from which a player can interact with this widget */
-	float GetMaxInteractionDistance() const { return MaxInteractionDistance; }
+	UFUNCTION(BlueprintCallable, Category=UI)
+	float GetMaxInteractionDistance() const;
+
+	/** Sets the max distance from which a player can interact with this widget */
+	UFUNCTION(BlueprintCallable, Category=UI)
+	void SetMaxInteractionDistance(float Distance);
 
 	/** @return True if the component is opaque */
 	bool IsOpaque() const { return bIsOpaque; }
@@ -97,7 +108,7 @@ private:
 	EWidgetSpace Space;
 
 	/** The class of User Widget to create and display an instance of */
-	UPROPERTY(EditAnywhere, Category=UI)
+	UPROPERTY(EditAnywhere, Category=UI, meta=(DisallowCreateNew))
 	TSubclassOf<UUserWidget> WidgetClass;
 	
 	/** The size of the displayed quad. */

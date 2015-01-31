@@ -7,6 +7,7 @@
 #include "Editor/StatsViewer/Public/StatsViewerModule.h"
 #include "SnappingUtils.h"
 #include "MessageLog.h"
+#include "ComponentEditorUtils.h"
 
 #define LOCTEXT_NAMESPACE "EditorSelectUtils"
 
@@ -556,28 +557,27 @@ void UUnrealEdEngine::SelectActor(AActor* Actor, bool bInSelected, bool bNotify,
 			GetSelectedActors()->Select( Actor, bInSelected );
 			if (!bInSelected)
 			{
+				if (GetSelectedComponentCount() > 0)
+				{
+					GetSelectedComponents()->Modify();
+				}
+
 				for (UActorComponent* Component : Actor->GetComponents())
 				{
 					GetSelectedComponents()->Deselect( Component );
 
 					// Remove the selection override delegates from the deselected components
-					auto PrimComponent = Cast<UPrimitiveComponent>(Component);
-					if (PrimComponent && PrimComponent->SelectionOverrideDelegate.IsBound())
-					{
-						PrimComponent->SelectionOverrideDelegate.Unbind();
-					}
+					auto SceneComponent = Cast<USceneComponent>(Component);
+					FComponentEditorUtils::BindComponentSelectionOverride(SceneComponent, false);
 				}
 			}
 			else
 			{
+				// Bind the override delegates for the components in the selected actor
 				for (UActorComponent* Component : Actor->GetComponents())
 				{
-					// Establish the selection override delegate for each of the actor's components
-					auto PrimComponent = Cast<UPrimitiveComponent>(Component);
-					if (PrimComponent && !PrimComponent->SelectionOverrideDelegate.IsBound())
-					{
-						PrimComponent->SelectionOverrideDelegate = UPrimitiveComponent::FSelectionOverride::CreateUObject(this, &UUnrealEdEngine::IsComponentSelected);
-					}
+					auto SceneComponent = Cast<USceneComponent>(Component);
+					FComponentEditorUtils::BindComponentSelectionOverride(SceneComponent, true);
 				}
 			}
 
@@ -623,10 +623,11 @@ void UUnrealEdEngine::SelectComponent(UActorComponent* Component, bool bInSelect
 
 		GetSelectedComponents()->Select(Component, bInSelected);
 
-		auto PrimComponent = Cast<UPrimitiveComponent>(Component);
-		if (PrimComponent && !PrimComponent->SelectionOverrideDelegate.IsBound())
+		// Make sure the override delegate is bound properly
+		auto SceneComponent = Cast<USceneComponent>(Component);
+		if (SceneComponent)
 		{
-			PrimComponent->SelectionOverrideDelegate = UPrimitiveComponent::FSelectionOverride::CreateUObject(this, &UUnrealEdEngine::IsComponentSelected);
+			FComponentEditorUtils::BindComponentSelectionOverride(SceneComponent, true);
 		}
 
 		// Update the selection visualization

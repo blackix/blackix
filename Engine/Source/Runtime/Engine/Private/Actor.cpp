@@ -45,8 +45,19 @@ FMakeNoiseDelegate AActor::MakeNoiseDelegate = FMakeNoiseDelegate::CreateStatic(
 FOnProcessEvent AActor::ProcessEventDelegate;
 #endif
 
+AActor::AActor()
+{
+	InitializeDefaults();
+}
+
+
 AActor::AActor(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
+{
+	// Forward to default constructor (we don't use ObjectInitializer for anything, this is for compatibility with inherited classes that call Super( ObjectInitializer )
+	InitializeDefaults();
+}
+
+void AActor::InitializeDefaults()
 {
 	PrimaryActorTick.TickGroup = TG_PrePhysics;
 	// Default to no tick function, but if we set 'never ticks' to false (so there is a tick function) it is enabled by default
@@ -812,7 +823,7 @@ bool AActor::Modify( bool bAlwaysMarkDirty/*=true*/ )
 			if (!ObjProp->HasAllPropertyFlags(CPF_NonTransactional))
 			{
 				UActorComponent* ActorComponent = Cast<UActorComponent>(ObjProp->GetObjectPropertyValue(ObjProp->ContainerPtrToValuePtr<void>(this)));
-				if (ActorComponent && ActorComponent->bCreatedByConstructionScript)
+				if (ActorComponent && ActorComponent->CreationMethod == EComponentCreationMethod::ConstructionScript)
 				{
 					ObjProp->SetPropertyFlags(CPF_NonTransactional);
 					TemporarilyNonTransactionalProperties.Add(ObjProp);
@@ -829,7 +840,7 @@ bool AActor::Modify( bool bAlwaysMarkDirty/*=true*/ )
 	}
 
 	// If the root component is blueprint constructed we don't save it to the transaction buffer
-	if( RootComponent && !RootComponent->bCreatedByConstructionScript )
+	if( RootComponent && RootComponent->CreationMethod != EComponentCreationMethod::ConstructionScript)
 	{
 		bSavedToTransactionBuffer = RootComponent->Modify( bAlwaysMarkDirty ) || bSavedToTransactionBuffer;
 	}
@@ -2059,6 +2070,41 @@ void AActor::UpdateAllReplicatedComponents()
 	}
 }
 
+const TArray<UActorComponent*>& AActor::GetInstanceComponents() const
+{
+	return InstanceComponents;
+}
+
+void AActor::AddInstanceComponent(UActorComponent* Component)
+{
+	Component->CreationMethod = EComponentCreationMethod::Instance;
+	InstanceComponents.Add(Component);
+}
+
+void AActor::RemoveInstanceComponent(UActorComponent* Component)
+{
+	InstanceComponents.Remove(Component);
+}
+
+void AActor::ClearInstanceComponents(const bool bDestroyComponents)
+{
+	if (bDestroyComponents)
+	{
+		// Need to cache because calling destroy will remove them from InstanceComponents
+		TArray<UActorComponent*> CachedComponents(InstanceComponents);
+
+		// Run in reverse to reduce memory churn when the components are removed from InstanceComponents
+		for (int32 Index=CachedComponents.Num()-1; Index >= 0; --Index)
+		{
+			CachedComponents[Index]->DestroyComponent();
+		}
+	}
+	else
+	{
+		InstanceComponents.Empty();
+	}
+}
+
 UActorComponent* AActor::FindComponentByClass(const TSubclassOf<UActorComponent> ComponentClass) const
 {
 	UActorComponent* FoundComponent = NULL;
@@ -2091,13 +2137,20 @@ UActorComponent* AActor::GetComponentByClass(TSubclassOf<UActorComponent> Compon
 
 TArray<UActorComponent*> AActor::GetComponentsByClass(TSubclassOf<UActorComponent> ComponentClass) const
 {
+	TArray<UActorComponent*> ValidComponents;
+
+        // In the UActorComponent case we can skip the IsA checks for a slight performance benefit
 	if (ComponentClass == UActorComponent::StaticClass())
 	{
-		return OwnedComponents;
+		for (UActorComponent* Component : OwnedComponents)
+		{
+			if (Component)
+			{
+				ValidComponents.Add(Component);
+			}
+		}
 	}
-
-	TArray<UActorComponent*> ValidComponents;
-	if (*ComponentClass)
+	else if (*ComponentClass)
 	{
 		for (UActorComponent* Component : OwnedComponents)
 		{
@@ -3478,26 +3531,22 @@ UMaterialInstanceDynamic* AActor::MakeMIDForMaterial(class UMaterialInterface* P
 	return NULL;
 }
 
-// deprecated
-float AActor::GetDistanceTo(AActor* OtherActor)
+float AActor::GetDistanceTo(const AActor* OtherActor) const
 {
 	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size() : 0.f;
 }
 
-// deprecated
-float AActor::GetHorizontalDistanceTo(AActor* OtherActor)
+float AActor::GetHorizontalDistanceTo(const AActor* OtherActor) const
 {
 	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size2D() : 0.f;
 }
 
-// deprecated
-float AActor::GetVerticalDistanceTo(AActor* OtherActor)
+float AActor::GetVerticalDistanceTo(const AActor* OtherActor) const
 {
 	return OtherActor ? FMath::Abs((GetActorLocation().Z - OtherActor->GetActorLocation().Z)) : 0.f;
 }
 
-// deprecated
-float AActor::GetDotProductTo(AActor* OtherActor)
+float AActor::GetDotProductTo(const AActor* OtherActor) const
 {
 	if (OtherActor)
 	{
@@ -3509,8 +3558,7 @@ float AActor::GetDotProductTo(AActor* OtherActor)
 	return -2.0;
 }
 
-// deprecated
-float AActor::GetHorizontalDotProductTo(AActor* OtherActor)
+float AActor::GetHorizontalDotProductTo(const AActor* OtherActor) const
 {
 	if (OtherActor)
 	{
@@ -3522,46 +3570,6 @@ float AActor::GetHorizontalDotProductTo(AActor* OtherActor)
 	return -2.0;
 }
 
-
-
-float AActor::GetDistanceToActor(AActor* OtherActor) const
-{
-	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size() : 0.f;
-}
-
-float AActor::GetHorizontalDistanceToActor(AActor* OtherActor) const
-{
-	return OtherActor ? (GetActorLocation() - OtherActor->GetActorLocation()).Size2D() : 0.f;
-}
-
-float AActor::GetVerticalDistanceToActor(AActor* OtherActor) const
-{
-	return OtherActor ? FMath::Abs((GetActorLocation().Z - OtherActor->GetActorLocation().Z)) : 0.f;
-}
-
-float AActor::GetDotProductToActor(AActor* OtherActor) const
-{
-	if (OtherActor)
-	{
-		FVector Dir = GetActorForwardVector();
-		FVector Offset = OtherActor->GetActorLocation() - GetActorLocation();
-		Offset = Offset.GetSafeNormal();
-		return FVector::DotProduct(Dir, Offset);
-	}
-	return -2.0;
-}
-
-float AActor::GetHorizontalDotProductToActor(AActor* OtherActor) const
-{
-	if (OtherActor)
-	{
-		FVector Dir = GetActorForwardVector();
-		FVector Offset = OtherActor->GetActorLocation() - GetActorLocation();
-		Offset = Offset.GetSafeNormal2D();
-		return FVector::DotProduct(Dir, Offset);
-	}
-	return -2.0;
-}
 
 #if WITH_EDITOR
 const int32 AActor::GetNumUncachedStaticLightingInteractions() const

@@ -12,6 +12,7 @@
 #include "EditorViewportCommands.h"
 #include "SEditorViewportToolBarMenu.h"
 #include "BlueprintEditorTabs.h"
+#include "BlueprintEditorSettings.h"
 
 /*-----------------------------------------------------------------------------
    SSCSEditorViewportToolBar
@@ -291,7 +292,10 @@ void SSCSEditorViewport::ToggleIsSimulateEnabled()
 		// Only trigger the switch if the simulation is starting.
 		if ( !ViewportClient->GetIsSimulateEnabled() )
 		{
-			BlueprintEditorPtr.Pin()->GetTabManager()->InvokeTab(FBlueprintEditorTabs::SCSViewportID);
+			if ( GetDefault<UBlueprintEditorSettings>()->bShowViewportOnSimulate )
+			{
+				BlueprintEditorPtr.Pin()->GetTabManager()->InvokeTab(FBlueprintEditorTabs::SCSViewportID);
+			}
 		}
 	}
 
@@ -346,6 +350,12 @@ void SSCSEditorViewport::OnFocusViewportToSelection()
 bool SSCSEditorViewport::GetIsSimulateEnabled()
 {
 	return ViewportClient->GetIsSimulateEnabled();
+}
+
+FReply SSCSEditorViewport::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
+{
+	TSharedPtr<SSCSEditor> SCSEditor = BlueprintEditorPtr.Pin()->GetSCSEditor();
+	return SCSEditor->TryHandleAssetDragDropOperation(DragDropEvent);
 }
 
 void SSCSEditorViewport::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)

@@ -65,13 +65,13 @@ public class CEF3 : ModuleRules
 			{
 				string CEFPath = LibraryPath + "/libplugin_carbon_interpose.dylib";
                 string WrapperPath = LibraryPath + "/libcef_dll_wrapper.a";
-                string FrameworkPath = LibraryPath + "/Chromium Embedded Framework.framework";
+                string FrameworkPath = UEBuildConfiguration.UEThirdPartyBinariesDirectory + "CEF3/Mac/Chromium Embedded Framework.framework";
 
 				PublicAdditionalLibraries.Add(CEFPath);
                 PublicAdditionalLibraries.Add(WrapperPath);
                 PublicFrameworks.Add(FrameworkPath);
 
-				var LocaleFolders = Directory.GetFileSystemEntries(FrameworkPath + "/Resources", "*.lproj");
+				var LocaleFolders = Directory.GetFileSystemEntries(LibraryPath + "/locale", "*.lproj");
 				foreach (var FolderName in LocaleFolders)
 				{
 					AdditionalBundleResources.Add(new UEBuildBundleResource(FolderName, bInShouldLog:false));

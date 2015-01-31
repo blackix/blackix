@@ -734,7 +734,7 @@ FPrimitiveSceneProxy* ULandscapeComponent::CreateSceneProxy()
 	return Proxy;
 }
 
-void ULandscapeComponent::DestroyComponent()
+void ULandscapeComponent::DestroyComponent(bool bPromoteChildren/*= false*/)
 {
 	ALandscapeProxy* Proxy = GetLandscapeProxy();
 	if (Proxy)
@@ -742,7 +742,7 @@ void ULandscapeComponent::DestroyComponent()
 		Proxy->LandscapeComponents.Remove(this);
 	}
 
-	Super::DestroyComponent();
+	Super::DestroyComponent(bPromoteChildren);
 }
 
 FBoxSphereBounds ULandscapeComponent::CalcBounds(const FTransform& LocalToWorld) const

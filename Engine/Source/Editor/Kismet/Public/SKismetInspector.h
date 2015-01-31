@@ -76,7 +76,7 @@ protected:
 	void AddPropertiesRecursive(UProperty* Property);
 
 	/** Pointer back to the kismet 2 tool that owns us */
-	TWeakPtr<FBlueprintEditor> Kismet2Ptr;
+	TWeakPtr<FBlueprintEditor> BlueprintEditorPtr;
 
 	/** The tab that owns this details view. */
 	TWeakPtr<SDockTab> OwnerTab;
@@ -110,6 +110,9 @@ protected:
 
 	/** If true show the kismet inspector title widget */
 	bool bShowTitleArea;
+
+	/** Component details customization enabled. */
+	bool bComponenetDetailsCustomizationEnabled;
 
 	/** Set of object properties that should be visible */
 	TSet<TWeakObjectPtr<UProperty> > SelectedObjectProperties;

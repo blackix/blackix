@@ -19,8 +19,11 @@ namespace ETileMapProjectionMode
 		// Isometric tile layout (shaped like a diamond)
 		IsometricDiamond,
 
-		// Isometric tile layout (roughly in a square with alternating rows staggered)
-		IsometricStaggered
+		// Isometric tile layout (roughly in a square with alternating rows staggered).  Warning: Not fully supported yet.
+		IsometricStaggered,
+
+		// Hexagonal tile layout (roughly in a square with alternating rows staggered).  Warning: Not fully supported yet.
+		HexagonalStaggered
 	};
 }
 
@@ -67,7 +70,7 @@ class PAPER2D_API UPaperTileMap : public UObject
 	TAssetPtr<class UPaperTileSet> SelectedTileSet;
 
 	// The material to use on a tile map instance if not overridden
-	UPROPERTY(Category=Setup, EditAnywhere)
+	UPROPERTY(Category=Setup, EditAnywhere, BlueprintReadOnly)
 	UMaterialInterface* Material;
 
 	// The list of layers
@@ -139,6 +142,8 @@ public:
 	// Creates a reasonable new layer name
 	static FText GenerateNewLayerName(UPaperTileMap* TileMap);
 
+	// Resize the tile map and all layers
+	void ResizeMap(int32 NewWidth, int32 NewHeight, bool bForceResize = true);
 protected:
 	virtual void UpdateBodySetup();
 };

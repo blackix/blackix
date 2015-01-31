@@ -334,7 +334,7 @@ public:
 	/** returns if a graph is an intermediate build product */
 	static bool IsGraphIntermediate(const UEdGraph* Graph);
 
-	/** Returns whether or not this blueprint is a data-only blueprint (has no code) */
+	/** @return true if the blueprint does not contain any special logic or variables or other elements that require a full compile. */
 	static bool IsDataOnlyBlueprint(const UBlueprint* Blueprint);
 
 	/** Returns whether or not the blueprint is const during execution */
@@ -1142,7 +1142,18 @@ protected:
 	 * @param InOutVarDesc		The variable description to validate
 	 */
 	static void PostSetupObjectPinType(UBlueprint* InBlueprint, FBPVariableDescription& InOutVarDesc);
+
 public:
 	static FName GetFunctionNameFromClassByGuid(const UClass* InClass, const FGuid FunctionGuid);
 	static bool GetFunctionGuidFromClassByFieldName(const UClass* InClass, const FName FunctionName, FGuid& FunctionGuid);
+
+	/**
+	 * Returns a friendly class display name for the specified class (removing things like _C from the end, may localize the class name).  Class can be nullptr.
+	 */
+	static FText GetFriendlyClassDisplayName(const UClass* Class);
+
+	/**
+	 * Returns a class name for the specified class that has no automatic suffixes, but is otherwise unmodified.  Class can be nullptr.
+	 */
+	static FString GetClassNameWithoutSuffix(const UClass* Class);
 };

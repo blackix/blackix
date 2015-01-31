@@ -176,7 +176,11 @@ FMacApplication::FMacApplication()
 
 								// app is active, allow sound
 								FApp::SetVolumeMultiplier( 1.0f );
-							}];
+
+								GameThreadCall(^{
+									MessageHandler->OnApplicationActivationChanged(true);
+								}, @[ NSDefaultRunLoopMode ], false);
+							 }];
 
 	AppDeactivationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationWillResignActiveNotification object:[NSApplication sharedApplication] queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification* Notification)
 							{
@@ -221,6 +225,10 @@ FMacApplication::FMacApplication()
 
 								// app is inactive, apply multiplier
 								FApp::SetVolumeMultiplier(FApp::GetUnfocusedVolumeMultiplier());
+
+								GameThreadCall(^{
+									MessageHandler->OnApplicationActivationChanged(false);
+								}, @[ NSDefaultRunLoopMode ], false);
 							}];
 
 	WorkspaceActivationObserver = [[[NSWorkspace sharedWorkspace] notificationCenter] addObserverForName:NSWorkspaceSessionDidBecomeActiveNotification object:[NSWorkspace sharedWorkspace] queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification* Notification){
@@ -413,9 +421,70 @@ void FMacApplication::ProcessEvent(FMacEvent const* const Event)
 	delete Event;
 }
 
-void FMacApplication::PumpMessages( const float TimeDelta )
+void FMacApplication::PumpMessages(const float TimeDelta)
 {
-	FPlatformMisc::PumpMessages( true );
+	FPlatformMisc::PumpMessages(true);
+}
+
+void FMacApplication::CloseQueuedWindows()
+{
+	if (WindowsToClose.Num() > 0)
+	{
+		MainThreadCall(^{
+			SCOPED_AUTORELEASE_POOL;
+
+			// Set the new key window, if needed. We cannot trust Cocoa to set the key window to the actual top most window. It will prefer windows with title bars so,
+			// for example, will choose the main window over a context menu window, when closing a submenu.
+			NSArray* AllWindows = [NSApp orderedWindows];
+			for (NSWindow* Window : AllWindows)
+			{
+				if ([Window isKindOfClass:[FCocoaWindow class]] && !WindowsToClose.Contains((FCocoaWindow*)Window) && [Window canBecomeKeyWindow])
+				{
+					if (Window != [NSApp keyWindow])
+					{
+						[Window makeKeyWindow];
+					}
+					break;
+				}
+			}
+
+			for (FCocoaWindow* Window : WindowsToClose)
+			{
+				[Window destroy];
+				[Window release];
+			}
+		}, UE4CloseEventMode, true);
+
+		WindowsToClose.Empty();
+	}
+}
+
+void FMacApplication::InvalidateTextLayout(FCocoaWindow* Window)
+{
+	WindowsRequiringTextInvalidation.AddUnique( Window );
+}
+
+void FMacApplication::InvalidateTextLayouts()
+{
+	if( WindowsRequiringTextInvalidation.Num() > 0 )
+	{
+	   MainThreadCall(^{
+		   SCOPED_AUTORELEASE_POOL;
+	
+		   for( FCocoaWindow* CocoaWindow : WindowsRequiringTextInvalidation)
+		   {
+			   if(CocoaWindow && [CocoaWindow openGLView])
+			   {
+				   FCocoaTextView* TextView = (FCocoaTextView*)[CocoaWindow openGLView];
+				   [[TextView inputContext] invalidateCharacterCoordinates];
+			   }
+		   }
+
+		}, UE4IMEEventMode, true);
+		
+		WindowsRequiringTextInvalidation.Empty();
+	}
+
 }
 
 void FMacApplication::OnWindowDraggingFinished()
@@ -1210,7 +1279,6 @@ void FMacApplication::OnWindowDidBecomeKey( FCocoaWindow* Window )
 	if( EventWindow.IsValid() )
 	{
 		MessageHandler->OnWindowActivationChanged( EventWindow.ToSharedRef(), EWindowActivation::Activate );
-		KeyWindows.Add( EventWindow.ToSharedRef() );
 	}
 }
 
@@ -1294,7 +1362,6 @@ void FMacApplication::OnWindowDidClose( FCocoaWindow* Window )
 			MessageHandler->OnWindowActivationChanged( EventWindow.ToSharedRef(), EWindowActivation::Deactivate );
 		}
 		Windows.Remove( EventWindow.ToSharedRef() );
-		KeyWindows.Remove( EventWindow.ToSharedRef() );
 		MessageHandler->OnWindowClose( EventWindow.ToSharedRef() );
 	}
 }
@@ -1309,7 +1376,10 @@ bool FMacApplication::OnWindowDestroyed( FCocoaWindow* Window )
 			MessageHandler->OnWindowActivationChanged( EventWindow.ToSharedRef(), EWindowActivation::Deactivate );
 		}
 		Windows.Remove( EventWindow.ToSharedRef() );
-		KeyWindows.Remove( EventWindow.ToSharedRef() );
+		if (!WindowsToClose.Contains(Window))
+		{
+			WindowsToClose.Add(Window);
+		}
 		return true;
 	}
 	return false;
@@ -1415,16 +1485,6 @@ TCHAR FMacApplication::TranslateCharCode(TCHAR CharCode, uint32 KeyCode)
 	}
 
 	return CharCode;
-}
-
-TSharedPtr<FMacWindow> FMacApplication::GetKeyWindow()
-{
-	TSharedPtr<FMacWindow> KeyWindow;
-	if(KeyWindows.Num() > 0)
-	{
-		KeyWindow = KeyWindows.Top();
-	}
-	return KeyWindow;
 }
 
 #if WITH_EDITOR

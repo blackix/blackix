@@ -857,10 +857,6 @@ namespace UnrealBuildTool
                         {
                             //ConfigName = Arg;
                         }
-                        else if (LowercaseArg == "-obbinapk")
-                        {
-                            UEBuildConfiguration.bOBBinAPK = true;
-                        }
                         else if (LowercaseArg == "-modulewithsuffix")
                         {
                             bSpecificModulesOnly = true;
@@ -1368,12 +1364,11 @@ namespace UnrealBuildTool
                     ResetConfiguration = UnrealTargetConfiguration.Development;
                 }
             }
-            var BuildPlatform = UEBuildPlatform.GetBuildPlatform(ResetPlatform);
+			var BuildPlatform = UEBuildPlatform.GetBuildPlatform(ResetPlatform);
+			BuildPlatform.ResetBuildConfiguration(ResetPlatform, ResetConfiguration);
 
             // now that we have the platform, we can set the intermediate path to include the platform/architecture name
             BuildConfiguration.PlatformIntermediateFolder = Path.Combine(BuildConfiguration.BaseIntermediateFolder, ResetPlatform.ToString(), BuildPlatform.GetActiveArchitecture());
-
-            BuildPlatform.ResetBuildConfiguration(ResetPlatform, ResetConfiguration);
 
             string ExecutorName = "Unknown";
             ECompilationResult BuildResult = ECompilationResult.Succeeded;

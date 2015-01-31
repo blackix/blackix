@@ -610,6 +610,14 @@ ULinkerLoad::ELinkerStatus ULinkerLoad::Tick( float InTimeLimit, bool bInUseTime
 			);
 	}
 
+#if WITH_EDITOR
+	if (Status == LINKER_Failed)
+	{
+		delete LoadProgressScope;
+		LoadProgressScope = nullptr;
+	}
+#endif
+
 	// Return whether we completed or not.
 	return Status;
 }
@@ -630,9 +638,10 @@ ULinkerLoad::ULinkerLoad( const FObjectInitializer& ObjectInitializer, UPackage*
 #endif // WITH_EDITOR
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 ,	DeferredExportIndex(INDEX_NONE)
+,	ResolvingDeferredPlaceholder(nullptr)
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 {
-	check(!HasAnyFlags(RF_ClassDefaultObject));
+	check(!HasAnyFlags(RF_ClassDefaultObject)); 
 
 	INC_DWORD_STAT(STAT_LinkerCount);
 	INC_DWORD_STAT(STAT_LiveLinkerCount);
@@ -2167,10 +2176,7 @@ bool ULinkerLoad::VerifyImportInner(const int32 ImportIndex, FString& WarningSuf
 			//      class's layout depends on the struct's size... in this case, 
 			//      we choke off circular loads by propagating this flag along 
 			//      to the struct linker (so it doesn't load any blueprints)
-			if (FBlueprintSupport::UseDeferredLoadingForSubsequentLoads())
-			{
-				InternalLoadFlags |= (LoadFlags & LOAD_DeferDependencyLoads);
-			}
+			InternalLoadFlags |= (LoadFlags & LOAD_DeferDependencyLoads);
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 
 			// we now fully load the package that we need a single export from - however, we still use CreatePackage below as it handles all cases when the package
@@ -2538,14 +2544,14 @@ void ULinkerLoad::LoadAllObjects( bool bForcePreload )
 	SlowTask.bVisibleOnUI = false;
 #endif
 
-#if TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 	// if we're re-entering a call to LoadAllObjects() while DeferDependencyLoads
 	// is set, then we're not doing our job (we're risking an export needing 
 	// another external asset)... if this is hit, then we're most likely already
 	// in this function (for this linker) further up the load chain; it should 
 	// finish the loads there
-	checkSlow( ((LoadFlags & LOAD_DeferDependencyLoads) == 0) || !FBlueprintSupport::UseDeferredDependencyVerificationChecks() );
-#endif // TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
+	check((LoadFlags & LOAD_DeferDependencyLoads) == 0);
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 
 	if ( (LoadFlags&LOAD_SeekFree) != 0 )
 	{
@@ -2773,13 +2779,13 @@ void ULinkerLoad::Preload( UObject* Object )
 	// classes we have)
 	bool const bIsBlueprintClass = (ObjectAsClass != nullptr) && !(ObjectAsClass->GetOutermost()->PackageFlags & PKG_CompiledIn);
 
-#if TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 	// we should NEVER be pre-loading another blueprint class when the 
 	// DeferDependencyLoads flag is set (some other blueprint class is already 
 	// being loaded further up the load chain, and this could introduce a 
 	// circular load)
-	checkSlow(!bIsBlueprintClass || !Object->HasAnyFlags(RF_NeedLoad) || !(LoadFlags & LOAD_DeferDependencyLoads) || !FBlueprintSupport::UseDeferredDependencyVerificationChecks());
-#endif // TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
+	check(!bIsBlueprintClass || !Object->HasAnyFlags(RF_NeedLoad) || !(LoadFlags & LOAD_DeferDependencyLoads));
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	
 	// Preload the object if necessary.
@@ -2834,34 +2840,37 @@ void ULinkerLoad::Preload( UObject* Object )
 
 				{
 					SCOPE_CYCLE_COUNTER(STAT_LinkerSerialize);
-					if ( Object->HasAnyFlags(RF_ClassDefaultObject) )
+					if (Object->HasAnyFlags(RF_ClassDefaultObject))
 					{
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
-						if ( ((LoadFlags & LOAD_DeferDependencyLoads) != 0) && FBlueprintSupport::UseDeferredCDOSerialization() )
+						if ((LoadFlags & LOAD_DeferDependencyLoads) != 0)
 						{
-#if TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
-							checkSlow(!FBlueprintSupport::UseDeferredDependencyVerificationChecks() || (DeferredExportIndex == INDEX_NONE) || (DeferredExportIndex == ExportIndex));
-#endif // TEST_CHECK_DEPENDENCY_LOAD_DEFERRING
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+							if (!FBlueprintSupport::IsDeferredCDOSerializationDisabled())
+							{
+								check((DeferredExportIndex == INDEX_NONE) || (DeferredExportIndex == ExportIndex));
+#else // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+							{
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 
-							// since serializing the CDO can introduce circular 
-							// dependencies, we want to stave that off until 
-							// we're ready to handle those 
-							DeferredExportIndex = ExportIndex;
-							// don't need to actually "consume" the data through
-							// serialization though (since we seek back to 
-							// SavedPos later on)
+								// since serializing the CDO can introduce circular 
+								// dependencies, we want to stave that off until 
+								// we're ready to handle those 
+								DeferredExportIndex = ExportIndex;
+								// don't need to actually "consume" the data through
+								// serialization though (since we seek back to 
+								// SavedPos later on)
 
-							// reset the flag and return (don't worry, we make
-							// sure to force load this later)
-							Object->SetFlags(RF_NeedLoad);
-							return;
+								// reset the flag and return (don't worry, we make
+								// sure to force load this later)
+								Object->SetFlags(RF_NeedLoad);
+								return;
+							}
 						}
-						else
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
-						{
-							Object->GetClass()->SerializeDefaultObject(Object, *this);
-							Object->SetFlags(RF_LoadCompleted);
-						}
+
+						Object->GetClass()->SerializeDefaultObject(Object, *this);
+						Object->SetFlags(RF_LoadCompleted);
 					}
 					else
 					{
@@ -2879,6 +2888,29 @@ void ULinkerLoad::Preload( UObject* Object )
 					SCOPE_CYCLE_COUNTER(STAT_LinkerLoadDeferred);
 					if ((LoadFlags & LOAD_DeferDependencyLoads) != (*LoadFlagsGuard & LOAD_DeferDependencyLoads))
 					{
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+						// since class serialization reads in the class's CDO, 
+						// then we can be certain that the CDO export object 
+						// exists (and DeferredExportIndex should reference it);
+						// FinalizeBlueprint() depends on this (and since 
+						// ResolveDeferredDependencies() can recurse into 
+						// FinalizeBlueprint(), we check it here, before the
+						// resolve is handled)
+						//
+						// however, sometimes DeferredExportIndex doesn't get
+						// set at all, and that happens when the class's 
+						// ClassGeneratedBy is serialized in null... this would 
+						// normally be a problem in the editor (we don't end up
+						// regenerating the class), but if we're running the 
+						// game (in PIE or elsewhere) it shouldn't be a concern 
+						// (if it makes you feel better: with the old way of 
+						// doing things, in CreateExport(), you can see that 
+						// the class wouldn't be regenerated there either)... in
+						// this scenario FinalizeBlueprint() essentially does nothing
+						// @TODO: maybe only allow a null ClassGeneratedBy when PIE'ing/running a game?
+						check((DeferredExportIndex != INDEX_NONE) || (ObjectAsClass->ClassGeneratedBy == nullptr) || FBlueprintSupport::IsDeferredCDOSerializationDisabled());
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+
 						ResolveDeferredDependencies(ObjectAsClass);
 						FinalizeBlueprint(ObjectAsClass);
 					}
@@ -2892,7 +2924,7 @@ void ULinkerLoad::Preload( UObject* Object )
 					{
 						UE_LOG(LogLinker, Warning, TEXT("%s"), *FString::Printf( TEXT("%s: Serial size mismatch: Got %d, Expected %d"), *Object->GetFullName(), (int32)(Tell()-Export.SerialOffset), Export.SerialSize ) );
 					}
-					else //if (!Object->HasAnyFlags(RF_ClassDefaultObject) || (LoadFlags & LOAD_DeferDependencyLoads) == 0)
+					else
 					{
 						UE_LOG(LogLinker, Fatal, TEXT("%s"), *FString::Printf( TEXT("%s: Serial size mismatch: Got %d, Expected %d"), *Object->GetFullName(), (int32)(Tell()-Export.SerialOffset), Export.SerialSize ) );
 					}
@@ -3051,6 +3083,7 @@ UObject* ULinkerLoad::CreateExport( int32 Index )
 		{
 			LoadClass = UClass::StaticClass();
 		}
+
 		UObjectRedirector* LoadClassRedirector = dynamic_cast<UObjectRedirector*>(LoadClass);
 		if( LoadClassRedirector)
 		{
@@ -3063,6 +3096,16 @@ UObject* ULinkerLoad::CreateExport( int32 Index )
 			UE_LOG(LogLinker, Warning, TEXT("CreateExport: Failed to load Outer for resource because its class is a redirector '%s': %s"), *Export.ObjectName.ToString(), *OuterName);
 			return NULL;
 		}
+
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+		// we're going to have troubles if we're attempting to create an export 
+		// for a placeholder class... this means that class serialization lead
+		// to this (non-CDO) export being created, and because of the way we 
+		// guard against cyclic dependencies (with these placeholder classes), 
+		// we need to make sure this export is created BEFORE we start serializing
+		// the class (maybe through ordering in this linker's ExportMap?)
+		check(!LoadClass->IsChildOf<ULinkerPlaceholderClass>());
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
 
 		check(LoadClass);
 		check(dynamic_cast<UClass*>(LoadClass) != NULL);
@@ -3313,6 +3356,35 @@ UObject* ULinkerLoad::CreateExport( int32 Index )
 
 		FName NewName = Export.ObjectName;
 
+
+		// If we are about to create a CDO, we need to ensure that all parent sub-objects are loaded
+		// to get default value initialization to work.
+		if ((ObjectLoadFlags & RF_ClassDefaultObject) != 0)
+		{
+			UClass* SuperClass = LoadClass->GetSuperClass();
+			if (SuperClass && !SuperClass->HasAnyFlags(RF_Native))
+			{
+				UObject* SuperCDO = SuperClass->GetDefaultObject();
+				TArray<UObject*> SuperSubObjects;
+				GetObjectsWithOuter(SuperCDO, SuperSubObjects, /*bIncludeNestedObjects=*/ false, /*ExclusionFlags=*/ RF_Native);
+
+				for (UObject* SubObject : SuperSubObjects)
+				{
+					if (SubObject->HasAnyFlags(RF_NeedLoad))
+					{
+						Preload(SubObject);
+					}
+				}
+
+				// Preload may have already created this object.
+				if (Export.Object)
+				{
+					return Export.Object;
+				}
+			}
+		}
+
+
 		LoadClass->GetDefaultObject();
 
 
@@ -3343,7 +3415,11 @@ UObject* ULinkerLoad::CreateExport( int32 Index )
 				&& ((Export.ObjectFlags&RF_ClassDefaultObject) != 0) )
 			{
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
-				if ((LoadFlags & LOAD_DeferDependencyLoads) != 0)
+				if ( (LoadFlags & LOAD_DeferDependencyLoads) != 0
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+					&& !FBlueprintSupport::IsDeferredCDOSerializationDisabled()
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+				   )
 				{
 					// if LOAD_DeferDependencyLoads is set, then we're already
 					// serializing the blueprint's class somewhere up the chain,
@@ -3393,7 +3469,15 @@ UObject* ULinkerLoad::CreateExport( int32 Index )
 				if( UClass* ClassObject = dynamic_cast<UClass*>(Export.Object) )
 				{
 #if WITH_EDITOR
-					// Before we serialize the class, begin a scoped class dependency gather to create a list of other classes that may need to be recompiled
+					// Before we serialize the class, begin a scoped class 
+					// dependency gather to create a list of other classes that 
+					// may need to be recompiled
+					//
+					// Even with "deferred dependency loading" turned on, we 
+					// still need this... one class/blueprint will always be 
+					// fully regenerated before another (there is no changing 
+					// that); so dependencies need to be recompiled later (with
+					// all the regenerated classes in place)
 					FScopedClassDependencyGather DependencyHelper(ClassObject);
 #endif //WITH_EDITOR
 
