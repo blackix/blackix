@@ -945,7 +945,7 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 				// Toggle fullscreen and resize
 				WindowToResize->SetWindowMode(DesiredWindowMode);
 
-				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected())
+				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDEnabled())
 				{
 					if (NewWindowMode == EWindowMode::Windowed)
 					{

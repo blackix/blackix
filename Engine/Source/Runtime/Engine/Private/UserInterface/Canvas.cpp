@@ -665,9 +665,11 @@ void FCanvas::Flush_GameThread(bool bForce)
 	{
 		ViewRect = FIntRect(FIntPoint::ZeroValue, RenderTargetSize);
 	}
-	if (IsScaledToRenderTarget())
+	if (IsScaledToRenderTarget() && IsValidRef(RenderTarget->GetRenderTargetTexture()))
 	{
-		ViewRect = FIntRect(0, 0, RenderTargetSize.X, RenderTargetSize.Y);
+		// The actual dimensions of the rendertarget texture should be used here (yep, they could be different)
+		ViewRect = FIntRect(0, 0, RenderTarget->GetRenderTargetTexture()->GetSizeX(),
+								  RenderTarget->GetRenderTargetTexture()->GetSizeY());
 	}
 
 	struct FCanvasFlushParameters

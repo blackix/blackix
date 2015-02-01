@@ -188,7 +188,7 @@ void FOculusRiftHMD::OnStartGameFrame()
 		return;
 	}
 
-	if (Flags.bNeedDisableStereo)
+	if (Flags.bNeedDisableStereo || (Settings.Flags.bStereoEnabled && !Hmd))
 	{
 		Flags.bNeedDisableStereo = false;
 		DoEnableStereo(false, true);
@@ -400,7 +400,10 @@ bool FOculusRiftHMD::GetHMDMonitorInfo(MonitorInfo& MonitorDesc)
 
 bool FOculusRiftHMD::IsFullscreenAllowed()
 {
-	InitDevice();	
+	if (!Hmd)
+	{
+		InitDevice();
+	}
 	return ((Hmd && (Hmd->HmdCaps & ovrHmdCap_ExtendDesktop) != 0) || !Hmd) ? true : false;
 }
 
