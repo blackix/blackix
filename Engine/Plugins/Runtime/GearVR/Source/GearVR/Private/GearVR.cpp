@@ -300,9 +300,7 @@ void FGearVR::UpdatePlayerCamera(APlayerCameraManager* Camera, struct FMinimalVi
 {
 	ConditionalLocker lock(bUpdateOnRT, &UpdateOnRTLock);
 
-	LastHmdOrientation = FQuat::Identity;
-	LastHmdPosition = FVector::ZeroVector;
-	if (POV.bFollowHmdPosition)
+	if (!bCameraScale3DAlreadySet)
 	{
 		CameraScale3D = POV.Scale3D;
 	}
