@@ -4,6 +4,13 @@
 #include "StaticMeshResources.h"
 #include "../../Renderer/Private/ScenePrivate.h"
 
+FSimpleElementCollector::FSimpleElementCollector() :
+	FPrimitiveDrawInterface(nullptr)
+{
+	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
+	bIsMobileHDR = (MobileHDRCvar->GetValueOnAnyThread() == 1);
+}
+
 FSimpleElementCollector::~FSimpleElementCollector()
 {
 	// Cleanup the dynamic resources.
@@ -102,9 +109,6 @@ void FSimpleElementCollector::RegisterDynamicResource(FDynamicPrimitiveResource*
 
 void FSimpleElementCollector::DrawBatchedElements(FRHICommandList& RHICmdList, const FSceneView& View, FTexture2DRHIRef DepthTexture, EBlendModeFilter::Type Filter) const
 {
-	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
-	const bool bIsMobileHDR = MobileHDRCvar->GetValueOnRenderThread() == 1;
-
 	// Mobile HDR does not execute post process, so does not need to render flipped
 	const bool bNeedToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && !bIsMobileHDR;
 
