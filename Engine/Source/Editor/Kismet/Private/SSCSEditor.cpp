@@ -1,4 +1,4 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 
 #include "BlueprintEditorPrivatePCH.h"
@@ -7,6 +7,7 @@
 #include "Editor/UnrealEd/Public/Kismet2/ComponentEditorUtils.h"
 #include "BlueprintUtilities.h"
 #include "ComponentAssetBroker.h"
+#include "Editor/ClassViewer/Public/ClassViewerFilter.h"
 
 #include "SSCSEditor.h"
 #include "SKismetInspector.h"
@@ -16,7 +17,6 @@
 
 #include "AssetSelection.h"
 #include "Editor/SceneOutliner/Private/SSocketChooser.h"
-#include "Factories.h"
 #include "ScopedTransaction.h"
 
 #include "DragAndDrop/AssetDragDropOp.h"
@@ -26,7 +26,6 @@
 
 #include "IDocumentation.h"
 #include "Kismet2NameValidators.h"
-#include "UnrealExporter.h"
 #include "TutorialMetaData.h"
 #include "SInlineEditableTextBlock.h"
 #include "GenericCommands.h"
@@ -44,6 +43,8 @@
 #include "NotificationManager.h"
 
 #include "GameProjectGenerationModule.h"
+#include "FeaturedClasses.inl"
+
 #include "HotReloadInterface.h"
 #include "AssetRegistryModule.h"
 #include "SCreateAssetFromObject.h"
@@ -123,12 +124,12 @@ FReply SSCSEditor::TryHandleAssetDragDropOperation(const FDragDropEvent& DragDro
 	TSharedPtr<FDragDropOperation> Operation = DragDropEvent.GetOperation();
 	if (Operation.IsValid() && (Operation->IsOfType<FExternalDragOperation>() || Operation->IsOfType<FAssetDragDropOp>()))
 	{
-		TArray< FAssetData > DroppedAssetData = AssetUtil::ExtractAssetDataFromDrag(DragDropEvent);
+		TArray< FAssetData > DroppedAssetData = AssetUtil::ExtractAssetDataFromDrag(Operation);
 		const int32 NumAssets = DroppedAssetData.Num();
 
 		if (NumAssets > 0)
 		{
-			GWarn->BeginSlowTask(LOCTEXT("LoadingComponents", "Loading Component(s)"), true);
+			GWarn->BeginSlowTask(LOCTEXT("LoadingAssets", "Loading Asset(s)"), true);
 
 			for (int32 DroppedAssetIdx = 0; DroppedAssetIdx < NumAssets; ++DroppedAssetIdx)
 			{
@@ -144,24 +145,50 @@ FReply SSCSEditor::TryHandleAssetDragDropOperation(const FDragDropEvent& DragDro
 
 				UBlueprint* BPClass = Cast<UBlueprint>(Asset);
 				UClass* PotentialComponentClass = nullptr;
+				UClass* PotentialActorClass = nullptr;
 
-				if ((BPClass != nullptr) && (BPClass->GeneratedClass != nullptr) && (BPClass->GeneratedClass->IsChildOf(UActorComponent::StaticClass())))
+				if ((BPClass != nullptr) && (BPClass->GeneratedClass != nullptr))
 				{
-					PotentialComponentClass = BPClass->GeneratedClass;
+					if (BPClass->GeneratedClass->IsChildOf(UActorComponent::StaticClass()))
+					{
+						PotentialComponentClass = BPClass->GeneratedClass;
+					}
+					else if (BPClass->GeneratedClass->IsChildOf(AActor::StaticClass()))
+					{
+						PotentialActorClass = BPClass->GeneratedClass;
+					}
 				}
-				else if (AssetClass->IsChildOf(UClass::StaticClass()) && CastChecked<UClass>(Asset)->IsChildOf(UActorComponent::StaticClass()))
+				else if (AssetClass->IsChildOf(UClass::StaticClass()))
 				{
-					PotentialComponentClass = Cast<UClass>(Asset);
+					UClass* AssetAsClass = CastChecked<UClass>(Asset);
+					if (AssetAsClass->IsChildOf(UActorComponent::StaticClass()))
+					{
+						PotentialComponentClass = AssetAsClass;
+					}
+					else if (AssetAsClass->IsChildOf(AActor::StaticClass()))
+					{
+						PotentialActorClass = AssetAsClass;
+					}
 				}
 
-				TSubclassOf<UActorComponent>  MatchingComponentClassForAsset = FComponentAssetBrokerage::GetPrimaryComponentForAsset(AssetClass);
+				TSubclassOf<UActorComponent> MatchingComponentClassForAsset = FComponentAssetBrokerage::GetPrimaryComponentForAsset(AssetClass);
 				if (MatchingComponentClassForAsset != nullptr)
 				{
 					AddNewComponent(MatchingComponentClassForAsset, Asset);
 				}
-				else if ((PotentialComponentClass != nullptr) && (!PotentialComponentClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_Abstract | CLASS_NewerVersionExists)) && PotentialComponentClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent))
+				else if ((PotentialComponentClass != nullptr) && !PotentialComponentClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_Abstract | CLASS_NewerVersionExists))
 				{
-					AddNewComponent(PotentialComponentClass, nullptr);
+					if (PotentialComponentClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent))
+					{
+						AddNewComponent(PotentialComponentClass, nullptr);
+					}
+				}
+				else if ((PotentialActorClass != nullptr) && !PotentialActorClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_Abstract | CLASS_NewerVersionExists))
+				{
+					if (UChildActorComponent* ChildActorComponent = Cast<UChildActorComponent>(AddNewComponent(UChildActorComponent::StaticClass(), nullptr)))
+					{
+						ChildActorComponent->ChildActorClass = PotentialActorClass;
+					}
 				}
 			}
 
@@ -189,7 +216,7 @@ FReply SSCSEditorDragDropTree::OnDrop( const FGeometry& MyGeometry, const FDragD
 
 
 //////////////////////////////////////////////////////////////////////////
-//
+// FSCSRowDragDropOp - The drag-drop operation triggered when dragging a row in the components tree
 
 class FSCSRowDragDropOp : public FKismetVariableDragDropAction
 {
@@ -232,6 +259,20 @@ FSCSEditorTreeNode::FSCSEditorTreeNode(FSCSEditorTreeNode::ENodeType InNodeType)
 	: NodeType(InNodeType)
 	, bNonTransactionalRename(false)
 {
+}
+
+FName FSCSEditorTreeNode::GetNodeID() const
+{
+	FName ItemName = GetVariableName();
+	if (ItemName == NAME_None)
+	{
+		UActorComponent* ComponentTemplateOrInstance = GetComponentTemplate();
+		if (ComponentTemplateOrInstance != nullptr)
+		{
+			ItemName = ComponentTemplateOrInstance->GetFName();
+		}
+	}
+	return ItemName;
 }
 
 FName FSCSEditorTreeNode::GetVariableName() const
@@ -399,20 +440,22 @@ void FSCSEditorTreeNode::AddChild(FSCSEditorTreeNodePtrType InChildNodePtr)
 	else if (IsInstanced())
 	{
 		USceneComponent* ChildInstance = Cast<USceneComponent>(InChildNodePtr->GetComponentTemplate());
-		check(ChildInstance != nullptr);
-
-		USceneComponent* ParentInstance = Cast<USceneComponent>(GetComponentTemplate());
-		check(ParentInstance != nullptr);
-
-		// Handle attachment at the instance level
-		if (ChildInstance->AttachParent != ParentInstance)
+		if (ensure(ChildInstance != nullptr))
 		{
-			AActor* Owner = ParentInstance->GetOwner();
-			if (Owner->GetRootComponent() == ChildInstance)
+			USceneComponent* ParentInstance = Cast<USceneComponent>(GetComponentTemplate());
+			if (ensure(ParentInstance != nullptr))
 			{
-				Owner->SetRootComponent(ParentInstance);
+				// Handle attachment at the instance level
+				if (ChildInstance->AttachParent != ParentInstance)
+				{
+					AActor* Owner = ParentInstance->GetOwner();
+					if (Owner->GetRootComponent() == ChildInstance)
+					{
+						Owner->SetRootComponent(ParentInstance);
+					}
+					ChildInstance->AttachTo(ParentInstance, NAME_None, EAttachLocation::KeepWorldPosition);
+				}
 			}
-			ChildInstance->AttachTo(ParentInstance, NAME_None, EAttachLocation::KeepWorldPosition);
 		}
 	}
 }
@@ -454,7 +497,7 @@ FSCSEditorTreeNodePtrType FSCSEditorTreeNode::AddChildFromComponent(UActorCompon
 // Tries to find a SCS node that was likely responsible for creating the specified instance component.  Note: This is not always possible to do!
 USCS_Node* FSCSEditorTreeNode::FindSCSNodeForInstance(UActorComponent* InstanceComponent, UClass* ClassToSearch)
 { 
-	if ((ClassToSearch != nullptr) && (InstanceComponent->CreationMethod == EComponentCreationMethod::ConstructionScript))
+	if ((ClassToSearch != nullptr) && InstanceComponent->IsCreatedByConstructionScript())
 	{
 		for (UClass* TestClass = ClassToSearch; TestClass->ClassGeneratedBy != nullptr; TestClass = TestClass->GetSuperClass())
 		{
@@ -640,33 +683,8 @@ FName FSCSEditorTreeNodeComponentBase::GetVariableName() const
 	}
 	else if (ComponentTemplate != NULL)
 	{
-		// If the owner class is a Blueprint class, see if there's a corresponding object property that contains the component template
-		check(ComponentTemplate->GetOwner());
-		UClass* OwnerClass = ComponentTemplate->GetOwner()->GetActorClass();
-		if (OwnerClass != NULL)
-		{
-			UBlueprint* Blueprint = UBlueprint::GetBlueprintFromClass(OwnerClass);
-			if (Blueprint != NULL)
-			{
-				UClass* StartingClass = IsInstanced() ? Blueprint->GeneratedClass : Blueprint->ParentClass;
-				if (StartingClass != nullptr)
-				{
-					if (UObjectProperty* ObjectProp = FindField<UObjectProperty>(StartingClass, ComponentTemplate->GetFName()))
-					{
-						UObject* CDO = StartingClass->GetDefaultObject();
-						UObject* Object = ObjectProp->GetObjectPropertyValue(ObjectProp->ContainerPtrToValuePtr<void>(CDO));
-
-						if (Object)
-						{
-							if (Object->GetClass() == ComponentTemplate->GetClass())
-							{
-								VariableName = ComponentTemplate->GetFName();
-							}
-						}
-					}
-				}
-			}
-		}
+		// Try to find the component anchor variable name (first looks for an exact match then scans for any matching variable that points to the archetype in the CDO)
+		VariableName = FComponentEditorUtils::FindVariableNameGivenComponentInstance(ComponentTemplate);
 	}
 
 	return VariableName;
@@ -1178,7 +1196,7 @@ UActorComponent* FSCSEditorTreeNodeComponent::INTERNAL_GetOverridenComponentTemp
 //////////////////////////////////////////////////////////////////////////
 // FSCSEditorTreeNodeRootActor
 
-FName FSCSEditorTreeNodeRootActor::GetVariableName() const
+FName FSCSEditorTreeNodeRootActor::GetNodeID() const
 {
 	if (Actor)
 	{
@@ -1195,102 +1213,6 @@ void FSCSEditorTreeNodeRootActor::OnCompleteRename(const FText& InNewName)
 		Actor->SetActorLabel(InNewName.ToString());
 	}
 }
-
-//////////////////////////////////////////////////////////////////////////
-// FSCSEditorComponentObjectTextFactory
-
-struct FSCSEditorComponentObjectTextFactory : public FCustomizableTextObjectFactory
-{
-	// Child->Parent name map
-	TMap<FName, FName> ParentMap;
-
-	// Name->Instance object mapping
-	TMap<FName, UActorComponent*> NewObjectMap;
-
-	// Determine whether or not scene components in the new object set can be attached to the given scene root component
-	bool CanAttachComponentsTo(USceneComponent* InRootComponent)
-	{
-		check(InRootComponent);
-
-		// For each component in the set, check against the given root component and break if we fail to validate
-		bool bCanAttachToRoot = true;
-		for(auto NewComponentIt = NewObjectMap.CreateConstIterator(); NewComponentIt && bCanAttachToRoot; ++NewComponentIt)
-		{
-			// If this is a scene component, and it does not already have a parent within the set
-			USceneComponent* SceneComponent = Cast<USceneComponent>(NewComponentIt->Value);
-			if(SceneComponent != NULL && !ParentMap.Contains(SceneComponent->GetFName()))
-			{
-				// Determine if we are allowed to attach the scene component to the given root component
-				bCanAttachToRoot = InRootComponent->CanAttachAsChild(SceneComponent, NAME_None)
-					&& SceneComponent->Mobility >= InRootComponent->Mobility
-					&& (!InRootComponent->IsEditorOnly() || SceneComponent->IsEditorOnly());
-			}
-		}
-
-		return bCanAttachToRoot;
-	}
-
-	// Constructs a new object factory from the given text buffer
-	static TSharedRef<FSCSEditorComponentObjectTextFactory> Get(const EComponentEditorMode::Type EditorMode, const FString& InTextBuffer)
-	{
-		// Construct a new instance
-		TSharedPtr<FSCSEditorComponentObjectTextFactory> FactoryPtr = MakeShareable(new FSCSEditorComponentObjectTextFactory());
-		check(FactoryPtr.IsValid());
-
-		// Create new objects if we're allowed to
-		if(FactoryPtr->CanCreateObjectsFromText(InTextBuffer))
-		{
-			EObjectFlags ObjectFlags = RF_Transactional;
-			if (EditorMode == EComponentEditorMode::BlueprintSCS)
-			{
-				ObjectFlags |= RF_ArchetypeObject;
-			}
-
-			// Use the transient package initially for creating the objects, since the variable name is used when copying
-			FactoryPtr->ProcessBuffer(GetTransientPackage(), ObjectFlags, InTextBuffer);
-		}
-
-		return FactoryPtr.ToSharedRef();
-	}
-
-	virtual ~FSCSEditorComponentObjectTextFactory() {}
-
-protected:	
-	// Constructor; protected to only allow this class to instance itself
-	FSCSEditorComponentObjectTextFactory()
-		:FCustomizableTextObjectFactory(GWarn)
-	{
-	}
-
-	// FCustomizableTextObjectFactory implementation
-
-	virtual bool CanCreateClass(UClass* ObjectClass) const override
-	{
-		// Only allow actor component types to be created
-		return ObjectClass->IsChildOf(UActorComponent::StaticClass());
-	}
-
-	virtual void ProcessConstructedObject(UObject* NewObject) override
-	{
-		check(NewObject);
-
-		// Add it to the new object map
-		NewObjectMap.Add(NewObject->GetFName(), Cast<UActorComponent>(NewObject));
-
-		// If this is a scene component and it has a parent
-		USceneComponent* SceneComponent = Cast<USceneComponent>(NewObject);
-		if(SceneComponent && SceneComponent->AttachParent)
-		{
-			// Add an entry to the child->parent name map
-			ParentMap.Add(NewObject->GetFName(), SceneComponent->AttachParent->GetFName());
-
-			// Clear this so it isn't used when constructing the new SCS node
-			SceneComponent->AttachParent = NULL;
-		}
-	}
-
-	// FCustomizableTextObjectFactory (end)
-};
 
 //////////////////////////////////////////////////////////////////////////
 // SSCS_RowWidget
@@ -1470,7 +1392,7 @@ TSharedRef<SToolTip> SSCS_RowWidget::CreateToolTipWidget() const
 			if (UActorComponent* Template = TreeNode->GetComponentTemplate())
 			{
 				UClass* TemplateClass = Template->GetClass();
-				FText ClassTooltip = TemplateClass->GetToolTipText();
+				FText ClassTooltip = TemplateClass->GetToolTipText(/*bShortTooltip=*/ true);
 
 				InfoBox->AddSlot()
 					.AutoHeight()
@@ -1688,7 +1610,7 @@ FText SSCS_RowWidget::GetIntroducedInToolTipText() const
 
 				if (BestClass == nullptr)
 				{
-					ensure(ComponentTemplate->CreationMethod == EComponentCreationMethod::ConstructionScript);
+					ensure(ComponentTemplate->IsCreatedByConstructionScript());
 					IntroducedInTooltip = LOCTEXT("IntroducedInUnknownError", "Unknown Blueprint Class (via an Add Component call)");
 				}
 				else
@@ -1790,30 +1712,26 @@ FSlateColor SSCS_RowWidget::GetColorTintForIcon() const
 
 FSlateColor SSCS_RowWidget::GetColorTintForText() const
 {
-	const FLinearColor InheritedBlueprintComponentColor(0.6f, 0.6f, 0.8f);
-	const FLinearColor InstancedInheritedBlueprintComponentColor(InheritedBlueprintComponentColor);
-	const FLinearColor InheritedNativeComponentColor(0.7f, 0.9f, 0.7f);
-	const FLinearColor IntroducedHereColor(FLinearColor::White);
+	const FSlateColor SelectedTextColor(FLinearColor::Black);
 
 	FSCSEditorTreeNodePtrType NodePtr = GetNode();
 	if (NodePtr->IsInherited())
 	{
 		if (NodePtr->IsNative())
 		{
-			return InheritedNativeComponentColor;
-		}
-		else if (NodePtr->IsInstanced())
-		{
-			return InstancedInheritedBlueprintComponentColor;
+			static FSlateColor NativeColor = FEditorStyle::GetSlateColor("Common.InheritedFromNativeTextColor");
+			return IsSelected() ? SelectedTextColor : NativeColor;
 		}
 		else
 		{
-			return InheritedBlueprintComponentColor;
+			static FSlateColor BlueprintColor = FEditorStyle::GetSlateColor("Common.InheritedFromBlueprintTextColor");
+			return IsSelected() ? SelectedTextColor : BlueprintColor;
 		}
 	}
 	else
 	{
-		return IntroducedHereColor;
+		static FSlateColor ThisInstanceColor = FEditorStyle::GetSlateColor("Common.IntroducedInThisInstanceTextColor");
+		return IsSelected() ? SelectedTextColor : ThisInstanceColor;
 	}
 }
 
@@ -1888,7 +1806,9 @@ FReply SSCS_RowWidget::OnDragDetected( const FGeometry& MyGeometry, const FPoint
 		{
 			UBlueprint* Blueprint = FirstNode->GetBlueprint();
 			const FName VariableName = FirstNode->GetVariableName();
-			TSharedRef<FSCSRowDragDropOp> Operation = FSCSRowDragDropOp::New(VariableName, Blueprint != nullptr ? Blueprint->SkeletonGeneratedClass : nullptr, FNodeCreationAnalytic());
+			UStruct* VariableScope = (Blueprint != nullptr) ? Blueprint->SkeletonGeneratedClass : nullptr;
+
+			TSharedRef<FSCSRowDragDropOp> Operation = FSCSRowDragDropOp::New(VariableName, VariableScope, FNodeCreationAnalytic());
 			Operation->SetCtrlDrag(true); // Always put a getter
 			Operation->PendingDropAction = FSCSRowDragDropOp::DropAction_None;
 			Operation->SourceNodes = SelectedNodePtrs;
@@ -2744,24 +2664,30 @@ ESelectionMode::Type SSCS_RowWidget::GetSelectionMode() const
 bool SSCS_RowWidget::OnNameTextVerifyChanged(const FText& InNewText, FText& OutErrorMessage)
 {
 	FSCSEditorTreeNodePtrType NodePtr = GetNode();
+	UBlueprint* Blueprint = GetBlueprint();
 
-	if(!InNewText.IsEmpty())
+	if (!InNewText.IsEmpty())
 	{
+		AActor* ExistingNameSearchScope = NodePtr->GetComponentTemplate()->GetOwner();
+		if ((ExistingNameSearchScope == nullptr) && (Blueprint != nullptr))
+		{
+			ExistingNameSearchScope = Cast<AActor>(Blueprint->GeneratedClass->GetDefaultObject());
+		}
+
 		if (!FComponentEditorUtils::IsValidVariableNameString(NodePtr->GetComponentTemplate(), InNewText.ToString()))
 		{
 			OutErrorMessage = LOCTEXT("RenameFailed_EngineReservedName", "This name is reserved for engine use.");
 			return false;
 		}
-		else if (!FComponentEditorUtils::IsComponentNameAvailable(InNewText.ToString(), NodePtr->GetComponentTemplate()->GetOwner(), NodePtr->GetComponentTemplate()))
+		else if (!FComponentEditorUtils::IsComponentNameAvailable(InNewText.ToString(), ExistingNameSearchScope, NodePtr->GetComponentTemplate()))
 		{
 			OutErrorMessage = LOCTEXT("RenameFailed_ExistingName", "Another component already has the same name.");
 			return false;
 		}
 	}
 
-	UBlueprint* Blueprint = GetBlueprint();
 	TSharedPtr<INameValidatorInterface> NameValidator;
-	if(Blueprint != nullptr)
+	if (Blueprint != nullptr)
 	{
 		NameValidator = MakeShareable(new FKismetNameValidator(GetBlueprint(), NodePtr->GetVariableName()));
 	}
@@ -2771,20 +2697,20 @@ bool SSCS_RowWidget::OnNameTextVerifyChanged(const FText& InNewText, FText& OutE
 	}
 
 	EValidatorResult ValidatorResult = NameValidator->IsValid(InNewText.ToString());
-	if(ValidatorResult == EValidatorResult::AlreadyInUse)
+	if (ValidatorResult == EValidatorResult::AlreadyInUse)
 	{
 		OutErrorMessage = FText::Format(LOCTEXT("RenameFailed_InUse", "{0} is in use by another variable or function!"), InNewText);
 	}
-	else if(ValidatorResult == EValidatorResult::EmptyName)
+	else if (ValidatorResult == EValidatorResult::EmptyName)
 	{
 		OutErrorMessage = LOCTEXT("RenameFailed_LeftBlank", "Names cannot be left blank!");
 	}
-	else if(ValidatorResult == EValidatorResult::TooLong)
+	else if (ValidatorResult == EValidatorResult::TooLong)
 	{
 		OutErrorMessage = LOCTEXT("RenameFailed_NameTooLong", "Names must have fewer than 100 characters!");
 	}
 
-	if(OutErrorMessage.IsEmpty())
+	if (OutErrorMessage.IsEmpty())
 	{
 		return true;
 	}
@@ -3158,9 +3084,18 @@ void SSCSEditor::Construct( const FArguments& InArgs )
 		LOCTEXT("OpenBlueprintEditor", "Open Blueprint Editor"),
 		LOCTEXT("OpenBlueprintEditor_ToolTip", "Opens the blueprint editor for this asset"),
 		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateSP(this, &SSCSEditor::OnOpenBlueprintEditor))
+		FUIAction(FExecuteAction::CreateSP(this, &SSCSEditor::OnOpenBlueprintEditor, /*bForceCodeEditing=*/ false))
 	);
 
+	EditBlueprintMenuBuilder.AddMenuEntry
+	(
+		LOCTEXT("OpenBlueprintEditorScriptMode", "Add or Edit Script"),
+		LOCTEXT("OpenBlueprintEditorScriptMode_ToolTip", "Opens the blueprint editor for this asset, showing the event graph"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateSP(this, &SSCSEditor::OnOpenBlueprintEditor, /*bForceCodeEditing=*/ true))
+	);
+
+	EditBlueprintMenuBuilder.BeginSection(NAME_None, LOCTEXT("EditBlueprintMenu_InstanceHeader", "Instance modifications"));
 
 	EditBlueprintMenuBuilder.AddMenuEntry
 	(
@@ -3183,8 +3118,8 @@ void SSCSEditor::Construct( const FArguments& InArgs )
 
 	EditBlueprintMenuBuilder.AddMenuEntry
 	(
-		LOCTEXT("PromoteToBlueprint", "Convert to Class Blueprint"),
-		LOCTEXT("PromoteToBluerprintTooltip","Converts the existing Blueprint into a new SubClass Blueprint" ),
+		LOCTEXT("CreateChildBlueprint", "Create Child Blueprint Class"),
+		LOCTEXT("CreateChildBlueprintTooltip", "Creates a Child Blueprint Class based on the current Blueprint, allowing you to create variants easily.  This replaces the current actor instance with a new one based on the new Child Blueprint Class." ),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateSP(this, &SSCSEditor::PromoteToBlueprint))
 	);
@@ -3202,63 +3137,86 @@ void SSCSEditor::Construct( const FArguments& InArgs )
 		.Padding(0)
 		[
 			SNew(SBorder)
-			.Padding(2.0f)
+			.Padding(0)
 			.BorderImage(FEditorStyle::GetBrush("DetailsView.CategoryTop"))
 			.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("ComponentsPanel")))
 			.BorderBackgroundColor( FLinearColor( .6,.6,.6, 1.0f ) )
 			[
 				SNew(SHorizontalBox)
+				
 				+ SHorizontalBox::Slot()
-				.HAlign(HAlign_Left)
+				.Padding( 3.0f, 3.0f )
 				.AutoWidth()
+				.HAlign(HAlign_Left)
 				[
 					SNew(SComponentClassCombo)
+					.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("Actor.AddComponent")))
 					.Visibility(bHideComponentClassCombo ? EVisibility::Hidden : EVisibility::Visible)
 					.OnComponentClassSelected(this, &SSCSEditor::PerformComboAddClass)
 					.ToolTipText(LOCTEXT("AddComponent_Tooltip", "Adds a new component to this actor"))
 				]
+
 				+ SHorizontalBox::Slot()
-				.Padding( 4.f, 0.0f )
+				.FillWidth(1.0f)
 				.HAlign(HAlign_Right)
+				.Padding( 3.0f, 3.0f )
 				[
 					SNew( SButton )
+					.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("Actor.ConvertToBlueprint")))
 					.Visibility( this, &SSCSEditor::GetPromoteToBlueprintButtonVisibility )
 					.OnClicked( this, &SSCSEditor::OnPromoteToBlueprintClicked )
-					.ButtonStyle(FEditorStyle::Get(), "ToggleButton")
-					.ContentPadding(0)
+					.ButtonStyle(FEditorStyle::Get(), "FlatButton.Primary")
+					.ContentPadding(FMargin(10,0))
 					.ToolTip(IDocumentation::Get()->CreateToolTip(
-						LOCTEXT("PromoteToBluerprintTooltip","Converts this actor into a reusable Class Blueprint that can have script behavior" ),
+						LOCTEXT("PromoteToBluerprintTooltip","Converts this actor into a reusable Blueprint Class that can have script behavior" ),
 						NULL,
 						TEXT("Shared/LevelEditor"),
 						TEXT("ConvertToBlueprint")))
 					[
 						SNew(SHorizontalBox)
-						+SHorizontalBox::Slot()
-						.VAlign(VAlign_Center)
-						.AutoWidth()
-						.Padding(2.f, 1.f)
-						[
-							SNew(SImage)
-							.Image( FEditorStyle::Get().GetBrush( "ClassIcon.BlueprintCore" ) )
-						]
+						
+						//+SHorizontalBox::Slot()
+						//.VAlign(VAlign_Center)
+						//.AutoWidth()
+						//.Padding(2.f, 1.f)
+						//[
+						//	SNew(SImage)
+						//	.Image( FEditorStyle::Get().GetBrush( "ClassIcon.BlueprintCore" ) )
+						//]
+
 						+ SHorizontalBox::Slot()
 						.VAlign(VAlign_Center)
-						.Padding(1.f)
+						.Padding(3.f)
+						.AutoWidth()
 						[
 							SNew(STextBlock)
 							.TextStyle(FEditorStyle::Get(), "ContentBrowser.TopBar.Font")
-							.Text( LOCTEXT("PromoteToBlueprint", "Convert to Class Blueprint") )
+							.Font( FEditorStyle::Get().GetFontStyle( "FontAwesome.10" ) )
+							.Text(FString(TEXT("\xf085")) /*fa-cogs*/)
+						]
+
+						+ SHorizontalBox::Slot()
+						.VAlign(VAlign_Center)
+						.Padding(3.f)
+						.AutoWidth()
+						[
+							SNew(STextBlock)
+							.TextStyle(FEditorStyle::Get(), "ContentBrowser.TopBar.Font")
+							//.Text( LOCTEXT("PromoteToBlueprint", "Add Script") )
+							.Text(LOCTEXT("PromoteToBlueprint", "Blueprint/Add Script"))
 						]
 					]
 				]
 				+ SHorizontalBox::Slot()
-				.Padding(4.f, 0.0f)
+				.FillWidth(1.0f)
 				.HAlign(HAlign_Right)
 				[
 					SNew(SComboButton)
+					.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("Actor.EditBlueprint")))
 					.Visibility(this, &SSCSEditor::GetEditBlueprintButtonVisibility)
 					.ContentPadding(FMargin(0))
-					.ComboButtonStyle(FEditorStyle::Get(), "ContentBrowser.NewAsset.Style")
+					.ComboButtonStyle(FEditorStyle::Get(), "ToolbarComboButton")
+					.ButtonStyle(FEditorStyle::Get(), "FlatButton.Primary")
 					.ForegroundColor(FLinearColor::White)
 					.ButtonContent()
 					[
@@ -3400,19 +3358,6 @@ FReply SSCSEditor::OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& InKe
 
 TSharedRef<ITableRow> SSCSEditor::MakeTableRowWidget( FSCSEditorTreeNodePtrType InNodePtr, const TSharedRef<STableViewBase>& OwnerTable )
 {
-	if(DeferredRenameRequest != NAME_None)
-	{
-		FName ItemName = InNodePtr->GetVariableName();
-		if(ItemName == NAME_None)
-		{
-			UActorComponent* ComponentTemplateOrInstance = InNodePtr->GetComponentTemplate();
-			if (ComponentTemplateOrInstance != nullptr)
-			{
-				ItemName = ComponentTemplateOrInstance->GetFName();
-			}
-		}
-	}
-
 	// Setup a meta tag for this node
 	FGraphNodeMetaData TagMeta(TEXT("TableRow"));
 	if (InNodePtr.IsValid() && InNodePtr->GetComponentTemplate() != NULL )
@@ -3420,15 +3365,14 @@ TSharedRef<ITableRow> SSCSEditor::MakeTableRowWidget( FSCSEditorTreeNodePtrType 
 		TagMeta.FriendlyName = FString::Printf(TEXT("TableRow,%s,0"), *InNodePtr->GetComponentTemplate()->GetReadableName());
 	}
 
+	// Create the node of the appropriate type
 	if (InNodePtr->GetNodeType() == FSCSEditorTreeNode::RootActorNode)
 	{
-		return SNew(SSCS_RowWidget_ActorRoot, SharedThis(this), InNodePtr, OwnerTable)
-			.AddMetaData<FTutorialMetaData>(TagMeta);
+		return SNew(SSCS_RowWidget_ActorRoot, SharedThis(this), InNodePtr, OwnerTable);
 	}
 	else if (InNodePtr->GetNodeType() == FSCSEditorTreeNode::SeparatorNode)
 	{
-		return SNew(SSCS_RowWidget_Separator, SharedThis(this), InNodePtr, OwnerTable)
-			.AddMetaData<FTutorialMetaData>(TagMeta);
+		return SNew(SSCS_RowWidget_Separator, SharedThis(this), InNodePtr, OwnerTable);
 	}
 
 	return SNew(SSCS_RowWidget, SharedThis(this), InNodePtr, OwnerTable)
@@ -3446,24 +3390,6 @@ void SSCSEditor::GetSelectedItemsForContextMenu(TArray<FComponentEventConstructi
 		NewItem.Component = TreeNode->GetComponentTemplate();
 		OutSelectedItems.Add(NewItem);
 	}
-}
-
-void SSCSEditor::OnGoToAssetInBrowser(UObject* Asset) const
-{
-	TArray<UObject*> Objects;
-	Objects.Add(Asset);
-	GEditor->SyncBrowserToObjects( Objects );
-}
-
-void SSCSEditor::OnEditBlueprint(UObject* Asset) const
-{
-	FAssetEditorManager::Get().OpenEditorForAsset(Asset);
-}
-
-void SSCSEditor::OnOpenCodeFile(const FString CodeFileName) const
-{
-	const FString AbsoluteHeaderPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CodeFileName);
-	FSourceCodeNavigation::OpenSourceFile( AbsoluteHeaderPath );
 }
 
 TSharedPtr< SWidget > SSCSEditor::CreateContextMenu()
@@ -3504,103 +3430,52 @@ TSharedPtr< SWidget > SSCSEditor::CreateContextMenu()
 				}
 				if (!bShowJustPasteOption)
 				{
-					MenuBuilder.BeginSection("ComponentActions", LOCTEXT("ComponentContextMenu", "Component Actions") );
+					TArray<UActorComponent*> SelectedComponents;
+					TArray<FSCSEditorTreeNodePtrType> SelectedNodes = GetSelectedNodes();
+					for (int32 i = 0; i < SelectedNodes.Num(); ++i)
 					{
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Cut) ;
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Copy );
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Paste );
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Duplicate );
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Delete );
-						MenuBuilder.AddMenuEntry( FGenericCommands::Get().Rename );
+						// Get the current selected node reference
+						FSCSEditorTreeNodePtrType SelectedNodePtr = SelectedNodes[i];
+						check(SelectedNodePtr.IsValid());
 
-						if (EditorMode == EComponentEditorMode::BlueprintSCS)
+						// Get the component template associated with the selected node
+						UActorComponent* ComponentTemplate = SelectedNodePtr->GetComponentTemplate();
+						if (ComponentTemplate)
 						{
-							// Collect the classes of all selected objects
-							TArray<UClass*> SelectionClasses;
-							for( auto NodeIter = SelectedNodes.CreateConstIterator(); NodeIter; ++NodeIter )
-							{
-								auto TreeNode = *NodeIter;
-								if( UActorComponent* ComponentTemplate = TreeNode->GetComponentTemplate() )
-								{
-									SelectionClasses.Add(ComponentTemplate->GetClass());
-								}
-							}
-
-							if ( SelectionClasses.Num() )
-							{
-								// Find the common base class of all selected classes
-								UClass* SelectedClass = UClass::FindCommonBase( SelectionClasses );
-								// Build an event submenu if we can generate events
-								if( FBlueprintEditorUtils::CanClassGenerateEvents( SelectedClass ))
-								{
-									MenuBuilder.AddSubMenu(	LOCTEXT("AddEventSubMenu", "Add Event"), 
-										LOCTEXT("ActtionsSubMenu_ToolTip", "Add Event"), 
-										FNewMenuDelegate::CreateStatic( &SSCSEditor::BuildMenuEventsSection,
-										GetBlueprint(), SelectedClass, FCanExecuteAction::CreateSP(this, &SSCSEditor::IsEditingAllowed),
-										FGetSelectedObjectsDelegate::CreateSP(this, &SSCSEditor::GetSelectedItemsForContextMenu)));
-								}
-							}
-						}					
-					}
-					MenuBuilder.EndSection();
-
-					if (SelectedNodes.Num() == 1)
-					{
-						UActorComponent* ComponentTemplate = SelectedNodes[0]->GetComponentTemplate();
-						if (ComponentTemplate->GetClass()->ClassGeneratedBy)
-						{
-							MenuBuilder.BeginSection("ComponentAsset", LOCTEXT("ComponentAssetHeading", "Asset"));
-							{
-								MenuBuilder.AddMenuEntry(
-									FText::Format(LOCTEXT("GoToBlueprintForComponent", "Edit {0}"), FText::FromString(ComponentTemplate->GetClass()->ClassGeneratedBy->GetName())),
-									LOCTEXT("EditBlueprintForComponent_ToolTip", "Edits the class blueprint that defines this component."),
-									FSlateIcon(FEditorStyle::GetStyleSetName(), FClassIconFinder::FindIconNameForClass(ComponentTemplate->GetClass())),
-									FUIAction(
-										FExecuteAction::CreateSP(this, &SSCSEditor::OnEditBlueprint, ComponentTemplate->GetClass()->ClassGeneratedBy),
-										FCanExecuteAction()));
-
-								MenuBuilder.AddMenuEntry(
-									LOCTEXT("GoToAssetForComponent", "Find Class in Content Browser"),
-									LOCTEXT("GoToAssetForComponent_ToolTip", "Summons the content browser and goes to the class for this component."),
-									FSlateIcon(FEditorStyle::GetStyleSetName(), "SystemWideCommands.FindInContentBrowser"),
-									FUIAction(
-										FExecuteAction::CreateSP(this, &SSCSEditor::OnGoToAssetInBrowser, ComponentTemplate->GetClass()->ClassGeneratedBy),
-										FCanExecuteAction()));
-							}
-							MenuBuilder.EndSection();			
-						}
-						else
-						{
-							MenuBuilder.BeginSection("ComponentCode", LOCTEXT("ComponentCodeHeading", "C++"));
-							{
-								if (FSourceCodeNavigation::IsCompilerAvailable())
-								{
-									FString ClassHeaderPath;
-									if (FSourceCodeNavigation::FindClassHeaderPath(ComponentTemplate->GetClass(), ClassHeaderPath) && IFileManager::Get().FileSize(*ClassHeaderPath) != INDEX_NONE)
-									{
-										const FString CodeFileName = FPaths::GetCleanFilename(*ClassHeaderPath);
-
-										MenuBuilder.AddMenuEntry(
-											FText::Format(LOCTEXT("GoToCodeForComponent", "Open {0}"), FText::FromString(CodeFileName)),
-											FText::Format(LOCTEXT("GoToCodeForComponent_ToolTip", "Opens the header file for this component ({0}) in a code editing program"), FText::FromString(CodeFileName)),
-											FSlateIcon(),
-											FUIAction(
-												FExecuteAction::CreateSP(this, &SSCSEditor::OnOpenCodeFile, ClassHeaderPath),
-												FCanExecuteAction()));
-									}
-
-									MenuBuilder.AddMenuEntry(
-										LOCTEXT("GoToAssetForComponent", "Find Class in Content Browser"),
-										LOCTEXT("GoToAssetForComponent_ToolTip", "Summons the content browser and goes to the class for this component."),
-										FSlateIcon(FEditorStyle::GetStyleSetName(), "SystemWideCommands.FindInContentBrowser"),
-										FUIAction(
-											FExecuteAction::CreateSP(this, &SSCSEditor::OnGoToAssetInBrowser, (UObject*)ComponentTemplate->GetClass()),
-											FCanExecuteAction()));
-								}
-							}
-							MenuBuilder.EndSection();
+							SelectedComponents.Add(ComponentTemplate);
 						}
 					}
+
+					if (EditorMode == EComponentEditorMode::BlueprintSCS)
+					{
+						// Collect the classes of all selected objects
+						TArray<UClass*> SelectionClasses;
+						for( auto NodeIter = SelectedNodes.CreateConstIterator(); NodeIter; ++NodeIter )
+						{
+							auto TreeNode = *NodeIter;
+							if( UActorComponent* ComponentTemplate = TreeNode->GetComponentTemplate() )
+							{
+								SelectionClasses.Add(ComponentTemplate->GetClass());
+							}
+						}
+
+						if ( SelectionClasses.Num() )
+						{
+							// Find the common base class of all selected classes
+							UClass* SelectedClass = UClass::FindCommonBase( SelectionClasses );
+							// Build an event submenu if we can generate events
+							if( FBlueprintEditorUtils::CanClassGenerateEvents( SelectedClass ))
+							{
+								MenuBuilder.AddSubMenu(	LOCTEXT("AddEventSubMenu", "Add Event"), 
+									LOCTEXT("ActtionsSubMenu_ToolTip", "Add Event"), 
+									FNewMenuDelegate::CreateStatic( &SSCSEditor::BuildMenuEventsSection,
+									GetBlueprint(), SelectedClass, FCanExecuteAction::CreateSP(this, &SSCSEditor::IsEditingAllowed),
+									FGetSelectedObjectsDelegate::CreateSP(this, &SSCSEditor::GetSelectedItemsForContextMenu)));
+							}
+						}
+					}					
+
+					FComponentEditorUtils::FillComponentContextMenuOptions(MenuBuilder, SelectedComponents);
 				}
 			}
 		}
@@ -3765,9 +3640,12 @@ void SSCSEditor::OnDuplicateComponent()
 				USceneComponent* NewSceneComponent = Cast<USceneComponent>(CloneComponent);
 				if(NewSceneComponent != NULL)
 				{
-					// Ensure that any native attachment relationship inherited from the original copy is removed (to prevent a GLEO assertion)
-					NewSceneComponent->DetachFromParent(true);
-
+					if (EditorMode == EComponentEditorMode::BlueprintSCS)
+					{
+						// Ensure that any native attachment relationship inherited from the original copy is removed (to prevent a GLEO assertion)
+						NewSceneComponent->DetachFromParent(true);
+					}
+					
 					// Attempt to locate the original node in the SCS tree
 					FSCSEditorTreeNodePtrType OriginalNodePtr = FindTreeNode(OriginalComponent);
 					if(OriginalNodePtr.IsValid())
@@ -3827,7 +3705,9 @@ UActorComponent* SSCSEditor::PerformComboAddClass(TSubclassOf<UActorComponent> C
 		// This adds components according to the type selected in the drop down. If the user
 		// has the appropriate objects selected in the content browser then those are added,
 		// else we go down the previous route of adding components by type.
-		if(Selection->Num() > 0 && !AssetOverride)
+		//
+		// Furthermore don't try to match up assets for USceneComponent it will match lots of things and doesn't have any nice behavior for asset adds 
+		if (Selection->Num() > 0 && !AssetOverride && NewClass != USceneComponent::StaticClass())
 		{
 			for(FSelectionIterator ObjectIter(*Selection); ObjectIter; ++ObjectIter)
 			{
@@ -3893,7 +3773,7 @@ FSCSEditorTreeNodePtrType SSCSEditor::GetNodeFromActorComponent(const UActorComp
 				UClass* OwnerClass = ActorComponent->GetOwner()->GetActorClass();
 
 				// If the given component is one that's created during Blueprint construction
-				if (ActorComponent->CreationMethod == EComponentCreationMethod::ConstructionScript)
+				if (ActorComponent->IsCreatedByConstructionScript())
 				{
 					// Get the Blueprint object associated with the owner's class
 					UBlueprint* Blueprint = UBlueprint::GetBlueprintFromClass(OwnerClass);
@@ -4104,8 +3984,16 @@ void SSCSEditor::UpdateTree(bool bRegenerateTreeNodes)
 				
 				TInlineComponentArray<UActorComponent*> Components;
 				CDO->GetComponents(Components);
+
+				// Add the native root component
+				USceneComponent* RootComponent = CDO->GetRootComponent();
+				if(RootComponent != NULL)
+				{
+					Components.Remove(RootComponent);
+					AddTreeNodeFromComponent(RootComponent);
+				}
 				
-				// Add the native base class SceneComponent hierarchy
+				// Add the rest of the native base class SceneComponent hierarchy
 				for(auto CompIter = Components.CreateIterator(); CompIter; ++CompIter)
 				{
 					USceneComponent* SceneComp = Cast<USceneComponent>(*CompIter);
@@ -4171,8 +4059,16 @@ void SSCSEditor::UpdateTree(bool bRegenerateTreeNodes)
 				// Get the full set of instanced components
 				TInlineComponentArray<UActorComponent*> Components;
 				ActorInstance->GetComponents(Components);
+
+				// Add the root component first (it may not be the first one)
+				USceneComponent* RootComponent = ActorInstance->GetRootComponent();
+				if(RootComponent != nullptr)
+				{
+					Components.Remove(RootComponent);
+					AddTreeNodeFromComponent(RootComponent);
+				}
 				
-				// Now add the instanced scene component hierarchy
+				// Now add the rest of the instanced scene component hierarchy
 				for(auto CompIter = Components.CreateIterator(); CompIter; ++CompIter)
 				{
 					USceneComponent* SceneComp = Cast<USceneComponent>(*CompIter);
@@ -4279,23 +4175,23 @@ TSharedPtr<FSCSEditorTreeNode> SSCSEditor::AddRootComponentTreeNode(UActorCompon
 	return NewTreeNode;
 }
 
-
-void SSCSEditor::MakeDefaultComponentPrefixAndName( TSubclassOf<UActorComponent> ComponentClass, FString& DefaultClassPrefix, FString& DefaultClassName ) const
+class FClassParentFilter : public IClassViewerFilter
 {
-	// If the class being created inherits directly from UActorComponent, we don't want the default new class name to
-	// be called "NewActorComponent", because this will shw up as "New Actor" in the SCS editor tree which doesn't make
-	// a whole lot of sense in the context of a list of components inside an actor.
-	DefaultClassName = ComponentClass->GetName();
-	if( ComponentClass == UActorComponent::StaticClass() )
+public:
+	FClassParentFilter(const TSubclassOf<UActorComponent>& InComponentClass) : ComponentClass(InComponentClass) {}
+
+	virtual bool IsClassAllowed(const FClassViewerInitializationOptions& InInitOptions, const UClass* InClass, TSharedRef< FClassViewerFilterFuncs > InFilterFuncs ) override
 	{
-		// NOTE: This is intentionally not localized because it will become a C++ source file and class name
-		DefaultClassName = TEXT( "Component" );
+		return InClass->IsChildOf(ComponentClass);
 	}
 
-	// NOTE: This is intentionally not localized because it will become a C++ source file and class name
-	DefaultClassPrefix = TEXT( "New" );
-}
+	virtual bool IsUnloadedClassAllowed(const FClassViewerInitializationOptions& InInitOptions, const TSharedRef< const IUnloadedBlueprintData > InUnloadedClassData, TSharedRef< FClassViewerFilterFuncs > InFilterFuncs) override
+	{
+		return InUnloadedClassData->IsChildOf(ComponentClass);
+	}
 
+	TSubclassOf<UActorComponent> ComponentClass;
+};
 
 UClass* SSCSEditor::CreateNewCPPComponent( TSubclassOf<UActorComponent> ComponentClass )
 {
@@ -4310,12 +4206,17 @@ UClass* SSCSEditor::CreateNewCPPComponent( TSubclassOf<UActorComponent> Componen
 		}
 	};
 
-	const bool bModal = true;
+	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog(
+		FAddToProjectConfig()
+		.WindowTitle(LOCTEXT("AddNewC++Component", "Add C++ Component"))
+		.ParentWindow(ParentWindow)
+		.Modal()
+		.OnAddedToProject(FOnAddedToProject::CreateLambda(OnCodeAddedToProject))
+		.FeatureComponentClasses()
+		.AllowableParents(MakeShareable( new FClassParentFilter(ComponentClass) ))
+		.DefaultClassPrefix(TEXT("New"))
+	);
 
-	FString DefaultClassPrefix, DefaultClassName;
-	MakeDefaultComponentPrefixAndName( ComponentClass, DefaultClassPrefix, DefaultClassName );
-
-	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog(ComponentClass, FString(), ParentWindow, bModal, FOnCodeAddedToProject::CreateLambda(OnCodeAddedToProject), DefaultClassPrefix, DefaultClassName);
 
 	return LoadClass<UActorComponent>(nullptr, *AddedClassName, nullptr, LOAD_None, nullptr);
 }
@@ -4324,63 +4225,37 @@ UClass* SSCSEditor::CreateNewBPComponent(TSubclassOf<UActorComponent> ComponentC
 {
 	UClass* NewClass = nullptr;
 
-	TSharedPtr<SWindow> PickBlueprintPathWidget;
-	SAssignNew(PickBlueprintPathWidget, SWindow)
-		.Title(LOCTEXT("SelectPath", "Select Path"))
-		.ToolTipText(LOCTEXT("SelectPathTooltip", "Select the path where the Blueprint will be created"))
-		.ClientSize(FVector2D(400, 400));
-
-
-	FString PackagePath;
-	FString AssetName;
-	auto OnPathPicked = [&PackagePath, &AssetName](const FString& Path)
+	auto OnAddedToProject = [&](const FString& ClassName, const FString& PackagePath, const FString& ModuleName)
 	{
-		PackagePath = Path;
-		AssetName = FPackageName::GetLongPackageAssetName(Path);
-	};
-
-	FString DefaultClassPrefix, DefaultClassName;
-	MakeDefaultComponentPrefixAndName( ComponentClass, DefaultClassPrefix, DefaultClassName );
-
-	TSharedPtr<SCreateAssetFromObject> CreateBlueprintFromActorDialog;
-	PickBlueprintPathWidget->SetContent
-	(
-		SAssignNew(CreateBlueprintFromActorDialog, SCreateAssetFromObject, PickBlueprintPathWidget)
-		.HeadingText(LOCTEXT("CreateBlueprintFromActor_Heading", "Blueprint Name"))
-		.CreateButtonText(LOCTEXT("CreateBlueprintFromActor_ButtonLabel", "Create Blueprint"))
-		.DefaultNameOverride(FText::FromString(DefaultClassPrefix + DefaultClassName))
-		.OnCreateAssetAction(FOnPathChosen::CreateLambda(OnPathPicked))
-	);
-
-
-	FSlateApplication::Get().AddModalWindow(PickBlueprintPathWidget.ToSharedRef(), AsShared());
-
-	if(!PackagePath.IsEmpty() && !AssetName.IsEmpty())
-	{
-		UPackage* Package = CreatePackage(NULL, *PackagePath);
-
-		if(Package)
+		if(!ClassName.IsEmpty() && !PackagePath.IsEmpty())
 		{
-			// Create and init a new Blueprint
-			if(UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(ComponentClass, Package, FName(*AssetName), BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass()))
+			if (UPackage* Package = FindPackage(nullptr, *PackagePath))
 			{
-				// Notify the asset registry
-				FAssetRegistryModule::AssetCreated(NewBP);
+				if (UBlueprint* NewBP = FindObjectFast<UBlueprint>(Package, *ClassName))	
+				{
+					NewClass = NewBP->GeneratedClass;
 
-				// Mark the package dirty...
-				Package->MarkPackageDirty();
+					TArray<UObject*> Objects;
+					Objects.Emplace(NewBP);
+					GEditor->SyncBrowserToObjects(Objects);
 
-				NewClass = NewBP->GeneratedClass;
-
-				TArray<UObject*> Objects;
-				Objects.Add(NewBP);
-				GEditor->SyncBrowserToObjects( Objects );
-
-				// Open the editor for the new blueprint
-				FAssetEditorManager::Get().OpenEditorForAsset(NewBP);
+					// Open the editor for the new blueprint
+					FAssetEditorManager::Get().OpenEditorForAsset(NewBP);
+				}
 			}
 		}
-	}
+	};
+
+	FGameProjectGenerationModule::Get().OpenAddBlueprintToProjectDialog(
+		FAddToProjectConfig()
+		.WindowTitle(LOCTEXT("AddNewBlueprintComponent", "Add Blueprint Component"))
+		.ParentWindow(FSlateApplication::Get().FindWidgetWindow(SharedThis(this)))
+		.Modal()
+		.AllowableParents(MakeShareable( new FClassParentFilter(ComponentClass) ))
+		.FeatureComponentClasses()
+		.OnAddedToProject(FOnAddedToProject::CreateLambda(OnAddedToProject))
+		.DefaultClassPrefix(TEXT("New"))
+	);
 
 	return NewClass;
 }
@@ -4455,16 +4330,24 @@ UActorComponent* SSCSEditor::AddNewComponent( UClass* NewComponentClass, UObject
 			TArray<uint8> SavedProperties;
 			FObjectWriter Writer(ComponentTemplate, SavedProperties);
 			FObjectReader(NewComponent, SavedProperties);
+			NewComponent->UpdateComponentToWorld();
 		}
 	}
 	else    // EComponentEditorMode::ActorInstance
 	{
-		if (AActor* ActorInstance = GetActorContext())
+		if (ComponentTemplate)
 		{
+			// Create a duplicate of the provided template
+			NewComponent = AddNewNodeForInstancedComponent(FComponentEditorUtils::DuplicateComponent(ComponentTemplate), nullptr);
+		}
+		else if (AActor* ActorInstance = GetActorContext())
+		{
+			// No template, so create a wholly new component
 			ActorInstance->Modify();
 
+			// Create an appropriate name for the new component
 			FName NewComponentName = NAME_None;
-			if (Asset != nullptr)
+			if (Asset)
 			{
 				NewComponentName = *FComponentEditorUtils::GenerateValidVariableNameFromAsset(Asset, ActorInstance);
 			}
@@ -4472,7 +4355,33 @@ UActorComponent* SSCSEditor::AddNewComponent( UClass* NewComponentClass, UObject
 			{
 				NewComponentName = *FComponentEditorUtils::GenerateValidVariableName(NewComponentClass, ActorInstance);
 			}
-			NewComponent = AddNewNodeForInstancedComponent(ConstructObject<UActorComponent>(NewComponentClass, ActorInstance, NewComponentName, RF_Transactional, ComponentTemplate), Asset, true);
+
+			// Construct the new component and attach as needed
+			auto NewInstanceComponent = ConstructObject<UActorComponent>(NewComponentClass, ActorInstance, NewComponentName, RF_Transactional);
+			if (USceneComponent* NewSceneComponent = Cast<USceneComponent>(NewInstanceComponent))
+			{
+				USceneComponent* RootComponent = ActorInstance->GetRootComponent();
+				if (RootComponent)
+				{
+					NewSceneComponent->AttachTo(RootComponent, NAME_None, EAttachLocation::KeepRelativeOffset);
+				}
+				else
+				{
+					ActorInstance->SetRootComponent(NewSceneComponent);
+				}
+			}
+
+			// If the component was created from/for a particular asset, assign it now
+			if (Asset)
+			{
+				FComponentAssetBrokerage::AssignAssetToComponent(NewInstanceComponent, Asset);
+			}
+
+			// Add to SerializedComponents array so it gets saved
+			ActorInstance->AddInstanceComponent(NewInstanceComponent);
+			NewInstanceComponent->RegisterComponent();
+
+			NewComponent = AddNewNodeForInstancedComponent(NewInstanceComponent, Asset);
 		}
 	}
 
@@ -4532,32 +4441,6 @@ UActorComponent* SSCSEditor::AddNewNodeForInstancedComponent(UActorComponent* Ne
 {
 	check(NewInstanceComponent != nullptr);
 
-	AActor* ActorInstance = ActorContext.Get();
-	check(ActorInstance != nullptr);
-
-	if (USceneComponent* NewSceneComponent = Cast<USceneComponent>(NewInstanceComponent))
-	{
-		USceneComponent* RootComponent = ActorInstance->GetRootComponent();
-		if (RootComponent)
-		{
-			NewSceneComponent->AttachTo(RootComponent);
-		}
-		else
-		{
-			ActorInstance->SetRootComponent(NewSceneComponent);
-		}
-	}
-
-	// Add to SerializedComponents array so it gets saved
-	ActorInstance->AddInstanceComponent(NewInstanceComponent);
-
-	if(Asset)
-	{
-		FComponentAssetBrokerage::AssignAssetToComponent(NewInstanceComponent, Asset);
-	}
-
-	NewInstanceComponent->RegisterComponent();
-
 	FSCSEditorTreeNodePtrType NewNodePtr;
 
 	// Add the new node to the editor tree
@@ -4570,9 +4453,8 @@ UActorComponent* SSCSEditor::AddNewNodeForInstancedComponent(UActorComponent* Ne
 		if(SceneRootNodePtr.IsValid() && SceneRootNodePtr->IsDefaultSceneRoot())
 		{
 			RemoveComponentNode(SceneRootNodePtr);
+			RootNodes.Remove( SceneRootNodePtr );
 			SceneRootNodePtr.Reset();
-
-			UpdateTree();
 		}
 	}
 	else
@@ -4628,42 +4510,8 @@ void SSCSEditor::CutSelectedNodes()
 
 bool SSCSEditor::CanCopyNodes() const
 {
-	TArray<FSCSEditorTreeNodePtrType> SelectedNodes = SCSTreeWidget->GetSelectedItems();
-	bool bCanCopy = SelectedNodes.Num() > 0;
-	if(bCanCopy)
-	{
-		for (int32 i = 0; i < SelectedNodes.Num() && bCanCopy; ++i)
-		{
-			// Check for the default scene root; that cannot be copied/duplicated
-			UActorComponent* ComponentTemplate = SelectedNodes[i]->GetComponentTemplate();
-			bCanCopy = ComponentTemplate != nullptr && !SelectedNodes[i]->IsDefaultSceneRoot();
-			if (bCanCopy)
-			{
-				UClass* ComponentTemplateClass = ComponentTemplate->GetClass();
-				check(ComponentTemplateClass != nullptr);
-
-				// Component class cannot be abstract and must also be tagged as BlueprintSpawnable
-				bCanCopy = !ComponentTemplateClass->HasAnyClassFlags(CLASS_Abstract)
-					&& ComponentTemplateClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent);
-			}
-		}
-	}
-
-	return bCanCopy;
-}
-
-void SSCSEditor::CopySelectedNodes()
-{
-	FStringOutputDevice Archive;
-	const FExportObjectInnerContext Context;
+	TArray<UActorComponent*> ComponentsToCopy;
 	TArray<FSCSEditorTreeNodePtrType> SelectedNodes = GetSelectedNodes();
-
-	// Clear the mark state for saving.
-	UnMarkAllObjects(EObjectMark(OBJECTMARK_TagExp|OBJECTMARK_TagImp));
-
-	// Duplicate the selected component templates into temporary objects that we can modify
-	TMap<FName, FName> ParentMap;
-	TMap<FName, UActorComponent*> ObjectMap;
 	for (int32 i = 0; i < SelectedNodes.Num(); ++i)
 	{
 		// Get the current selected node reference
@@ -4671,58 +4519,38 @@ void SSCSEditor::CopySelectedNodes()
 		check(SelectedNodePtr.IsValid());
 
 		// Get the component template associated with the selected node
-		UObject* ObjectToCopy = SelectedNodePtr->GetComponentTemplate();
-		if(ObjectToCopy)
+		UActorComponent* ComponentTemplate = SelectedNodePtr->GetComponentTemplate();
+		if (ComponentTemplate)
 		{
-			// If valid, duplicate the component template into a temporary object
-			ObjectToCopy = StaticDuplicateObject(ObjectToCopy, GetTransientPackage(), *SelectedNodePtr->GetVariableName().ToString(), RF_AllFlags & ~RF_ArchetypeObject);
-			if(ObjectToCopy)
-			{
-				// Get the closest parent node of the current node selection within the selected set
-				FSCSEditorTreeNodePtrType ParentNodePtr = SelectedNodePtr->FindClosestParent(SelectedNodes);
-				if(ParentNodePtr.IsValid())
-				{
-					// If valid, record the parent node's variable name into the node->parent map
-					ParentMap.Add(SelectedNodePtr->GetVariableName(), ParentNodePtr->GetVariableName());
-				}
-
-				// Record the temporary object into the name->object map
-				ObjectMap.Add(SelectedNodePtr->GetVariableName(), CastChecked<UActorComponent>(ObjectToCopy));
-			}
+			ComponentsToCopy.Add(ComponentTemplate);
 		}
 	}
 
-	// Export the component object(s) to text for copying
-	for(auto ObjectIt = ObjectMap.CreateIterator(); ObjectIt; ++ObjectIt)
+	// Copy the components to the clipboard
+	return FComponentEditorUtils::CanCopyComponents(ComponentsToCopy);
+}
+
+void SSCSEditor::CopySelectedNodes()
+{
+	// Distill the selected nodes into a list of components to copy
+	TArray<UActorComponent*> ComponentsToCopy;
+	TArray<FSCSEditorTreeNodePtrType> SelectedNodes = GetSelectedNodes();
+	for (int32 i = 0; i < SelectedNodes.Num(); ++i)
 	{
-		// Get the component object to be copied
-		UActorComponent* ComponentToCopy = ObjectIt->Value;
-		check(ComponentToCopy);
+		// Get the current selected node reference
+		FSCSEditorTreeNodePtrType SelectedNodePtr = SelectedNodes[i];
+		check(SelectedNodePtr.IsValid());
 
-		// If this component object had a parent within the selected set
-		if(ParentMap.Contains(ComponentToCopy->GetFName()))
+		// Get the component template associated with the selected node
+		UActorComponent* ComponentTemplate = SelectedNodePtr->GetComponentTemplate();
+		if (ComponentTemplate)
 		{
-			// Get the name of the parent component
-			FName ParentName = ParentMap[ComponentToCopy->GetFName()];
-			if(ObjectMap.Contains(ParentName))
-			{
-				// Ensure that this component is a scene component
-				USceneComponent* SceneComponent = Cast<USceneComponent>(ComponentToCopy);
-				if(SceneComponent)
-				{
-					// Set the attach parent to the matching parent object in the temporary set. This allows us to preserve hierarchy in the copied set.
-					SceneComponent->AttachParent = Cast<USceneComponent>(ObjectMap[ParentName]);
-				}
-			}
+			ComponentsToCopy.Add(ComponentTemplate);
 		}
-
-		// Export the component object to the given string
-		UExporter::ExportToOutputDevice(&Context, ComponentToCopy, NULL, Archive, TEXT("copy"), 0, PPF_ExportsNotFullyQualified|PPF_Copy|PPF_Delimited, false, ComponentToCopy->GetOuter());
 	}
 
-	// Copy text to clipboard
-	FString ExportedText = Archive;
-	FPlatformMisc::ClipboardCopy(*ExportedText);
+	// Copy the components to the clipboard
+	FComponentEditorUtils::CopyComponents(ComponentsToCopy);
 }
 
 bool SSCSEditor::CanPasteNodes() const
@@ -4732,118 +4560,118 @@ bool SSCSEditor::CanPasteNodes() const
 		return false;
 	}
 
-	FString ClipboardContent;
-	FPlatformMisc::ClipboardPaste(ClipboardContent);
-
-	// Obtain the component object text factory for the clipboard content and return whether or not we can use it
-	TSharedRef<FSCSEditorComponentObjectTextFactory> Factory = FSCSEditorComponentObjectTextFactory::Get(EditorMode, ClipboardContent);
-	return Factory->NewObjectMap.Num() > 0
-		&& (SceneRootNodePtr->IsDefaultSceneRoot() || Factory->CanAttachComponentsTo(Cast<USceneComponent>(SceneRootNodePtr->GetComponentTemplate())));
+	return FComponentEditorUtils::CanPasteComponents(Cast<USceneComponent>(SceneRootNodePtr->GetComponentTemplate()), SceneRootNodePtr->IsDefaultSceneRoot());
 }
 
 void SSCSEditor::PasteNodes()
 {
 	const FScopedTransaction Transaction(LOCTEXT("PasteComponents", "Paste Component(s)"));
 
-	// Get the text from the clipboard
-	FString TextToImport;
-	FPlatformMisc::ClipboardPaste(TextToImport);
-
-	// Get a new component object factory for the clipboard content
-	TSharedRef<FSCSEditorComponentObjectTextFactory> Factory = FSCSEditorComponentObjectTextFactory::Get(EditorMode, TextToImport);
-
-	// Clear the current selection
-	SCSTreeWidget->ClearSelection();
-
-	// Get the object that's being edited
-	UBlueprint* Blueprint = nullptr;
-	AActor* ActorInstance = nullptr;
 	if (EditorMode == EComponentEditorMode::BlueprintSCS)
 	{
-		Blueprint = GetBlueprint();
+		// Get the components to paste from the clipboard
+		TMap<FName, FName> ParentMap;
+		TMap<FName, UActorComponent*> NewObjectMap;
+		FComponentEditorUtils::GetComponentsFromClipboard(ParentMap, NewObjectMap, true);
+		
+		// Clear the current selection
+		SCSTreeWidget->ClearSelection();
+
+		// Get the blueprint that's being edited
+		UBlueprint* Blueprint = GetBlueprint();
 		check(Blueprint != nullptr && Blueprint->SimpleConstructionScript != nullptr);
 
 		Blueprint->Modify();
 		SaveSCSCurrentState(Blueprint->SimpleConstructionScript);
-	}
-	else    // EComponentEditorMode::ActorInstance
-	{
-		ActorInstance = GetActorContext();
-		if (ActorInstance != nullptr)
-		{
-			ActorInstance->Modify();
-		}
-	}
 
-	// Create a new tree node for each new (pasted) component
-	TMap<FName, FSCSEditorTreeNodePtrType> NewNodeMap;
-	for(auto NewObjectIt = Factory->NewObjectMap.CreateIterator(); NewObjectIt; ++NewObjectIt)
-	{
-		// Get the component object instance
-		UActorComponent* NewActorComponent = NewObjectIt->Value;
-		check(NewActorComponent);
-
-		if(Blueprint != nullptr)
+		// Create a new tree node for each new (pasted) component
+		TMap<FName, FSCSEditorTreeNodePtrType> NewNodeMap;
+		for (auto NewObjectIt = NewObjectMap.CreateIterator(); NewObjectIt; ++NewObjectIt)
 		{
+			// Get the component object instance
+			UActorComponent* NewActorComponent = NewObjectIt->Value;
+			check(NewActorComponent);
+
 			// Relocate the instance from the transient package to the BPGC and assign it a unique object name
-			NewActorComponent->Rename(NULL, Blueprint->GeneratedClass, REN_DontCreateRedirectors|REN_DoNotDirty);
+			NewActorComponent->Rename(NULL, Blueprint->GeneratedClass, REN_DontCreateRedirectors | REN_DoNotDirty);
 
 			// Create a new SCS node to contain the new component and add it to the tree
 			NewActorComponent = AddNewNode(Blueprint->SimpleConstructionScript->CreateNode(NewActorComponent), NULL, false, false);
-		}
-		else
-		{
-			// Relocate the instance from the transient package to the Actor and assign it a unique object name
-			check(ActorInstance != nullptr); //@TODO: This doesn't look justified, but the code below was already assuming it
-			FString NewComponentName = FComponentEditorUtils::GenerateValidVariableName(NewActorComponent->GetClass(), ActorInstance);
-			NewActorComponent->Rename(*NewComponentName, ActorInstance, REN_DontCreateRedirectors | REN_DoNotDirty);
 
-			// Create a new node to contain the new component instance and add it to the tree
-			NewActorComponent = AddNewNodeForInstancedComponent(NewActorComponent, NULL, false);
-		}
-
-		if(NewActorComponent)
-		{
-			// Locate the node that corresponds to the new component template or instance
-			FSCSEditorTreeNodePtrType NewNodePtr = FindTreeNode(NewActorComponent);
-			if(NewNodePtr.IsValid())
+			if (NewActorComponent)
 			{
-				// Add the new node to the node map
-				NewNodeMap.Add(NewObjectIt->Key, NewNodePtr);
+				// Locate the node that corresponds to the new component template or instance
+				FSCSEditorTreeNodePtrType NewNodePtr = FindTreeNode(NewActorComponent);
+				if (NewNodePtr.IsValid())
+				{
+					// Add the new node to the node map
+					NewNodeMap.Add(NewObjectIt->Key, NewNodePtr);
 
-				// Update the selection to include the new node
-				SCSTreeWidget->SetItemSelection(NewNodePtr, true);
+					// Update the selection to include the new node
+					SCSTreeWidget->SetItemSelection(NewNodePtr, true);
+				}
 			}
 		}
-	}
 
-	// Restore the node hierarchy from the original copy
-	for(auto NodeIt = NewNodeMap.CreateConstIterator(); NodeIt; ++NodeIt)
-	{
-		// If an entry exists in the set of known parent nodes for the current node
-		if(Factory->ParentMap.Contains(NodeIt->Key))
+		// Restore the node hierarchy from the original copy
+		for (auto NodeIt = NewNodeMap.CreateConstIterator(); NodeIt; ++NodeIt)
 		{
-			// Get the parent node name
-			FName ParentName = Factory->ParentMap[NodeIt->Key];
-			if(NewNodeMap.Contains(ParentName))
+			// If an entry exists in the set of known parent nodes for the current node
+			if (ParentMap.Contains(NodeIt->Key))
 			{
-				// Reattach the current node to the parent node (this will also handle detachment from the scene root node)
-				NewNodeMap[ParentName]->AddChild(NodeIt->Value);
+				// Get the parent node name
+				FName ParentName = ParentMap[NodeIt->Key];
+				if (NewNodeMap.Contains(ParentName))
+				{
+					// Reattach the current node to the parent node (this will also handle detachment from the scene root node)
+					NewNodeMap[ParentName]->AddChild(NodeIt->Value);
 
-				// Ensure that the new node is expanded to show the child node(s)
-				SCSTreeWidget->SetItemExpansion(NewNodeMap[ParentName], true);
+					// Ensure that the new node is expanded to show the child node(s)
+					SCSTreeWidget->SetItemExpansion(NewNodeMap[ParentName], true);
+				}
 			}
 		}
-	}
 
-	if(Blueprint != nullptr)
-	{
 		// Modify the Blueprint generated class structure (this will also call UpdateTree() as a result)
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	}
-	else
+	else    // EComponentEditorMode::ActorInstance
 	{
-		UpdateTree();
+		// Determine where in the hierarchy to paste
+		USceneComponent* TargetComponent = nullptr;
+		auto SelectedNodes = GetSelectedNodes();
+		for (int32 i = 0; i < SelectedNodes.Num(); ++i)
+		{
+			FSCSEditorTreeNodePtrType SelectedNodePtr = SelectedNodes[i];
+			check(SelectedNodePtr.IsValid());
+
+			if (auto SceneComponent = Cast<USceneComponent>(SelectedNodePtr->GetComponentTemplate()))
+			{
+				TargetComponent = SceneComponent;
+				break;
+			}
+		}
+
+		// Paste the components
+		TArray<UActorComponent*> PastedComponents;
+		FComponentEditorUtils::PasteComponents(PastedComponents, GetActorContext(), TargetComponent);
+
+		if (PastedComponents.Num() > 0)
+		{
+			// We only want the pasted node(s) to be selected
+			SCSTreeWidget->ClearSelection();
+			UpdateTree();
+
+			// Select the nodes that correspond to the pasted components
+			for (auto PastedComponent : PastedComponents)
+			{
+				FSCSEditorTreeNodePtrType PastedNode = GetNodeFromActorComponent(PastedComponent);
+				if (PastedNode.IsValid())
+				{
+					SCSTreeWidget->SetItemSelection(PastedNode, true);
+				}
+			}
+		}
 	}
 }
 
@@ -4864,7 +4692,7 @@ bool SSCSEditor::CanDeleteNodes() const
 
 void SSCSEditor::OnDeleteNodes()
 {
-	const FScopedTransaction Transaction( LOCTEXT("RemoveComponent", "Remove Component") );
+	const FScopedTransaction Transaction( LOCTEXT("RemoveComponents", "Remove Components") );
 
 	if (EditorMode == EComponentEditorMode::BlueprintSCS)
 	{
@@ -4920,57 +4748,38 @@ void SSCSEditor::OnDeleteNodes()
 			ActorInstance->Modify();
 		}
 
-		FSCSEditorTreeNodePtrType NewSelection;
-		TArray<FSCSEditorTreeNodePtrType> SelectedNodes = SCSTreeWidget->GetSelectedItems();
+		TArray<UActorComponent*> ComponentsToDelete;
+		TArray<FSCSEditorTreeNodePtrType> SelectedNodes = GetSelectedNodes();
 		for (int32 i = 0; i < SelectedNodes.Num(); ++i)
 		{
-			auto Node = SelectedNodes[i];
+			// Get the current selected node reference
+			FSCSEditorTreeNodePtrType SelectedNodePtr = SelectedNodes[i];
+			check(SelectedNodePtr.IsValid());
 
-			// Find an appropriate node to select after removal
-			if(!NewSelection.IsValid() || NewSelection == Node)
+			// Get the component template associated with the selected node
+			UActorComponent* ComponentTemplate = SelectedNodePtr->GetComponentTemplate();
+			if (ComponentTemplate)
 			{
-				// Default to the parent node
-				NewSelection = Node->GetParent();
-				if (NewSelection.IsValid() && NewSelection->GetNodeType() != FSCSEditorTreeNode::RootActorNode)
+				ComponentsToDelete.Add(ComponentTemplate);
+			}
+		}
+
+		UActorComponent* ComponentToSelect = nullptr;
+		int32 NumDeletedComponents = FComponentEditorUtils::DeleteComponents(ComponentsToDelete, ComponentToSelect);
+		if (NumDeletedComponents > 0)
+		{
+			if (ComponentToSelect)
+			{
+				FSCSEditorTreeNodePtrType NodeToSelect = GetNodeFromActorComponent(ComponentToSelect);
+				if (NodeToSelect.IsValid())
 				{
-					// If we have sibling nodes, find the one that immediately precedes the one being removed
-					const TArray<FSCSEditorTreeNodePtrType>& ChildNodes = NewSelection->GetChildren();
-					for (int32 ChildIndex = 0; ChildIndex < ChildNodes.Num() && Node != ChildNodes[ChildIndex]; ++ChildIndex)
-					{
-						NewSelection = ChildNodes[ChildIndex];
-					}
-				}
-				else
-				{
-					const TArray<FSCSEditorTreeNodePtrType>& Nodes = GetRootNodes();
-					int32 NodeIndex = Nodes.Find(Node);
-					if (NodeIndex != INDEX_NONE && NodeIndex > 0)
-					{
-						while (NodeIndex > 0 && Nodes[--NodeIndex]->GetNodeType() == FSCSEditorTreeNode::SeparatorNode)
-						{
-							--NodeIndex;
-						}
-						NewSelection = Nodes[NodeIndex];
-					}
-					else
-					{
-						NewSelection.Reset();
-					}
+					SCSTreeWidget->SetSelection(NodeToSelect);
 				}
 			}
 
-			// This will clear the current selection
-			RemoveComponentNode(Node);
+			// Rebuild the tree view to reflect the new component hierarchy
+			UpdateTree();
 		}
-
-		// Reset the selection
-		if(NewSelection.IsValid())
-		{
-			SCSTreeWidget->SetItemSelection(NewSelection, true);
-		}
-
-		// Rebuild the tree view to reflect the new component hierarchy
-		UpdateTree();
 	}
 
 	// Do this AFTER marking the Blueprint as modified
@@ -5181,6 +4990,7 @@ FSCSEditorTreeNodePtrType SSCSEditor::AddTreeNodeFromComponent(USceneComponent* 
 	FSCSEditorTreeNodePtrType NewNodePtr;
 
 	check(InSceneComponent != NULL);
+	ensure(!InSceneComponent->HasAnyFlags(RF_PendingKill));
 
 	// If the given component has a parent, and if we're not in "instance" mode OR the owner of the parent matches the Actor instance we're editing
 	if(InSceneComponent->AttachParent != NULL
@@ -5309,13 +5119,7 @@ FSCSEditorTreeNodePtrType SSCSEditor::FindTreeNode(const FName& InVariableOrInst
 
 		if(InStartNodePtr.IsValid())
 		{
-			FName ItemName = InStartNodePtr->GetVariableName();
-			if(ItemName == NAME_None)
-			{
-				UActorComponent* ComponentTemplateOrInstance = InStartNodePtr->GetComponentTemplate();
-				check(ComponentTemplateOrInstance != nullptr);
-				ItemName = ComponentTemplateOrInstance->GetFName();
-			}
+			FName ItemName = InStartNodePtr->GetNodeID();
 
 			// Check to see if the given name matches the item name
 			if(InVariableOrInstanceName == ItemName)
@@ -5344,14 +5148,7 @@ void SSCSEditor::OnItemScrolledIntoView( FSCSEditorTreeNodePtrType InItem, const
 {
 	if(DeferredRenameRequest != NAME_None)
 	{
-		FName ItemName = InItem->GetVariableName();
-		if(ItemName == NAME_None)
-		{
-			UActorComponent* ComponentTemplateOrInstance = InItem->GetComponentTemplate();
-			check(ComponentTemplateOrInstance != nullptr);
-			ItemName = ComponentTemplateOrInstance->GetFName();
-		}
-
+		FName ItemName = InItem->GetNodeID();
 		if(DeferredRenameRequest == ItemName)
 		{
 			DeferredRenameRequest = NAME_None;
@@ -5373,16 +5170,10 @@ void SSCSEditor::OnRenameComponent(bool bTransactional)
 	// Should already be prevented from making it here.
 	check(SelectedItems.Num() == 1);
 
-	SCSTreeWidget->RequestScrollIntoView(SelectedItems[0]);
-	DeferredRenameRequest = SelectedItems[0]->GetVariableName();
-	if(DeferredRenameRequest == NAME_None)
-	{
-		UActorComponent* ComponentTemplateOrInstance = SelectedItems[0]->GetComponentTemplate();
-		check(ComponentTemplateOrInstance != nullptr);
-		DeferredRenameRequest = ComponentTemplateOrInstance->GetFName();
-	}
-
+	DeferredRenameRequest = SelectedItems[0]->GetNodeID();
 	bIsDeferredRenameRequestTransactional = bTransactional;
+
+	SCSTreeWidget->RequestScrollIntoView(SelectedItems[0]);
 }
 
 bool SSCSEditor::CanRenameComponent() const
@@ -5502,12 +5293,22 @@ FText SSCSEditor::OnGetResetToBlueprintDefaultsTooltip() const
 	}
 }
 
-void SSCSEditor::OnOpenBlueprintEditor() const
+void SSCSEditor::OnOpenBlueprintEditor(bool bForceCodeEditing) const
 {
-	AActor* ActorInstance = GetActorContext();
-	UBlueprint* Blueprint = (ActorInstance != nullptr) ? Cast<UBlueprint>( ActorInstance->GetClass()->ClassGeneratedBy ) : nullptr;
-
-	FAssetEditorManager::Get().OpenEditorForAsset(Blueprint);
+	if (AActor* ActorInstance = GetActorContext())
+	{
+		if (UBlueprint* Blueprint = Cast<UBlueprint>(ActorInstance->GetClass()->ClassGeneratedBy))
+		{
+			if (bForceCodeEditing && (Blueprint->UbergraphPages.Num() > 0))
+			{
+				FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(Blueprint->UbergraphPages[0]);
+			}
+			else
+			{
+				FAssetEditorManager::Get().OpenEditorForAsset(Blueprint);
+			}
+		}
+	}
 }
 
 void SSCSEditor::OnApplyChangesToBlueprint() const
@@ -5526,7 +5327,7 @@ void SSCSEditor::OnApplyChangesToBlueprint() const
 			AActor* BlueprintCDO = Actor->GetClass()->GetDefaultObject<AActor>();
 			if (BlueprintCDO != NULL)
 			{
-				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties | EditorUtilities::ECopyOptions::PropagateChangesToArcheypeInstances);
+				const auto CopyOptions = (EditorUtilities::ECopyOptions::Type)(EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties | EditorUtilities::ECopyOptions::PropagateChangesToArchetypeInstances);
 				NumChangedProperties = EditorUtilities::CopyActorProperties(Actor, BlueprintCDO, CopyOptions);
 				if (Actor->GetInstanceComponents().Num() > 0)
 				{

@@ -565,7 +565,7 @@ bool UEditorEngine::Exec_Brush( UWorld* InWorld, const TCHAR* Str, FOutputDevice
 			WorldBrush->SetActorLocation(SnapLocation - PrePivot, false);
 			WorldBrush->SetPrePivot( FVector::ZeroVector );
 			WorldBrush->Brush->Polys->Element.Empty();
-			UPolysFactory* It = new UPolysFactory(FObjectInitializer());
+			UPolysFactory* It = NewObject<UPolysFactory>();
 			It->FactoryCreateText( UPolys::StaticClass(), WorldBrush->Brush->Polys->GetOuter(), *WorldBrush->Brush->Polys->GetName(), RF_NoFlags, WorldBrush->Brush->Polys, TEXT("t3d"), GStream, GStream+FCString::Strlen(GStream), GWarn );
 			// Do NOT merge faces.
 			FBSPOps::bspValidateBrush( WorldBrush->Brush, 0, 1 );
@@ -1111,7 +1111,8 @@ UTransactor* UEditorEngine::CreateTrans()
 		UndoBufferSize = 16;
 	}
 
-	UTransBuffer* TransBuffer = new UTransBuffer(FObjectInitializer(), UndoBufferSize * 1024 * 1024);
+	UTransBuffer* TransBuffer = NewObject<UTransBuffer>();
+	TransBuffer->Initialize(UndoBufferSize * 1024 * 1024);
 	TransBuffer->OnBeforeRedoUndo().AddUObject(this, &UEditorEngine::HandleTransactorBeforeRedoUndo);
 	TransBuffer->OnRedo().AddUObject(this, &UEditorEngine::HandleTransactorRedo);
 	TransBuffer->OnUndo().AddUObject(this, &UEditorEngine::HandleTransactorUndo);
@@ -2826,11 +2827,13 @@ void UEditorEngine::DoMoveSelectedActorsToLevel( ULevel* InDestLevel )
 
 ULevel*  UEditorEngine::CreateTransLevelMoveBuffer( UWorld* InWorld )
 {
-	ULevel* BufferLevel = new(GetTransientPackage(), TEXT("TransLevelMoveBuffer")) ULevel(FObjectInitializer(),FURL(NULL));
+	ULevel* BufferLevel = NewNamedObject<ULevel>(GetTransientPackage(), TEXT("TransLevelMoveBuffer"));
+	BufferLevel->Initialize(FURL(nullptr));
 	check( BufferLevel );
 	BufferLevel->AddToRoot();
 	BufferLevel->OwningWorld = InWorld;
-	BufferLevel->Model = new( BufferLevel ) UModel( FObjectInitializer(), NULL, true );
+	BufferLevel->Model = NewObject<UModel>(BufferLevel);
+	BufferLevel->Model->Initialize(nullptr, true);
 	BufferLevel->bIsVisible = true;
 		
 	BufferLevel->SetFlags( RF_Transactional );
@@ -2849,7 +2852,8 @@ ULevel*  UEditorEngine::CreateTransLevelMoveBuffer( UWorld* InWorld )
 	BufferDefaultBrush->Brush = CastChecked<UModel>(StaticFindObject(UModel::StaticClass(), BufferLevel->OwningWorld->GetOuter(), TEXT("Brush"), true), ECastCheckedType::NullAllowed);
 	if (!BufferDefaultBrush->Brush)
 	{
-		BufferDefaultBrush->Brush = new( InWorld, TEXT("Brush") )UModel( FObjectInitializer(), BufferDefaultBrush, 1 );
+		BufferDefaultBrush->Brush = NewNamedObject<UModel>(InWorld, TEXT("Brush"));
+		BufferDefaultBrush->Brush->Initialize(BufferDefaultBrush, 1);
 	}
 	BufferDefaultBrush->GetBrushComponent()->Brush = BufferDefaultBrush->Brush;
 	BufferDefaultBrush->SetNotForClientOrServer();
@@ -4637,7 +4641,7 @@ void UEditorEngine::MoveActorInFrontOfCamera( AActor& InActor, const FVector& In
 }
 
 
-void UEditorEngine::SnapViewToActor(const AActor &Actor)
+void UEditorEngine::SnapViewTo(const FActorOrComponent& Object)
 {
 	for(int32 ViewportIndex = 0; ViewportIndex < LevelViewportClients.Num(); ++ViewportIndex)
 	{
@@ -4645,8 +4649,8 @@ void UEditorEngine::SnapViewToActor(const AActor &Actor)
 
 		if ( ViewportClient->IsPerspective()  )
 		{
-			ViewportClient->SetViewLocation( Actor.GetActorLocation() );
-			ViewportClient->SetViewRotation( Actor.GetActorRotation() );
+			ViewportClient->SetViewLocation( Object.GetWorldLocation() );
+			ViewportClient->SetViewRotation( Object.GetWorldRotation() );
 			ViewportClient->Invalidate();
 		}
 	}
@@ -4750,13 +4754,17 @@ bool UEditorEngine::Exec_Camera( const TCHAR* Str, FOutputDevice& Ar )
 	}
 	else if ( bSnap )
 	{
-		TargetSelectedActor = GEditor->GetSelectedActors()->GetTop<AActor>();
-
-		if (TargetSelectedActor)
+		FActorOrComponent SelectedObject(GEditor->GetSelectedComponents()->GetTop<USceneComponent>());
+		if (!SelectedObject.IsValid())
+		{
+			SelectedObject.Actor = GEditor->GetSelectedActors()->GetTop<AActor>();
+		}
+		
+		if (SelectedObject.IsValid())
 		{
 			// Set perspective viewport camera parameters to that of the selected camera.
-			SnapViewToActor(*TargetSelectedActor);
-			Ar.Log( TEXT("Snapped camera to the first selected actor.") );
+			SnapViewTo(SelectedObject);
+			Ar.Log( TEXT("Snapped camera to the first selected object.") );
 		}
 	}
 
@@ -5250,13 +5258,6 @@ bool UEditorEngine::Exec( UWorld* InWorld, const TCHAR* Stream, FOutputDevice& A
 		return CommandIsDeprecated( CommandTemp, Ar );
 	}
 	//------------------------------------------------------------------------------------
-	// LEVEL
-	//
-	if( FParse::Command(&Str,TEXT("PREFAB")) )
-	{
-		return HandlePrefabCommand( Str, Ar );
-	}
-	//------------------------------------------------------------------------------------
 	// PARTICLE: Particle system-related commands
 	//
 	else if (FParse::Command(&Str,TEXT("PARTICLE")))
@@ -5699,16 +5700,6 @@ bool UEditorEngine::HandleDeleteCommand( const TCHAR* Str, FOutputDevice& Ar, UW
 		return Exec( InWorld, TEXT("ACTOR DELETE") );
 	}
 	return true;
-}
-
-bool UEditorEngine::HandlePrefabCommand( const TCHAR* Str, FOutputDevice& Ar )
-{
-	if( FParse::Command(&Str,TEXT("SELECTACTORSINPREFABS")) )
-	{
-		edactSelectPrefabActors();
-		return true;
-	}
-	return false;	
 }
 
 bool UEditorEngine::HandleLightmassDebugCommand( const TCHAR* Str, FOutputDevice& Ar )

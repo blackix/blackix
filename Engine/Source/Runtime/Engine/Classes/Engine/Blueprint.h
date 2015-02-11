@@ -270,7 +270,7 @@ class ENGINE_API UBlueprint : public UBlueprintCore
 
 	/** Pointer to the parent class that the generated class should derive from */
 	UPROPERTY(AssetRegistrySearchable)
-	TSubclassOf<class UObject>  ParentClass;
+	TSubclassOf<class UObject> ParentClass;
 
 	UPROPERTY(transient)
 	UObject* PRIVATE_InnermostPreviousCDO;
@@ -297,11 +297,11 @@ class ENGINE_API UBlueprint : public UBlueprintCore
 	uint32 bRunConstructionScriptOnDrag : 1;
 
 	/** Whether or not this blueprint's class is a const class or not.  Should set CLASS_Const in the KismetCompiler. */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
+	UPROPERTY(EditAnywhere, Category=ClassOptions, AdvancedDisplay)
 	uint32 bGenerateConstClass : 1;
 
 	/**shows up in the content browser when the blueprint is hovered */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
+	UPROPERTY(EditAnywhere, Category=BlueprintOptions, meta=(MultiLine=true))
 	FString BlueprintDescription;
 
 	/** The category of the Blueprint, used to organize this Blueprint class when displayed in palette windows */
@@ -321,7 +321,7 @@ class ENGINE_API UBlueprint : public UBlueprintCore
 	FGuid SearchGuid;
 
 	/** Deprecates the Blueprint, marking the generated class with the CLASS_Deprecated flag */
-	UPROPERTY(EditAnywhere, Category=BlueprintOption)
+	UPROPERTY(EditAnywhere, Category=ClassOptions, AdvancedDisplay)
 	bool bDeprecate;
 #endif //WITH_EDITORONLY_DATA
 
@@ -476,7 +476,7 @@ public:
 	static bool ValidateGeneratedClass(const UClass* InClass);
 
 	/** Find the object in the TemplateObjects array with the supplied name */
-	UActorComponent* FindTemplateByName(const FName& TemplateName);
+	UActorComponent* FindTemplateByName(const FName& TemplateName) const;
 
 	/** Find a timeline by name */
 	class UTimelineTemplate* FindTimelineTemplateByVariableName(const FName& TimelineName);	

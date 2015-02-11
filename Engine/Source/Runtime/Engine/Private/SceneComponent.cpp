@@ -30,26 +30,25 @@ const FName& USceneComponent::GetDefaultSceneRootVariableName()
 	return DefaultSceneRootVariableName;
 }
 
-USceneComponent::USceneComponent()
-{
-	InitializeDefaults();
-}
-
-USceneComponent::USceneComponent( const FObjectInitializer& ObjectInitializer )
-{
-	// Forward to default constructor (we don't use ObjectInitializer for anything, this is for compatibility with inherited classes that call Super( ObjectInitializer )
-	InitializeDefaults();
-}
-
-void USceneComponent::InitializeDefaults()
+USceneComponent::USceneComponent(const FObjectInitializer& ObjectInitializer /*= FObjectInitializer::Get()*/)
+	: Super(ObjectInitializer)
 {
 	Mobility = EComponentMobility::Movable;
-	RelativeScale3D = FVector(1.0f,1.0f,1.0f);
+	RelativeScale3D = FVector(1.0f, 1.0f, 1.0f);
 	// default behavior is visible
 	bVisible = true;
-	bAutoActivate=false;
-	
+	bAutoActivate = false;
+
 	NetUpdateTransform = false;
+}
+
+void USceneComponent::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
+{
+#if WITH_EDITORONLY_DATA
+	USceneComponent* This = CastChecked<USceneComponent>(InThis);
+	Collector.AddReferencedObject(This->SpriteComponent);
+#endif
+	Super::AddReferencedObjects(InThis, Collector);
 }
 
 FTransform USceneComponent::CalcNewComponentToWorld(const FTransform& NewRelativeTransform, const USceneComponent* Parent) const
@@ -365,6 +364,8 @@ void USceneComponent::DestroyComponent(bool bPromoteChildren/*= false*/)
 					// Attach the child node that we're promoting to the parent and move it to the same position as the old node was in the array
 					ChildToPromote->AttachTo(CachedAttachParent, NAME_None, EAttachLocation::KeepWorldPosition);
 					CachedAttachParent->AttachChildren.Remove(ChildToPromote);
+
+					Index = FMath::Clamp<int32>(Index, 0, CachedAttachParent->AttachChildren.Num());
 					CachedAttachParent->AttachChildren.Insert(ChildToPromote, Index);
 				}
 			}
@@ -860,6 +861,12 @@ void USceneComponent::AttachTo(class USceneComponent* Parent, FName InSocketName
 {
 	if(Parent != NULL)
 	{
+		if (Parent == AttachParent && InSocketName == AttachSocketName && Parent->AttachChildren.Contains(this))
+		{
+			// already attached!
+			return;
+		}
+
 		if(Parent == this)
 		{
 			FMessageLog("PIE").Warning(FText::Format(LOCTEXT("AttachToSelfWarning", "AttachTo: '{0}' cannot be attached to itself. Aborting."), 
@@ -881,7 +888,8 @@ void USceneComponent::AttachTo(class USceneComponent* Parent, FName InSocketName
 			return;
 		}
 
-		if(Mobility == EComponentMobility::Static && Parent->Mobility != EComponentMobility::Static )
+		// Don't allow components with static mobility to be attached to non-static parents (except during UCS)
+		if(!IsRunningUserConstructionScript() && Mobility == EComponentMobility::Static && Parent->Mobility != EComponentMobility::Static)
 		{
 			FString ExtraBlueprintInfo;
 #if WITH_EDITORONLY_DATA
@@ -1159,7 +1167,7 @@ FSceneComponentInstanceData::FSceneComponentInstanceData(const USceneComponent* 
 	for (int32 i = SourceComponent->AttachChildren.Num()-1; i >= 0; --i)
 	{
 		USceneComponent* SceneComponent = SourceComponent->AttachChildren[i];
-		if (SceneComponent && SceneComponent->CreationMethod != EComponentCreationMethod::ConstructionScript)
+		if (SceneComponent && !SceneComponent->IsCreatedByConstructionScript())
 		{
 			AttachedInstanceComponents.Add(SceneComponent);
 		}
@@ -1168,7 +1176,15 @@ FSceneComponentInstanceData::FSceneComponentInstanceData(const USceneComponent* 
 
 void FSceneComponentInstanceData::ApplyToComponent(UActorComponent* Component)
 {
+	FComponentInstanceDataBase::ApplyToComponent(Component);
+
 	USceneComponent* SceneComponent = CastChecked<USceneComponent>(Component);
+
+	if (ContainsSavedProperties())
+	{
+		SceneComponent->UpdateComponentToWorld();
+	}
+
 	for (USceneComponent* ChildComponent : AttachedInstanceComponents)
 	{
 		if (ChildComponent)
@@ -1195,11 +1211,16 @@ FComponentInstanceDataBase* USceneComponent::GetComponentInstanceData() const
 
 	for (USceneComponent* Child : AttachChildren)
 	{
-		if (Child && Child->CreationMethod != EComponentCreationMethod::ConstructionScript)
+		if (Child && !Child->IsCreatedByConstructionScript())
 		{
 			InstanceData = new FSceneComponentInstanceData(this);
 			break;
 		}
+	}
+
+	if (InstanceData == nullptr)
+	{
+		InstanceData = Super::GetComponentInstanceData();
 	}
 
 	return InstanceData;
@@ -1582,16 +1603,19 @@ bool USceneComponent::MoveComponent( const FVector& Delta, const FRotator& NewRo
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// make sure mobility is movable, otherwise you shouldn't try to move
-	if ( UWorld * World = GetWorld() )
+	if (Mobility != EComponentMobility::Movable)
 	{
-		ULevel* Level = GetComponentLevel();
-
-		// It's only a problem if we're in gameplay, and the owning level is visible
-		if (World->HasBegunPlay() && IsRegistered() && Level && Level->bIsVisible && Mobility != EComponentMobility::Movable)
+		if (UWorld * World = GetWorld())
 		{
-			FMessageLog("Performance").Warning( FText::Format(LOCTEXT("InvalidMove", "Mobility of {0} : {1} has to be 'Movable' if you'd like to move. "), 
-				FText::FromString(GetNameSafe(GetOwner())), FText::FromString(GetName())));
-			return false;
+			ULevel* Level = GetComponentLevel();
+
+			// It's only a problem if we're in gameplay, and the owning level is visible
+			if (World->HasBegunPlay() && IsRegistered() && Level && Level->bIsVisible)
+			{
+				FMessageLog("PIE").Warning(FText::Format(LOCTEXT("InvalidMove", "Mobility of {0} : {1} has to be 'Movable' if you'd like to move. "),
+					FText::FromString(GetNameSafe(GetOwner())), FText::FromString(GetName())));
+				return false;
+			}
 		}
 	}
 #endif
@@ -1642,12 +1666,12 @@ bool USceneComponent::ShouldRender() const
 	AActor* Owner = GetOwner();
 	const bool bShowInEditor = 
 #if WITH_EDITOR
-		(!Owner || !Owner->IsHiddenEd());
+		GIsEditor ? (!Owner || !Owner->IsHiddenEd()) : false;
 #else
 		false;
 #endif
-
-	const bool bInGameWorld = GetWorld() && GetWorld()->IsGameWorld();
+	UWorld *World = GetWorld();
+	const bool bInGameWorld = GetWorld() && GetWorld()->UsesGameHiddenFlags();
 
 	const bool bShowInGame = IsVisible() && (!Owner || !Owner->bHidden);
 	return ((bInGameWorld && bShowInGame) || (!bInGameWorld && bShowInEditor)) && bVisible == true;
@@ -1658,12 +1682,12 @@ bool USceneComponent::CanEverRender() const
 	AActor* Owner = GetOwner();
 	const bool bShowInEditor =
 #if WITH_EDITOR
-		(!Owner || !Owner->IsHiddenEd());
+		GIsEditor ? (!Owner || !Owner->IsHiddenEd()) : false;
 #else
 		false;
 #endif
-
-	const bool bInGameWorld = GetWorld() && GetWorld()->IsGameWorld();
+	UWorld *World = GetWorld();
+	const bool bInGameWorld = World && World->UsesGameHiddenFlags();
 
 	const bool bShowInGame = (!Owner || !Owner->bHidden);
 	return ((bInGameWorld && bShowInGame) || (!bInGameWorld && bShowInEditor));

@@ -87,7 +87,7 @@ public:
 	static bool CanCreateBlueprintOfClass(const UClass* Class);
 
 	/** Take a list of components that belong to a single Actor and add them to a blueprint as SCSNodes */
-	static void AddComponentsToBlueprint(UBlueprint* Blueprint, const TArray<UActorComponent*>& Components);
+	static void AddComponentsToBlueprint(UBlueprint* Blueprint, const TArray<UActorComponent*>& Components, bool bHarvesting = false, class USCS_Node* OptionalNewRootNode = nullptr);
 
 	/** 
 	 * Take an Actor and generate a blueprint based on it. Uses the Actors type as the parent class. 
@@ -151,7 +151,10 @@ public:
 	static void CreateNewBoundEventForActor(AActor* Actor, FName EventName);
 
 	/** Create a new event node in the  blueprint, for the supplied component, event name and blueprint */
-	static void CreateNewBoundEventForComponent(UActorComponent* Component, FName EventName, UBlueprint* Blueprint, UObjectProperty* ComponentProperty);
+	static void CreateNewBoundEventForComponent(UObject* Component, FName EventName, UBlueprint* Blueprint, UObjectProperty* ComponentProperty);
+
+	/** Create a new event node in the  blueprint, for the supplied class, event name and blueprint */
+	static void CreateNewBoundEventForClass(UClass* Class, FName EventName, UBlueprint* Blueprint, UObjectProperty* ComponentProperty);
 
 	/** Can we paste to this graph? */
 	static bool CanPasteNodes(const class UEdGraph* Graph);

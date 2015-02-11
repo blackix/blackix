@@ -109,7 +109,7 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 						.Padding(0,0,4,0)
 						[
 							SNew( SComboButton )
-							.ComboButtonStyle( FEditorStyle::Get(), "ContentBrowser.NewAsset.Style" )
+							.ComboButtonStyle( FEditorStyle::Get(), "ToolbarComboButton" )
 							.ForegroundColor(FLinearColor::White)
 							.ContentPadding(0)
 							.OnGetMenuContent_Lambda( [this]{ return MakeAddNewContextMenu( true, false ); } )
@@ -490,9 +490,25 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 							.AddMetaData<FTagMetaData>(FTagMetaData(TEXT("ContentBrowserFiltersCombo")))
 							.ButtonContent()
 							[
-								SNew( STextBlock )
-								.TextStyle( FEditorStyle::Get(), "ContentBrowser.Filters.Text" )
-								.Text( LOCTEXT( "Filters", "Filters" ) )
+								SNew(SHorizontalBox)
+
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								[
+									SNew(STextBlock)
+									.TextStyle(FEditorStyle::Get(), "ContentBrowser.Filters.Text")
+									.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.9"))
+									.Text(FString(TEXT("\xf0b0")) /*fa-filter*/)
+								]
+
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.Padding(2,0,0,0)
+								[
+									SNew(STextBlock)
+									.TextStyle(FEditorStyle::Get(), "ContentBrowser.Filters.Text")
+									.Text(LOCTEXT("Filters", "Filters"))
+								]
 							]
 						]
 
@@ -529,7 +545,7 @@ void SContentBrowser::Construct( const FArguments& InArgs, const FName& InInstan
 					.Padding( 0 )
 					[
 						SAssignNew(AssetViewPtr, SAssetView)
-						.ThumbnailScale( 0.0f )
+						.ThumbnailScale( 0.18 )
 						.OnPathSelected(this, &SContentBrowser::FolderEntered)
 						.OnAssetSelected(this, &SContentBrowser::OnAssetSelectionChanged)
 						.OnAssetsActivated(this, &SContentBrowser::OnAssetsActivated)
@@ -1167,7 +1183,11 @@ void SContentBrowser::NewClassRequested(const FString& SelectedPath)
 		NativeClassHierarchy->GetFileSystemPath(SelectedPath, ExistingFolderPath);
 	}
 
-	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog(nullptr, ExistingFolderPath, FGlobalTabmanager::Get()->GetRootWindow());
+	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog(
+		FAddToProjectConfig()
+		.InitialPath(ExistingFolderPath)
+		.ParentWindow(FGlobalTabmanager::Get()->GetRootWindow())
+	);
 }
 
 void SContentBrowser::NewFolderRequested(const FString& SelectedPath)
@@ -1380,20 +1400,22 @@ TSharedRef<SWidget> SContentBrowser::MakeAddNewContextMenu(bool bShowGetContent,
 	int32 NumAssetPaths, NumClassPaths;
 	ContentBrowserUtils::CountPathTypes(SourcesData.PackagePaths, NumAssetPaths, NumClassPaths);
 
+	// New feature packs don't depend on the current paths, so we always add this item if it was requested
+	FNewAssetOrClassContextMenu::FOnGetContentRequested OnGetContentRequested;
+	if(bShowGetContent)
+	{
+		OnGetContentRequested = FNewAssetOrClassContextMenu::FOnGetContentRequested::CreateSP(this, &SContentBrowser::OnAddContentRequested);
+	}
+
 	// Only the asset items if we have an asset path selected
 	FNewAssetOrClassContextMenu::FOnNewAssetRequested OnNewAssetRequested;
 	FNewAssetOrClassContextMenu::FOnImportAssetRequested OnImportAssetRequested;
-	FNewAssetOrClassContextMenu::FOnGetContentRequested OnGetContentRequested;
 	if(NumAssetPaths > 0)
 	{
 		OnNewAssetRequested = FNewAssetOrClassContextMenu::FOnNewAssetRequested::CreateSP(this, &SContentBrowser::NewAssetRequested);
 		if(bShowImport)
 		{
 			OnImportAssetRequested = FNewAssetOrClassContextMenu::FOnImportAssetRequested::CreateSP(this, &SContentBrowser::ImportAsset);
-		}
-		if(bShowGetContent)
-		{
-			OnGetContentRequested = FNewAssetOrClassContextMenu::FOnGetContentRequested::CreateSP(this, &SContentBrowser::OnAddContentRequested);
 		}
 	}
 

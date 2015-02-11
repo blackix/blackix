@@ -135,24 +135,22 @@ void USimpleConstructionScript::Serialize(FArchive& Ar)
 	}
 }
 
+void USimpleConstructionScript::PreloadChain()
+{
+	GetLinker()->Preload(this);
+
+	for (USCS_Node* Node : RootNodes)
+	{
+		Node->PreloadChain();
+	}
+}
+
 void USimpleConstructionScript::PostLoad()
 {
 	Super::PostLoad();
-
+	
 	int32 NodeIndex;
 	TArray<USCS_Node*> Nodes = GetAllNodes();
-
-	if (GetLinkerUE4Version() < VER_UE4_REMOVE_INPUT_COMPONENTS_FROM_BLUEPRINTS)
-	{
-		for (NodeIndex=0; NodeIndex < Nodes.Num(); ++NodeIndex)
-		{
-			USCS_Node* Node = Nodes[NodeIndex];
-			if (!Node->bIsNative_DEPRECATED && Node->ComponentTemplate->IsA<UInputComponent>())
-			{
-				RemoveNodeAndPromoteChildren(Node);
-			}
-		}
-	}
 
 #if WITH_EDITOR
 	// Get the Blueprint that owns the SCS
@@ -171,22 +169,6 @@ void USimpleConstructionScript::PostLoad()
 		if(Node->CategoryName == NAME_None)
 		{
 			Node->CategoryName = TEXT("Default");
-		}
-	}
-
-	// Templates are used as archetypes, so they should be Public
-	auto OwnerClass = GetOwnerClass();
-	if (OwnerClass)
-	{
-		for (auto Node : Nodes)
-		{
-			auto ComponentTemplate = Node ? Node->ComponentTemplate : nullptr;
-			if (ComponentTemplate && !ComponentTemplate->HasAllFlags(RF_Public) && (ComponentTemplate->GetOuter() == OwnerClass))
-			{
-				ComponentTemplate->SetFlags(RF_Public);
-
-				// Package should be marked as dirty here, but it's not user friendly
-			}
 		}
 	}
 
@@ -407,7 +389,7 @@ void USimpleConstructionScript::ExecuteScriptOnActor(AActor* Actor, const FTrans
 	{
 		USceneComponent* SceneComp = NewObject<USceneComponent>(Actor);
 		SceneComp->SetFlags(RF_Transactional);
-		SceneComp->CreationMethod = EComponentCreationMethod::ConstructionScript;
+		SceneComp->CreationMethod = EComponentCreationMethod::SimpleConstructionScript;
 		SceneComp->SetWorldTransform(RootTransform);
 		Actor->SetRootComponent(SceneComp);
 		SceneComp->RegisterComponent();
@@ -606,7 +588,7 @@ USCS_Node* USimpleConstructionScript::FindParentNode(USCS_Node* InNode) const
 	return NULL;
 }
 
-USCS_Node* USimpleConstructionScript::FindSCSNode(FName InName)
+USCS_Node* USimpleConstructionScript::FindSCSNode(const FName InName) const
 {
 	TArray<USCS_Node*> AllNodes = GetAllNodes();
 	USCS_Node* ReturnSCSNode = nullptr;
@@ -622,7 +604,7 @@ USCS_Node* USimpleConstructionScript::FindSCSNode(FName InName)
 	return ReturnSCSNode;
 }
 
-USCS_Node* USimpleConstructionScript::FindSCSNodeByGuid(FGuid Guid)
+USCS_Node* USimpleConstructionScript::FindSCSNodeByGuid(const FGuid Guid) const
 {
 	TArray<USCS_Node*> AllNodes = GetAllNodes();
 	USCS_Node* ReturnSCSNode = nullptr;
@@ -864,6 +846,31 @@ void USimpleConstructionScript::ValidateNodeVariableNames(FCompilerResultsLog& M
 
 				MessageLog.Warning(*FString::Printf(TEXT("Found a component variable with a conflicting name (%s) - changed to %s."), *OldName.ToString(), *Node->VariableName.ToString()));
 			}
+		}
+	}
+}
+
+void USimpleConstructionScript::ValidateNodeTemplates(FCompilerResultsLog& MessageLog)
+{
+	int32 NodeIndex;
+	TArray<USCS_Node*> Nodes = GetAllNodes();
+
+	for (NodeIndex = 0; NodeIndex < Nodes.Num(); ++NodeIndex)
+	{
+		USCS_Node* Node = Nodes[NodeIndex];
+
+		if (GetLinkerUE4Version() < VER_UE4_REMOVE_INPUT_COMPONENTS_FROM_BLUEPRINTS)
+		{
+			if (!Node->bIsNative_DEPRECATED && Node->ComponentTemplate->IsA<UInputComponent>())
+			{
+				RemoveNodeAndPromoteChildren(Node);
+			}
+		}
+
+		// Couldn't find the template the Blueprint or C++ class must have been deleted out from under us
+		if (Node->ComponentTemplate == nullptr)
+		{
+			RemoveNodeAndPromoteChildren(Node);
 		}
 	}
 }

@@ -967,7 +967,7 @@ FFoliageMeshInfo* AInstancedFoliageActor::FindOrAddMesh(UFoliageType* InType)
 	return MeshInfo;
 }
 
-FFoliageMeshInfo* AInstancedFoliageActor::AddMesh(UStaticMesh* InMesh, UFoliageType** OutSettings)
+FFoliageMeshInfo* AInstancedFoliageActor::AddMesh(UStaticMesh* InMesh, UFoliageType** OutSettings, const UFoliageType_InstancedStaticMesh* DefaultSettings)
 {
 	check(GetSettingsForMesh(InMesh) == nullptr);
 
@@ -975,10 +975,10 @@ FFoliageMeshInfo* AInstancedFoliageActor::AddMesh(UStaticMesh* InMesh, UFoliageT
 
 	UFoliageType_InstancedStaticMesh* Settings = nullptr;
 #if WITH_EDITORONLY_DATA
-	if (InMesh->FoliageDefaultSettings)
+	if (DefaultSettings)
 	{
 		// TODO: Can't we just use this directly?
-		Settings = DuplicateObject<UFoliageType_InstancedStaticMesh>(InMesh->FoliageDefaultSettings, this);
+		Settings = DuplicateObject<UFoliageType_InstancedStaticMesh>(DefaultSettings, this);
 	}
 	else
 #endif
@@ -1460,7 +1460,7 @@ void AInstancedFoliageActor::PostLoad()
 				// Clear out the Base for any instances based on blueprint-created components,
 				// as those components will be destroyed when the construction scripts are
 				// re-run, leaving dangling references and causing crashes (woo!)
-				if (Instance.Base && Instance.Base->CreationMethod == EComponentCreationMethod::ConstructionScript)
+				if (Instance.Base && Instance.Base->IsCreatedByConstructionScript())
 				{
 					Instance.Base = NULL;
 				}

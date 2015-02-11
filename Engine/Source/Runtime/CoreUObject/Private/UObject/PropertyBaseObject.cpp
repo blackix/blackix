@@ -3,6 +3,7 @@
 #include "CoreUObjectPrivate.h"
 #include "PropertyHelper.h"
 #include "LinkerPlaceholderClass.h"
+#include "LinkerPlaceholderExportObject.h"
 
 /*-----------------------------------------------------------------------------
 	UObjectPropertyBase.
@@ -13,7 +14,7 @@ void UObjectPropertyBase::BeginDestroy()
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	if (ULinkerPlaceholderClass* PlaceholderClass = Cast<ULinkerPlaceholderClass>(PropertyClass))
 	{
-		PlaceholderClass->RemoveTrackedReference(this);
+		PlaceholderClass->RemovePropertyReference(this);
 	}
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 
@@ -93,7 +94,7 @@ void UObjectPropertyBase::Serialize( FArchive& Ar )
 	{
 		if (ULinkerPlaceholderClass* PlaceholderClass = Cast<ULinkerPlaceholderClass>(PropertyClass))
 		{
-			PlaceholderClass->AddTrackedReference(this);
+			PlaceholderClass->AddReferencingProperty(this);
 		}
 	}
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
@@ -104,12 +105,12 @@ void UObjectPropertyBase::SetPropertyClass(UClass* NewPropertyClass)
 {
 	if (ULinkerPlaceholderClass* NewPlaceholderClass = Cast<ULinkerPlaceholderClass>(NewPropertyClass))
 	{
-		NewPlaceholderClass->AddTrackedReference(this);
+		NewPlaceholderClass->AddReferencingProperty(this);
 	}
 	
 	if (ULinkerPlaceholderClass* OldPlaceholderClass = Cast<ULinkerPlaceholderClass>(PropertyClass))
 	{
-		OldPlaceholderClass->RemoveTrackedReference(this);
+		OldPlaceholderClass->RemovePropertyReference(this);
 	}
 	PropertyClass = NewPropertyClass;
 }
@@ -415,7 +416,20 @@ void UObjectPropertyBase::CheckValidObject(void* Value) const
 		// in the middle of an FArchiveReplaceObjectRef pass)
 		bool bIsReplacingClassRefs = PropertyClass->HasAnyClassFlags(CLASS_NewerVersionExists) != ObjectClass->HasAnyClassFlags(CLASS_NewerVersionExists);
 		
-		if ((PropertyClass != nullptr) && !ObjectClass->IsChildOf(PropertyClass) && !bIsReplacingClassRefs)
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+		ULinkerLoad* PropertyLinker = GetLinker();
+		bool const bIsDeferringValueLoad = ((PropertyLinker == nullptr) || (PropertyLinker->LoadFlags & LOAD_DeferDependencyLoads)) &&
+			Object->IsA<ULinkerPlaceholderExportObject>();
+
+#if USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+		check(bIsDeferringValueLoad || !Object->IsA<ULinkerPlaceholderExportObject>());
+#endif // USE_DEFERRED_DEPENDENCY_CHECK_VERIFICATION_TESTS
+
+#else  // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING 
+		bool const bIsDeferringValueLoad = false;
+#endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+
+		if ((PropertyClass != nullptr) && !ObjectClass->IsChildOf(PropertyClass) && !bIsReplacingClassRefs && !bIsDeferringValueLoad)
 		{
 			UE_LOG(LogProperty, Warning,
 				TEXT("Serialized %s for a property of %s. Reference will be NULLed.\n    Property = %s\n    Item = %s"),

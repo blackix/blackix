@@ -9,6 +9,7 @@
 #include "UObjectToken.h"
 #include "MapErrors.h"
 #include "ComponentReregisterContext.h"
+#include "Engine/SimpleConstructionScript.h"
 
 #define LOCTEXT_NAMESPACE "ActorComponent"
 
@@ -98,20 +99,8 @@ FGlobalComponentReregisterContext::~FGlobalComponentReregisterContext()
 	ActiveGlobalReregisterContextCount--;
 }
 
-
-UActorComponent::UActorComponent()
-{
-	InitializeDefaults();
-}
-
-
-UActorComponent::UActorComponent( const FObjectInitializer& ObjectInitializer )
-{
-	// Forward to default constructor (we don't use ObjectInitializer for anything, this is for compatibility with inherited classes that call Super( ObjectInitializer )
-	InitializeDefaults();
-}
-
-void UActorComponent::InitializeDefaults()
+UActorComponent::UActorComponent(const FObjectInitializer& ObjectInitializer /*= FObjectInitializer::Get()*/)
+	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.TickGroup = TG_DuringPhysics;
 	PrimaryComponentTick.bStartWithTickEnabled = true;
@@ -138,13 +127,47 @@ void UActorComponent::PostLoad()
 {
 	Super::PostLoad();
 
+	// TODO: Wrap all this up with an engine version
 	if (bCreatedByConstructionScript_DEPRECATED)
 	{
-		CreationMethod = EComponentCreationMethod::ConstructionScript;
+		CreationMethod = EComponentCreationMethod::SimpleConstructionScript;
 	}
 	else if (bInstanceComponent_DEPRECATED)
 	{
 		CreationMethod = EComponentCreationMethod::Instance;
+	}
+
+	if (CreationMethod == EComponentCreationMethod::SimpleConstructionScript)
+	{
+		UBlueprintGeneratedClass* Class = Cast/*Checked*/<UBlueprintGeneratedClass>(GetOuter()->GetClass());
+		while (Class)
+		{
+			USimpleConstructionScript* SCS = Class->SimpleConstructionScript;
+			if (SCS != nullptr && SCS->FindSCSNode(GetFName()))
+			{
+				break;
+			}
+			else
+			{
+				Class = Cast<UBlueprintGeneratedClass>(Class->GetSuperClass());
+				if (Class == nullptr)
+				{
+					CreationMethod = EComponentCreationMethod::UserConstructionScript;
+				}
+			}
+		}
+	}
+}
+
+void UActorComponent::Serialize(FArchive& Ar)
+{
+	Super::Serialize(Ar);
+
+	// Fixup older blueprints that were private but now need to be public
+	if (!HasAllFlags(RF_Public) && GetOuter()->IsA<UBlueprintGeneratedClass>())
+	{
+		SetFlags(RF_Public);
+		ULinkerLoad::RefreshExportFlags(this);
 	}
 }
 
@@ -167,6 +190,11 @@ void UActorComponent::PostRename(UObject* OldOuter, const FName OldName)
 			}
 		}
 	}
+}
+
+bool UActorComponent::IsCreatedByConstructionScript() const
+{
+	return ((CreationMethod == EComponentCreationMethod::SimpleConstructionScript) || (CreationMethod == EComponentCreationMethod::UserConstructionScript));
 }
 
 #if WITH_EDITOR
@@ -385,6 +413,18 @@ bool UActorComponent::CallRemoteFunction( UFunction* Function, void* Parameters,
 static TMap<UActorComponent*,FComponentReregisterContext*> EditReregisterContexts;
 
 #if WITH_EDITOR
+bool UActorComponent::Modify( bool bAlwaysMarkDirty/*=true*/ )
+{
+	// If this is a construction script component we don't store them in the transaction buffer.  Instead, mark
+	// the Actor as modified so that we store of the transaction annotation that has the component properties stashed
+	if (IsCreatedByConstructionScript() && GetOwner())
+	{
+		return GetOwner()->Modify(bAlwaysMarkDirty);
+	}
+
+	return Super::Modify(bAlwaysMarkDirty);
+}
+
 void UActorComponent::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
@@ -504,6 +544,25 @@ void UActorComponent::UninitializeComponent()
 	}
 
 	bHasBeenInitialized = false;
+}
+
+FComponentInstanceDataBase* UActorComponent::GetComponentInstanceData() const
+{
+	FComponentInstanceDataBase* InstanceData = new FComponentInstanceDataBase(this);
+
+	if (!InstanceData->ContainsSavedProperties())
+	{
+		delete InstanceData;
+		InstanceData = nullptr;
+	}
+
+	return InstanceData;
+}
+
+FName UActorComponent::GetComponentInstanceDataType() const
+{
+	static const FName ActorComponentInstanceDataTypeName(TEXT("ActorComponentInstanceData"));
+	return ActorComponentInstanceDataTypeName;
 }
 
 void FActorComponentTickFunction::ExecuteTick(float DeltaTime, enum ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
@@ -671,7 +730,7 @@ void UActorComponent::RegisterComponentWithWorld(UWorld* InWorld)
 	}
 
 	// If this is a blueprint created component and it has component children they can miss getting registered in some scenarios
-	if (CreationMethod == EComponentCreationMethod::ConstructionScript)
+	if (IsCreatedByConstructionScript())
 	{
 		TArray<UObject*> Children;
 		GetObjectsWithOuter(this, Children, true, RF_PendingKill);
@@ -741,7 +800,7 @@ void UActorComponent::DestroyComponent(bool bPromoteChildren/*= false*/)
 	AActor* Owner = GetOwner();
 	if(Owner != NULL)
 	{
-		if (CreationMethod == EComponentCreationMethod::ConstructionScript)
+		if (IsCreatedByConstructionScript())
 		{
 			Owner->BlueprintCreatedComponents.Remove(this);
 		}

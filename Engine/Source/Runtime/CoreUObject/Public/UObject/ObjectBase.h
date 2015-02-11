@@ -95,7 +95,7 @@ enum EPackageFlags
 // Internal enums.
 //
 enum EStaticConstructor				{EC_StaticConstructor};
-enum EInternal						{EC_Internal};
+enum EInternal						{EC_InternalUseOnlyConstructor};
 enum ECppProperty					{EC_CppProperty};
 
 /** Empty API definition.  Used as a placeholder parameter when no DLL export/import API is needed for a UObject class */
@@ -601,6 +601,8 @@ namespace UC
 		showCategories,
 		/// Hides the specified categories in a property viewer. Usage: hideCategories=CategoryName or hideCategories=(category0, category1, ...)
 		hideCategories,
+		/// Indicates that this class is a wrapper class for a component with little intrinsic functionality (this causes things like hideCategories and showCategories to be ignored if the class is subclassed in a Blueprint)
+		ComponentWrapperClass,
 		/// Shows the specified function in a property viewer. Usage: showFunctions=FunctionName or showFunctions=(category0, category1, ...)
 		showFunctions,
 		/// Hides the specified function in a property viewer. Usage: hideFunctions=FunctionName or hideFunctions=(category0, category1, ...)
@@ -862,14 +864,30 @@ namespace US
 // Metadata specifiers
 namespace UM
 {
+	// Metadata usable in any UField (UCLASS(), USTRUCT(), UPROPERTY(), UFUNCTION(), etc...)
+	enum
+	{
+		/// Overrides the automatically generated tooltip from the class comment
+		ToolTip,
+
+		/// A short tooltip that is used in some contexts where the full tooltip might be overwhelming (such as the parent class picker dialog)
+		ShortTooltip,
+	};
+
 	// Metadata usable in UCLASS
 	enum
 	{
 		/// [ClassMetadata] Used for Actor Component classes. If present indicates that it can be spawned by a Blueprint.
 		BlueprintSpawnableComponent,
 
-		/// [ClassMetadata] Used for Actor classes. If the native class cannot tick, Blueprint generated classes based this Actor can have bCanEverTick flag overridden.
+		/// [ClassMetadata] Used for Actor and Component classes. If the native class cannot tick, Blueprint generated classes based this Actor or Component can have bCanEverTick flag overridden even if bCanBlueprintsTickByDefault is false.
 		ChildCanTick,
+
+		/// [ClassMetadata] Used for Actor and Component classes. If the native class cannot tick, Blueprint generated classes based this Actor or Component can never tick even if bCanBlueprintsTickByDefault is true.
+		ChildCannotTick,
+
+		/// [ClassMetadata] Used to make the first subclass of a class ignore all inherited showCategories and hideCategories commands
+		IgnoreCategoryKeywordsInSubclasses,
 
 		/// [ClassMetadata] For BehaviorTree nodes indicates that the class is deprecated and will display a warning when compiled.
 		DeprecatedNode,
@@ -895,7 +913,6 @@ namespace UM
 		/// [ClassMetadata] Indicates that when placing blueprint nodes in graphs owned by this class that the hidden world context pin should be visible because the self context of the class cannot
 		///                 provide the world context and it must be wired in manually
 		ShowWorldContextPin,
-
 	};
 
 	// Metadata usable in USTRUCT
@@ -971,6 +988,9 @@ namespace UM
 		/// [PropertyMetadata]
 		Multiple,
 
+		/// [PropertyMetadata] Used for FString and FText properties.  Indicates that the edit field should be multi-line, allowing entry of newlines.
+		MultiLine,
+
 		/// [PropertyMetadata] Used for array properties. Indicates that the duplicate icon should not be shown for entries of this array in the property panel.
 		NoElementDuplicate,
 
@@ -991,9 +1011,6 @@ namespace UM
 
 		// [PropertyMetadata]
 		SliderExponent,
-
-		// [PropertyMetadata] Overrides the automatically generated tooltip from the property comment
-		ToolTip,
 
 		/// [PropertyMetadata] Used for float and integer properties.  Specifies the lowest that the value slider should represent.
 		UIMin,
@@ -1164,11 +1181,16 @@ public: \
 	{ \
 		return TStaticCastFlags; \
 	} \
-	/** For internal use only; use StaticConstructObject() to create new objects. */ \
+	DEPRECATED(4.7, "operator new has been deprecated for UObjects - please use NewObject or NewNamedObject instead") \
 	inline void* operator new( const size_t InSize, UObject* InOuter=(UObject*)GetTransientPackage(), FName InName=NAME_None, EObjectFlags InSetFlags=RF_NoFlags ) \
 	{ \
 		return StaticAllocateObject( StaticClass(), InOuter, InName, InSetFlags ); \
 	} \
+	/** For internal use only; use StaticConstructObject() to create new objects. */ \
+	inline void* operator new(const size_t InSize, EInternal InInternalOnly, UObject* InOuter = (UObject*)GetTransientPackage(), FName InName = NAME_None, EObjectFlags InSetFlags = RF_NoFlags) \
+	{ \
+		return StaticAllocateObject(StaticClass(), InOuter, InName, InSetFlags); \
+} \
 	/** For internal use only; use StaticConstructObject() to create new objects. */ \
 	inline void* operator new( const size_t InSize, EInternal* InMem ) \
 	{ \
@@ -1179,15 +1201,29 @@ public: \
 	static_assert(false, "You have to define " #TClass "::" #TClass "() or " #TClass "::" #TClass "(const FObjectInitializer&). This is required by UObject system to work correctly.");
 
 #define DEFINE_DEFAULT_CONSTRUCTOR_CALL(TClass) \
-	static void __DefaultConstructor(const FObjectInitializer& X) { const_cast<FObjectInitializer&>(X).FinalizeSubobjectClassInitialization(); new((EInternal*)X.GetObj())TClass(); }
+	static void __DefaultConstructor(const FObjectInitializer& X) { new((EInternal*)X.GetObj())TClass(); }
 
 #define DEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(TClass) \
 	static void __DefaultConstructor(const FObjectInitializer& X) { new((EInternal*)X.GetObj())TClass(X); }
+
+#define DECLARE_CLASS_INTRINSIC_NO_CTOR(TClass,TSuperClass,TStaticFlags,TPackage) \
+	DECLARE_CLASS(TClass, TSuperClass, TStaticFlags | CLASS_Intrinsic, CASTCLASS_None, TPackage, NO_API) \
+	enum { IsIntrinsic = 1 }; \
+	static void StaticRegisterNatives##TClass() {} \
+	DECLARE_SERIALIZER(TClass) \
+	DEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(TClass)
 
 #define DECLARE_CLASS_INTRINSIC(TClass,TSuperClass,TStaticFlags,TPackage) \
 	DECLARE_CLASS(TClass,TSuperClass,TStaticFlags|CLASS_Intrinsic,CASTCLASS_None,TPackage,NO_API ) \
 	RELAY_CONSTRUCTOR(TClass, TSuperClass) \
 	enum {IsIntrinsic=1}; \
+	static void StaticRegisterNatives##TClass() {} \
+	DECLARE_SERIALIZER(TClass) \
+	DEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(TClass)
+
+#define DECLARE_CASTED_CLASS_INTRINSIC_WITH_API_NO_CTOR( TClass, TSuperClass, TStaticFlags, TPackage, TStaticCastFlags, TRequiredAPI ) \
+	DECLARE_CLASS(TClass, TSuperClass, TStaticFlags | CLASS_Intrinsic, TStaticCastFlags, TPackage, TRequiredAPI) \
+	enum { IsIntrinsic = 1 }; \
 	static void StaticRegisterNatives##TClass() {} \
 	DECLARE_SERIALIZER(TClass) \
 	DEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(TClass)

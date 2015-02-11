@@ -97,6 +97,7 @@
 #include "Components/BrushComponent.h"
 #include "GameFramework/GameUserSettings.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Engine/UserInterfaceSettings.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogEngine, Log, All);
 
@@ -1451,6 +1452,9 @@ void UEngine::InitializeObjectReferences()
 
 		checkf(DefaultPreviewPawnClass != NULL, TEXT("Engine config value DefaultPreviewPawnClass is not a valid class name."));
 	}
+
+	UUserInterfaceSettings* UISettings = GetMutableDefault<UUserInterfaceSettings>(UUserInterfaceSettings::StaticClass());
+	UISettings->LoadCursors();
 }
 
 //
@@ -1720,23 +1724,26 @@ public:
 
 bool UEngine::InitializeHMDDevice()
 {
-	if (FParse::Param(FCommandLine::Get(), TEXT("emulatestereo")))
+	if (!IsRunningCommandlet())
 	{
-		TSharedPtr<FFakeStereoRenderingDevice> FakeStereoDevice(new FFakeStereoRenderingDevice());
-		StereoRenderingDevice = FakeStereoDevice;
-	}
-	// No reason to connect an HMD on a dedicated server.  Also fixes dedicated servers stealing the oculus connection.
-	else if (!HMDDevice.IsValid() && !FParse::Param(FCommandLine::Get(), TEXT("nohmd")) && !IsRunningDedicatedServer())
-	{
-		// Get a list of plugins that implement this feature
-		TArray<IHeadMountedDisplayModule*> HMDImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IHeadMountedDisplayModule>(IHeadMountedDisplayModule::GetModularFeatureName());
-		HMDImplementations.Sort(FHMDPluginSorter());
-		for (auto HMDModuleIt = HMDImplementations.CreateIterator(); HMDModuleIt && !HMDDevice.IsValid(); ++HMDModuleIt)
+		if (FParse::Param(FCommandLine::Get(), TEXT("emulatestereo")))
 		{
-			HMDDevice = (*HMDModuleIt)->CreateHeadMountedDisplay();
-			if (HMDDevice.IsValid())
+			TSharedPtr<FFakeStereoRenderingDevice> FakeStereoDevice(new FFakeStereoRenderingDevice());
+			StereoRenderingDevice = FakeStereoDevice;
+		}
+		// No reason to connect an HMD on a dedicated server.  Also fixes dedicated servers stealing the oculus connection.
+		else if (!HMDDevice.IsValid() && !FParse::Param(FCommandLine::Get(), TEXT("nohmd")) && !IsRunningDedicatedServer())
+		{
+			// Get a list of plugins that implement this feature
+			TArray<IHeadMountedDisplayModule*> HMDImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IHeadMountedDisplayModule>(IHeadMountedDisplayModule::GetModularFeatureName());
+			HMDImplementations.Sort(FHMDPluginSorter());
+			for (auto HMDModuleIt = HMDImplementations.CreateIterator(); HMDModuleIt && !HMDDevice.IsValid(); ++HMDModuleIt)
 			{
-				StereoRenderingDevice = HMDDevice;
+				HMDDevice = (*HMDModuleIt)->CreateHeadMountedDisplay();
+				if (HMDDevice.IsValid())
+				{
+					StereoRenderingDevice = HMDDevice;
+				}
 			}
 		}
 	}
@@ -6548,7 +6555,7 @@ static void DrawProperty(UCanvas* CanvasObject, UObject* Obj, const FDebugDispla
 		CanvasObject->ClippedStrLen(GEngine->GetSmallFont(), 1.0f, 1.0f, XL, YL, *PropText);
 		FTextSizingParameters DrawParams(X, Y, CanvasObject->SizeX - X, 0, GEngine->GetSmallFont());
 		TArray<FWrappedStringElement> TextLines;
-		UCanvas::WrapString(DrawParams, X + XL, *Str, TextLines);
+		CanvasObject->WrapString(DrawParams, X + XL, *Str, TextLines);
 		int32 XL2 = XL;
 		if (TextLines.Num() > 0)
 		{
@@ -8092,14 +8099,17 @@ EBrowseReturnVal::Type UEngine::Browse( FWorldContext& WorldContext, FURL URL, F
 		
 		const UGameMapsSettings* GameMapsSettings = GetDefault<UGameMapsSettings>();
 		bool LoadSucces = LoadMap(WorldContext, FURL(&URL, *(GameMapsSettings->GetGameDefaultMap() + GameMapsSettings->LocalMapOptions), TRAVEL_Partial), NULL, Error);
-		check(LoadSucces);
+		if (LoadSucces==false)
+		{
+			UE_LOG(LogNet, Fatal, TEXT("Failed to load default map (%s). Error: (%s)"), *(GameMapsSettings->GetGameDefaultMap() + GameMapsSettings->LocalMapOptions), *Error);
+		}
 
 		CollectGarbage( GARBAGE_COLLECTION_KEEPFLAGS );
 
 		// now remove "failed" and "closed" options from LastURL so it doesn't get copied on to future URLs
 		WorldContext.LastURL.RemoveOption(TEXT("failed"));
 		WorldContext.LastURL.RemoveOption(TEXT("closed"));
-		return EBrowseReturnVal::Success;
+		return (LoadSucces ? EBrowseReturnVal::Success : EBrowseReturnVal::Failure);
 	}
 	else if( URL.HasOption(TEXT("restart")) )
 	{
@@ -8133,7 +8143,8 @@ EBrowseReturnVal::Type UEngine::Browse( FWorldContext& WorldContext, FURL URL, F
 			ShutdownWorldNetDriver(WorldContext.World());
 		}
 
-		WorldContext.PendingNetGame = new UPendingNetGame(FObjectInitializer(), URL);
+		WorldContext.PendingNetGame = NewObject<UPendingNetGame>();
+		WorldContext.PendingNetGame->Initialize(URL);
 		WorldContext.PendingNetGame->InitNetDriver();
 		if( !WorldContext.PendingNetGame->NetDriver )
 		{
@@ -10340,13 +10351,14 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 	}
 
 	// Replace references to old classes and instances on this object with the corresponding new ones
-	FArchiveReplaceObjectRef<UObject> ReplaceInCDOAr(NewObject, ReferenceReplacementMap, /*bNullPrivateRefs=*/ false, /*bIgnoreOuterRef=*/ false, /*bIgnoreArchetypeRef=*/ false);
+	UPackage* NewPackage = Cast<UPackage>(NewObject->GetOutermost());
+	FArchiveReplaceOrClearExternalReferences<UObject> ReplaceInCDOAr(NewObject, ReferenceReplacementMap, NewPackage);
 
 	// Replace references inside each individual component. This is always required because if something is in ReferenceReplacementMap, the above replace code will skip fixing child properties
 	for (int32 ComponentIndex = 0; ComponentIndex < ComponentsOnNewObject.Num(); ++ComponentIndex)
 	{
 		UObject* NewComponent = ComponentsOnNewObject[ComponentIndex];
-		FArchiveReplaceObjectRef<UObject> ReplaceInComponentAr(NewComponent, ReferenceReplacementMap, /*bNullPrivateRefs=*/ false, /*bIgnoreOuterRef=*/ false, /*bIgnoreArchetypeRef=*/ false);
+		FArchiveReplaceOrClearExternalReferences<UObject> ReplaceInComponentAr(NewComponent, ReferenceReplacementMap, NewPackage);
 	}
 
 	// Restore the root component reference

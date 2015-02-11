@@ -329,12 +329,28 @@ FQuat UActorFactoryStaticMesh::AlignObjectToSurfaceNormal(const FVector& InSurfa
 /*-----------------------------------------------------------------------------
 UActorFactoryBasicShape
 -----------------------------------------------------------------------------*/
+
+const FName UActorFactoryBasicShape::BasicCube("/Engine/BasicShapes/Cube.Cube");
+const FName UActorFactoryBasicShape::BasicSphere("/Engine/BasicShapes/Sphere.Sphere");
+const FName UActorFactoryBasicShape::BasicCylinder("/Engine/BasicShapes/Cylinder.Cylinder");
+const FName UActorFactoryBasicShape::BasicCone("/Engine/BasicShapes/Cone.Cone");
+
 UActorFactoryBasicShape::UActorFactoryBasicShape(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	DisplayName = LOCTEXT("UActorFactoryBasicShapeDisplayName", "Basic Shape");
 	NewActorClass = AStaticMeshActor::StaticClass();
 	bUseSurfaceOrientation = true;
+}
+
+bool UActorFactoryBasicShape::CanCreateActorFrom( const FAssetData& AssetData, FText& OutErrorMsg )
+{
+	if(AssetData.IsValid() && (AssetData.ObjectPath == BasicCube || AssetData.ObjectPath == BasicSphere || AssetData.ObjectPath == BasicCone || AssetData.ObjectPath == BasicCylinder ) )
+	{
+		return true;
+	}
+
+	return false;
 }
 
 void UActorFactoryBasicShape::PostSpawnActor(UObject* Asset, AActor* NewActor)
@@ -357,6 +373,7 @@ void UActorFactoryBasicShape::PostSpawnActor(UObject* Asset, AActor* NewActor)
 		StaticMeshComponent->RegisterComponent();
 	}
 }
+
 
 /*-----------------------------------------------------------------------------
 UActorFactoryDeferredDecal
@@ -1206,7 +1223,7 @@ UActorFactoryCharacter
 UActorFactoryCharacter::UActorFactoryCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	DisplayName = LOCTEXT("ActorFactoryCharacterDisplayName", "Character");
+	DisplayName = LOCTEXT("ActorFactoryCharacterDisplayName", "Empty Character");
 	NewActorClass = ACharacter::StaticClass();
 }
 
@@ -1233,7 +1250,7 @@ UActorFactoryPawn
 UActorFactoryPawn::UActorFactoryPawn(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	DisplayName = LOCTEXT("ActorFactoryPawnDisplayName", "Pawn");
+	DisplayName = LOCTEXT("ActorFactoryPawnDisplayName", "Empty Pawn");
 	NewActorClass = APawn::StaticClass();
 }
 
@@ -1805,8 +1822,9 @@ void CreateBrushForVolumeActor( AVolume* NewActor, UBrushBuilder* BrushBuilder )
 		NewActor->PreEditChange(NULL);
 
 		NewActor->PolyFlags = 0;
-		NewActor->Brush = new( NewActor, NAME_None, RF_Transactional )UModel(FObjectInitializer(), NULL, true );
-		NewActor->Brush->Polys = new( NewActor->Brush, NAME_None, RF_Transactional )UPolys(FObjectInitializer());
+		NewActor->Brush = NewNamedObject<UModel>(NewActor, NAME_None, RF_Transactional);
+		NewActor->Brush->Initialize(nullptr, true);
+		NewActor->Brush->Polys = NewNamedObject<UPolys>(NewActor->Brush, NAME_None, RF_Transactional);
 		NewActor->GetBrushComponent()->Brush = NewActor->Brush;
 		if(BrushBuilder != nullptr)
 		{

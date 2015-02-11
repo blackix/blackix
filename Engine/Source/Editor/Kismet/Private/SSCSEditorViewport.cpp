@@ -211,17 +211,10 @@ SSCSEditorViewport::~SSCSEditorViewport()
 	}
 }
 
-
-
 bool SSCSEditorViewport::IsVisible() const
 {
 	// We consider the viewport to be visible if the reference is valid
 	return ViewportWidget.IsValid() && SEditorViewport::IsVisible();
-}
-
-EVisibility SSCSEditorViewport::GetWidgetVisibility() const
-{
-	return IsVisible()? EVisibility::Visible: EVisibility::Collapsed;
 }
 
 TSharedRef<FEditorViewportClient> SSCSEditorViewport::MakeEditorViewportClient()
@@ -242,7 +235,6 @@ TSharedPtr<SWidget> SSCSEditorViewport::MakeViewportToolbar()
 	return 
 		SNew(SSCSEditorViewportToolBar)
 		.EditorViewport(SharedThis(this))
-		.Visibility(this, &SSCSEditorViewport::GetWidgetVisibility)
 		.IsEnabled(FSlateApplication::Get().GetNormalExecutionAttribute());
 }
 
@@ -320,6 +312,8 @@ void SSCSEditorViewport::RequestRefresh(bool bResetCamera, bool bRefreshNow)
 {
 	if(bRefreshNow)
 	{
+		Invalidate();
+
 		if(ViewportClient.IsValid())
 		{
 			ViewportClient->InvalidatePreview(bResetCamera);
@@ -339,7 +333,7 @@ void SSCSEditorViewport::RequestRefresh(bool bResetCamera, bool bRefreshNow)
 void SSCSEditorViewport::OnComponentSelectionChanged()
 {
 	// When the component selection changes, make sure to invalidate hit proxies to sync with the current selection
-	SceneViewport->InvalidateHitProxy();
+	SceneViewport->Invalidate();
 }
 
 void SSCSEditorViewport::OnFocusViewportToSelection()
@@ -350,6 +344,16 @@ void SSCSEditorViewport::OnFocusViewportToSelection()
 bool SSCSEditorViewport::GetIsSimulateEnabled()
 {
 	return ViewportClient->GetIsSimulateEnabled();
+}
+
+void SSCSEditorViewport::SetOwnerTab(TSharedRef<SDockTab> Tab)
+{
+	OwnerTab = Tab;
+}
+
+TSharedPtr<SDockTab> SSCSEditorViewport::GetOwnerTab() const
+{
+	return OwnerTab.Pin();
 }
 
 FReply SSCSEditorViewport::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
@@ -365,6 +369,8 @@ void SSCSEditorViewport::Tick(const FGeometry& AllottedGeometry, const double In
 	// If the preview scene is no longer valid (i.e. all actors have destroyed themselves), then attempt to recreate the scene. This way we can "loop" certain "finite" Blueprints that might destroy themselves.
 	if(ViewportClient.IsValid() && bPreviewNeedsUpdating)
 	{
+		Invalidate();
+
 		ViewportClient->InvalidatePreview(bResetCameraOnNextPreviewUpdate);
 
 		// Reset for next update

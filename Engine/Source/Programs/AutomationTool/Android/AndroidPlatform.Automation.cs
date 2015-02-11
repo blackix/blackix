@@ -48,7 +48,7 @@ public class AndroidPlatform : Platform
 			else
 			{
 				// if we want to use UE4 directly then use it from the engine directory not project directory
-				ApkName = ApkName.Replace(ProjectDir, Path.Combine(CmdEnv.LocalRoot, "Engine"));
+				ApkName = ApkName.Replace(ProjectDir, Path.Combine(CmdEnv.LocalRoot, "Engine/Binaries/Android"));
 			}
 		}
 
@@ -189,7 +189,7 @@ public class AndroidPlatform : Platform
 		string[] Architectures = UnrealBuildTool.AndroidToolChain.GetAllArchitectures();
 		string[] GPUArchitectures = UnrealBuildTool.AndroidToolChain.GetAllGPUArchitectures();
 		bool bMakeSeparateApks = UnrealBuildTool.Android.UEDeployAndroid.ShouldMakeSeparateApks();
-		bool bPackageDataInsideApk = UnrealBuildTool.Android.UEDeployAndroid.PackageDataInsideApk();
+		bool bPackageDataInsideApk = UnrealBuildTool.Android.UEDeployAndroid.PackageDataInsideApk(false);
 
 		var Deploy = UEBuildDeploy.GetBuildDeploy(UnrealTargetPlatform.Android);
 
@@ -234,13 +234,24 @@ public class AndroidPlatform : Platform
 			foreach (string GPUArchitecture in GPUArchitectures)
 			{
 				string ApkName = GetFinalApkName(Params, SC.StageExecutables[0], true, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
+				if (!SC.IsCodeBasedProject)
+				{
+					string UE4GameApkName = GetFinalApkName(Params, SC.StageExecutables[0], false, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
+					if (FileExists_NoExceptions(UE4GameApkName) == false)
+					{
+						Log("Failed to find game apk " + UE4GameApkName);
+						AutomationTool.ErrorReporter.Error("Stage Failed.", (int)AutomationTool.ErrorCodes.Error_MissingExecutable);
+						throw new AutomationException("Could not find apk {0}. You may need to build the UE4 project with your target configuration and platform.", UE4GameApkName);
+					}
+				}
+				
 				string BatchName = GetFinalBatchName(ApkName, Params, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
 
 				if (!Params.Prebuilt)
 				{
 					string CookFlavor = SC.FinalCookPlatform.IndexOf("_") > 0 ? SC.FinalCookPlatform.Substring(SC.FinalCookPlatform.IndexOf("_")) : "";
 					string SOName = GetSONameWithoutArchitecture(Params, SC.StageExecutables[0]);
-					Deploy.PrepForUATPackageOrDeploy(Params.ShortProjectName, SC.ProjectRoot, SOName, SC.LocalRoot + "/Engine", Params.Distribution, CookFlavor);
+					Deploy.PrepForUATPackageOrDeploy(Params.ShortProjectName, SC.ProjectRoot, SOName, SC.LocalRoot + "/Engine", Params.Distribution, CookFlavor, false);
 				}
 
 			    // Create APK specific OBB in case we have a detached OBB.
@@ -315,14 +326,14 @@ public class AndroidPlatform : Platform
 						"@echo Uninstalling existing application. Failures here can almost always be ignored.",
 						"%ADB% %DEVICE% uninstall " + PackageName,
 						"@echo.",
-						"@echo Installing existing application. Failures here indicate a problem with the device \\(connection or storage permissions\\) and are fatal.",
+						"@echo Installing existing application. Failures here indicate a problem with the device (connection or storage permissions) and are fatal.",
 						"%ADB% %DEVICE% install " + Path.GetFileName(ApkName),
 						"@if \"%ERRORLEVEL%\" NEQ \"0\" goto Error",
 						"%ADB% %DEVICE% shell rm -r %STORAGE%/" + Params.ShortProjectName,
 						"%ADB% %DEVICE% shell rm -r %STORAGE%/UE4Game/UE4CommandLine.txt", // we need to delete the commandline in UE4Game or it will mess up loading
 						"%ADB% %DEVICE% shell rm -r %STORAGE%/obb/" + PackageName,
 						bPackageDataInsideApk ? "" : "@echo.",
-						bPackageDataInsideApk ? "" : "@echo Installing new data. Failures here indicate storage problems \\(missing SD card or bad permissions\\) and are fatal.",
+						bPackageDataInsideApk ? "" : "@echo Installing new data. Failures here indicate storage problems (missing SD card or bad permissions) and are fatal.",
 						bPackageDataInsideApk ? "" : "%ADB% %DEVICE% push " + Path.GetFileName(ObbName) + " %STORAGE%/" + DeviceObbName,
 						bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error",
 						"@echo.",
@@ -363,7 +374,7 @@ public class AndroidPlatform : Platform
 		string[] Architectures = UnrealBuildTool.AndroidToolChain.GetAllArchitectures();
 		string[] GPUArchitectures = UnrealBuildTool.AndroidToolChain.GetAllGPUArchitectures();
 		bool bMakeSeparateApks = UnrealBuildTool.Android.UEDeployAndroid.ShouldMakeSeparateApks();
-		bool bPackageDataInsideApk = UnrealBuildTool.Android.UEDeployAndroid.PackageDataInsideApk();
+		bool bPackageDataInsideApk = UnrealBuildTool.Android.UEDeployAndroid.PackageDataInsideApk(false);
 
 		bool bAddedOBB = false;
 		foreach (string Architecture in Architectures)
@@ -516,7 +527,7 @@ public class AndroidPlatform : Platform
 		{
 			string CookFlavor = SC.FinalCookPlatform.IndexOf("_") > 0 ? SC.FinalCookPlatform.Substring(SC.FinalCookPlatform.IndexOf("_")) : "";
 			string SOName = GetSONameWithoutArchitecture(Params, SC.StageExecutables[0]);
-			Deploy.PrepForUATPackageOrDeploy(Params.ShortProjectName, SC.ProjectRoot, SOName, SC.LocalRoot + "/Engine", Params.Distribution, CookFlavor);
+			Deploy.PrepForUATPackageOrDeploy(Params.ShortProjectName, SC.ProjectRoot, SOName, SC.LocalRoot + "/Engine", Params.Distribution, CookFlavor, true);
 		}
 
 		// now we can use the apk to get more info

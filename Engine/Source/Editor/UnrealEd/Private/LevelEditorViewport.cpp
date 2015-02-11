@@ -411,7 +411,7 @@ static UObject* GetOrCreateMaterialFromTexture( UTexture* UnrealTexture )
 	}
 
 	// create an unreal material asset
-	UMaterialFactoryNew* MaterialFactory = new UMaterialFactoryNew( FObjectInitializer() );
+	auto MaterialFactory = NewObject<UMaterialFactoryNew>();
 
 	UMaterial* UnrealMaterial = (UMaterial*)MaterialFactory->FactoryCreateNew(
 		UMaterial::StaticClass(), Package, *MaterialFullName, RF_Standalone | RF_Public, NULL, GWarn );
@@ -505,7 +505,7 @@ static bool AttemptApplyObjToComponent(UObject* ObjToUse, USceneComponent* Compo
 {
 	bool bResult = false;
 
-	if (ComponentToApplyTo && ComponentToApplyTo->CreationMethod != EComponentCreationMethod::ConstructionScript)
+	if (ComponentToApplyTo && !ComponentToApplyTo->IsCreatedByConstructionScript())
 	{
 		// MESH/DECAL
 		auto MeshComponent = Cast<UMeshComponent>(ComponentToApplyTo);
@@ -1230,9 +1230,9 @@ bool FLevelEditorViewportClient::DropObjectsAtCoordinates(int32 MouseX, int32 Mo
 			{
 				FNavigationLockContext LockNavigationUpdates(TargetActor->GetWorld(), ENavigationLockReason::SpawnOnDragEnter, bCreateDropPreview);
 
-				// If more than one actor is selected and the target actor is one of them, we should drop onto all selected actors
+				// If the target actor is selected, we should drop onto all selected actors
 				// otherwise, we should drop only onto the target object
-				const bool bDropOntoSelectedActors = TargetActor->IsSelected() && GEditor->GetSelectedActorCount() > 1;
+				const bool bDropOntoSelectedActors = TargetActor->IsSelected();
 				const bool bCanApplyToComponent = AttemptApplyObjToComponent(DroppedObjects[0], TargetComponent, TargetMaterialSlot, true);
 				if (bOnlyDropOnTarget || !bDropOntoSelectedActors || !bCanApplyToComponent)
 				{
@@ -1257,7 +1257,7 @@ bool FLevelEditorViewportClient::DropObjectsAtCoordinates(int32 MouseX, int32 Mo
 						if (ComponentSelection->IsSelected(TargetComponent))
 						{
 							// The target component is selected, so try applying the object to every selected component
-							for (FSelectionIterator It(GEditor->GetSelectedComponentIterator()); It; ++It)
+							for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
 							{
 								auto SceneComponent = Cast<USceneComponent>(*It);
 								AttemptApplyObjToComponent(DroppedObjects[0], SceneComponent, TargetMaterialSlot, bCreateDropPreview);
@@ -1478,7 +1478,7 @@ FLevelEditorViewportClient::FLevelEditorViewportClient()
 	, bEnableColorScaling(false)
 	, bEditorCameraCut(false)
 	, bDrawBaseInfo(false)
-	, bDuplicateActorsOnNextDrag( false )
+	, bDuplicateOnNextDrag( false )
 	, bDuplicateActorsInProgress( false )
 	, bIsTrackingBrushModification( false )
 	, bLockedCameraView(true)
@@ -1614,7 +1614,7 @@ FSceneView* FLevelEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFami
 
 	View->SpriteCategoryVisibility = SpriteCategoryVisibility;
 	View->bCameraCut = bEditorCameraCut;
-
+	View->bHasSelectedComponents = GEditor->GetSelectedComponentCount() > 0;
 	return View;
 
 }
@@ -2175,16 +2175,15 @@ bool FLevelEditorViewportClient::InputWidgetDelta(FViewport* Viewport, EAxisList
 				// If duplicate dragging . . .
 				if ( IsAltPressed() && (LeftMouseButtonDown || RightMouseButtonDown) )
 				{
-					// The widget has been offset, so check if we should duplicate actors.
-					if ( bDuplicateActorsOnNextDrag )
+					// The widget has been offset, so check if we should duplicate the selection.
+					if ( bDuplicateOnNextDrag )
 					{
 						// Only duplicate if we're translating or rotating.
 						if ( !Drag.IsNearlyZero() || !Rot.IsZero() )
 						{
-							// Actors haven't been dragged since ALT+LMB went down.
-							bDuplicateActorsOnNextDrag = false;
-
-							GEditor->edactDuplicateSelected( GetWorld()->GetCurrentLevel(), false );
+							// Widget hasn't been dragged since ALT+LMB went down.
+							bDuplicateOnNextDrag = false;
+							GEditor->edactDuplicateSelected(GetWorld()->GetCurrentLevel(), false);
 						}
 					}
 				}
@@ -2417,13 +2416,13 @@ void FLevelEditorViewportClient::TrackingStarted( const FInputEventState& InInpu
 			if(Event == IE_Pressed && (Key == EKeys::LeftMouseButton || Key == EKeys::RightMouseButton) && !bDuplicateActorsInProgress)
 			{
 				// Set the flag so that the actors actors will be duplicated as soon as the widget is displaced.
-				bDuplicateActorsOnNextDrag = true;
+				bDuplicateOnNextDrag = true;
 				bDuplicateActorsInProgress = true;
 			}
 		}
 		else
 		{
-			bDuplicateActorsOnNextDrag = false;
+			bDuplicateOnNextDrag = false;
 		}
 	}
 
@@ -2545,7 +2544,7 @@ void FLevelEditorViewportClient::TrackingStopped()
 	const bool MiddleMouseButtonDown = Viewport->KeyState(EKeys::MiddleMouseButton);
 
 	// Only disable the duplicate on next drag flag if we actually dragged the mouse.
-	bDuplicateActorsOnNextDrag = false;
+	bDuplicateOnNextDrag = false;
 
 	// here we check to see if anything of worth actually changed when ending our MouseMovement
 	// If the TransCount > 0 (we changed something of value) so we need to call PostEditMove() on stuff
@@ -3023,7 +3022,7 @@ void FLevelEditorViewportClient::ApplyDeltaToActors(const FVector& InDrag,
 				// Only move the parent-most component(s) that are selected 
 				// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
 				TInlineComponentArray<USceneComponent*> ComponentsToMove;
-				for (FSelectionIterator It(GEditor->GetSelectedComponentIterator()); It; ++It)
+				for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
 				{
 					USceneComponent* SceneComponent = CastChecked<USceneComponent>(*It);
 					if (SceneComponent)

@@ -1,13 +1,14 @@
 // Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSPlatformEditorPrivatePCH.h"
+#include "SWidgetSwitcher.h"
+#include "IDetailPropertyRow.h"
 #include "IOSTargetSettingsCustomization.h"
 #include "DetailLayoutBuilder.h"
 #include "DetailCategoryBuilder.h"
 #include "PropertyEditing.h"
 #include "DesktopPlatformModule.h"
 #include "MainFrame.h"
-#include "IDetailPropertyRow.h"
 
 #include "ScopedTransaction.h"
 #include "SExternalImageReference.h"
@@ -90,13 +91,13 @@ void FIOSTargetSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& Det
 {
 	SavedLayoutBuilder = &DetailLayout;
 
-	FindRequiredFiles();
-
 	BuildPListSection(DetailLayout);
 
 	BuildIconSection(DetailLayout);
 
 	BuildRemoteBuildingSection(DetailLayout);
+
+	FindRequiredFiles();
 }
 
 static FString OutputMessage;
@@ -143,11 +144,34 @@ void FIOSTargetSettingsCustomization::UpdateStatus()
 					else if (Key.Contains(TEXT("EndDate")))
 					{
 						FString Date, Time;
-						Value.Split(TEXT(" "), &Date, &Time);
+						Value.Split(TEXT("T"), &Date, &Time);
 						Cert->Expires = Date;
 					}
 				}
-				CertificateList.Add(Cert);
+				CertificatePtr PrevCert = NULL;
+				for (int CIndex = 0; CIndex < CertificateList.Num() && !PrevCert.IsValid(); ++CIndex)
+				{
+					if (CertificateList[CIndex]->Name == Cert->Name)
+					{
+						PrevCert = CertificateList[CIndex];
+						break;
+					}
+				}
+				if (!PrevCert.IsValid())
+				{
+					CertificateList.Add(Cert);
+				}
+				else
+				{
+					FDateTime time1, time2;
+					FDateTime::ParseIso8601(*(PrevCert->Expires), time1);
+					FDateTime::ParseIso8601(*(Cert->Expires), time2);
+					if (time2 > time1)
+					{
+						PrevCert->Expires = Cert->Expires;
+					}
+					Cert = NULL;
+				}
 			}
 			else if (Line.Contains(TEXT("PROVISION-"), ESearchCase::CaseSensitive))
 			{
@@ -206,17 +230,13 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 	// Info.plist category
 	IDetailCategoryBuilder& ProvisionCategory = DetailLayout.EditCategory(TEXT("Mobile Provision"));
 	IDetailCategoryBuilder& AppManifestCategory = DetailLayout.EditCategory(TEXT("Info.plist"));
-	IDetailCategoryBuilder& BundleCategory = DetailLayout.EditCategory(TEXT("Bundle Information"));
+	IDetailCategoryBuilder& BundleCategory = DetailLayout.EditCategory(TEXT("BundleInformation"));
 	IDetailCategoryBuilder& OrientationCategory = DetailLayout.EditCategory(TEXT("Orientation"));
 	IDetailCategoryBuilder& RenderCategory = DetailLayout.EditCategory(TEXT("Rendering"));
 	IDetailCategoryBuilder& OSInfoCategory = DetailLayout.EditCategory(TEXT("OS Info"));
 	IDetailCategoryBuilder& DeviceCategory = DetailLayout.EditCategory(TEXT("Devices"));
 	IDetailCategoryBuilder& BuildCategory = DetailLayout.EditCategory(TEXT("Build"));
 	IDetailCategoryBuilder& ExtraCategory = DetailLayout.EditCategory(TEXT("Extra PList Data"));
-
-	TSharedRef<SPlatformSetupMessage> PlatformSetupMessage = SNew(SPlatformSetupMessage, GameInfoPath)
-		.PlatformName(LOCTEXT("iOSPlatformName", "iOS"))
-		.OnSetupClicked(this, &FIOSTargetSettingsCustomization::CopySetupFilesIntoProject);
 
 /*	ProvisionCategory.AddCustomRow(TEXT("Certificate Request"), false)
 		.NameContent()
@@ -254,79 +274,130 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot()
-			.Padding(FMargin(10, 10, 10, 10))
 			.AutoHeight()
 			[
-				SAssignNew(ProvisionListView, SListView<ProvisionPtr>)
-				.ItemHeight(20.0f)
-				.ListItemsSource(&FilteredProvisionList)
-				.OnGenerateRow(this, &FIOSTargetSettingsCustomization::HandleProvisionListGenerateRow)
-				.SelectionMode(ESelectionMode::None)
-				.HeaderRow
-				(
-				SNew(SHeaderRow)
-				+ SHeaderRow::Column("Name")
-				.DefaultLabel(LOCTEXT("ProvisionListNameColumnHeader", "Provision"))
-				.FillWidth(1.0f)
-				+ SHeaderRow::Column("File")
-				.DefaultLabel(LOCTEXT("ProvisionListFileColumnHeader", "File"))
-				+ SHeaderRow::Column("Status")
-				.DefaultLabel(LOCTEXT("ProvisionListStatusColumnHeader", "Status"))
-				+ SHeaderRow::Column("Distribution")
-				.DefaultLabel(LOCTEXT("ProvisionListDistributionColumnHeader", "Distribution"))
-				.FixedWidth(75.0f)
-				)
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(0.0f, 6.0f, 0.0f, 4.0f)
-			[
-				SNew(SSeparator)
-				.Orientation(Orient_Horizontal)
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
+				SAssignNew(ProvisionInfoSwitcher, SWidgetSwitcher)
+				.WidgetIndex(0)
+				// searching for provisions
+				+SWidgetSwitcher::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Center)
 				[
-					SNew(SRichTextBlock)
-					.Text(LOCTEXT("ProvisionMessage", "<RichTextBlock.TextHighlight>Note</>: The provision in green will be used to provision the IPA."))
-					.TextStyle(FEditorStyle::Get(), "MessageLog")
-					.DecoratorStyleSet(&FEditorStyle::Get())
-					.AutoWrapText(true)
+					SNew(SBorder)
+					.Padding(4)
+					[
+						SNew( STextBlock )
+						.Text( LOCTEXT( "ProvisionViewerFindingProvisions", "Please wait while we gather information." ) )
+						.AutoWrapText( true )
+					]
 				]
-
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.HAlign(HAlign_Right)
+				// importing a provision
+				+SWidgetSwitcher::Slot()
+					.HAlign(HAlign_Fill)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SBorder)
+						.Padding(4)
+						[
+							SNew( STextBlock )
+							.Text( LOCTEXT( "ProvisionViewerImportingProvisions", "Importing Provision.  Please wait..." ) )
+							.AutoWrapText( true )
+						]
+					]
+				// no provisions found or no valid provisions
+				+SWidgetSwitcher::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Center)
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("ViewLabel", "View:"))
+					SNew(SBorder)
+					.Padding(4)
+					[
+						SNew( STextBlock )
+						.Text( LOCTEXT( "ProvisionViewerNoValidProvisions", "No Provisions Found. Please Import a Provision." ) )
+						.AutoWrapText( true )
+					]
 				]
-
-				+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.Padding(8.0f, 0.0f)
+				+SWidgetSwitcher::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.Padding(FMargin(10, 10, 10, 10))
+					.AutoHeight()
 					[
-						// all provisions hyper link
-						SNew(SHyperlink)
-						.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllProvisionsHyperlinkNavigate, true)
-						.Text(LOCTEXT("AllProvisionsHyperLinkLabel", "All"))
-						.ToolTipText(LOCTEXT("AllProvisionsButtonTooltip", "View all provisions."))
+						SAssignNew(ProvisionListView, SListView<ProvisionPtr>)
+						.ItemHeight(20.0f)
+						.ListItemsSource(&FilteredProvisionList)
+						.OnGenerateRow(this, &FIOSTargetSettingsCustomization::HandleProvisionListGenerateRow)
+						.SelectionMode(ESelectionMode::None)
+						.HeaderRow
+						(
+						SNew(SHeaderRow)
+						+ SHeaderRow::Column("Name")
+						.DefaultLabel(LOCTEXT("ProvisionListNameColumnHeader", "Provision"))
+						.FillWidth(1.0f)
+						+ SHeaderRow::Column("File")
+						.DefaultLabel(LOCTEXT("ProvisionListFileColumnHeader", "File"))
+						+ SHeaderRow::Column("Status")
+						.DefaultLabel(LOCTEXT("ProvisionListStatusColumnHeader", "Status"))
+						+ SHeaderRow::Column("Distribution")
+						.DefaultLabel(LOCTEXT("ProvisionListDistributionColumnHeader", "Distribution"))
+						.FixedWidth(75.0f)
+						)
 					]
+					+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 6.0f, 0.0f, 4.0f)
+						[
+							SNew(SSeparator)
+							.Orientation(Orient_Horizontal)
+						]
+					+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(SHorizontalBox)
 
-				+ SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						// valid provisions hyper link
-						SNew(SHyperlink)
-						.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllProvisionsHyperlinkNavigate, false)
-						.Text(LOCTEXT("ValidProvisionsHyperlinkLabel", "Valid Only"))
-						.ToolTipText(LOCTEXT("ValidProvisionsHyperlinkTooltip", "View Valid provisions."))
-					]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							[
+								SNew(SRichTextBlock)
+								.Text(LOCTEXT("ProvisionMessage", "<RichTextBlock.TextHighlight>Note</>: The provision in green will be used to provision the IPA."))
+								.TextStyle(FEditorStyle::Get(), "MessageLog")
+								.DecoratorStyleSet(&FEditorStyle::Get())
+								.AutoWrapText(true)
+							]
+
+							+ SHorizontalBox::Slot()
+								.FillWidth(1.0f)
+								.HAlign(HAlign_Right)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("ViewLabel", "View:"))
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.Padding(8.0f, 0.0f)
+								[
+									// all provisions hyper link
+									SNew(SHyperlink)
+									.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllProvisionsHyperlinkNavigate, true)
+									.Text(LOCTEXT("AllProvisionsHyperLinkLabel", "All"))
+									.ToolTipText(LOCTEXT("AllProvisionsButtonTooltip", "View all provisions."))
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								[
+									// valid provisions hyper link
+									SNew(SHyperlink)
+									.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllProvisionsHyperlinkNavigate, false)
+									.Text(LOCTEXT("ValidProvisionsHyperlinkLabel", "Valid Only"))
+									.ToolTipText(LOCTEXT("ValidProvisionsHyperlinkTooltip", "View Valid provisions."))
+								]
+						]
+				]
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
@@ -340,6 +411,7 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 						.HAlign(HAlign_Center)
 						.VAlign(VAlign_Center)
 						.OnClicked(this, &FIOSTargetSettingsCustomization::OnInstallProvisionClicked)
+						.IsEnabled(this, &FIOSTargetSettingsCustomization::IsImportEnabled)
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString("Import Provision"))
@@ -358,78 +430,129 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 			+ SVerticalBox::Slot()
 			.AutoHeight()
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.Padding(FMargin(10, 10, 10, 10))
-				.FillWidth(1.0f)
+				SAssignNew(CertificateInfoSwitcher, SWidgetSwitcher)
+				.WidgetIndex(0)
+				// searching for provisions
+				+SWidgetSwitcher::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Center)
 				[
-					SAssignNew(CertificateListView, SListView<CertificatePtr>)
-					.ItemHeight(20.0f)
-					.ListItemsSource(&FilteredCertificateList)
-					.OnGenerateRow(this, &FIOSTargetSettingsCustomization::HandleCertificateListGenerateRow)
-					.SelectionMode(ESelectionMode::None)
-					.HeaderRow
-					(
-						SNew(SHeaderRow)
-						+ SHeaderRow::Column("Name")
-						.DefaultLabel(LOCTEXT("CertificateListNameColumnHeader", "Certificate"))
-						+ SHeaderRow::Column("Status")
-						.DefaultLabel(LOCTEXT("CertificateListStatusColumnHeader", "Status"))
-						.FixedWidth(75.0f)
-						+ SHeaderRow::Column("Expires")
-						.DefaultLabel(LOCTEXT("CertificateListExpiresColumnHeader", "Expires"))
-						.FixedWidth(75.0f)
-					)
-				]
-			]
-			+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0.0f, 6.0f, 0.0f, 4.0f)
-				[
-					SNew(SSeparator)
-					.Orientation(Orient_Horizontal)
-				]
-			+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
+					SNew(SBorder)
+					.Padding(4)
 					[
-						SNew(SRichTextBlock)
-						.Text(LOCTEXT("CertificateMessage", "<RichTextBlock.TextHighlight>Note</>: The certificate in green will be used to sign the IPA."))
-						.TextStyle(FEditorStyle::Get(), "MessageLog")
-						.DecoratorStyleSet(&FEditorStyle::Get())
-						.AutoWrapText(true)
+						SNew( STextBlock )
+						.Text( LOCTEXT( "CertificateViewerFindingProvisions", "Please wait while we gather information." ) )
+						.AutoWrapText( true )
 					]
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					.HAlign(HAlign_Right)
+				]
+				// importing certificate
+				+SWidgetSwitcher::Slot()
+					.HAlign(HAlign_Fill)
+					.VAlign(VAlign_Center)
 					[
-						SNew(STextBlock)
-						.Text(LOCTEXT("ViewLabel", "View:"))
+						SNew(SBorder)
+						.Padding(4)
+						[
+							SNew( STextBlock )
+							.Text( LOCTEXT( "CertificateViewerImportingCertificate", "Importing Certificate.  Please wait..." ) )
+							.AutoWrapText( true )
+						]
 					]
-
-					+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(8.0f, 0.0f)
+				// no provisions found or no valid provisions
+				+SWidgetSwitcher::Slot()
+					.HAlign(HAlign_Fill)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SBorder)
+						.Padding(4)
 						[
-							// all provisions hyper link
-							SNew(SHyperlink)
-							.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllCertificatesHyperlinkNavigate, true)
-							.Text(LOCTEXT("AllCertificatesHyperLinkLabel", "All"))
-							.ToolTipText(LOCTEXT("AllCertificatesButtonTooltip", "View all certificates."))
+							SNew( STextBlock )
+							.Text( LOCTEXT( "CertificateViewerNoValidProvisions", "No Certificates Found.  Please Import a Certificate." ) )
+							.AutoWrapText( true )
 						]
-
-					+ SHorizontalBox::Slot()
-						.AutoWidth()
+					]
+				+SWidgetSwitcher::Slot()
+					.HAlign(HAlign_Fill)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
 						[
-							// valid provisions hyper link
-							SNew(SHyperlink)
-							.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllCertificatesHyperlinkNavigate, false)
-							.Text(LOCTEXT("ValidCertificatesHyperlinkLabel", "Valid Only"))
-							.ToolTipText(LOCTEXT("ValidCertificatesHyperlinkTooltip", "View Valid certificates."))
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot()
+							.Padding(FMargin(10, 10, 10, 10))
+							.FillWidth(1.0f)
+							[
+								SAssignNew(CertificateListView, SListView<CertificatePtr>)
+								.ItemHeight(20.0f)
+								.ListItemsSource(&FilteredCertificateList)
+								.OnGenerateRow(this, &FIOSTargetSettingsCustomization::HandleCertificateListGenerateRow)
+								.SelectionMode(ESelectionMode::None)
+								.HeaderRow
+								(
+									SNew(SHeaderRow)
+									+ SHeaderRow::Column("Name")
+									.DefaultLabel(LOCTEXT("CertificateListNameColumnHeader", "Certificate"))
+									+ SHeaderRow::Column("Status")
+									.DefaultLabel(LOCTEXT("CertificateListStatusColumnHeader", "Status"))
+									.FixedWidth(75.0f)
+									+ SHeaderRow::Column("Expires")
+									.DefaultLabel(LOCTEXT("CertificateListExpiresColumnHeader", "Expires"))
+									.FixedWidth(75.0f)
+								)
+							]
 						]
+						+ SVerticalBox::Slot()
+							.AutoHeight()
+							.Padding(0.0f, 6.0f, 0.0f, 4.0f)
+							[
+								SNew(SSeparator)
+								.Orientation(Orient_Horizontal)
+							]
+						+ SVerticalBox::Slot()
+							.AutoHeight()
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								[
+									SNew(SRichTextBlock)
+									.Text(LOCTEXT("CertificateMessage", "<RichTextBlock.TextHighlight>Note</>: The certificate in green will be used to sign the IPA."))
+									.TextStyle(FEditorStyle::Get(), "MessageLog")
+									.DecoratorStyleSet(&FEditorStyle::Get())
+									.AutoWrapText(true)
+								]
+								+ SHorizontalBox::Slot()
+								.FillWidth(1.0f)
+								.HAlign(HAlign_Right)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("ViewLabel", "View:"))
+								]
+
+								+ SHorizontalBox::Slot()
+									.AutoWidth()
+									.Padding(8.0f, 0.0f)
+									[
+										// all provisions hyper link
+										SNew(SHyperlink)
+										.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllCertificatesHyperlinkNavigate, true)
+										.Text(LOCTEXT("AllCertificatesHyperLinkLabel", "All"))
+										.ToolTipText(LOCTEXT("AllCertificatesButtonTooltip", "View all certificates."))
+									]
+
+								+ SHorizontalBox::Slot()
+									.AutoWidth()
+									[
+										// valid provisions hyper link
+										SNew(SHyperlink)
+										.OnNavigate(this, &FIOSTargetSettingsCustomization::HandleAllCertificatesHyperlinkNavigate, false)
+										.Text(LOCTEXT("ValidCertificatesHyperlinkLabel", "Valid Only"))
+										.ToolTipText(LOCTEXT("ValidCertificatesHyperlinkTooltip", "View Valid certificates."))
+									]
+							]
+					]
 				]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
@@ -443,6 +566,7 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
 					.OnClicked(this, &FIOSTargetSettingsCustomization::OnInstallCertificateClicked)
+					.IsEnabled(this, &FIOSTargetSettingsCustomization::IsImportEnabled)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString("Import Certificate"))
@@ -473,60 +597,92 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 	 ];
 
 	// Show properties that are gated by the plist being present and writable
-	FSimpleDelegate BundleModifiedDelegate = FSimpleDelegate::CreateRaw(this, &FIOSTargetSettingsCustomization::FindRequiredFiles);
-	FGameProjectGenerationModule& GameProjectModule = FModuleManager::LoadModuleChecked<FGameProjectGenerationModule>(TEXT("GameProjectGeneration"));
-	bool bHasCode = GameProjectModule.Get().ProjectHasCodeFiles();
+	RunningIPPProcess = false;
 
-#define SETUP_NONROCKET_PROP(PropName, Category, Tip, DisabledTip) \
+#define SETUP_NONROCKET_PROP(PropName, Category) \
 	{ \
 		TSharedRef<IPropertyHandle> PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, PropName)); \
 		Category.AddProperty(PropertyHandle) \
 			.IsEnabled(!FRocketSupport::IsRocket()) \
-			.ToolTip(!FRocketSupport::IsRocket() ? Tip : DisabledTip); \
+			.ToolTip(!FRocketSupport::IsRocket() ? PropertyHandle->GetToolTipText() : FIOSTargetSettingsCustomizationConstants::DisabledTip); \
 	}
 
-#define SETUP_PLIST_PROP(PropName, Category, Tip) \
+#define SETUP_PLIST_PROP(PropName, Category) \
+	{ \
+		TSharedRef<IPropertyHandle> PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, PropName)); \
+		Category.AddProperty(PropertyHandle); \
+	}
+
+#define SETUP_STATUS_PROP(PropName, Category) \
 	{ \
 		TSharedRef<IPropertyHandle> PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, PropName)); \
 		Category.AddProperty(PropertyHandle) \
-			.ToolTip(Tip); \
+		.Visibility(EVisibility::Hidden); \
+		Category.AddCustomRow(LOCTEXT("BundleIdentifier", "BundleIdentifier"), false) \
+		.NameContent() \
+		[ \
+			SNew(SHorizontalBox) \
+			+ SHorizontalBox::Slot() \
+			.Padding(FMargin(0, 1, 0, 1)) \
+			.FillWidth(1.0f) \
+			[ \
+				SNew(STextBlock) \
+				.Text(LOCTEXT("BundleIdentifierLabel", "Bundle Identifier")) \
+				.Font(DetailLayout.GetDetailFont()) \
+			]\
+		] \
+		.ValueContent() \
+		.MinDesiredWidth( 0.0f ) \
+		.MaxDesiredWidth( 0.0f ) \
+		[ \
+			SNew(SHorizontalBox) \
+			+ SHorizontalBox::Slot() \
+			.FillWidth(1.0f) \
+			.HAlign(HAlign_Fill) \
+			[ \
+				SNew(SEditableTextBox) \
+				.IsEnabled(this, &FIOSTargetSettingsCustomization::IsImportEnabled) \
+				.Text(this, &FIOSTargetSettingsCustomization::GetBundleText, PropertyHandle) \
+				.Font(DetailLayout.GetDetailFont()) \
+				.SelectAllTextOnCommit( true ) \
+				.SelectAllTextWhenFocused( true ) \
+				.ClearKeyboardFocusOnCommit(false) \
+				.ToolTipText(PropertyHandle->GetToolTipText()) \
+				.OnTextCommitted(this, &FIOSTargetSettingsCustomization::OnBundleIdentifierChanged, PropertyHandle) \
+			] \
+		]; \
 	}
 
-#define SETUP_STATUS_PROP(PropName, Category, Tip) \
-	{ \
-	TSharedRef<IPropertyHandle> PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, PropName)); \
-	PropertyHandle->SetOnPropertyValueChanged(BundleModifiedDelegate); \
-	Category.AddProperty(PropertyHandle) \
-		.ToolTip(Tip); \
-	}
+	const UIOSRuntimeSettings& Settings = *GetDefault<UIOSRuntimeSettings>();
 
-	SETUP_PLIST_PROP(BundleDisplayName, BundleCategory, LOCTEXT("BundleDisplayNameToolTip", "Specifies the the display name for the application. This will be displayed under the icon on the device."));
-	SETUP_PLIST_PROP(BundleName, BundleCategory, LOCTEXT("BundleNameToolTip", "Specifies the the name of the application bundle. This is the short name for the application bundle."));
-	SETUP_STATUS_PROP(BundleIdentifier, BundleCategory, LOCTEXT("BundleIdentifierToolTip", "Specifies the bundle identifier for the application."));
-	SETUP_PLIST_PROP(VersionInfo, BundleCategory, LOCTEXT("VersionInfoToolTip", "Specifies the version for the application."));
-	SETUP_PLIST_PROP(bSupportsPortraitOrientation, OrientationCategory, LOCTEXT("SupportsPortraitOrientationToolTip", "Supports default portrait orientation. Landscape will not be supported."));
-	SETUP_PLIST_PROP(bSupportsUpsideDownOrientation, OrientationCategory, LOCTEXT("SupportsUpsideDownOrientationToolTip", "Supports upside down portrait orientation. Landscape will not be supported."));
-	SETUP_PLIST_PROP(bSupportsLandscapeLeftOrientation, OrientationCategory, LOCTEXT("SupportsLandscapeLeftOrientationToolTip", "Supports left landscape orientation. Protrait will not be supported."));
-	SETUP_PLIST_PROP(bSupportsLandscapeRightOrientation, OrientationCategory, LOCTEXT("SupportsLandscapeRightOrientationToolTip", "Supports right landscape orientation. Protrait will not be supported."));
+	SETUP_PLIST_PROP(BundleDisplayName, BundleCategory);
+	SETUP_PLIST_PROP(BundleName, BundleCategory);
+	SETUP_STATUS_PROP(BundleIdentifier, BundleCategory);
+	SETUP_PLIST_PROP(VersionInfo, BundleCategory);
+	SETUP_PLIST_PROP(bSupportsPortraitOrientation, OrientationCategory);
+	SETUP_PLIST_PROP(bSupportsUpsideDownOrientation, OrientationCategory);
+	SETUP_PLIST_PROP(bSupportsLandscapeLeftOrientation, OrientationCategory);
+	SETUP_PLIST_PROP(bSupportsLandscapeRightOrientation, OrientationCategory);
 	
-	SETUP_PLIST_PROP(bSupportsMetal, RenderCategory, LOCTEXT("SupportsMetalToolTip", "Whether or not to add support for Metal API (requires IOS8 and A7 processors)."));
-	SETUP_PLIST_PROP(bSupportsOpenGLES2, RenderCategory, LOCTEXT("SupportsOpenGLES2ToolTip", "Whether or not to add support for OpenGL ES2 (if this is false, then your game should specify minimum IOS8 version and use \"metal\" instead of \"opengles-2\" in UIRequiredDeviceCapabilities)"));
+	SETUP_PLIST_PROP(bSupportsMetal, RenderCategory);
+	SETUP_PLIST_PROP(bSupportsOpenGLES2, RenderCategory);
 
-	SETUP_PLIST_PROP(bSupportsIPad, DeviceCategory, LOCTEXT("SupportsIPadToolTip", "Whether or not to add support for iPad devices"));
-	SETUP_PLIST_PROP(bSupportsIPhone, DeviceCategory, LOCTEXT("SupportsIPhoneToolTip", "Whether or not to add support for iPhone devices"));
+	SETUP_PLIST_PROP(bSupportsIPad, DeviceCategory);
+	SETUP_PLIST_PROP(bSupportsIPhone, DeviceCategory);
 
-	SETUP_PLIST_PROP(MinimumiOSVersion, OSInfoCategory, LOCTEXT("MinimumiOSVersionToolTip", "Minimum iOS version this game supports"));
+	SETUP_PLIST_PROP(MinimumiOSVersion, OSInfoCategory);
 
-	SETUP_PLIST_PROP(AdditionalPlistData, ExtraCategory, LOCTEXT("AdditionalPlistDataToolTip", "Any additional plist key/value data utilizing \\n for a new line"));
+	SETUP_PLIST_PROP(AdditionalPlistData, ExtraCategory);
 
-	SETUP_NONROCKET_PROP(bDevForArmV7, BuildCategory, LOCTEXT("DevForArmV7ToolTip", "Enable ArmV7 support? (this will be used if all type are unchecked)"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
-	SETUP_NONROCKET_PROP(bDevForArm64, BuildCategory, LOCTEXT("DevForArm64ToolTip", "Enable Arm64 support?"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
-	SETUP_NONROCKET_PROP(bDevForArmV7S, BuildCategory, LOCTEXT("DevForArmV7SToolTip", "Enable ArmV7s support?"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
-	SETUP_NONROCKET_PROP(bShipForArmV7, BuildCategory, LOCTEXT("ShipForArmV7ToolTip", "Enable ArmV7 support? (this will be used if all type are unchecked)"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
-	SETUP_NONROCKET_PROP(bShipForArm64, BuildCategory, LOCTEXT("ShipForArm64ToolTip", "Enable Arm64 support?"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
-	SETUP_NONROCKET_PROP(bShipForArmV7S, BuildCategory, LOCTEXT("ShipForArmV7SToolTip", "Enable ArmV7s support?"), FIOSTargetSettingsCustomizationConstants::DisabledTip);
+	SETUP_NONROCKET_PROP(bDevForArmV7, BuildCategory);
+	SETUP_NONROCKET_PROP(bDevForArm64, BuildCategory);
+	SETUP_NONROCKET_PROP(bDevForArmV7S, BuildCategory);
+	SETUP_NONROCKET_PROP(bShipForArmV7, BuildCategory);
+	SETUP_NONROCKET_PROP(bShipForArm64, BuildCategory);
+	SETUP_NONROCKET_PROP(bShipForArmV7S, BuildCategory);
 
-#undef SETUP_PLIST_PROP
+	SETUP_NONROCKET_PROP(bSupportsMetalMRT, RenderCategory);
+
 #undef SETUP_NONROCKET_PROP
 }
 
@@ -682,20 +838,30 @@ void FIOSTargetSettingsCustomization::BuildImageRow(IDetailLayoutBuilder& Detail
 void FIOSTargetSettingsCustomization::FindRequiredFiles()
 {
 	const UIOSRuntimeSettings& Settings = *GetDefault<UIOSRuntimeSettings>();
+	FString BundleIdentifier = Settings.BundleIdentifier.Replace(TEXT("[PROJECT_NAME]"), FApp::GetGameName());
 #if PLATFORM_MAC
 	FString CmdExe = TEXT("/bin/sh");
 	FString ScriptPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/Mac/RunMono.sh"));
 	FString IPPPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Binaries/DotNet/IOS/IPhonePackager.exe"));
-	FString CommandLine = FString::Printf(TEXT("\"%s\" \"%s\" certificates Engine -bundlename \"%s\""), *ScriptPath, *IPPPath, *(Settings.BundleIdentifier));
+	FString CommandLine = FString::Printf(TEXT("\"%s\" \"%s\" certificates Engine -bundlename \"%s\""), *ScriptPath, *IPPPath, *(BundleIdentifier));
 #else
 	FString CmdExe = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Binaries/DotNet/IOS/IPhonePackager.exe"));
-	FString CommandLine = FString::Printf(TEXT("certificates Engine -bundlename \"%s\""), *(Settings.BundleIdentifier));
+	FString CommandLine = FString::Printf(TEXT("certificates Engine -bundlename \"%s\""), *(BundleIdentifier));
 #endif
 	IPPProcess = MakeShareable(new FMonitoredProcess(CmdExe, CommandLine, true));
 	OutputMessage = TEXT("");
 	IPPProcess->OnOutput().BindStatic(&OnOutput);
 	IPPProcess->Launch();
 	TickerHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FIOSTargetSettingsCustomization::UpdateStatusDelegate), 1.0f);
+	if (ProvisionInfoSwitcher.IsValid())
+	{
+		ProvisionInfoSwitcher->SetActiveWidgetIndex(0);
+	}
+	if (CertificateInfoSwitcher.IsValid())
+	{
+		CertificateInfoSwitcher->SetActiveWidgetIndex(0);
+	}
+	RunningIPPProcess = true;
 }
 
 FReply FIOSTargetSettingsCustomization::OnInstallProvisionClicked()
@@ -774,6 +940,11 @@ FReply FIOSTargetSettingsCustomization::OnInstallProvisionClicked()
 		IPPProcess->OnOutput().BindStatic(&OnOutput);
 		IPPProcess->Launch();
 		TickerHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FIOSTargetSettingsCustomization::UpdateStatusDelegate), 10.0f);
+		if (ProvisionInfoSwitcher.IsValid())
+		{
+			ProvisionInfoSwitcher->SetActiveWidgetIndex(1);
+		}
+		RunningIPPProcess = true;
 	}
 
 	return FReply::Handled();
@@ -833,6 +1004,11 @@ FReply FIOSTargetSettingsCustomization::OnInstallCertificateClicked()
 		IPPProcess->OnOutput().BindStatic(&OnOutput);
 		IPPProcess->Launch();
 		TickerHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FIOSTargetSettingsCustomization::UpdateStatusDelegate), 10.0f);
+		if (CertificateInfoSwitcher.IsValid())
+		{
+			CertificateInfoSwitcher->SetActiveWidgetIndex(1);
+		}
+		RunningIPPProcess = true;
 	}
 
 	return FReply::Handled();
@@ -870,13 +1046,17 @@ const FSlateBrush* FIOSTargetSettingsCustomization::GetCertificateStatus() const
 
 bool FIOSTargetSettingsCustomization::UpdateStatusDelegate(float DeltaTime)
 {
-	if (IPPProcess->IsRunning())
+	if (IPPProcess.IsValid())
 	{
-		return true;
+		if (IPPProcess->IsRunning())
+		{
+			return true;
+		}
+		int RetCode = IPPProcess->GetReturnCode();
+		IPPProcess = NULL;
+		UpdateStatus();
 	}
-	int RetCode = IPPProcess->GetReturnCode();
-	IPPProcess = NULL;
-	UpdateStatus();
+	RunningIPPProcess = false;
 
 	return false;
 }
@@ -926,6 +1106,25 @@ void FIOSTargetSettingsCustomization::FilterLists()
 		}
 	}
 
+	if (ProvisionList.Num() > 0)
+	{
+		if (ProvisionInfoSwitcher.IsValid())
+		{
+			ProvisionInfoSwitcher->SetActiveWidgetIndex(3);
+		}
+		if (FilteredProvisionList.Num() == 0 && !bShowAllProvisions)
+		{
+			FilteredProvisionList.Append(ProvisionList);
+		}
+	}
+	else
+	{
+		if (ProvisionInfoSwitcher.IsValid())
+		{
+			ProvisionInfoSwitcher->SetActiveWidgetIndex(2);
+		}
+	}
+
 	for (int Index = 0; Index < CertificateList.Num(); ++Index)
 	{
 		if (SelectedCert.Contains(CertificateList[Index]->Name))
@@ -942,8 +1141,50 @@ void FIOSTargetSettingsCustomization::FilterLists()
 		}
 	}
 
+	if (CertificateList.Num() > 0)
+	{
+		if (CertificateInfoSwitcher.IsValid())
+		{
+			CertificateInfoSwitcher->SetActiveWidgetIndex(3);
+		}
+		if (FilteredCertificateList.Num() == 0 && !bShowAllCertificates)
+		{
+			FilteredCertificateList.Append(CertificateList);
+		}
+	}
+	else
+	{
+		if (CertificateInfoSwitcher.IsValid())
+		{
+			CertificateInfoSwitcher->SetActiveWidgetIndex(2);
+		}
+	}
+
 	CertificateListView->RequestListRefresh();
 	ProvisionListView->RequestListRefresh();
+}
+
+bool FIOSTargetSettingsCustomization::IsImportEnabled() const
+{
+	return !RunningIPPProcess.Get();
+}
+
+void FIOSTargetSettingsCustomization::OnBundleIdentifierChanged(const FText& NewText, ETextCommit::Type CommitType, TSharedRef<IPropertyHandle> InPropertyHandle)
+{
+	FText OutText;
+	InPropertyHandle->GetValueAsFormattedText(OutText);
+	if (OutText.ToString() != NewText.ToString())
+	{
+		InPropertyHandle->SetValueFromFormattedString( NewText.ToString() );
+		FindRequiredFiles();
+	}
+}
+
+FText FIOSTargetSettingsCustomization::GetBundleText(TSharedRef<IPropertyHandle> InPropertyHandle) const
+{
+	FText OutText;
+	InPropertyHandle->GetValueAsFormattedText(OutText);
+	return OutText;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -88,9 +88,12 @@ public:
 
 	bool RenameTemplate(FComponentKey OldKey, FName NewName);
 
+	FComponentKey FindKey(UActorComponent* ComponentTemplate) const;
 #endif
 
 public:
+	FComponentKey FindKey(const FName VariableName) const;
+
 	UActorComponent* GetOverridenComponentTemplate(FComponentKey Key) const;
 
 private:

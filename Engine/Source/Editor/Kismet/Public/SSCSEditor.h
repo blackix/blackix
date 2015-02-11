@@ -36,6 +36,11 @@ public:
 	FSCSEditorTreeNode(FSCSEditorTreeNode::ENodeType InNodeType);
 
 	/**
+	* @return The name to identify this node.
+	*/
+	virtual FName GetNodeID() const;
+
+	/**
 	 * @return The name of the variable represented by this node.
 	 */
 	virtual FName GetVariableName() const;
@@ -440,7 +445,7 @@ public:
 	}
 
 	// FSCSEditorTreeNode public interface
-	virtual FName GetVariableName() const override;
+	virtual FName GetNodeID() const override;
 	virtual bool CanRename() const override { return bAllowRename; }
 	virtual void OnCompleteRename(const FText& InNewName) override;
 	// End of FSCSEditorTreeNode public interface
@@ -753,7 +758,7 @@ public:
 
 	/** Adds a new component instance node to the component Table
 		@param NewInstanceComponent	(In) The component being added to the actor instance
-		@param Asset	(In) Optional asset to assign to the component
+		@param Asset (In) Optional asset to assign to the component
 		@param bSetFocusToNewItem (In) Select the new item and activate the inline rename widget (default is true)
 		@return The reference of the newly created ActorComponent */
 	UActorComponent* AddNewNodeForInstancedComponent(UActorComponent* NewInstanceComponent, UObject* Asset, bool bSetFocusToNewItem = true);
@@ -775,6 +780,10 @@ public:
 	/** Pastes previously copied node(s) */
 	void PasteNodes();
 	bool CanPasteNodes() const;
+
+	/** Callbacks to duplicate the selected component */
+	bool CanDuplicateComponent() const;
+	void OnDuplicateComponent();
 
 	/** Removes existing selected component nodes from the SCS */
 	void OnDeleteNodes();
@@ -816,12 +825,6 @@ public:
 	 * @param GetSelectedObjectsDelegate		the delegate to fill the currently select variables / components
 	 */
 	static void BuildMenuEventsSection( FMenuBuilder& Menu, UBlueprint* Blueprint, UClass* SelectedClass, FCanExecuteAction CanExecuteActionDelegate, FGetSelectedObjectsDelegate GetSelectedObjectsDelegate );
-
-	void OnEditBlueprint(UObject* Blueprint) const;
-
-	void OnGoToAssetInBrowser(UObject* Asset) const;
-
-	void OnOpenCodeFile(const FString CodeFileName) const;
 
 	/**
 	 * Given an actor component, attempts to find an associated tree node.
@@ -900,14 +903,13 @@ protected:
 	/** Called when the level editor requests a component to be renamed. */
 	void OnLevelComponentRequestRename(const UActorComponent* InComponent);
 
+	/** Checks to see if renaming is allowed on the selected component */
+	bool CanRenameComponent() const;
 	/**
 	 * Requests a rename on the selected component
 	 * @param bTransactional Whether or not the rename should be transactional (i.e. undoable)
 	 */
 	void OnRenameComponent(bool bTransactional);
-
-	/** Checks to see if renaming is allowed on the selected component */
-	bool CanRenameComponent() const;
 
 	/**
 	 * Function to create events for the current selection
@@ -933,10 +935,6 @@ protected:
 	 * @param EventData						the event data structure describing the node
 	 */
 	static void ViewEvent(UBlueprint* Blueprint, const FName EventName, const FComponentEventConstructionData EventData);
-
-	/** Callbacks to duplicate the selected component */
-	bool CanDuplicateComponent() const;
-	void OnDuplicateComponent();
 
 	/** Helper method to add a tree node for the given SCS node */
 	FSCSEditorTreeNodePtrType AddTreeNode(USCS_Node* InSCSNode, FSCSEditorTreeNodePtrType InParentNodePtr, const bool bIsInheritedSCS);
@@ -975,7 +973,7 @@ protected:
 	FText OnGetResetToBlueprintDefaultsTooltip() const;
 
 	/** Opens the blueprint editor for the blueprint being viewed by the scseditor */
-	void OnOpenBlueprintEditor() const;
+	void OnOpenBlueprintEditor(bool bForceCodeEditing) const;
 
 	/** Propagates instance changes to the blueprint */
 	void OnApplyChangesToBlueprint() const;
@@ -994,9 +992,6 @@ protected:
 
 	/** Adds a root component tree node */
 	TSharedPtr<FSCSEditorTreeNode> AddRootComponentTreeNode(UActorComponent* ActorComp);
-
-	/** Given a class, makes up a default prefix and name for a newly created derived class */
-	void MakeDefaultComponentPrefixAndName( TSubclassOf<UActorComponent> ComponentClass, FString& DefaultClassPrefix, FString& DefaultClassName ) const;
 
 	/**
 	 * Creates a new C++ component from the specified class type

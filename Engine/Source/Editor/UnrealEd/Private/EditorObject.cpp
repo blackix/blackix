@@ -231,7 +231,7 @@ static const TCHAR* ImportProperties(
 					ExistingBrush->Rename();
 
 				// Create model.
-				UModelFactory* ModelFactory = new UModelFactory(FObjectInitializer());
+				UModelFactory* ModelFactory = NewObject<UModelFactory>();
 				ModelFactory->FactoryCreateText( UModel::StaticClass(), SubobjectRoot, FName(BrushName, FNAME_Add, true), RF_NoFlags, NULL, TEXT("t3d"), SourceText, SourceText+FCString::Strlen(SourceText), Warn );
 				ImportedBrush = 1;
 			}
@@ -491,7 +491,7 @@ static const TCHAR* ImportProperties(
 					if (NewFlags & RF_Transactional)
 					{
 						UActorComponent* Component = Cast<UActorComponent>(ComponentTemplate);
-						if (Component && Component->CreationMethod == EComponentCreationMethod::ConstructionScript)
+						if (Component && Component->IsCreatedByConstructionScript())
 						{
 							NewFlags &= ~RF_Transactional;
 						}

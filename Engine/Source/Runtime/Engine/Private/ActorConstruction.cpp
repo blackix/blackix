@@ -7,6 +7,7 @@
 #include "Engine/LevelScriptActor.h"
 
 #if WITH_EDITOR
+#include "Editor.h"
 #include "Editor/UnrealEd/Public/Kismet2/BlueprintEditorUtils.h"
 #include "Editor/UnrealEd/Public/Kismet2/KismetEditorUtilities.h"
 #endif
@@ -189,7 +190,7 @@ void AActor::DestroyConstructedComponents()
 		if (Component)
 		{
 			bool bDestroyComponent = false;
-			if (Component->CreationMethod == EComponentCreationMethod::ConstructionScript)
+			if (Component->IsCreatedByConstructionScript())
 			{
 				bDestroyComponent = true;
 			}
@@ -198,7 +199,7 @@ void AActor::DestroyConstructedComponents()
 				UActorComponent* OuterComponent = Component->GetTypedOuter<UActorComponent>();
 				while (OuterComponent)
 				{
-					if (OuterComponent->CreationMethod == EComponentCreationMethod::ConstructionScript)
+					if (OuterComponent->IsCreatedByConstructionScript())
 					{
 						bDestroyComponent = true;
 						break;
@@ -331,7 +332,7 @@ void AActor::RerunConstructionScripts()
 			{
 				USceneComponent* EachRoot = AttachedActor->GetRootComponent();
 				// If the component we are attached to is about to go away...
-				if (EachRoot && EachRoot->AttachParent && EachRoot->AttachParent->CreationMethod == EComponentCreationMethod::ConstructionScript)
+				if (EachRoot && EachRoot->AttachParent && EachRoot->AttachParent->IsCreatedByConstructionScript())
 				{
 					// Save info about actor to reattach
 					FAttachedActorInfo Info;
@@ -350,7 +351,7 @@ void AActor::RerunConstructionScripts()
 		if (bUseRootComponentProperties && RootComponent != nullptr)
 		{
 			// Do not need to detach if root component is not going away
-			if (RootComponent->AttachParent != NULL && RootComponent->CreationMethod == EComponentCreationMethod::ConstructionScript)
+			if (RootComponent->AttachParent != NULL && RootComponent->IsCreatedByConstructionScript())
 			{
 				Parent = RootComponent->AttachParent->GetOwner();
 				// Root component should never be attached to another component in the same actor!
@@ -368,6 +369,37 @@ void AActor::RerunConstructionScripts()
 			OldTransform = RootComponent->ComponentToWorld;
 			OldTransform.SetTranslation(RootComponent->GetComponentLocation()); // take into account any custom location
 		}
+
+#if WITH_EDITOR
+		// Save the current construction script-created components by name
+		TMap<const FName, UObject*> DestroyedComponentsByName;
+		TInlineComponentArray<UActorComponent*> PreviouslyAttachedComponents;
+		GetComponents(PreviouslyAttachedComponents);
+		for (auto Component : PreviouslyAttachedComponents)
+		{
+			if (Component)
+			{
+				if (Component->IsCreatedByConstructionScript())
+				{
+
+					DestroyedComponentsByName.Add(Component->GetFName(), Component);
+				}
+				else
+				{
+					UActorComponent* OuterComponent = Component->GetTypedOuter<UActorComponent>();
+					while (OuterComponent)
+					{
+						if (OuterComponent->IsCreatedByConstructionScript())
+						{
+							DestroyedComponentsByName.Add(Component->GetFName(), Component);
+							break;
+						}
+						OuterComponent = OuterComponent->GetTypedOuter<UActorComponent>();
+					}
+				}
+			}
+		}
+#endif
 
 		// Destroy existing components
 		DestroyConstructedComponents();
@@ -421,6 +453,25 @@ void AActor::RerunConstructionScripts()
 		GUndo = CurrentTransaction;
 
 #if WITH_EDITOR
+		// Create the mapping of old->new components and notify the editor of the replacements
+		TMap<UObject*, UObject*> OldToNewComponentMapping;
+
+		TInlineComponentArray<UActorComponent*> NewComponents;
+		GetComponents(NewComponents);
+		for (auto NewComp : NewComponents)
+		{
+			const FName NewCompName = NewComp->GetFName();
+			if (DestroyedComponentsByName.Contains(NewCompName))
+			{
+				OldToNewComponentMapping.Add(DestroyedComponentsByName[NewCompName], NewComp);
+			}
+		}
+
+		if (GEditor && (OldToNewComponentMapping.Num() > 0))
+		{
+			GEditor->NotifyToolsOfObjectReplacement(OldToNewComponentMapping);
+		}
+
 		if (ActorTransactionAnnotation)
 		{
 			CurrentTransactionAnnotation = NULL;
@@ -503,7 +554,7 @@ void AActor::ExecuteConstruction(const FTransform& Transform, const FComponentIn
 			{
 				UBillboardComponent* BillboardComponent = NewObject<UBillboardComponent>(this);
 				BillboardComponent->SetFlags(RF_Transactional);
-				BillboardComponent->CreationMethod = EComponentCreationMethod::ConstructionScript;
+				BillboardComponent->CreationMethod = EComponentCreationMethod::SimpleConstructionScript;
 #if WITH_EDITOR
 				BillboardComponent->Sprite = (UTexture2D*)(StaticLoadObject(UTexture2D::StaticClass(), NULL, TEXT("/Engine/EditorResources/BadBlueprintSprite.BadBlueprintSprite"), NULL, LOAD_None, NULL));
 #endif
@@ -579,7 +630,7 @@ UActorComponent* AActor::CreateComponentFromTemplate(UActorComponent* Template, 
 		NewActorComp = (UActorComponent*)StaticDuplicateObject(Template, this, *InName, RF_AllFlags & ~(RF_ArchetypeObject|RF_Transactional|RF_WasLoaded|RF_Public|RF_InheritableComponentTemplate) );
 		//NewActorComp = ConstructObject<UActorComponent>(Template->GetClass(), this, *InName, RF_NoFlags, Template);
 
-		NewActorComp->CreationMethod = EComponentCreationMethod::ConstructionScript;
+		NewActorComp->CreationMethod = EComponentCreationMethod::UserConstructionScript;
 
 		// Need to do this so component gets saved - Components array is not serialized
 		BlueprintCreatedComponents.Add(NewActorComp);
@@ -607,9 +658,6 @@ UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment
 		// Call function to notify component it has been created
 		NewActorComp->OnComponentCreated();
 
-		// Keep track of the new component during UCS execution. This also does a temporary mobility swap during UCS execution in order to allow attachment and other things to succeed within that context.
-		FUCSComponentManager::Get().AddComponent(this, NewActorComp);
-
 		// The user has the option of doing attachment manually where they have complete control or via the automatic rule
 		// that the first component added becomes the root component, with subsequent components attached to the root.
 		USceneComponent* NewSceneComp = Cast<USceneComponent>(NewActorComp);
@@ -632,6 +680,13 @@ UActorComponent* AActor::AddComponent(FName TemplateName, bool bManualAttachment
 
 		// Register component, which will create physics/rendering state, now component is in correct position
 		NewActorComp->RegisterComponent();
+
+		// Keep track of the new component during UCS execution. This also does a temporary mobility swap during UCS execution in order to allow dynamic data to be changed within that context.
+		// Note: This should only be done AFTER registration.
+		if(bRunningUserConstructionScript)
+		{
+			FUCSComponentManager::Get().AddComponent(this, NewActorComp);
+		}
 	}
 
 	return NewActorComp;

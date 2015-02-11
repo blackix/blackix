@@ -69,7 +69,7 @@ DECLARE_DELEGATE_RetVal_OneParam(FReply, FOnTableRowDrop, FDragDropEvent const&)
 template<typename ItemType>
 class STableRow : public ITableRow, public SBorder
 {
-	static_assert(TIsValidListItem<ItemType>::Value, "Item type T must be a pointer or a TSharedPtr.");
+	static_assert(TIsValidListItem<ItemType>::Value, "Item type T must be UObjectBase*, TSharedRef<>, or TSharedPtr<>.");
 
 public:
 	/** Delegate signature for querying whether this FDragDropEvent will be handled by the drop target of type ItemType. */
@@ -785,7 +785,7 @@ public:
 	}
 
 	/** 
-	 * Callback to determine if the row is selected or not
+	 * Callback to determine if the row is selected singularly and has keyboard focus or not
 	 *
 	 * @return		true if selected by owning widget.
 	 */
@@ -800,6 +800,19 @@ public:
 
 		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
 		return OwnerWidget->Private_IsItemSelected( *MyItem );
+	}
+
+	/**
+	 * Callback to determine if the row is selected or not
+	 *
+	 * @return		true if selected by owning widget.
+	 */
+	bool IsSelected() const
+	{
+		TSharedPtr< ITypedTableView< ItemType > > OwnerWidget = OwnerTablePtr.Pin();
+
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this);
+		return OwnerWidget->Private_IsItemSelected(*MyItem);
 	}
 
 	/** Protected constructor; SWidgets should only be instantiated via declarative syntax. */

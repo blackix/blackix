@@ -1210,6 +1210,23 @@ UClass* FBlueprintEditorUtils::RegenerateBlueprintClass(UBlueprint* Blueprint, U
 		{
 			// Just refresh all nodes in macro blueprints, but don't recompil
 			FBlueprintEditorUtils::RefreshAllNodes(Blueprint);
+
+			if (ClassToRegenerate != nullptr)
+			{
+				UClass* OldSuperClass = ClassToRegenerate->GetSuperClass();
+				if ((OldSuperClass != nullptr) && OldSuperClass->HasAnyClassFlags(CLASS_NewerVersionExists))
+				{
+					UClass* NewSuperClass = OldSuperClass->GetAuthoritativeClass();
+					ensure(NewSuperClass == Blueprint->ParentClass);
+
+					// in case the macro's super class was re-instanced (it 
+					// would have re-parented this to a REINST_ class), for non-
+					// macro blueprints this would normally be reset in 
+					// CompileBlueprint (but since we don't compile macros, we 
+					// need to fix this up here)
+					ClassToRegenerate->SetSuperStruct(NewSuperClass);
+				}
+			}
 		}
 		else
 		{
@@ -2356,6 +2373,12 @@ bool FBlueprintEditorUtils::IsDataOnlyBlueprint(const UBlueprint* Blueprint)
 {
 	// Blueprint interfaces are always compiled
 	if (Blueprint->BlueprintType == BPTYPE_Interface)
+	{
+		return false;
+	}
+
+
+	if( Blueprint->ParentClass->IsChildOf( UActorComponent::StaticClass() ) )
 	{
 		return false;
 	}
@@ -6068,6 +6091,7 @@ TSharedRef<SWidget> FBlueprintEditorUtils::ConstructBlueprintParentClassPicker( 
 	bool bIsActor = false;
 	bool bIsAnimBlueprint = false;
 	bool bIsLevelScriptActor = false;
+	bool bIsComponentBlueprint = false;
 	TArray<UClass*> BlueprintClasses;
 	for( auto BlueprintIter = Blueprints.CreateConstIterator(); (!bIsActor && !bIsAnimBlueprint) && BlueprintIter; ++BlueprintIter )
 	{
@@ -6075,6 +6099,7 @@ TSharedRef<SWidget> FBlueprintEditorUtils::ConstructBlueprintParentClassPicker( 
 		bIsActor |= Blueprint->ParentClass->IsChildOf( AActor::StaticClass() );
 		bIsAnimBlueprint |= Blueprint->IsA(UAnimBlueprint::StaticClass());
 		bIsLevelScriptActor |= Blueprint->ParentClass->IsChildOf( ALevelScriptActor::StaticClass() );
+		bIsComponentBlueprint |= Blueprint->ParentClass->IsChildOf( UActorComponent::StaticClass() );
 		BlueprintClasses.Add(Blueprint->GeneratedClass);
 	}
 
@@ -6123,6 +6148,10 @@ TSharedRef<SWidget> FBlueprintEditorUtils::ConstructBlueprintParentClassPicker( 
 	{
 		// If it's an anim blueprint, do not allow conversion to non anim
 		Filter->AllowedChildrenOfClasses.Add( UAnimInstance::StaticClass() );
+	}
+	else if(bIsComponentBlueprint)
+	{
+		Filter->AllowedChildrenOfClasses.Add( UActorComponent::StaticClass() );
 	}
 	else
 	{
@@ -6845,6 +6874,11 @@ bool FBlueprintEditorUtils::IsPaletteActionReadOnly(TSharedPtr<FEdGraphSchemaAct
 
 		bIsReadOnly = (AssociatedNode == NULL) || (!AssociatedNode->bCanRenameNode);	
 	}
+	else if (ActionIn->GetTypeId() == FEdGraphSchemaAction_K2InputAction::StaticGetTypeId())
+	{
+		bIsReadOnly = true;
+	}
+
 
 	return bIsReadOnly;
 }

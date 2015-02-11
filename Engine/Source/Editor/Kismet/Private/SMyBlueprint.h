@@ -55,6 +55,8 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs, TWeakPtr<FBlueprintEditor> InBlueprintEditor, const UBlueprint* InBlueprint = nullptr);
+	~SMyBlueprint();
+
 	void SetInspector( TSharedPtr<SKismetInspector> InInspector ) { Inspector = InInspector ; }
 
 	/* SWidget interface */
@@ -84,6 +86,9 @@ public:
 
 	/** Accessor for getting the current selection as a K2 event */
 	FEdGraphSchemaAction_K2Event* SelectionAsEvent() const;
+	
+	/** Accessor for getting the current selection as a K2 Input Action */
+	FEdGraphSchemaAction_K2InputAction* SelectionAsInputAction() const;
 
 	/** Accessor for getting the current selection as a K2 local var */
 	FEdGraphSchemaAction_K2LocalVar* SelectionAsLocalVar() const;
@@ -133,9 +138,6 @@ private:
 	/** Creates widgets for the graph schema actions */
 	TSharedRef<SWidget> OnCreateWidgetForAction(struct FCreateWidgetForActionData* const InCreateData);
 
-	/** Creates the local variable action list sub-widget */
-	TSharedRef<SWidget> ConstructLocalActionPanel();
-
 	/** Callback used to populate all actions list in SGraphActionMenu */
 	void CollectAllActions(FGraphActionListBuilderBase& OutAllActions);
 	void CollectStaticSections(TArray<int32>& StaticSectionIDs);
@@ -152,7 +154,6 @@ private:
 	void OnActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
 	static void OnActionSelectedHelper(TSharedPtr<FEdGraphSchemaAction> InAction, UBlueprint* Blueprint, TSharedRef<SKismetInspector> Inspector);
 	void OnGlobalActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
-	void OnLocalActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
 	void OnActionDoubleClicked(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions);
 	void ExecuteAction(TSharedPtr<FEdGraphSchemaAction> InAction);
 	TSharedPtr<SWidget> OnContextMenuOpening();
@@ -228,19 +229,16 @@ private:
 	UEdGraph* GetFocusedGraph() const;
 
 	/** Delegate to hook us into non-structural Blueprint object post-change events */
-	void OnObjectPropertyChanged(UObject* InObject, FPropertyChangedEvent& InPropertyChangedEvent)
-	{
-		bNeedsRefresh = (InObject == Blueprint);
-	}
+	void OnObjectPropertyChanged(UObject* InObject, FPropertyChangedEvent& InPropertyChangedEvent);
+
+	/** Helper function indicating whehter we're in editing mode, and can modify the target blueprint */
+	bool IsEditingMode() const;
 private:
 	/** Pointer back to the blueprint editor that owns us */
 	TWeakPtr<FBlueprintEditor> BlueprintEditorPtr;
 	
 	/** Graph Action Menu for displaying all our variables and functions */
 	TSharedPtr<class SGraphActionMenu> GraphActionMenu;
-
-	/** Graph Action Menu for displaying all local variables */
-	TSharedPtr<class SGraphActionMenu> LocalGraphActionMenu;
 
 	/** The +Function button in the function section */
 	TSharedPtr<SComboButton> FunctionSectionButton;
@@ -260,9 +258,6 @@ private:
 
 	/** The filter box that handles filtering for both graph action menus. */
 	TSharedPtr< SSearchBox > FilterBox;
-
-	/** Contains both the GraphActionMenu and LocalGraphActionMenu */
-	TSharedPtr< SSplitter > ActionMenuContainer;
 
 	/** Enums created from 'blueprint' level */
 	TArray<TWeakObjectPtr<UUserDefinedStruct>> StructsAddedToBlueprint;

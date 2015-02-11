@@ -488,7 +488,7 @@ UPackage* CreatePackage( UObject* InOuter, const TCHAR* PackageName )
 			}
 			else
 			{
-				Result = new( InOuter, NewPackageName, RF_Public )UPackage(FObjectInitializer());
+				Result = NewNamedObject<UPackage>(InOuter, NewPackageName, RF_Public);
 			}
 		}
 	}
@@ -1728,7 +1728,7 @@ UObject* StaticAllocateObject
 				TEXT("Objects have the same fully qualified name but different paths.\n")
 				TEXT("\tNew Object: %s %s.%s\n")
 				TEXT("\tExisting Object: %s"),
-				*InClass->GetName(), InOuter ? *InOuter->GetPathName() : TEXT(""), *InName.GetPlainNameString(),
+				*InClass->GetName(), InOuter ? *InOuter->GetPathName() : TEXT(""), *InName.ToString(),
 				*Obj->GetFullName());
 		}
 	}
@@ -1866,6 +1866,16 @@ void UObject::PostInitProperties()
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
 	GetClass()->CreatePersistentUberGraphFrame(this);
 #endif
+}
+
+UObject::UObject()
+{
+	FObjectInitializer* ObjectInitializerPtr = FTlsObjectInitializers::Top();
+	UE_CLOG(!ObjectInitializerPtr, LogUObjectGlobals, Fatal, TEXT("%s is not being constructed with either NewObject, NewNamedObject or ConstructObject."), *GetName());
+	FObjectInitializer& ObjectInitializer = *ObjectInitializerPtr;
+	check(!ObjectInitializer.Obj || ObjectInitializer.Obj == this);
+	const_cast<FObjectInitializer&>(ObjectInitializer).Obj = this;
+	const_cast<FObjectInitializer&>(ObjectInitializer).FinalizeSubobjectClassInitialization();
 }
 
 UObject::UObject(const FObjectInitializer& ObjectInitializer)
@@ -2235,6 +2245,12 @@ UObject* StaticConstructObject
 void FObjectInitializer::AssertIfInConstructor(UObject* Outer, const TCHAR* ErrorMessage)
 {
 	UE_CLOG(GIsInConstructor && Outer == GConstructedObject, LogUObjectGlobals, Fatal, TEXT("%s"), ErrorMessage);
+}
+
+FObjectInitializer& FObjectInitializer::Get()
+{
+	UE_CLOG(!GIsInConstructor, LogUObjectGlobals, Fatal, TEXT("FObjectInitializer::Get() can only be used inside of UObject-derived class constructor."));
+	return FTlsObjectInitializers::TopChecked();
 }
 
 /**

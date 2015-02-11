@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using UnrealBuildTool;
+using System.Diagnostics;
 
 namespace AutomationTool
 {
@@ -357,6 +358,12 @@ namespace AutomationTool
 		private static void CompileAndLoadTargetsAssembly(ProjectProperties Properties, string TargetsDllFilename, bool DoNotCompile, List<string> TargetScripts)
 		{
 			CommandUtils.Log("Compiling targets DLL: {0}", TargetsDllFilename);
+
+			if (!DoNotCompile && GlobalCommandLine.NoCodeProject)
+			{
+				//throw new AutomationException("Building is not supported when -nocodeproject flag is provided.");
+			}
+
 			var ReferencedAssemblies = new List<string>() 
 					{ 
 						"System.dll", 
@@ -466,6 +473,8 @@ namespace AutomationTool
             TargetRules.TargetType.Client,
             TargetRules.TargetType.Server,
         };
+
+		[DebuggerDisplay("{GameName}")]
         public class BranchUProject
         {
             public string GameName;
@@ -566,6 +575,11 @@ namespace AutomationTool
         public BranchUProject BaseEngineProject = null;
         public List<BranchUProject> CodeProjects = new List<BranchUProject>();
         public List<BranchUProject> NonCodeProjects = new List<BranchUProject>();
+
+		public IEnumerable<BranchUProject> AllProjects
+		{
+			get { return CodeProjects.Union(NonCodeProjects); }
+		}
 
         public BranchInfo(List<UnrealTargetPlatform> InHostPlatforms)
         {

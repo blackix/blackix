@@ -1595,6 +1595,11 @@ public:
 	 */
 	COREUOBJECT_API static void InvalidateExport(UObject* OldObject);
 
+	/**
+	 * Updates the export table with an Object's object flags
+	 */
+	COREUOBJECT_API static void RefreshExportFlags(UObject* Object);
+
 	/** Used by Matinee to fixup component renaming */
 	COREUOBJECT_API static FName FindSubobjectRedirectName(const FName& Name);
 
@@ -1612,6 +1617,14 @@ private:
 	 * @return Created object.
 	 */
 	UObject* CreateExportAndPreload(int32 ExportIndex, bool bForcePreload = false);
+
+	/**
+	 * Utility function for easily retrieving the specified export's UClass.
+	 * 
+	 * @param  ExportIndex    Index of the export you want a class for.
+	 * @return The class that the specified export's ClassIndex references.
+	 */
+	UClass* GetExportLoadClass(int32 ExportIndex);
 
 	/** 
 	 * Looks for and loads meta data object from export map.
@@ -1635,6 +1648,17 @@ private:
 	 * @return True if the specified import comes from (or is) a "compiled in" package, otherwise false (it is an asset import).
 	 */
 	bool IsImportNative(const int32 ImportIndex) const;
+
+	/**
+	 * Attempts to lookup and return the corresponding ULinkerLoad object for 
+	 * the specified import WITHOUT invoking  a load, or continuing to load 
+	 * the import package (will only return one if it has already been 
+	 * created... could still be in the process of loading).
+	 * 
+	 * @param  ImportIndex    Specifies the import that you would like a linker for.
+	 * @return The imports associated linker (null if it hasn't been created yet).
+	 */
+	ULinkerLoad* FindExistingLinkerForImport(int32 ImportIndex) const;
 
 	UObject* IndexToObject( FPackageIndex Index );
 
@@ -1833,6 +1857,17 @@ private:
 	 * @return True if the specified import was deferred, other wise false (it is ok to load it).
 	 */
 	bool DeferPotentialCircularImport(const int32 ImportIndex);
+	
+	/**
+	 * Stubs in a ULinkerPlaceholderExportObject for the specified export (if 
+	 * one is required, meaning: the export's LoadClass is not fully formed). 
+	 * This should rarely happen, but has been seen in cyclic Blueprint 
+	 * scenarios involving Blueprinted components.
+	 * 
+	 * @param  ExportIndex    Identifies the export you want deferred.
+	 * @return True if the export has been deferred (and should not be loaded).
+	 */
+	bool DeferExportCreation(const int32 ExportIndex);
 
 	/**
 	 * Combs the ImportMap for any imports that were deferred, and then creates 
@@ -1872,6 +1907,18 @@ private:
 	void FinalizeBlueprint(UClass* LoadClass);
 
 	/**
+	 * Combs the ExportMap for any stubbed in ULinkerPlaceholderExportObjects,
+	 * and finalizes the real export's class before actually creating it
+	 * (exports are deferred when their class isn't fully formed at the time
+	 * CreateExport() is called). Also, this function ensures that deferred CDO  
+	 * serialization is executed (expects its class to be fully resolved at this
+	 * point).
+	 *
+	 * @param  LoadClass    A fully loaded/serialized class that may have property references to placeholder export objects (in need of fix-up).
+	 */
+	void ResolveDeferredExports(UClass* LoadClass);
+
+	/**
 	 * Query method to help handle recursive behavior. When this returns true, 
 	 * this linker is in the middle of, or is about to call FinalizeBlueprint()
 	 * (for a blueprint class somewhere in the current callstack). Needed when 
@@ -1882,6 +1929,40 @@ private:
 	 */
 	bool IsBlueprintFinalizationPending() const;
 
+	/**
+	 * Sometimes we have to instantiate an export object that is of an imported 
+	 * type, and sometimes in those scenarios (thanks to cyclic dependencies) 
+	 * the type class could be a Blueprint type that is half resolved. To avoid
+	 * having to re-instance objects on load, we have to ensure that the class
+	 * is fully regenerated before we spawn any instances of it. That's where 
+	 * this function comes in. It will make sure that the specified class is 
+	 * fully loaded, finalized, and regenerated.
+	 *
+	 * NOTE: be wary, if called in the wrong place, then this could introduce 
+	 *       nasty infinite recursion!
+	 * 
+	 * @param  ImportClass    The class you want to make sure is fully regenerated.
+	 * @return True if the class could be regenerated (false if it didn't have its linker set).
+	 */
+	bool ForceRegenerateClass(UClass* ImportClass);
+
+	/**
+	 * Checks to see if an export (or one up its outer chain) is currently 
+	 * in the middle of having its class dependency force-regenerated. This 
+	 * function is meant to help avoid unnecessary recursion, as 
+	 * ForceRegenerateClass() does nothing itself to stave off infinite 
+	 * recursion.
+	 * 
+	 * @param  ExportIndex    Identifies the export you're about to call CreateExport() on.
+	 * @return True if the specified export's class (or one up its outer chain) is currently being force-regenerated.
+	 */
+	bool IsExportBeingResolved(int32 ExportIndex);
+
+
+	void ResetDeferredLoadingState();
+public:
+	bool HasPerformedFullExportResolvePass();
+
 #if	USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	/** 
 	 * For deferring dependency loads, we block CDO serialization until the 
@@ -1889,7 +1970,7 @@ private:
 	 * happening, we instead defer it and record the export's index here (so we 
 	 * can return to it later).
 	 */
-	int32 DeferredExportIndex;
+	int32 DeferredCDOIndex;
 
 	/** 
 	 * Used to track dependency placeholders currently being resolved inside of 

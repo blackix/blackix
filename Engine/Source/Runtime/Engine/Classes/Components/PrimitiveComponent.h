@@ -109,15 +109,8 @@ public:
 	/**
 	 * Default UObject constructor.
 	 */
-	UPrimitiveComponent();
+	UPrimitiveComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	UPrimitiveComponent(const FObjectInitializer& ObjectInitializer);
-
-private:
-	/** Initialize the component to its default settings */
-	void InitializePrimitiveComponentDefaults();
-
-public:
 	// Rendering
 	
 	/**
@@ -401,12 +394,6 @@ public:
 	/** Cached navigation relevancy flag for collision updates */
 	uint32 bNavigationRelevant : 1;
 
-	/** 
-	 * Shadowed mobility setting used e.g. to assist with physics scene initialization at runtime.
-	 * It will usually match the value of the 'Mobility' property, except e.g. during UCS execution.
-	 */
-	TEnumAsByte<EComponentMobility::Type> PhysicsMobility;
-
 protected:
 
 	/** Returns true if all descendant components that we can possibly collide with use relative location and rotation. */
@@ -567,14 +554,16 @@ public:
 	virtual bool ComponentOverlapMulti(TArray<struct FOverlapResult>& OutOverlaps, const class UWorld* World, const FVector& Pos, const FRotator& Rot, ECollisionChannel TestChannel, const struct FComponentQueryParams& Params, const struct FCollisionObjectQueryParams& ObjectQueryParams = FCollisionObjectQueryParams::DefaultObjectQueryParam) const;
 
 	/** 
-	 *	Event called when a component collides with something (or is collided with). 
+	 *	Event called when a component hits (or is hit by) something solid. This could happen due to things like Character movement, using Set Location with 'sweep' enabled, or physics simulation.
+	 *	For events when objects overlap (e.g. walking into a trigger) see the 'Overlap' event.
 	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled for this component
 	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
 	FComponentHitSignature OnComponentHit;
 
 	/** 
-	 *	Event called when something starts to overlaps this component. 
+	 *	Event called when something starts to overlaps this component, for example a player walking into a trigger.
+	 *	For events when objects have a blocking collision, for example a player hitting a wall, see 'Hit' events.
 	 *	@note Both this component and the other one must have bGenerateOverlapEvents set to true to generate overlap events.
 	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
@@ -944,15 +933,19 @@ public:
 #endif
 
 	// Begin UActorComponent Interface
-	virtual void OnComponentCreated() override;
 	virtual void InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly) override;
 	virtual bool IsEditorOnly() const override;
 	virtual bool ShouldCreatePhysicsState() const override;
 	virtual bool HasValidPhysicsState() const override;
+	virtual class FComponentInstanceDataBase* GetComponentInstanceData() const override;
+	virtual FName GetComponentInstanceDataType() const override;
 	// End UActorComponent Interface
 
 	/** @return true if the owner is selected and this component is selectable */
 	virtual bool ShouldRenderSelected() const;
+
+	/** Component is directly selected in the editor separate from its parent actor */
+	bool IsComponentIndividuallySelected() const;
 
 	/**  @return True if a primitive's parameters as well as its position is static during gameplay, and can thus use static lighting. */
 	bool HasStaticLighting() const;
@@ -1295,7 +1288,6 @@ public:
 	virtual ECollisionChannel GetCollisionObjectType() const override;
 	virtual const FCollisionResponseContainer& GetCollisionResponseToChannels() const override;
 	virtual FVector GetComponentVelocity() const override;
-	virtual void SetMobility(EComponentMobility::Type NewMobility) override;
 	//End USceneComponent Interface
 
 	/**
@@ -1469,6 +1461,12 @@ private:
 	 */
 	bool ApplyRigidBodyState(const FRigidBodyState& NewState, const FRigidBodyErrorCorrection& ErrorCorrection, FVector& OutDeltaPos, FName BoneName = NAME_None);
 
+	/** Check if mobility is set to non-static. If it's static we trigger a PIE warning and return true*/
+	bool CheckStaticMobilityAndWarn(const FText& ActionText) const;
+
+	/** Check if mobility is set to non-static. If BodyInstanceRequiresSimulation is non-null we check that it is simulated. Triggers a PIE warning if conditions fails */
+	void WarnInvalidPhysicsOperations(const FText& ActionText, const FBodyInstance* BodyInstanceRequiresSimulation = nullptr) const;
+
 public:
 
 	/**
@@ -1622,4 +1620,21 @@ public:
 	void DispatchOnReleased();
 	void DispatchOnInputTouchBegin(const ETouchIndex::Type Key);
 	void DispatchOnInputTouchEnd(const ETouchIndex::Type Key);
+};
+
+/** 
+ *  Component instance cached data base class for primitive components. 
+ *  Stores a list of instance components attached to the 
+ */
+class ENGINE_API FPrimitiveComponentInstanceData : public FSceneComponentInstanceData
+{
+public:
+	FPrimitiveComponentInstanceData(const UPrimitiveComponent* SourceComponent);
+			
+	virtual ~FPrimitiveComponentInstanceData()
+	{}
+
+	virtual void ApplyToComponent(UActorComponent* Component) override;
+
+	bool ContainsData() const;
 };

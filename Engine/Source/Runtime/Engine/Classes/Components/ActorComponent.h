@@ -12,7 +12,8 @@ UENUM()
 enum class EComponentCreationMethod : uint8
 {
 	Native,
-	ConstructionScript,
+	SimpleConstructionScript,
+	UserConstructionScript,
 	Instance,
 };
 
@@ -24,25 +25,16 @@ enum class EComponentCreationMethod : uint8
  * @see USceneComponent
  * @see UPrimitiveComponent
  */
-UCLASS(DefaultToInstanced, BlueprintType, abstract, hidecategories=(ComponentReplication))
+UCLASS(DefaultToInstanced, BlueprintType, abstract, hideCategories=(ComponentReplication), meta=(ShortTooltip="An ActorComponent is a reusable component that can be added to any actor."))
 class ENGINE_API UActorComponent : public UObject, public IInterface_AssetUserData
 {
 	GENERATED_BODY()
 public:
 
 	/**
-	 * Default UObject constructor.
+	 * Default UObject constructor that takes an optional ObjectInitializer.
 	 */
-	UActorComponent();
-
-	/**
-	 * UObject constructor that takes an ObjectInitializer
-	 */
-	UActorComponent(const FObjectInitializer& ObjectInitializer);
-
-private:
-	/** Called from the constructor to initialize the object to its default settings */
-	void InitializeDefaults();
+	UActorComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -52,7 +44,7 @@ public:
 	struct FActorComponentTickFunction PrimaryComponentTick;
 
 	/** Array of tags that can be used for grouping and categorizing. Can also be accessed from scripting. */
-	UPROPERTY(EditDefaultsOnly, AdvancedDisplay, BlueprintReadWrite, Category=Component)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Tags)
 	TArray<FName> ComponentTags;
 
 protected:
@@ -133,11 +125,13 @@ public:
 	UPROPERTY()
 	EComponentCreationMethod CreationMethod;
 
+	bool IsCreatedByConstructionScript() const;
+
 	UFUNCTION()
 	void OnRep_IsActive();
 
 	/** Follow the Outer chain to get the  AActor  that 'Owns' this component */
-	UFUNCTION(BlueprintCallable, Category="Components")
+	UFUNCTION(BlueprintCallable, Category="Components", meta=(Keywords = "Actor Owning Parent"))
 	class AActor* GetOwner() const;
 
 	virtual class UWorld* GetWorld() const override;
@@ -480,10 +474,10 @@ public:
 	virtual void PostNetReceive() { }
 
 	/** Called before we throw away components during RerunConstructionScripts, to cache any data we wish to persist across that operation */
-	virtual class FComponentInstanceDataBase* GetComponentInstanceData() const { return NULL; }
+	virtual class FComponentInstanceDataBase* GetComponentInstanceData() const;
 
 	/** The type of the component instance data that this component is interested in */
-	virtual FName GetComponentInstanceDataType() const { return NAME_None; }
+	virtual FName GetComponentInstanceDataType() const;
 
 	// Begin UObject interface.
 	virtual void BeginDestroy() override;
@@ -495,6 +489,7 @@ public:
 	virtual void PostLoad() override;
 	virtual void PostRename(UObject* OldOuter, const FName OldName) override;
 #if WITH_EDITOR
+	virtual bool Modify( bool bAlwaysMarkDirty = true ) override;
 	virtual void PreEditChange(UProperty* PropertyThatWillChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditUndo() override;
@@ -571,6 +566,7 @@ public:
 	 */
 	virtual void ApplyWorldOffset(const FVector& InOffset, bool bWorldShift) {};
 
+	virtual void Serialize(FArchive& Ar) override;
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 private:

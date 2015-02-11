@@ -43,6 +43,7 @@
 #include "ReferenceViewer.h"
 #include "Developer/MeshUtilities/Public/MeshUtilities.h"
 #include "EditorClassUtils.h"
+#include "ComponentEditorUtils.h"
 
 #include "EditorActorFolders.h"
 #include "ActorPickerMode.h"
@@ -61,6 +62,7 @@
 #include "Engine/Light.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Editor/Persona/Public/AnimationRecorder.h"
+#include "Editor/KismetWidgets/Public/CreateBlueprintFromActorDialog.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LevelEditorActions, Log, All);
 
@@ -910,7 +912,9 @@ void FLevelEditorActionCallbacks::RecompileGameCode_Clicked()
 	IHotReloadInterface& HotReloadSupport = FModuleManager::LoadModuleChecked<IHotReloadInterface>(HotReloadModule);
 	if( !HotReloadSupport.IsCurrentlyCompiling() )
 	{
-		HotReloadSupport.DoHotReloadFromEditor();
+		// Don't wait -- we want compiling to happen asynchronously
+		const bool bWaitForCompletion = false;
+		HotReloadSupport.DoHotReloadFromEditor(bWaitForCompletion);
 	}
 }
 
@@ -997,17 +1001,6 @@ void FLevelEditorActionCallbacks::GoToDocsForActor_Clicked()
 	}
 }
 
-void FLevelEditorActionCallbacks::AddScriptBehavior_Clicked()
-{
-	AActor* SelectedActor = GEditor->GetSelectedActors()->GetTop<AActor>();
-
-	if (SelectedActor)
-	{
-		const FName Name = *FString::Printf(TEXT("%s_BPClass"), *SelectedActor->GetName());
-		FKismetEditorUtilities::CreateBlueprintFromActor(Name, SelectedActor->GetLevel(), SelectedActor, true);
-	}
-}
-
 void FLevelEditorActionCallbacks::FindInContentBrowser_Clicked()
 {
 	GEditor->SyncToContentBrowser();
@@ -1050,7 +1043,8 @@ void FLevelEditorActionCallbacks::EditAsset_Clicked( const EToolkitMode::Type To
 	if( GEditor->GetSelectedActorCount() > 0 )
 	{
 		TArray< UObject* > ReferencedAssets;
-		GEditor->GetReferencedAssetsForEditorSelection( ReferencedAssets );
+		const bool bIgnoreOtherAssetsIfBPReferenced = true;
+		GEditor->GetReferencedAssetsForEditorSelection( ReferencedAssets, bIgnoreOtherAssetsIfBPReferenced );
 
 		bool bShouldOpenEditors = (ReferencedAssets.Num() == 1);
 
@@ -1358,7 +1352,25 @@ bool FLevelEditorActionCallbacks::Duplicate_CanExecute()
 			return false;
 		}
 	}
-	return GUnrealEd->CanCopySelectedActorsToClipboard( GetWorld() );	// If we can copy, we can duplicate
+	
+	// If we can copy, we can duplicate
+	bool bCanCopy = false;
+	if (GEditor->GetSelectedComponentCount() > 0)
+	{
+		TArray<UActorComponent*> SelectedComponents;
+		for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
+		{
+			SelectedComponents.Add(CastChecked<UActorComponent>(*It));
+		}
+
+		bCanCopy = FComponentEditorUtils::CanCopyComponents(SelectedComponents);
+	}
+	else
+	{
+		bCanCopy = GUnrealEd->CanCopySelectedActorsToClipboard(GetWorld());
+	}
+
+	return bCanCopy;
 }
 
 bool FLevelEditorActionCallbacks::Delete_CanExecute()
@@ -1377,7 +1389,24 @@ bool FLevelEditorActionCallbacks::Delete_CanExecute()
 			return false;
 		}
 	}
-	return GUnrealEd->CanDeleteSelectedActors( GetWorld(), true, false );
+
+	bool bCanDelete = false;
+	if (GEditor->GetSelectedComponentCount() > 0)
+	{
+		TArray<UActorComponent*> SelectedComponents;
+		for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
+		{
+			SelectedComponents.Add(CastChecked<UActorComponent>(*It));
+		}
+
+		bCanDelete = FComponentEditorUtils::CanDeleteComponents(SelectedComponents);
+	}
+	else
+	{
+		bCanDelete = GUnrealEd->CanDeleteSelectedActors(GetWorld(), true, false);
+	}
+
+	return bCanDelete;
 }
 
 void FLevelEditorActionCallbacks::Rename_Execute()
@@ -1399,7 +1428,21 @@ void FLevelEditorActionCallbacks::Rename_Execute()
 
 bool FLevelEditorActionCallbacks::Rename_CanExecute()
 {
-	return GEditor->GetSelectedActorCount() == 1;
+	bool bCanRename = false;
+	if (GEditor->GetSelectedComponentCount() == 1)
+	{
+		if (UActorComponent* ComponentToRename = GEditor->GetSelectedComponents()->GetTop<UActorComponent>())
+		{
+			// We can't edit non-instance components or the default scene root
+			bCanRename = ComponentToRename->CreationMethod == EComponentCreationMethod::Instance && ComponentToRename->GetFName() != USceneComponent::GetDefaultSceneRootVariableName();
+		}
+	}
+	else
+	{
+		bCanRename = GEditor->GetSelectedActorCount() == 1;
+	}
+
+	return bCanRename;
 }
 
 bool FLevelEditorActionCallbacks::Cut_CanExecute()
@@ -1418,7 +1461,26 @@ bool FLevelEditorActionCallbacks::Cut_CanExecute()
 			return false;
 		}
 	}
-	return GUnrealEd->CanCopySelectedActorsToClipboard( GetWorld() );	// If we can copy, we can cut
+
+	bool bCanCut = false;
+	if (GEditor->GetSelectedComponentCount() > 0)
+	{
+		// Make sure the components can be copied and deleted
+		TArray<UActorComponent*> SelectedComponents;
+		for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
+		{
+			SelectedComponents.Add(CastChecked<UActorComponent>(*It));
+		}
+
+		bCanCut = FComponentEditorUtils::CanCopyComponents(SelectedComponents) && FComponentEditorUtils::CanDeleteComponents(SelectedComponents);
+	}
+	else
+	{
+		// For actors, if we can copy, we can cut
+		bCanCut = GUnrealEd->CanCopySelectedActorsToClipboard(GetWorld());
+	}
+
+	return bCanCut;
 }
 
 bool FLevelEditorActionCallbacks::Copy_CanExecute()
@@ -1437,7 +1499,24 @@ bool FLevelEditorActionCallbacks::Copy_CanExecute()
 			return false;
 		}
 	}
-	return GUnrealEd->CanCopySelectedActorsToClipboard( GetWorld() );
+
+	bool bCanCopy = false;
+	if (GEditor->GetSelectedComponentCount() > 0)
+	{
+		TArray<UActorComponent*> SelectedComponents;
+		for (FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
+		{
+			SelectedComponents.Add(CastChecked<UActorComponent>(*It));
+		}
+
+		bCanCopy = FComponentEditorUtils::CanCopyComponents(SelectedComponents);
+	}
+	else
+	{
+		bCanCopy = GUnrealEd->CanCopySelectedActorsToClipboard(GetWorld());
+	}
+
+	return bCanCopy;
 }
 
 bool FLevelEditorActionCallbacks::Paste_CanExecute()
@@ -1456,7 +1535,20 @@ bool FLevelEditorActionCallbacks::Paste_CanExecute()
 			return false;
 		}
 	}
-	return GUnrealEd->CanPasteSelectedActorsFromClipboard( GetWorld() );
+
+	bool bCanPaste = false;
+	if (GEditor->GetSelectedComponentCount() > 0)
+	{
+		check(GEditor->GetSelectedActorCount() == 1);
+		auto SelectedActor = CastChecked<AActor>(*GEditor->GetSelectedActorIterator());
+		bCanPaste = FComponentEditorUtils::CanPasteComponents(SelectedActor->GetRootComponent());
+	}
+	else
+	{
+		bCanPaste = GUnrealEd->CanPasteSelectedActorsFromClipboard(GetWorld());
+	}
+
+	return bCanPaste;
 }
 
 bool FLevelEditorActionCallbacks::PasteHere_CanExecute()
@@ -1764,7 +1856,8 @@ void FLevelEditorActionCallbacks::OnKeepSimulationChanges()
 					const auto CopyOptions = ( EditorUtilities::ECopyOptions::Type )(
 						EditorUtilities::ECopyOptions::CallPostEditChangeProperty |
 						EditorUtilities::ECopyOptions::CallPostEditMove |
-						EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties );
+						EditorUtilities::ECopyOptions::OnlyCopyEditOrInterpProperties |
+						EditorUtilities::ECopyOptions::FilterBlueprintReadOnly);
 					const int32 CopiedPropertyCount = EditorUtilities::CopyActorProperties( SimWorldActor, EditorWorldActor, CopyOptions );
 
 					if( CopiedPropertyCount > 0 )
@@ -1962,7 +2055,7 @@ void FLevelEditorActionCallbacks::OpenLevelBlueprint( TWeakPtr< SLevelEditor > L
 	}
 }
 
-void FLevelEditorActionCallbacks::CreateBlueprintClass()
+void FLevelEditorActionCallbacks::CreateBlankBlueprintClass()
 {
 	// Use the BlueprintFactory to allow the user to pick a parent class for the new Blueprint class
 	UBlueprintFactory* NewFactory = Cast<UBlueprintFactory>(ConstructObject<UFactory>( UBlueprintFactory::StaticClass() ));
@@ -1972,7 +2065,7 @@ void FLevelEditorActionCallbacks::CreateBlueprintClass()
 		UClass* SelectedClass = NewFactory->ParentClass;
 
 		// Now help the user pick a path and name for the new Blueprint
-		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprintFromClass(NSLOCTEXT("LevelEditorCommands", "CreateBlueprintClass_Title", "Create Blueprint Class"), SelectedClass);
+		UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprintFromClass(NSLOCTEXT("LevelEditorCommands", "CreateBlankBlueprintClass_Title", "Create Blank Blueprint Class"), SelectedClass);
 
 		if( Blueprint )
 		{
@@ -1983,6 +2076,28 @@ void FLevelEditorActionCallbacks::CreateBlueprintClass()
 				bOpenWorldCentric ? EToolkitMode::WorldCentric : EToolkitMode::Standalone);
 		}
 	}
+}
+
+bool FLevelEditorActionCallbacks::CanHarvestSelectedActorsIntoBlueprintClass()
+{
+	return GEditor->GetSelectedActorCount() > 0;
+}
+
+void FLevelEditorActionCallbacks::HarvestSelectedActorsIntoBlueprintClass()
+{
+	const bool bHarvest = true;
+	FCreateBlueprintFromActorDialog::OpenDialog(bHarvest);
+}
+
+bool FLevelEditorActionCallbacks::CanSubclassSelectedActorIntoBlueprintClass()
+{
+	return GEditor->GetSelectedActorCount() == 1;
+}
+
+void FLevelEditorActionCallbacks::SubclassSelectedActorIntoBlueprintClass()
+{
+	const bool bHarvest = false;
+	FCreateBlueprintFromActorDialog::OpenDialog(bHarvest);
 }
 
 void FLevelEditorActionCallbacks::CheckOutProjectSettingsConfig( )
@@ -2459,7 +2574,7 @@ void FLevelEditorActionCallbacks::SnapTo_Clicked( const bool InAlign, const bool
 	bool bSnappedComponents = false;
 	if( GEditor->GetSelectedComponentCount() > 0 )
 	{
-		for(FSelectionIterator It(GEditor->GetSelectedComponentIterator()); It; ++It)
+		for(FSelectedEditableComponentIterator It(GEditor->GetSelectedEditableComponentIterator()); It; ++It)
 		{
 			USceneComponent* SceneComponent = Cast<USceneComponent>(*It);
 			if(SceneComponent)
@@ -2589,7 +2704,8 @@ void FLevelEditorActionCallbacks::OnSaveBrushAsCollision()
 
 		// Copy the current builder brush into a temp model.
 		// We keep no reference to this, so it will be GC'd at some point.
-		UModel* TempModel = new UModel(FObjectInitializer(), NULL, 1);
+		UModel* TempModel = NewObject<UModel>();
+		TempModel->Initialize(nullptr, 1);
 		TempModel->Polys->Element.AssignButKeepOwner(BuilderModel->Polys->Element);
 
 		// Now transform each poly into local space for the selected static mesh.
@@ -2758,12 +2874,10 @@ void FLevelEditorCommands::RegisterCommands()
 
 	UI_COMMAND( GoHere, "Go Here", "Moves the camera to the current mouse position", EUserInterfaceActionType::Button, FInputGesture() );
 
-	UI_COMMAND( SnapCameraToActor, "Snap View to Actor", "Snaps the view to the selected actors", EUserInterfaceActionType::Button, FInputGesture() );
+	UI_COMMAND( SnapCameraToObject, "Snap View to Object", "Snaps the view to the selected object", EUserInterfaceActionType::Button, FInputGesture() );
 
 	UI_COMMAND( GoToCodeForActor, "Go to C++ Code for Actor", "Opens a code editing IDE and navigates to the source file associated with the seleced actor", EUserInterfaceActionType::Button, FInputGesture() );
 	UI_COMMAND( GoToDocsForActor, "Go to Documentation for Actor", "Opens documentation for the Actor in the default web browser", EUserInterfaceActionType::Button, FInputGesture() );
-
-	UI_COMMAND( AddScriptBehavior, "Customize Scripting Behavior", "Click to customize scripting behavior of this Actor", EUserInterfaceActionType::Button, FInputGesture() );
 
 	UI_COMMAND( PasteHere, "Paste Here", "Pastes the actor at the click location", EUserInterfaceActionType::Button, FInputGesture() );
 
@@ -2914,7 +3028,9 @@ void FLevelEditorCommands::RegisterCommands()
 
 	UI_COMMAND( OpenLevelBlueprint, "Open Level Blueprint", "Edit the Level Blueprint for the current level", EUserInterfaceActionType::Button, FInputGesture() );
 	UI_COMMAND( CheckOutProjectSettingsConfig, "Check Out", "Checks out the project settings config file so the game mode can be set.", EUserInterfaceActionType::Button, FInputGesture() );
-	UI_COMMAND( CreateBlueprintClass, "New Blueprint Class...", "Create a new Blueprint Class", EUserInterfaceActionType::Button, FInputGesture());
+	UI_COMMAND( CreateBlankBlueprintClass, "New Empty Blueprint Class...", "Create a new Blueprint Class", EUserInterfaceActionType::Button, FInputGesture() );
+	UI_COMMAND( ConvertSelectionToBlueprintViaHarvest, "Convert Selected Components to Blueprint Class...", "Replace all of the selected actors with a new Blueprint Class based on Actor that contains the components", EUserInterfaceActionType::Button, FInputGesture() );
+	UI_COMMAND( ConvertSelectionToBlueprintViaSubclass, "Convert Selected Actor to Blueprint Class...", "Replace the selected actor with a new Blueprint subclass based on the class of the selected Actor", EUserInterfaceActionType::Button, FInputGesture() );
 
 	UI_COMMAND( ShowTransformWidget, "Show Transform Widget", "Toggles the visibility of the transform widgets", EUserInterfaceActionType::ToggleButton, FInputGesture() );
 	UI_COMMAND( AllowTranslucentSelection, "Allow Translucent Selection", "Allows translucent objects to be selected", EUserInterfaceActionType::ToggleButton, FInputGesture(EKeys::T) );

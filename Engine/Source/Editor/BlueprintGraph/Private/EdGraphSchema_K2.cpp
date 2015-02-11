@@ -42,6 +42,10 @@ const FName FBlueprintMetadata::MD_NotAllowableBlueprintVariableType(TEXT("NotBl
 const FName FBlueprintMetadata::MD_BlueprintSpawnableComponent(TEXT("BlueprintSpawnableComponent"));
 const FName FBlueprintMetadata::MD_IsBlueprintBase(TEXT("IsBlueprintBase"));
 const FName FBlueprintMetadata::MD_RestrictedToClasses(TEXT("RestrictedToClasses"));
+const FName FBlueprintMetadata::MD_ChildCanTick(TEXT("ChildCanTick"));
+const FName FBlueprintMetadata::MD_ChildCannotTick(TEXT("ChildCannotTick"));
+const FName FBlueprintMetadata::MD_IgnoreCategoryKeywordsInSubclasses(TEXT("IgnoreCategoryKeywordsInSubclasses"));
+
 
 const FName FBlueprintMetadata::MD_Protected(TEXT("BlueprintProtected"));
 const FName FBlueprintMetadata::MD_Latent(TEXT("Latent"));
@@ -4112,7 +4116,7 @@ void UEdGraphSchema_K2::GetGraphDisplayInformation(const UEdGraph& Graph, /*out*
 			// If we found a function from this graph..
 			if (Function)
 			{
-				DisplayInfo.PlainName = FText::FromString(UK2Node_CallFunction::GetUserFacingFunctionName(Function)); // grab friendly function name
+				DisplayInfo.PlainName = FText::FromString(Function->GetName());
 				DisplayInfo.Tooltip = UK2Node_CallFunction::GetDefaultTooltipForFunction(Function); // grab its tooltip
 			}
 			else

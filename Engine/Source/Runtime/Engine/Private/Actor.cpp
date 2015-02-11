@@ -823,7 +823,7 @@ bool AActor::Modify( bool bAlwaysMarkDirty/*=true*/ )
 			if (!ObjProp->HasAllPropertyFlags(CPF_NonTransactional))
 			{
 				UActorComponent* ActorComponent = Cast<UActorComponent>(ObjProp->GetObjectPropertyValue(ObjProp->ContainerPtrToValuePtr<void>(this)));
-				if (ActorComponent && ActorComponent->CreationMethod == EComponentCreationMethod::ConstructionScript)
+				if (ActorComponent && ActorComponent->IsCreatedByConstructionScript())
 				{
 					ObjProp->SetPropertyFlags(CPF_NonTransactional);
 					TemporarilyNonTransactionalProperties.Add(ObjProp);
@@ -840,7 +840,7 @@ bool AActor::Modify( bool bAlwaysMarkDirty/*=true*/ )
 	}
 
 	// If the root component is blueprint constructed we don't save it to the transaction buffer
-	if( RootComponent && RootComponent->CreationMethod != EComponentCreationMethod::ConstructionScript)
+	if( RootComponent && !RootComponent->IsCreatedByConstructionScript())
 	{
 		bSavedToTransactionBuffer = RootComponent->Modify( bAlwaysMarkDirty ) || bSavedToTransactionBuffer;
 	}
@@ -2162,6 +2162,23 @@ TArray<UActorComponent*> AActor::GetComponentsByClass(TSubclassOf<UActorComponen
 	}
 	
 	return ValidComponents;
+}
+
+TArray<UActorComponent*> AActor::GetComponentsByTag(TSubclassOf<UActorComponent> ComponentClass, FName Tag) const
+{
+	TArray<UActorComponent*> ComponentsByClass = GetComponentsByClass(ComponentClass);
+
+	TArray<UActorComponent*> ComponentsByTag;
+	ComponentsByTag.Reserve(ComponentsByClass.Num());
+	for (int i = 0; i < ComponentsByClass.Num(); ++i)
+	{
+		if (ComponentsByClass[i]->ComponentHasTag(Tag))
+		{
+			ComponentsByTag.Push(ComponentsByClass[i]);
+		}
+	}
+
+	return ComponentsByTag;
 }
 
 void AActor::DisableComponentsSimulatePhysics()

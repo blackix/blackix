@@ -328,13 +328,14 @@ TSharedRef<SWidget> SDeleteAssetsDialog::BuildDeleteDialog()
 			.Padding(6,4)
 			[
 				SAssignNew(DeleteSourceFilesCheckbox, SCheckBox)
+				.Visibility(this, &SDeleteAssetsDialog::GetDeleteSourceFilesVisibility)
 				.IsChecked(LoadingSavingSettings->bDeleteSourceFilesWithAssets ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("DeleteSourceFiles", "Also delete related source content files"))
 					.ToolTip(
 						SNew(SToolTip)
-						.Text(LOCTEXT("DeleteSourceFiles_Tooltip", "When checked, any source content files that were used to create the selected asset(s) will also be deleted. For instance, deleting a texture will also delete its associated *.png file."))
+						.Text(this, &SDeleteAssetsDialog::GetDeleteSourceContentTooltip)
 					)
 				]
 			]
@@ -381,7 +382,9 @@ TSharedRef<SWidget> SDeleteAssetsDialog::BuildDeleteDialog()
 						.HAlign( HAlign_Center )
 						.Text( LOCTEXT( "Delete", "Delete" ) )
 						.ToolTipText( LOCTEXT( "DeleteTooltipText", "Perform the delete" ) )
-						.OnClicked( this, &SDeleteAssetsDialog::Delete )
+						.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
+						.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
+						.OnClicked(this, &SDeleteAssetsDialog::Delete)
 					]
 				]
 
@@ -397,6 +400,8 @@ TSharedRef<SWidget> SDeleteAssetsDialog::BuildDeleteDialog()
 						.HAlign( HAlign_Center )
 						.Text( LOCTEXT( "Cancel", "Cancel" ) )
 						.ToolTipText( LOCTEXT( "CancelDeleteTooltipText", "Cancel the delete" ) )
+						.ButtonStyle(FEditorStyle::Get(), "FlatButton.Default")
+						.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
 						.OnClicked( this, &SDeleteAssetsDialog::Cancel )
 					]
 				]
@@ -415,6 +420,27 @@ FText SDeleteAssetsDialog::GetHandleText() const
 	{
 		return LOCTEXT( "HandleIt", "How do you want to handle this?" );
 	}
+}
+
+FText SDeleteAssetsDialog::GetDeleteSourceContentTooltip() const
+{
+	const FText RootText = LOCTEXT("DeleteSourceFiles_Tooltip", "When checked, the following source content files will also be deleted along with the assets:\n\n{0}");
+
+	FString AllFiles;
+	for (const auto& PathAndAssetCount : DeleteModel->GetPendingDeletedSourceFileCounts())
+	{
+		// If this path is no longer referenced by deleted files, it's toast.
+		if (PathAndAssetCount.Value == 0)
+		{
+			if (!AllFiles.IsEmpty())
+			{
+				AllFiles += TEXT("\n");
+			}
+			AllFiles += PathAndAssetCount.Key;
+		}
+	}
+
+	return FText::Format(RootText, FText::FromString(AllFiles));
 }
 
 EVisibility SDeleteAssetsDialog::GetAssetReferencesVisiblity() const
@@ -482,6 +508,8 @@ TSharedRef<SWidget> SDeleteAssetsDialog::BuildReplaceReferencesWidget()
 		.HAlign( HAlign_Center )
 		.Text( LOCTEXT( "Replace References", "Replace References" ) )
 		.OnClicked( this, &SDeleteAssetsDialog::ReplaceReferences )
+		.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
+		.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
 	];
 }
 
@@ -506,7 +534,9 @@ TSharedRef<SWidget> SDeleteAssetsDialog::BuildForceDeleteWidget()
 		.HAlign( HAlign_Center )
 		.Text( LOCTEXT( "ForceDelete", "Force Delete" ) )
 		.ToolTipText( LOCTEXT( "ForceDeleteTooltipText", "Force Delete will obliterate all references to this asset and is dangerous.\n\nUse as a last resort." ) )
-		.OnClicked( this, &SDeleteAssetsDialog::ForceDelete )
+		.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
+		.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
+		.OnClicked(this, &SDeleteAssetsDialog::ForceDelete)
 	];
 }
 
@@ -582,11 +612,25 @@ TSharedRef<ITableRow> SDeleteAssetsDialog::HandleGenerateAssetRow( TSharedPtr<FP
 		.Visibility(InItem->IsInternal() ? EVisibility::Collapsed : EVisibility::Visible);
 }
 
+void SDeleteAssetsDialog::DeleteRelevantSourceContent()
+{
+	if (DeleteModel->HasAnySourceContentFilesToDelete())
+	{
+		auto* Settings = GetMutableDefault<UEditorLoadingSavingSettings>();
+		if (DeleteSourceFilesCheckbox->GetCheckedState() == ECheckBoxState::Checked)
+		{
+			Settings->bDeleteSourceFilesWithAssets = true;
+			DeleteModel->DeleteSourceContentFiles();
+		}
+		else
+		{
+			Settings->bDeleteSourceFilesWithAssets = false;			
+		}
+	}
+}
+
 FReply SDeleteAssetsDialog::Delete()
 {
-	auto* Settings = GetMutableDefault<UEditorLoadingSavingSettings>();
-	Settings->bDeleteSourceFilesWithAssets = DeleteSourceFilesCheckbox->GetCheckedState() == ECheckBoxState::Checked;
-
 	ParentWindow.Get()->RequestDestroyWindow();
 
 	if (DeleteModel->IsAnythingReferencedInMemoryByUndo())
@@ -594,10 +638,7 @@ FReply SDeleteAssetsDialog::Delete()
 		GEditor->Trans->Reset(LOCTEXT("DeleteSelectedItem", "Delete Selected Item"));
 	}
 
-	if (Settings->bDeleteSourceFilesWithAssets)
-	{
-		DeleteModel->DeleteSourceContentFiles();
-	}
+	DeleteRelevantSourceContent();
 	DeleteModel->DoDelete();
 
 	return FReply::Handled();
@@ -612,9 +653,6 @@ FReply SDeleteAssetsDialog::Cancel()
 
 FReply SDeleteAssetsDialog::ForceDelete()
 {
-	auto* Settings = GetMutableDefault<UEditorLoadingSavingSettings>();
-	Settings->bDeleteSourceFilesWithAssets = DeleteSourceFilesCheckbox->GetCheckedState() == ECheckBoxState::Checked;
-
 	ParentWindow.Get()->RequestDestroyWindow();
 
 	if( DeleteModel->IsAnythingReferencedInMemoryByUndo() )
@@ -622,10 +660,7 @@ FReply SDeleteAssetsDialog::ForceDelete()
 		GEditor->Trans->Reset( LOCTEXT("DeleteSelectedItem", "Delete Selected Item") );
 	}
 
-	if (Settings->bDeleteSourceFilesWithAssets)
-	{
-		DeleteModel->DeleteSourceContentFiles();
-	}
+	DeleteRelevantSourceContent();
 	DeleteModel->DoForceDelete();
 
 	return FReply::Handled();
@@ -655,14 +690,8 @@ FReply SDeleteAssetsDialog::ReplaceReferences()
 
 	if ( EAppReturnType::Ok == OpenMsgDlgInt( EAppMsgType::OkCancel, Message, Title ) )
 	{
-		auto* Settings = GetMutableDefault<UEditorLoadingSavingSettings>();
-		Settings->bDeleteSourceFilesWithAssets = DeleteSourceFilesCheckbox->GetCheckedState() == ECheckBoxState::Checked;
-		if (Settings->bDeleteSourceFilesWithAssets)
-		{
-			DeleteModel->DeleteSourceContentFiles();
-		}
-
 		ParentWindow.Get()->RequestDestroyWindow();
+		DeleteRelevantSourceContent();
 		DeleteModel->DoReplaceReferences( ConsolidationAsset );
 	}
 
@@ -799,6 +828,11 @@ EVisibility SDeleteAssetsDialog::GetForceDeleteVisibility() const
 EVisibility SDeleteAssetsDialog::GetDeleteVisibility() const
 {
 	return CanDelete() ? EVisibility::Visible : EVisibility::Collapsed;
+}
+
+EVisibility SDeleteAssetsDialog::GetDeleteSourceFilesVisibility() const
+{
+	return DeleteModel->HasAnySourceContentFilesToDelete() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 bool SDeleteAssetsDialog::CanReplaceReferences() const

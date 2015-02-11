@@ -71,9 +71,12 @@ private:
 	TArray<ProvisionPtr> ProvisionList;
 	TArray<ProvisionPtr> FilteredProvisionList;
 	TSharedPtr<SListView<ProvisionPtr> > ProvisionListView;
+	TSharedPtr<SWidgetSwitcher > ProvisionInfoSwitcher;
 	TArray<CertificatePtr> CertificateList;
 	TArray<CertificatePtr> FilteredCertificateList;
 	TSharedPtr<SListView<CertificatePtr> > CertificateListView;
+	TSharedPtr<SWidgetSwitcher > CertificateInfoSwitcher;
+	TAttribute<bool> RunningIPPProcess;
 
 	FString SelectedProvision;
 	FString SelectedFile;
@@ -133,4 +136,13 @@ private:
 
 	// filter the lists based on the settings
 	void FilterLists();
+
+	// returns whether we are importing or not
+	bool IsImportEnabled() const;
+
+	// updates the text in the ini file and checks for a valid provision/certificate
+	void OnBundleIdentifierChanged(const FText& NewText, ETextCommit::Type, TSharedRef<IPropertyHandle> InPropertyHandle);
+
+	// 
+	FText GetBundleText(TSharedRef<IPropertyHandle> InPropertyHandle) const;
 };

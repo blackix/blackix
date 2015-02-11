@@ -129,6 +129,15 @@ public class IOSPlatform : Platform
 	{
 		Log("Package {0}", Params.RawProjectPath);
 
+		// ensure the ue4game binary exists, if applicable
+		string FullExePath = CombinePaths(Path.GetDirectoryName(Params.ProjectGameExeFilename), SC.StageExecutables[0] + (UnrealBuildTool.BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Mac ? ".stub" : ""));
+		if (!SC.IsCodeBasedProject && !FileExists_NoExceptions(FullExePath))
+		{
+			Log("Failed to find game binary " + FullExePath);
+			AutomationTool.ErrorReporter.Error("Stage Failed.", (int)AutomationTool.ErrorCodes.Error_MissingExecutable);
+			throw new AutomationException("Could not find binary {0}. You may need to build the UE4 project with your target configuration and platform.", FullExePath);
+		}
+
 		//@TODO: We should be able to use this code on both platforms, when the following issues are sorted:
 		//   - Raw executable is unsigned & unstripped (need to investigate adding stripping to IPP)
 		//   - IPP needs to be able to codesign a raw directory
@@ -139,11 +148,14 @@ public class IOSPlatform : Platform
 		{
 			// copy in all of the artwork and plist
 			var DeployHandler = UEBuildDeploy.GetBuildDeploy(UnrealTargetPlatform.IOS);
+
 			DeployHandler.PrepForUATPackageOrDeploy(Params.ShortProjectName,
 				Path.GetDirectoryName(Params.RawProjectPath),
 				CombinePaths(Path.GetDirectoryName(Params.ProjectGameExeFilename), SC.StageExecutables[0]),
 				CombinePaths(SC.LocalRoot, "Engine"),
-				Params.Distribution, "");
+				Params.Distribution, 
+				"",
+				false);
 
 			// figure out where to pop in the staged files
 			string AppDirectory = string.Format("{0}/Payload/{1}.app",
@@ -200,7 +212,7 @@ public class IOSPlatform : Platform
 		{
 			var TargetConfiguration = SC.StageTargetConfigurations[0];
 			var ProjectIPA = MakeIPAFileName(TargetConfiguration, Params);
-			var ProjectStub = Path.GetFullPath(Params.ProjectGameExeFilename) + "/" + Params.ShortProjectName + Path.GetExtension(Params.ProjectGameExeFilename);
+			var ProjectStub = Path.GetFullPath(Params.ProjectGameExeFilename);
 
 			// package a .ipa from the now staged directory
 			var IPPExe = CombinePaths(CmdEnv.LocalRoot, "Engine/Binaries/DotNET/IOS/IPhonePackager.exe");
@@ -387,14 +399,6 @@ public class IOSPlatform : Platform
 		// check for the proper xcodeproject
 		bool bWasGenerated = false;
 		string XcodeProj = EnsureXcodeProjectExists (RawProjectPath, LocalRoot, ProjectName, ProjectDirectory, IsCode, out bWasGenerated);
-
-		// ensure the correct data os acrpss
-		var DeployHandler = UEBuildDeploy.GetBuildDeploy(UnrealTargetPlatform.IOS);
-		DeployHandler.PrepForUATPackageOrDeploy(ProjectName,
-			Path.GetDirectoryName(RawProjectPath),
-			CombinePaths(BaseDirectory, GameName),
-			CombinePaths(LocalRoot, "Engine"),
-			Distribution, "");
 
 		string Arguments = "UBT_NO_POST_DEPLOY=true";
 		Arguments += " /usr/bin/xcrun xcodebuild build -project \"" + XcodeProj + "\"";

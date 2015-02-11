@@ -270,7 +270,27 @@ void FMainFrameActionCallbacks::AddCodeToProject()
 	FGameProjectGenerationModule::Get().OpenAddCodeToProjectDialog();
 }
 
-void FMainFrameActionCallbacks::CookContent( const FName InPlatformInfoName )
+/**
+ * Gets compilation flags for UAT for this system.
+ */
+const TCHAR* GetUATCompilationFlags()
+{
+	return FRocketSupport::IsRocket() || !FSourceCodeNavigation::IsCompilerAvailable()
+		? TEXT("-nocompile")
+		: TEXT("-nocompileeditor");
+}
+
+/**
+ * Gets -nocodeproject flag for UAT if it's needed.
+ */
+const TCHAR* GetUATNoCodeProjectFlag()
+{
+	IHotReloadInterface& HotReloadSupport = FModuleManager::LoadModuleChecked<IHotReloadInterface>("HotReload");
+	// If there is no game module loaded, source code is not available.
+	return !HotReloadSupport.IsAnyGameModuleLoaded() ? TEXT(" -nocodeproject") : TEXT("");
+}
+
+void FMainFrameActionCallbacks::CookContent(const FName InPlatformInfoName)
 {
 	const PlatformInfo::FPlatformInfo* const PlatformInfo = PlatformInfo::FindPlatformInfo(InPlatformInfoName);
 	check(PlatformInfo);
@@ -313,8 +333,10 @@ void FMainFrameActionCallbacks::CookContent( const FName InPlatformInfoName )
 	}
 
 	FString ProjectPath = FPaths::IsProjectFilePathSet() ? FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()) : FPaths::RootDir() / FApp::GetGameName() / FApp::GetGameName() + TEXT(".uproject");
-	FString CommandLine = FString::Printf(TEXT("BuildCookRun %s%s -nop4 -project=\"%s\" -cook -allmaps -%s -ue4exe=%s %s"),
-		FRocketSupport::IsRocket() ? TEXT("-rocket -nocompile") : TEXT("-nocompileeditor"),
+	FString CommandLine = FString::Printf(TEXT("BuildCookRun %s%s%s%s -nop4 -project=\"%s\" -cook -allmaps -platform=%s -ue4exe=%s %s"),
+		FRocketSupport::IsRocket() ? TEXT("-rocket ") : TEXT(""),
+		GetUATCompilationFlags(),
+		GetUATNoCodeProjectFlag(),
 		FApp::IsEngineInstalled() ? TEXT(" -installed") : TEXT(""),
 		*ProjectPath,
 		*PlatformInfo->TargetPlatformName.ToString(),
@@ -523,7 +545,7 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 	}
 
 	// only build if the project has code that might need to be built
-	if ((bProjectHasCode || bContentProjectCanBeBuilt) && FSourceCodeNavigation::IsCompilerAvailable())
+	if (bProjectHasCode && FSourceCodeNavigation::IsCompilerAvailable())
 	{
 		OptionalParams += TEXT(" -build");
 	}
@@ -558,8 +580,10 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 	Configuration = Configuration.Replace(TEXT("PPBC_"), TEXT(""));
 
 	FString ProjectPath = FPaths::IsProjectFilePathSet() ? FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()) : FPaths::RootDir() / FApp::GetGameName() / FApp::GetGameName() + TEXT(".uproject");
-	FString CommandLine = FString::Printf(TEXT("BuildCookRun %s%s -nop4 -project=\"%s\" -cook -allmaps -stage -archive -archivedirectory=\"%s\" -package -%s -clientconfig=%s -ue4exe=%s %s -utf8output"),
-		FRocketSupport::IsRocket() ? TEXT( "-rocket -nocompile" ) : TEXT( "-nocompileeditor" ),
+	FString CommandLine = FString::Printf(TEXT("BuildCookRun %s%s%s%s -nop4 -project=\"%s\" -cook -allmaps -stage -archive -archivedirectory=\"%s\" -package -platform=%s -clientconfig=%s -ue4exe=%s %s -utf8output"),
+		FRocketSupport::IsRocket() ? TEXT("-rocket ") : TEXT(""),
+		GetUATCompilationFlags(),
+		GetUATNoCodeProjectFlag(),
 		FApp::IsEngineInstalled() ? TEXT(" -installed") : TEXT(""),
 		*ProjectPath,
 		*PackagingSettings->StagingDirectory.Path,
@@ -1133,6 +1157,7 @@ void FMainFrameActionCallbacks::HandleUatProcessCanceled( TWeakPtr<SNotification
 }
 
 
+DECLARE_CYCLE_STAT(TEXT("Requesting FMainFrameActionCallbacks::HandleUatProcessCompleted message dialog to present the error message"), STAT_FMainFrameActionCallbacks_HandleUatProcessCompleted_DialogMessage, STATGROUP_TaskGraphTasks);
 void FMainFrameActionCallbacks::HandleUatProcessCompleted( int32 ReturnCode, TWeakPtr<SNotificationItem> NotificationItemPtr, FText PlatformDisplayName, FText TaskName, EventData Event )
 {
 	FFormatNamedArguments Arguments;
@@ -1165,6 +1190,18 @@ void FMainFrameActionCallbacks::HandleUatProcessCompleted( int32 ReturnCode, TWe
 		ParamArray.Add(FAnalyticsEventAttribute(TEXT("Time"), FPlatformTime::Seconds() - Event.StartTime));
 		FEditorAnalytics::ReportEvent(Event.EventName + TEXT(".Failed"), PlatformDisplayName.ToString(), Event.bProjectHasCode, ReturnCode, ParamArray);
 
+		// Present a message dialog if we want the error message to be prominent.
+		if (FEditorAnalytics::ShouldElevateMessageThroughDialog(ReturnCode))
+		{
+			FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
+				FSimpleDelegateGraphTask::FDelegate::CreateLambda([=](){
+					FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(FEditorAnalytics::TranslateErrorCode(ReturnCode)));
+				}),
+				GET_STATID(STAT_FMainFrameActionCallbacks_HandleUatProcessCompleted_DialogMessage),
+				nullptr,
+				ENamedThreads::GameThread
+			);
+		}
 //		FMessageLog("PackagingResults").Info(FText::Format(LOCTEXT("UatProcessFailedMessageLog", "{TaskName} for {Platform} failed"), Arguments));
 	}
 }

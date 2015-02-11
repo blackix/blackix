@@ -7,6 +7,7 @@
 #include "CoreUObjectPrivate.h"
 #include "PropertyTag.h"
 #include "HotReloadInterface.h"
+#include "LinkerPlaceholderClass.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogScriptSerialization, Log, All);
 DEFINE_LOG_CATEGORY(LogScriptSerialization);
@@ -251,12 +252,32 @@ FText UField::GetDisplayNameText() const
  *
  * @return The tooltip for this object.
  */
-FText UField::GetToolTipText() const
+FText UField::GetToolTipText(bool bShortTooltip) const
 {
+	bool bFoundShortTooltip = false;
+	static const FName NAME_Tooltip(TEXT("Tooltip"));
+	static const FName NAME_ShortTooltip(TEXT("ShortTooltip"));
 	FText LocalizedToolTip;
-	FString NativeToolTip = GetMetaData( TEXT("Tooltip") );
+	FString NativeToolTip;
+	
+	if (bShortTooltip)
+	{
+		NativeToolTip = GetMetaData(NAME_ShortTooltip);
+		if (NativeToolTip.IsEmpty())
+		{
+			NativeToolTip = GetMetaData(NAME_Tooltip);
+		}
+		else
+		{
+			bFoundShortTooltip = true;
+		}
+	}
+	else
+	{
+		NativeToolTip = GetMetaData(NAME_Tooltip);
+	}
 
-	static const FString Namespace = TEXT("UObjectToolTips");
+	const FString Namespace = bFoundShortTooltip ? TEXT("UObjectShortTooltips") : TEXT("UObjectToolTips");
 	const FString Key = GetFullGroupName(true) + TEXT(".") + GetName();
 	if ( !(FText::FindText( Namespace, Key, /*OUT*/LocalizedToolTip )) || *FTextInspector::GetSourceString(LocalizedToolTip) != NativeToolTip)
 	{
@@ -812,6 +833,11 @@ void UStruct::SerializeTaggedProperties(FArchive& Ar, uint8* Data, UStruct* Defa
 			Ar << Tag;
 			if( Tag.Name == NAME_None )
 			{
+				break;
+			}
+			if (!Tag.Name.IsValid())
+			{
+				UE_LOG(LogClass, Warning, TEXT("Invalid tag name: struct '%s', archive '%s'"), *GetName(), *Ar.GetArchiveName());
 				break;
 			}
 
@@ -1529,6 +1555,37 @@ bool UStruct::GetStringMetaDataHierarchical(const FName& Key, FString* OutValue)
 }
 
 #endif
+
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+	/**
+	 * If we're loading, then the value of the script's UObject* expression 
+	 * could be pointing at a ULinkerPlaceholderClass (used by the linker to 
+	 * fight cyclic dependency issues on load). So here, if that's the case, we
+	 * have the placeholder track this ref (so it'll replace it once the real 
+	 * class is loaded).
+	 * 
+	 * @param  ScriptPtr    Reference to the point in the bytecode buffer, where a UObject* has been stored (for us to check).
+	 */
+	static void HandlePlaceholderScriptRef(ScriptPointerType& ScriptPtr)
+	{
+		UObject*& ExprPtrRef = (UObject*&)ScriptPtr;
+		if (ULinkerPlaceholderClass* PlaceholderObj = Cast<ULinkerPlaceholderClass>(ExprPtrRef)) \
+		{
+			PlaceholderObj->AddReferencingScriptExpr((ULinkerPlaceholderClass**)(&ExprPtrRef));
+		}
+	}
+
+	#define FIXUP_EXPR_OBJECT_POINTER(Type) \
+	{ \
+		if (!Ar.IsSaving()) \
+		{ \
+			int32 const ExprIndex = iCode - sizeof(ScriptPointerType); \
+			ScriptPointerType& ScriptPtr = (ScriptPointerType&)Script[ExprIndex]; \
+			HandlePlaceholderScriptRef(ScriptPtr); \
+		} \
+	}
+#endif // #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+
 //
 // Serialize an expression to an archive.
 // Returns expression token.
@@ -1546,6 +1603,7 @@ EExprToken UStruct::SerializeExpr( int32& iCode, FArchive& Ar )
 #undef XFER_FUNC_POINTER
 #undef XFER_FUNC_NAME
 #undef XFER_PROP_POINTER
+#undef FIXUP_EXPR_OBJECT_POINTER
 }
 
 void UStruct::InstanceSubobjectTemplates( void* Data, void const* DefaultData, UStruct* DefaultStruct, UObject* Owner, FObjectInstancingGraph* InstanceGraph )
@@ -3372,10 +3430,6 @@ bool UClass::HotReloadPrivateStaticClass(
 		UClass::GetDefaultPropertiesFeedbackContext().Logf(ELogVerbosity::Warning, TEXT("Property size mismatch. Will not update class %s (was %d, new %d)."), *GetName(), PropertiesSize, InSize);
 		return false;
 	}
-	//We could do this later, but might as well get it before we start corrupting the object
-	UObject* CDO = GetDefaultObject();
-	void* OldVTable = *(void**)CDO;
-
 
 	//@todo safe? ClassFlags = InClassFlags | CLASS_Native;
 	//@todo safe? ClassCastFlags = InClassCastFlags;
@@ -3396,51 +3450,23 @@ bool UClass::HotReloadPrivateStaticClass(
 	ClassWithin = TClass_WithinClass_StaticClass;
 	*/
 
-	UE_LOG(LogClass, Verbose, TEXT("Attempting to change VTable for class %s."),*GetName());
-	ClassWithin = UPackage::StaticClass();  // We are just avoiding error checks with this...we don't care about this temp object other than to get the vtable.
-	UObject* TempObjectForVTable = StaticConstructObject(this, GetTransientPackage(), NAME_None, RF_NeedLoad | RF_ClassDefaultObject);
-
-	if( !TempObjectForVTable->IsRooted() )
+	int32 CountClass = 0;
+	for (FRawObjectIterator It; It; ++It)
 	{
-		TempObjectForVTable->MarkPendingKill();
-	}
-	else
-	{
-		UE_LOG(LogClass, Warning, TEXT("Hot Reload:  Was not expecting temporary object '%s' for class '%s' to become rooted during construction.  This object cannot be marked pending kill." ), *TempObjectForVTable->GetFName().ToString(), *this->GetName() );
-	}
-
-	ClassWithin = TClass_WithinClass_StaticClass;
-
-	void* NewVTable = *(void**)TempObjectForVTable;
-	if (NewVTable != OldVTable)
-	{
-		int32 Count = 0;
-		int32 CountClass = 0;
-		for ( FRawObjectIterator It; It; ++It )
+		UObject* Target = *It;
+		if (dynamic_cast<UClass*>(Target))
 		{
-			UObject* Target = *It;
-			if (OldVTable == *(void**)Target)
+			UClass *Class = CastChecked<UClass>(Target);
+			if (Class->ClassConstructor == OldClassConstructor)
 			{
-				*(void**)Target = NewVTable;
-				Count++;
-			}
-			else if (dynamic_cast<UClass*>(Target))
-			{
-				UClass *Class = CastChecked<UClass>(Target);
-				if (Class->ClassConstructor == OldClassConstructor)
-				{
-					Class->ClassConstructor = ClassConstructor;
-					Class->ClassAddReferencedObjects = ClassAddReferencedObjects;
-					CountClass++;
-				}
+				Class->ClassConstructor = ClassConstructor;
+				Class->ClassAddReferencedObjects = ClassAddReferencedObjects;
+				CountClass++;
 			}
 		}
-		UE_LOG(LogClass, Verbose, TEXT("Updated the vtable for %d live objects and %d blueprint classes.  %016llx -> %016llx"), Count, CountClass, PTRINT(OldVTable), PTRINT(NewVTable));
 	}
-	else
-	{
-		UE_LOG(LogClass, Error, TEXT("VTable for class %s did not change?"),*GetName());
-	}
+	UE_LOG(LogClass, Verbose, TEXT("Updated the internal methods %d blueprint classes."), CountClass);
+
 	return true;
 }
 

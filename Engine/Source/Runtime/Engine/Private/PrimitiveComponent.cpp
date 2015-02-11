@@ -51,7 +51,7 @@ static TAutoConsoleVariable<float> CVarInitialOverlapTolerance(
 	ECVF_Default);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-static TAutoConsoleVariable<int32> CVarShowInitialOverlaps(
+TAutoConsoleVariable<int32> CVarShowInitialOverlaps(
 	TEXT("p.ShowInitialOverlaps"),
 	0,
 	TEXT("Show initial overlaps when moving a component, including estimated 'exit' direction.\n")
@@ -68,18 +68,8 @@ int32 UPrimitiveComponent::CurrentTag = 2147483647 / 4;
 // 0 is reserved to mean invalid
 uint64 UPrimitiveComponent::NextComponentId = 1;
 
-UPrimitiveComponent::UPrimitiveComponent()
-{
-	InitializePrimitiveComponentDefaults();
-}
-
-UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitializer)
+UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitializer /*= FObjectInitializer::Get()*/)
 	: Super(ObjectInitializer)
-{
-	InitializePrimitiveComponentDefaults();
-}
-
-void UPrimitiveComponent::InitializePrimitiveComponentDefaults()
 {
 	PostPhysicsComponentTick.bCanEverTick = false;
 	PostPhysicsComponentTick.bStartWithTickEnabled = true;
@@ -145,14 +135,6 @@ void UPrimitiveComponent::GetLightAndShadowMapMemoryUsage( int32& LightMapMemory
 	LightMapMemoryUsage		= 0;
 	ShadowMapMemoryUsage	= 0;
 	return;
-}
-
-void UPrimitiveComponent::OnComponentCreated()
-{
-	Super::OnComponentCreated();
-
-	// Shadow the current mobility setting for physics scene initialization (since e.g. during UCS execution we temporarily override the base mobility setting)
-	PhysicsMobility = Mobility;
 }
 
 void UPrimitiveComponent::InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly) 
@@ -343,6 +325,45 @@ void UPrimitiveComponent::OnUnregister()
 	{
 		UNavigationSystem::OnComponentUnregistered(this);
 	}
+}
+
+FPrimitiveComponentInstanceData::FPrimitiveComponentInstanceData(const UPrimitiveComponent* SourceComponent)
+	: FSceneComponentInstanceData(SourceComponent)
+{
+}
+
+void FPrimitiveComponentInstanceData::ApplyToComponent(UActorComponent* Component)
+{
+	FSceneComponentInstanceData::ApplyToComponent(Component);
+
+	if (ContainsSavedProperties() && Component->IsRegistered())
+	{
+		Component->MarkRenderStateDirty();
+	}
+}
+
+bool FPrimitiveComponentInstanceData::ContainsData() const
+{
+	return (ContainsSavedProperties() || AttachedInstanceComponents.Num() > 0);
+}
+
+FComponentInstanceDataBase* UPrimitiveComponent::GetComponentInstanceData() const
+{
+	FPrimitiveComponentInstanceData* InstanceData = new FPrimitiveComponentInstanceData(this);
+
+	if (!InstanceData->ContainsData())
+	{
+		delete InstanceData;
+		InstanceData = nullptr;
+	}
+
+	return InstanceData;
+}
+
+FName UPrimitiveComponent::GetComponentInstanceDataType() const
+{
+	static const FName PrimitiveComponentInstanceDataTypeName(TEXT("PrimitiveComponentInstanceData"));
+	return PrimitiveComponentInstanceDataTypeName;
 }
 
 void UPrimitiveComponent::OnAttachmentChanged()
@@ -657,8 +678,11 @@ void UPrimitiveComponent::ReceiveComponentDamage(float DamageAmount, FDamageEven
 		FPointDamageEvent* const PointDamageEvent = (FPointDamageEvent*) &DamageEvent;
 		if((DamageTypeCDO->DamageImpulse > 0.f) && !PointDamageEvent->ShotDirection.IsNearlyZero())
 		{
-			FVector const ImpulseToApply = PointDamageEvent->ShotDirection.GetSafeNormal() * DamageTypeCDO->DamageImpulse;
-			AddImpulseAtLocation( ImpulseToApply, PointDamageEvent->HitInfo.ImpactPoint, PointDamageEvent->HitInfo.BoneName );
+			if (IsSimulatingPhysics(PointDamageEvent->HitInfo.BoneName))
+			{
+				FVector const ImpulseToApply = PointDamageEvent->ShotDirection.GetSafeNormal() * DamageTypeCDO->DamageImpulse;
+				AddImpulseAtLocation(ImpulseToApply, PointDamageEvent->HitInfo.ImpactPoint, PointDamageEvent->HitInfo.BoneName);
+			}
 		}
 	}
 	else if (DamageEvent.IsOfType(FRadialDamageEvent::ClassID))
@@ -841,25 +865,28 @@ bool UPrimitiveComponent::HasValidPhysicsState() const
 	return BodyInstance.IsValidBodyInstance();
 }
 
+bool UPrimitiveComponent::IsComponentIndividuallySelected() const
+{
+	bool bIndividuallySelected = false;
+#if WITH_EDITOR
+	if(SelectionOverrideDelegate.IsBound())
+	{
+		bIndividuallySelected = SelectionOverrideDelegate.Execute(this);
+	}
+#endif
+	return bIndividuallySelected;
+}
+
 bool UPrimitiveComponent::ShouldRenderSelected() const
 {
+	const AActor* Owner = GetOwner();
+	return(	bSelectable && 
+			Owner != NULL && 
 #if WITH_EDITOR
-	if (SelectionOverrideDelegate.IsBound())
-	{
-		return SelectionOverrideDelegate.Execute(this);
-	}
-	else
-#endif
-	{
-		const AActor* Owner = GetOwner();
-		return(	bSelectable && 
-				Owner != NULL && 
-#if WITH_EDITOR
-				(Owner->IsSelected() || (Owner->ParentComponentActor != NULL && Owner->ParentComponentActor->IsSelected())) );
+			(Owner->IsSelected() || (Owner->ParentComponentActor != NULL && Owner->ParentComponentActor->IsSelected())) );
 #else
-				Owner->IsSelected() );
+			Owner->IsSelected() );
 #endif
-	}
 }
 
 void UPrimitiveComponent::SetCastShadow(bool NewCastShadow)
@@ -885,7 +912,7 @@ void UPrimitiveComponent::PushSelectionToProxy()
 	//although this should only be called for attached components, some billboard components can get in without valid proxies
 	if (SceneProxy)
 	{
-		SceneProxy->SetSelection_GameThread(ShouldRenderSelected());
+		SceneProxy->SetSelection_GameThread(ShouldRenderSelected(),IsComponentIndividuallySelected());
 	}
 }
 
@@ -948,14 +975,6 @@ bool UPrimitiveComponent::IsWorldGeometry() const
 	// but then if we disable collision, they just become non world geometry. 
 	// not sure if that would be best way to do this yet
 	return Mobility != EComponentMobility::Movable && GetCollisionObjectType()==ECC_WorldStatic;
-}
-
-void UPrimitiveComponent::SetMobility(EComponentMobility::Type NewMobility)
-{
-	Super::SetMobility(NewMobility);
-
-	// Update the shadowed mobility setting for physics
-	PhysicsMobility = Mobility;
 }
 
 ECollisionChannel UPrimitiveComponent::GetCollisionObjectType() const
@@ -1269,6 +1288,21 @@ FCollisionShape UPrimitiveComponent::GetCollisionShape(float Inflation) const
 	return FCollisionShape::MakeBox(Bounds.BoxExtent + Inflation);
 }
 
+bool UPrimitiveComponent::CheckStaticMobilityAndWarn(const FText& ActionText) const
+{
+	AActor* Actor = GetOwner();
+	// static things can move before they are registered (e.g. immediately after streaming), but not after.
+	if (Mobility == EComponentMobility::Static && Actor && Actor->bActorInitialized)
+	{
+		FMessageLog("PIE").Warning(FText::Format(LOCTEXT("InvalidStaticMove", "Mobility of {0} : {1} has to be 'Movable' if you'd like to {2}. "),
+			FText::FromString(GetNameSafe(GetOwner())), FText::FromString(GetName()), ActionText));
+
+		return true;
+	}
+
+	return false;
+}
+
 bool UPrimitiveComponent::MoveComponent( const FVector& Delta, const FRotator& NewRotation, bool bSweep, FHitResult* OutHit, EMoveComponentFlags MoveFlags)
 {
 	SCOPE_CYCLE_COUNTER(STAT_MoveComponentTime);
@@ -1295,10 +1329,9 @@ bool UPrimitiveComponent::MoveComponent( const FVector& Delta, const FRotator& N
 	AActor* const Actor = GetOwner();
 
 	// static things can move before they are registered (e.g. immediately after streaming), but not after.
-	if (Mobility == EComponentMobility::Static && Actor && Actor->bActorInitialized)
+	// TODO: Static components without an owner can move, should they be able to?
+	if (CheckStaticMobilityAndWarn(LOCTEXT("InvalidMove", "move")))
 	{
-		// TODO: Static components without an owner can move, should they be able to?
-		UE_LOG(LogPrimitiveComponent, Warning, TEXT("Trying to move static component '%s' after initialization"), *GetFullName());
 		if (OutHit)
 		{
 			*OutHit = FHitResult();

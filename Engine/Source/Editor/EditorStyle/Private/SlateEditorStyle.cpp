@@ -69,6 +69,11 @@ FSlateEditorStyle::FStyle::FStyle( const TWeakObjectPtr< UEditorStyleSettings >&
 	, SelectionColor_Inactive( SelectionColor_Inactive_LinearRef )
 	, SelectionColor_Pressed( SelectionColor_Pressed_LinearRef )
 
+	, InheritedFromBlueprintTextColor(FLinearColor(0.25f, 0.5f, 1.0f))
+	, InheritedFromNativeTextColor(FLinearColor(0.375f, 1.0f, 0.375f))
+	, IntroducedInThisInstanceTextColor(FLinearColor::White)
+	, IntroducedInThisBlueprintTextColor(FLinearColor::White)
+
 	, Settings( InSettings )
 {
 
@@ -101,10 +106,8 @@ void FSlateEditorStyle::FStyle::SyncSettings()
 		SetColor( SelectionColor_Pressed_LinearRef, Settings->PressedSelectionColor );
 
 		// The subdued selection color is derived from the selection color
-		auto SubduedSelectionColor = Settings->SelectionColor.LinearRGBToHSV();
-		SubduedSelectionColor.G *= 0.55f;		// take the saturation 
-		SubduedSelectionColor.B *= 0.8f;		// and brightness down
-		SetColor( SelectionColor_Subdued_LinearRef, SubduedSelectionColor.HSVToLinearRGB() );
+		auto SubduedSelectionColor = Settings->GetSubduedSelectionColor();
+		SetColor( SelectionColor_Subdued_LinearRef, SubduedSelectionColor );
 
 		// Also sync the colors used by FCoreStyle, as FEditorStyle isn't yet being used as an override everywhere
 		FCoreStyle::SetSelectorColor( Settings->KeyboardFocusColor );
@@ -202,6 +205,30 @@ void FSlateEditorStyle::FStyle::SetupGeneralStyles()
 			.SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f)));
 
 		Set("NormalText", NormalText);
+
+		Set("NormalText.Subdued", FTextBlockStyle(NormalText)
+			.SetColorAndOpacity(FSlateColor::UseSubduedForeground()));
+
+		Set("SmallText", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 9)));
+
+		Set("SmallText.Subdued", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 9))
+			.SetColorAndOpacity(FSlateColor::UseSubduedForeground()));
+
+		Set("TinyText", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 8)));
+
+		Set("TinyText.Subdued", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 8))
+			.SetColorAndOpacity(FSlateColor::UseSubduedForeground()));
+
+		Set("LargeText", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Bold", 11))
+			.SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f))
+			.SetHighlightColor(FLinearColor(1.0f, 1.0f, 1.0f))
+			.SetShadowOffset(FVector2D(1, 1))
+			.SetShadowColorAndOpacity(FLinearColor(0, 0, 0, 0.9f)));
 	}
 
 	// Rendering resources that never change
@@ -333,6 +360,66 @@ void FSlateEditorStyle::FStyle::SetupGeneralStyles()
 			.SetHovered(BOX_BRUSH("Common/RoundedSelection_16x", 4.0f / 16.0f, SelectionColor))
 			.SetPressed(BOX_BRUSH("Common/RoundedSelection_16x", 4.0f / 16.0f, SelectionColor_Pressed))
 			);
+
+		Set("FlatButton.Dark", FButtonStyle(Button)
+			.SetNormal(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, FLinearColor(0.125f, 0.125f, 0.125f, 0.8f)))
+			.SetHovered(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, SelectionColor))
+			.SetPressed(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, SelectionColor_Pressed))
+			);
+
+		Set("FlatButton.Light", FButtonStyle(Button)
+			.SetNormal(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, FLinearColor(0.72267, 0.72267, 0.72267, 1)))
+			.SetHovered(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, FLinearColor(0.85, 0.85, 0.85, 1)))
+			.SetPressed(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, FLinearColor(0.58597, 0.58597, 0.58597, 1)))
+			);
+
+		Set("FlatButton.Default", GetWidgetStyle<FButtonStyle>("FlatButton.Dark"));
+
+		Set("FlatButton.DefaultTextStyle", FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Bold", 10))
+			.SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f))
+			.SetHighlightColor(FLinearColor(1.0f, 1.0f, 1.0f))
+			.SetShadowOffset(FVector2D(1, 1))
+			.SetShadowColorAndOpacity(FLinearColor(0, 0, 0, 0.9f)));
+
+		struct ButtonColor
+		{
+		public:
+			FName Name;
+			FLinearColor Normal;
+			FLinearColor Hovered;
+			FLinearColor Pressed;
+
+			ButtonColor(const FName& Name, const FLinearColor& Normal) : Name(Name), Normal(Normal)
+			{
+				Hovered = Normal * 0.8f;
+				Hovered.A = Normal.A;
+				Pressed = Normal * 0.6f;
+				Pressed.A = Normal.A;
+			}
+		};
+
+		TArray< ButtonColor > FlatButtons;
+		FlatButtons.Add(ButtonColor("FlatButton.Primary", FLinearColor(0.02899, 0.19752, 0.48195)));
+		FlatButtons.Add(ButtonColor("FlatButton.Success", FLinearColor(0.10616, 0.48777, 0.10616)));
+		FlatButtons.Add(ButtonColor("FlatButton.Info", FLinearColor(0.10363, 0.53564, 0.7372)));
+		FlatButtons.Add(ButtonColor("FlatButton.Warning", FLinearColor(0.87514, 0.42591, 0.07383)));
+		FlatButtons.Add(ButtonColor("FlatButton.Danger", FLinearColor(0.70117, 0.08464, 0.07593)));
+
+		for ( const ButtonColor& Entry : FlatButtons )
+		{
+			Set(Entry.Name, FButtonStyle(Button)
+				.SetNormal(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, Entry.Normal))
+				.SetHovered(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, Entry.Hovered))
+				.SetPressed(BOX_BRUSH("Common/FlatButton", 2.0f / 8.0f, Entry.Pressed))
+				);
+		}
+
+		Set("FontAwesome.8", TTF_FONT("Fonts/FontAwesome", 8));
+		Set("FontAwesome.9", TTF_FONT("Fonts/FontAwesome", 9));
+		Set("FontAwesome.10", TTF_FONT("Fonts/FontAwesome", 10));
+		Set("FontAwesome.11", TTF_FONT("Fonts/FontAwesome", 11));
+		Set("FontAwesome.12", TTF_FONT("Fonts/FontAwesome", 12));
 
 		/* Create a checkbox style for "ToggleButton" ... */
 		const FCheckBoxStyle ToggleButtonStyle = FCheckBoxStyle()
@@ -622,18 +709,6 @@ void FSlateEditorStyle::FStyle::SetupGeneralStyles()
 			.SetTextStyle(NormalText)
 			.SetPadding(FMargin(0.0f));
 		Set("DarkHyperlink", DarkHyperlink);
-
-		// Edit BP Hyperlink
-		FButtonStyle EditBPHyperlinkButton = FButtonStyle()
-			.SetNormal(BORDER_BRUSH("Old/HyperlinkDotted", FMargin(0, 0, 0, 3 / 16.0f), FLinearColor(0.25f, 0.5f, 1.0f)))
-			.SetPressed(FSlateNoResource())
-			.SetHovered(BORDER_BRUSH("Old/HyperlinkUnderline", FMargin(0, 0, 0, 3 / 16.0f), FLinearColor(0.25f, 0.5f, 1.0f)));
-		FHyperlinkStyle EditBPHyperlink = FHyperlinkStyle()
-			.SetUnderlineStyle(EditBPHyperlinkButton)
-			.SetTextStyle(NormalText)
-			.SetPadding(FMargin(0.0f));
-
-		Set("EditBPHyperlink", EditBPHyperlink);
 
 		// Visible on hover hyper link
 		FButtonStyle HoverOnlyHyperlinkButton = FButtonStyle()
@@ -1221,15 +1296,6 @@ void FSlateEditorStyle::FStyle::SetupGeneralStyles()
 		Set( "SceneOutliner.TableViewRow", FTableRowStyle(NormalTableRowStyle)
 			.SetInactiveBrush( IMAGE_BRUSH( "Common/Selection", Icon8x8, SelectionColor_Subdued ) )
 		);
-
-		Set( "SceneOutliner.EditBlueprintHyperlinkStyle",
-			FTextBlockStyle( NormalText )
-			.SetFont( TTF_CORE_FONT( "Fonts/Roboto-Regular", 10 ) )
-			.SetColorAndOpacity( FSlateColor::UseForeground() ) );
-		Set( "SceneOutliner.GoToCodeHyperlinkStyle",
-			FTextBlockStyle( NormalText )
-			.SetFont( TTF_CORE_FONT( "Fonts/Roboto-Regular", 10 ) )
-			.SetColorAndOpacity( FSlateColor::UseSubduedForeground() ) );
 	}
 
 	// Socket chooser
@@ -2271,6 +2337,54 @@ void FSlateEditorStyle::FStyle::SetupGeneralStyles()
 			.SetInactiveHoveredBrush(IMAGE_BRUSH("Common/Selection", Icon8x8, SelectionColor_Inactive))
 			);
 	}
+
+
+	// Common styles for blueprint/code references
+	{
+		Set("Common.IntroducedInThisInstanceTextColor", IntroducedInThisInstanceTextColor);
+		Set("Common.IntroducedInThisBlueprintTextColor", IntroducedInThisBlueprintTextColor);
+
+		// Inherited from blueprint
+		Set("Common.InheritedFromBlueprintTextColor", InheritedFromBlueprintTextColor);
+
+		FTextBlockStyle InheritedFromBlueprintTextStyle = FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 10))
+			.SetColorAndOpacity(InheritedFromBlueprintTextColor);
+
+		Set("Common.InheritedFromBlueprintTextStyle", InheritedFromBlueprintTextStyle);
+
+		// Go to blueprint hyperlink
+		FButtonStyle EditBPHyperlinkButton = FButtonStyle()
+			.SetNormal(BORDER_BRUSH("Old/HyperlinkDotted", FMargin(0, 0, 0, 3 / 16.0f), InheritedFromBlueprintTextColor))
+			.SetPressed(FSlateNoResource())
+			.SetHovered(BORDER_BRUSH("Old/HyperlinkUnderline", FMargin(0, 0, 0, 3 / 16.0f), InheritedFromBlueprintTextColor));
+		FHyperlinkStyle EditBPHyperlinkStyle = FHyperlinkStyle()
+			.SetUnderlineStyle(EditBPHyperlinkButton)
+			.SetTextStyle(InheritedFromBlueprintTextStyle)
+			.SetPadding(FMargin(0.0f));
+
+		Set("Common.GotoBlueprintHyperlink", EditBPHyperlinkStyle);
+
+		// Inherited from native
+		Set("Common.InheritedFromNativeTextColor", InheritedFromNativeTextColor);
+
+		FTextBlockStyle InheritedFromNativeTextStyle = FTextBlockStyle(NormalText)
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Regular", 10))
+			.SetColorAndOpacity(InheritedFromNativeTextColor);
+		Set("Common.InheritedFromNativeTextStyle", InheritedFromNativeTextStyle);
+
+		// Go to native class hyperlink
+		FButtonStyle EditNativeHyperlinkButton = FButtonStyle()
+			.SetNormal(BORDER_BRUSH("Old/HyperlinkDotted", FMargin(0, 0, 0, 3 / 16.0f), InheritedFromNativeTextColor))
+			.SetPressed(FSlateNoResource())
+			.SetHovered(BORDER_BRUSH("Old/HyperlinkUnderline", FMargin(0, 0, 0, 3 / 16.0f), InheritedFromNativeTextColor));
+		FHyperlinkStyle EditNativeHyperlinkStyle = FHyperlinkStyle()
+			.SetUnderlineStyle(EditNativeHyperlinkButton)
+			.SetTextStyle(InheritedFromNativeTextStyle)
+			.SetPadding(FMargin(0.0f));
+
+		Set("Common.GotoNativeCodeHyperlink", EditNativeHyperlinkStyle);
+	}
 #endif
 }
 
@@ -2528,7 +2642,7 @@ void FSlateEditorStyle::FStyle::SetupTutorialStyles()
 
 		const FTextBlockStyle DocumentationTooltipTextSubdued = FTextBlockStyle( NormalText )
 			.SetFont( TTF_CORE_FONT( "Fonts/Roboto-Regular", 8 ) )
-			.SetColorAndOpacity( FLinearColor( 0.2f, 0.2f, 0.2f ) );
+			.SetColorAndOpacity( FLinearColor( 0.1f, 0.1f, 0.1f ) );
 		Set("Documentation.SDocumentationTooltipSubdued", FTextBlockStyle(DocumentationTooltipTextSubdued));
 
 		const FTextBlockStyle DocumentationTooltipHyperlinkText = FTextBlockStyle( NormalText )
@@ -3088,8 +3202,11 @@ void FSlateEditorStyle::FStyle::SetupPropertyEditorStyles()
 		Set( "DetailsView.AdvancedDropdownBorder.Open", new IMAGE_BRUSH( "Common/ScrollBoxShadowTop", FVector2D(64,8) ) );
 		Set( "DetailsView.CategoryFontStyle", TTF_CORE_FONT( "Fonts/Roboto-Bold", 10 ) );
 
-		Set( "DetailsView.EditBlueprintHyperlinkStyle", FTextBlockStyle(NormalText) .SetFont( TTF_CORE_FONT( "Fonts/Roboto-Regular", 10 ) ).SetColorAndOpacity( FLinearColor( 0.25f, 0.5f, 1.0f ) ) );
-		Set( "DetailsView.GoToCodeHyperlinkStyle", FTextBlockStyle(NormalText) .SetFont( TTF_CORE_FONT( "Fonts/Roboto-Regular", 10 ) ).SetColorAndOpacity( FLinearColor( 0.7f, 0.7f, 0.7f ) ) );
+		Set( "DetailsView.CategoryTextStyle", 
+			FTextBlockStyle(NormalText)
+			.SetFont(GetFontStyle("DetailsView.CategoryFontStyle"))
+			.SetShadowOffset(FVector2D(1.0f, 1.0f))
+		);
 
 		Set( "DetailsView.TreeView.TableRow", FTableRowStyle()
 			.SetEvenRowBackgroundBrush( FSlateNoResource() )
@@ -3105,7 +3222,7 @@ void FSlateEditorStyle::FStyle::SetupPropertyEditorStyles()
 			.SetSelectedTextColor( InvertedForeground )
 			);
 	}
-	}
+}
 
 void FSlateEditorStyle::FStyle::SetupProfilerStyle()
 {
@@ -3325,7 +3442,8 @@ void FSlateEditorStyle::FStyle::SetupGraphEditorStyles()
 		Set( "Graph.Node.CommentFont", TTF_CORE_FONT( "Fonts/Roboto-Regular", 10 ) );
 		Set( "Graph.Node.Comment.BubbleOffset", FMargin(8,0,0,0) );
 		Set( "Graph.Node.Comment.PinIconPadding", FMargin(0,2,0,0) );
-		Set( "Graph.Node.Comment.BubblePadding", FMargin(4,4) );
+		Set( "Graph.Node.Comment.BubblePadding", FVector2D(3,3) );
+		Set( "Graph.Node.Comment.BubbleWidgetMargin", FMargin(4,4) );
 
 		const FCheckBoxStyle CommentTitleButton = FCheckBoxStyle()
 			.SetCheckBoxType( ESlateCheckBoxType::CheckBox )
@@ -3951,13 +4069,13 @@ void FSlateEditorStyle::FStyle::SetupGraphEditorStyles()
 
 		Set("SCSEditor.ComponentTooltip.Label",
 			FTextBlockStyle(NormalText)
-			.SetColorAndOpacity(FLinearColor(0.2f, 0.2f, 0.2f))
+			.SetColorAndOpacity(FLinearColor(0.075f, 0.075f, 0.075f))
 			.SetShadowOffset(FVector2D(1.0f, 1.0f))
 			.SetShadowColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f))
 		);
 		Set("SCSEditor.ComponentTooltip.ImportantLabel",
 			FTextBlockStyle(NormalText)
-			.SetColorAndOpacity(FLinearColor(0.2f, 0.2f, 0.2f))
+			.SetColorAndOpacity(FLinearColor(0.05f, 0.05f, 0.05f))
 			.SetShadowOffset(FVector2D(1.0f, 1.0f))
 			.SetShadowColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f))
 		);
@@ -3965,10 +4083,10 @@ void FSlateEditorStyle::FStyle::SetupGraphEditorStyles()
 
 		Set("SCSEditor.ComponentTooltip.Value", 
 			FTextBlockStyle(NormalText)
- 			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Bold", 10))
+			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Bold", 10))
 			.SetColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f))
- 			.SetShadowOffset(FVector2D(1.0f, 1.0f))
- 			.SetShadowColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f))
+			.SetShadowOffset(FVector2D(1.0f, 1.0f))
+			.SetShadowColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f))
 		);
 		Set("SCSEditor.ComponentTooltip.ImportantValue",
 			FTextBlockStyle(NormalText)
@@ -3981,7 +4099,7 @@ void FSlateEditorStyle::FStyle::SetupGraphEditorStyles()
 		Set("SCSEditor.ComponentTooltip.ClassDescription",
 			FTextBlockStyle(NormalText)
 			.SetFont(TTF_CORE_FONT("Fonts/Roboto-Italic", 10))
-			.SetColorAndOpacity(FLinearColor(0.2f, 0.2f, 0.2f))
+			.SetColorAndOpacity(FLinearColor(0.1f, 0.1f, 0.1f))
 			.SetShadowOffset(FVector2D(1.0f, 1.0f))
 			.SetShadowColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f))
 		);
@@ -5059,6 +5177,7 @@ void FSlateEditorStyle::FStyle::SetupClassIconsAndThumbnails()
 			TEXT("GameMode"),
 			TEXT("GameState"),
 			TEXT("HUD"),
+			TEXT("Interface"),
 			TEXT("InterpData"),
 			TEXT("KillZVolume"),
 			TEXT("Landscape"),
@@ -5202,6 +5321,7 @@ void FSlateEditorStyle::FStyle::SetupContentBrowserStyle()
 		// Tile view
 		Set( "ContentBrowser.AssetTileViewNameFont", TTF_CORE_FONT( "Fonts/Roboto-Regular", 9 ) );
 		Set( "ContentBrowser.AssetTileViewNameFontSmall", TTF_CORE_FONT( "Fonts/Roboto-Light", 8, EFontHinting::Auto ) );
+		Set( "ContentBrowser.AssetTileViewNameFontVerySmall", TTF_CORE_FONT( "Fonts/Roboto-Light", 7, EFontHinting::Auto ) );
 		Set( "ContentBrowser.AssetTileViewNameFontDirty", TTF_CORE_FONT( "Fonts/Roboto-Bold", 10 ) );
 		Set( "ContentBrowser.AssetListView.TableRow", FTableRowStyle()
 			.SetEvenRowBackgroundBrush( FSlateNoResource() )
@@ -5268,9 +5388,6 @@ void FSlateEditorStyle::FStyle::SetupContentBrowserStyle()
 
 		Set( "ContentBrowser.PathActions.NewAsset", new IMAGE_BRUSH( "Icons/icon_file_new_16px", Icon16x16 ) );
 		Set( "ContentBrowser.PathActions.SetColor", new IMAGE_BRUSH( "Icons/icon_Cascade_Color_40x", Icon16x16 ) );
-
-		FComboButtonStyle NewAssetComboButton = GetWidgetStyle<FComboButtonStyle>( "ToolbarComboButton" );
-		Set( "ContentBrowser.NewAsset.Style", NewAssetComboButton );
 
 		FComboButtonStyle FiltersComboButton = GetWidgetStyle<FComboButtonStyle>( "ToolbarComboButton" );
 		Set( "ContentBrowser.Filters.Style", FiltersComboButton );

@@ -54,7 +54,7 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("GetComponentsTime"),STAT_GetComponentsTime,STATG
  * @see https://docs.unrealengine.com/latest/INT/Programming/UnrealArchitecture/Actors/
  * @see UActorComponent
  */
-UCLASS(BlueprintType, Blueprintable, config=Engine)
+UCLASS(BlueprintType, Blueprintable, config=Engine, meta=(ShortTooltip="An Actor is an object that can be placed or spawned in the world."))
 class ENGINE_API AActor : public UObject
 {
 	/**
@@ -504,7 +504,8 @@ public:
 	FTakePointDamageSignature OnTakePointDamage;
 	
 	/** 
-	 *	Called when another actor begins to overlap this actor. 
+	 *	Called when another actor begins to overlap this actor, for example a player walking into a trigger.
+	 *	For events when objects have a blocking collision, for example a player hitting a wall, see 'Hit' events.
 	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
 	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
@@ -550,7 +551,8 @@ public:
 	FActorEndTouchOverSignature OnInputTouchLeave;
 
 	/** 
-	 *	Called when this Actor hits (or is hit by) something solid. 
+	 *	Called when this Actor hits (or is hit by) something solid. This could happen due to things like Character movement, using Set Location with 'sweep' enabled, or physics simulation.
+	 *	For events when objects overlap (e.g. walking into a trigger) see the 'Overlap' event.
 	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled.
 	 */
 	UPROPERTY(BlueprintAssignable, Category="Collision")
@@ -1016,7 +1018,8 @@ public:
 	virtual void ReceiveTick(float DeltaSeconds);
 
 	/** 
-	 *	Event when this actor overlaps another actor. 
+	 *	Event when this actor overlaps another actor, for example a player walking into a trigger.
+	 *	For events when objects have a blocking collision, for example a player hitting a wall, see 'Hit' events.
 	 *	@note Components on both this and the other Actor must have bGenerateOverlapEvents set to true to generate overlap events.
 	 */
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "ActorBeginOverlap"), Category="Collision")
@@ -1078,7 +1081,8 @@ public:
 	void GetOverlappingComponents(TArray<UPrimitiveComponent*>& OverlappingComponents) const;
 
 	/** 
-	 *	Event when this actor bumps into a blocking object, or blocks another actor that bumps into it. 
+	 *	Event when this actor bumps into a blocking object, or blocks another actor that bumps into it. This could happen due to things like Character movement, using Set Location with 'sweep' enabled, or physics simulation.
+	 *	For events when objects overlap (e.g. walking into a trigger) see the 'Overlap' event.
 	 *	@note For collisions during physics simulation to generate hit events, 'Simulation Generates Hit Events' must be enabled.
 	 */
 	UFUNCTION(BlueprintImplementableEvent, meta=(FriendlyName = "Hit"), Category="Collision")
@@ -2140,6 +2144,10 @@ public:
 		Currently returns an array of UActorComponent which must be cast to the correct type. */
 	UFUNCTION(BlueprintCallable, Category = "Actor", meta = (ComponentClass = "ActorComponent"), meta=(DeterminesOutputType="ComponentClass"))
 	TArray<UActorComponent*> GetComponentsByClass(TSubclassOf<UActorComponent> ComponentClass) const;
+
+	/* Gets all the components that inherit from the given class with a given tag. */
+	UFUNCTION(BlueprintCallable, Category = "Actor", meta = (ComponentClass = "ActorComponent"), meta = (DeterminesOutputType = "ComponentClass"))
+	TArray<UActorComponent*> GetComponentsByTag(TSubclassOf<UActorComponent> ComponentClass, FName Tag) const;
 
 	/** Templatized version for syntactic nicety. */
 	template<class T>

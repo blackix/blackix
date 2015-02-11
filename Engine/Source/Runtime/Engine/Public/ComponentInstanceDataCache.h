@@ -23,10 +23,12 @@ public:
 	bool MatchesComponent(const UActorComponent* Component) const;
 
 	/** Applies this component instance data to the supplied component */
-	virtual void ApplyToComponent(UActorComponent* Component) = 0;
+	virtual void ApplyToComponent(UActorComponent* Component);
 
 	/** Replaces any references to old instances during Actor reinstancing */
 	virtual void FindAndReplaceInstances(const TMap<UObject*, UObject*>& OldToNewInstanceMap) { };
+
+	bool ContainsSavedProperties() const { return SavedProperties.Num() > 0; }
 
 protected:
 	/** The name of the source component */
@@ -38,6 +40,8 @@ protected:
 	/** The index of the source component in its owner's serialized array 
 		when filtered to just that component type */
 	int32 SourceComponentTypeSerializedIndex;
+
+	TArray<uint8> SavedProperties;
 };
 
 /** 

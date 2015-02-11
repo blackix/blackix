@@ -82,9 +82,11 @@ class COREUOBJECT_API UField : public UObject
 	/**
 	 * Finds the localized tooltip or native tooltip as a fallback.
 	 *
+	 * @param bShortTooltip Look for a shorter version of the tooltip (falls back to the long tooltip if none was specified)
+	 *
 	 * @return The tooltip for this object.
 	 */
-	FText GetToolTipText() const;
+	FText GetToolTipText(bool bShortTooltip = false) const;
 
 	/**
 	 * Determines if the property has any metadata associated with the key
@@ -1972,7 +1974,7 @@ public:
 		return NULL;
 	}
 
-	virtual void CreatePersistentUberGraphFrame(UObject* Obj) const
+	virtual void CreatePersistentUberGraphFrame(UObject* Obj, bool bCreateOnlyIfEmpty = false) const
 	{
 	}
 
@@ -2177,6 +2179,8 @@ public:
 	 * @return				True if the property exists on this or a parent class.
 	 */
 	virtual bool HasProperty(UProperty* InProperty) const;
+
+	virtual UObject* FindArchetype(UClass* ArchetypeClass, const FName ArchetypeName) const { return nullptr; }
 
 	/**
 	 * On save, we order a package's exports in class dependency order (so that

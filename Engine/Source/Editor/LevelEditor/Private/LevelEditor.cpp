@@ -37,8 +37,67 @@ FLevelEditorModule::FLevelEditorModule()
 	TEXT( "LevelEditor.ToggleImmersive" ),
 	TEXT( "Toggle 'Immersive Mode' for the active level editing viewport" ),
 	FConsoleCommandDelegate::CreateRaw( this, &FLevelEditorModule::ToggleImmersiveOnActiveLevelViewport ) )
+{
+}
+
+
+class SLevelEditorWatermark : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SLevelEditorWatermark) {}
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
 	{
+		FString OptionalBranchPrefix;
+		GConfig->GetString(TEXT("LevelEditor"), TEXT("ProjectNameWatermarkPrefix"), /*out*/ OptionalBranchPrefix, GEditorUserSettingsIni);
+
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Branch"), FText::FromString(OptionalBranchPrefix));
+		Args.Add(TEXT("GameName"), FText::FromString(FString(FApp::GetGameName())));
+
+		FText RightContentText;
+		FText RightContentTooltip;
+
+		const EBuildConfigurations::Type BuildConfig = FApp::GetBuildConfiguration();
+		if (BuildConfig != EBuildConfigurations::Shipping && BuildConfig != EBuildConfigurations::Development && BuildConfig != EBuildConfigurations::Unknown)
+		{
+			Args.Add(TEXT("Config"), EBuildConfigurations::ToText(BuildConfig));
+			RightContentText = FText::Format(NSLOCTEXT("UnrealEditor", "TitleBarRightContentAndConfig", "{Branch}{GameName} [{Config}]"), Args);
+		}
+		else
+		{
+			RightContentText = FText::Format(NSLOCTEXT("UnrealEditor", "TitleBarRightContent", "{Branch}{GameName}"), Args);
+		}
+
+		// Create the tooltip showing more detailed information
+		FFormatNamedArguments TooltipArgs;
+		const FString EngineVerisonString = GEngineVersion.ToString(GEngineVersion.IsPromotedBuild() ? EVersionComponent::Changelist : EVersionComponent::Patch);
+		TooltipArgs.Add(TEXT("Version"), FText::FromString(EngineVerisonString));
+		TooltipArgs.Add(TEXT("Branch"), FText::FromString(FApp::GetBranchName()));
+		TooltipArgs.Add(TEXT("BuildConfiguration"), EBuildConfigurations::ToText(BuildConfig));
+		TooltipArgs.Add(TEXT("BuildDate"), FText::FromString(FApp::GetBuildDate()));
+		RightContentTooltip = FText::Format(NSLOCTEXT("UnrealEditor", "TitleBarRightContentTooltip", "Version: {Version}\nBranch: {Branch}\nBuild Configuration: {BuildConfiguration}\nBuild Date: {BuildDate}"), TooltipArgs);
+
+		SetToolTipText(RightContentTooltip);
+
+		ChildSlot
+		[
+			SNew(STextBlock)
+			.Text(RightContentText)
+			.Visibility(EVisibility::HitTestInvisible)
+			.Font(FSlateFontInfo(FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Bold.ttf"), 14))
+			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, 0.4f))
+		];
 	}
+	
+	// SWidget interface
+	virtual EWindowZone::Type GetWindowZoneOverride() const override
+	{
+		return EWindowZone::TitleBar;
+	}
+	// End of SWidget interface
+};
 
 TSharedRef<SDockTab> FLevelEditorModule::SpawnLevelEditor( const FSpawnTabArgs& InArgs )
 {
@@ -74,40 +133,14 @@ TSharedRef<SDockTab> FLevelEditorModule::SpawnLevelEditor( const FSpawnTabArgs& 
 
 	TSharedPtr< SWidget > RightContent;
 	{
-		FString OptionalBranchPrefix;
-		GConfig->GetString(TEXT("LevelEditor"), TEXT("ProjectNameWatermarkPrefix"), /*out*/ OptionalBranchPrefix, GEditorUserSettingsIni);
-
-		FFormatNamedArguments Args;
-		Args.Add( TEXT("Branch"), FText::FromString(OptionalBranchPrefix) );
-		Args.Add( TEXT("GameName"), FText::FromString(FString(FApp::GetGameName())) );
-
-		FText RightContentText;
-
-		const EBuildConfigurations::Type BuildConfig = FApp::GetBuildConfiguration();
-		if (BuildConfig != EBuildConfigurations::Shipping && BuildConfig != EBuildConfigurations::Development && BuildConfig != EBuildConfigurations::Unknown)
-		{
-			Args.Add( TEXT("Config"), EBuildConfigurations::ToText(BuildConfig) );
-			RightContentText = FText::Format(NSLOCTEXT("UnrealEditor", "TitleBarRightContentAndConfig", "{Branch}{GameName} [{Config}]"), Args);
-		}
-		else
-		{
-			RightContentText = FText::Format(NSLOCTEXT("UnrealEditor", "TitleBarRightContent", "{Branch}{GameName}"), Args);
-		}
-
 		RightContent =
 				SNew( SHorizontalBox )
 
 				+SHorizontalBox::Slot()
+				.Padding(0.0f, 0.0f, 14.0f, 0.0f)
 				.AutoWidth()
 				[
-					SNew(SBox)
-					.Visibility( EVisibility::HitTestInvisible )
-					[
-						SNew( STextBlock )
-						.Text( RightContentText )
-						.Font( FSlateFontInfo( FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Bold.ttf"), 14 ) )
-						.ColorAndOpacity( FLinearColor( 1.0f, 1.0f, 1.0f, 0.3f ) )
-					]
+					SNew(SLevelEditorWatermark)
 				]
 // Put the level editor stats/notification widgets on the main window title bar since we don't have a menu bar on OS X
 #if PLATFORM_MAC
@@ -359,6 +392,11 @@ void FLevelEditorModule::BroadcastMapChanged( UWorld* World, EMapChangeType::Typ
 	MapChangedEvent.Broadcast( World, MapChangeType );
 }
 
+void FLevelEditorModule::BroadcastComponentsEdited()
+{
+	ComponentsEditedEvent.Broadcast();
+}
+
 const FLevelEditorCommands& FLevelEditorModule::GetLevelEditorCommands() const
 {
 	return FLevelEditorCommands::Get();
@@ -597,7 +635,7 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 		);
 
 	ActionList.MapAction( 
-		Commands.SnapCameraToActor, 
+		Commands.SnapCameraToObject,
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::ExecuteExecCommand, FString( TEXT("CAMERA SNAP") ) )
 		);
 
@@ -609,11 +647,6 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 	ActionList.MapAction( 
 		Commands.GoToDocsForActor, 
 		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::GoToDocsForActor_Clicked )
-		);
-
-	ActionList.MapAction(
-		Commands.AddScriptBehavior,
-		FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::AddScriptBehavior_Clicked )
 		);
 
 	ActionList.MapAction( 

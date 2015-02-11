@@ -113,8 +113,8 @@ public:
 	/** Moves the camera to the current mouse position */
 	TSharedPtr< FUICommandInfo > GoHere;
 
-	/** Snaps the camera to the selected actors. */
-	TSharedPtr< FUICommandInfo > SnapCameraToActor;
+	/** Snaps the camera to the selected object. */
+	TSharedPtr< FUICommandInfo > SnapCameraToObject;
 
 	/** Goes to the source code for the selected actor's class. */
 	TSharedPtr< FUICommandInfo > GoToCodeForActor;
@@ -512,7 +512,9 @@ public:
 	 */
 	TSharedPtr< FUICommandInfo > OpenLevelBlueprint;
 	TSharedPtr< FUICommandInfo > CheckOutProjectSettingsConfig;
-	TSharedPtr< FUICommandInfo > CreateBlueprintClass;
+	TSharedPtr< FUICommandInfo > CreateBlankBlueprintClass;
+	TSharedPtr< FUICommandInfo > ConvertSelectionToBlueprintViaHarvest;
+	TSharedPtr< FUICommandInfo > ConvertSelectionToBlueprintViaSubclass;
 
 	/** Editor mode commands */
 	TArray< TSharedPtr< FUICommandInfo > > EditorModeCommands;
@@ -823,9 +825,6 @@ public:
 	/** Called when 'Go to Documentation for Actor' is clicked */
 	static void GoToDocsForActor_Clicked();
 
-	/** Called when 'Add Script Behavior' is clicked */
-	static void AddScriptBehavior_Clicked();
-
 	/**
 	 * Called when the LockActorMovement command is executed
 	 */
@@ -1079,7 +1078,19 @@ public:
 	static bool CanSelectGameModeBlueprint();
 
 	/** Helps the user create a Blueprint class */
-	static void CreateBlueprintClass();
+	static void CreateBlankBlueprintClass();
+
+	/** Can call HarvestSelectedActorsIntoBlueprintClass right now?  (is anything selected) */
+	static bool CanHarvestSelectedActorsIntoBlueprintClass();
+
+	/** Harvest all of the components in the selected actors into a Blueprint, and replace the instances with one new actor */
+	static void HarvestSelectedActorsIntoBlueprintClass();
+
+	/** Can call SubclassSelectedActorIntoBlueprintClass right now?  (is exactly one thing selected) */
+	static bool CanSubclassSelectedActorIntoBlueprintClass();
+
+	/** Convert the selected actor into a Blueprint (via subclassing) */
+	static void SubclassSelectedActorIntoBlueprintClass();
 
 	/** Shows only selected actors, hiding any unselected actors and unhiding any selected hidden actors. */
 	static void OnShowOnlySelectedActors();

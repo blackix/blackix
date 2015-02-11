@@ -23,6 +23,8 @@ void FHotReloadClassReinstancer::SetupNewClassReinstancing(UClass* InNewClass, U
 
 	SaveClassFieldMapping(InOldClass);
 
+	ObjectsThatShouldUseOldStuff.Add(InOldClass); //CDO of REINST_ class can be used as archetype
+
 	TArray<UClass*> ChildrenOfClass;
 	GetDerivedClasses(InOldClass, ChildrenOfClass);
 	for (auto ClassIt = ChildrenOfClass.CreateConstIterator(); ClassIt; ++ClassIt)
@@ -40,6 +42,10 @@ void FHotReloadClassReinstancer::SetupNewClassReinstancing(UClass* InNewClass, U
 				}
 
 				Children.AddUnique(ChildBP);
+				if (ChildBP->ParentClass == InOldClass)
+				{
+					ChildBP->ParentClass = NewClass;
+				}
 			}
 			else
 			{
@@ -117,6 +123,7 @@ void FHotReloadClassReinstancer::SerializeCDOProperties(UObject* InObject, FHotR
 					{
 						// Serialize all DSO properties too					
 						FCDOWriter DefaultSubobjectWriter(PropertyData, InObj, VisitedObjects, InObj->GetFName());
+						Seek(PropertyData.Bytes.Num());
 					}
 				}
 			}
@@ -297,6 +304,32 @@ void FHotReloadClassReinstancer::UpdateDefaultProperties()
 		uint8* NewValuePtr;
 		int64 OldSerializedSize;
 	};
+	/** Memory writer archive that supports UObject values the same way as FCDOWriter. */
+	class FPropertyValueMemoryWriter : public FMemoryWriter
+	{
+	public:
+		FPropertyValueMemoryWriter(TArray<uint8>& OutData)
+			: FMemoryWriter(OutData)
+		{}
+		virtual FArchive& operator<<(class UObject*& InObj) override
+		{
+			FArchive& Ar = *this;
+			if (InObj)
+			{
+				FName ClassName = InObj->GetClass()->GetFName();
+				FName ObjectName = InObj->GetFName();
+				Ar << ClassName;
+				Ar << ObjectName;
+			}
+			else
+			{
+				FName UnusedName = NAME_None;
+				Ar << UnusedName;
+				Ar << UnusedName;
+			}
+			return *this;
+		}
+	};
 
 	// Collect default subobjects to update their properties too
 	const int32 DefaultSubobjectArrayCapacity = 16;
@@ -377,7 +410,7 @@ void FHotReloadClassReinstancer::UpdateDefaultProperties()
 				{
 					// Serialize current value to a byte array as we don't have the previous CDO to compare against, we only have its serialized property data
 					CurrentValueSerializedData.Empty(CurrentValueSerializedData.Num() + CurrentValueSerializedData.GetSlack());
-					FMemoryWriter CurrentValueWriter(CurrentValueSerializedData);
+					FPropertyValueMemoryWriter CurrentValueWriter(CurrentValueSerializedData);
 					PropertyToUpdate.Property->SerializeItem(CurrentValueWriter, InstanceValuePtr);
 
 					// Update only when the current value on the instance is identical to the original CDO
