@@ -1242,7 +1242,7 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 	{
 		Flags.bStereoEnabled = stereoEnabled;
 
-		if (SceneVP)
+		if (SceneVP && SceneVP->GetViewportWidget().IsValid())
 		{
 			if (!IsFullscreenAllowed() && stereoEnabled)
 			{
