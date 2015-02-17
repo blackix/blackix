@@ -112,7 +112,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Options			(in) specifies either position, orientation or both should be set.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
-	static void SetBaseRotationAndPositionOffset(const FRotator& BaseRot, const FVector& PosOffset, EOrientPositionSelector::Type Options);
+	static void SetBaseRotationAndPositionOffset(FRotator BaseRot, FVector PosOffset, EOrientPositionSelector::Type Options);
 
 	/**
 	 * Returns current base rotation and position offset.
