@@ -33,7 +33,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Enable			(in) 'true' to enable HMD / stereo; 'false' otherwise
 	 * @return (Boolean)		True, if the request was successful.
 	 */
-	UFUNCTION(BlueprintPure, Category="Input|HeadMountedDisplay")
+	UFUNCTION(BlueprintCallable, Category="Input|HeadMountedDisplay")
 	static bool EnableHMD(bool Enable);
 
 	/**
@@ -112,7 +112,7 @@ class UHeadMountedDisplayFunctionLibrary : public UBlueprintFunctionLibrary
 	 * @param Options			(in) specifies either position, orientation or both should be set.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Input|HeadMountedDisplay")
-	static void SetBaseRotationAndPositionOffset(const FRotator& BaseRot, const FVector& PosOffset, EOrientPositionSelector::Type Options);
+	static void SetBaseRotationAndPositionOffset(FRotator BaseRot, FVector PosOffset, EOrientPositionSelector::Type Options);
 
 	/**
 	 * Returns current base rotation and position offset.

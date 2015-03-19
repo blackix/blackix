@@ -31,27 +31,23 @@
 #endif
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
-	
-	#include "OVR.h"
-	#include "OVR_Version.h"
-	#include "OVR_Kernel.h"
-
-	#include "../Src/Kernel/OVR_Threads.h"
-	#include "../Src/OVR_CAPI_Keys.h"
+	#include <OVR_Version.h>
+	#include <OVR_CAPI.h>
+	#include <OVR_CAPI_Keys.h>
+	#include <Extras/OVR_Math.h>
+    #include <OVR_CAPI_Util.h>
 
 #ifdef OVR_SDK_RENDERING
     #if PLATFORM_WINDOWS
         #include "AllowWindowsPlatformTypes.h"
     #endif
 	#ifdef OVR_D3D_VERSION
-		#include "../Src/OVR_CAPI_D3D.h"
+		#include "OVR_CAPI_D3D.h"
 	#endif // OVR_D3D_VERSION
 	#ifdef OVR_GL
-		#include "../Src/OVR_CAPI_GL.h"
+		#include "OVR_CAPI_GL.h"
 	#endif
 #endif // OVR_SDK_RENDERING
-
-	using namespace OVR;
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 
@@ -103,9 +99,10 @@ public:
 	virtual void CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, 
 										   const float MetersToWorld, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const EStereoscopicPass StereoPassType, const float FOV) const override;
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const override;
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) override;
-	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override;
-	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override;
+	virtual void PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const override {} // DEPRECATED
+	virtual void PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const override {} // DEPRECATED
 	virtual void GetEyeRenderParams_RenderThread(EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	virtual void GetTimewarpMatrices_RenderThread(EStereoscopicPass StereoPass, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const override;
 
@@ -167,7 +164,7 @@ public:
 	virtual void OnBeginPlay() override;
 	virtual void OnEndPlay() override;
 
-	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) override;
+	virtual void DrawDebug(UCanvas* Canvas) override;
 
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition);
@@ -196,8 +193,8 @@ public:
 
 	protected: // data
 		// Data
-		mutable OVR::Lock	ModifyLock;
-		mutable OVR::Lock	ModifyEyeTexturesLock;
+		FCriticalSection	ModifyLock;
+		FCriticalSection	ModifyEyeTexturesLock;
 		FOculusRiftHMD*		Plugin;
 		bool				bNeedReinitRendererAPI;
 		bool				bInitialized;
@@ -258,8 +255,6 @@ public:
 		{
 			Reset();
 		}
-
-		virtual void Init();
 
 	protected: // data
 		ovrGLConfig			Cfg;
@@ -563,13 +558,7 @@ private: // data
 	float HFOVInRadians; // horizontal
 	float VFOVInRadians; // vertical
 
-	/** HUD stereo offset */
-	float HudOffset;
-
-	/** Screen center adjustment for 2d elements */
-	float CanvasCenterOffset;
-
-	OVR::Lock	UpdateOnRTLock;
+	FCriticalSection	UpdateOnRTLock;
 
 	/** Size of mirror window; {0,0} if size is the default one */
 	FIntPoint	MirrorWindowSize;
@@ -594,6 +583,7 @@ private: // data
 	ovrHmd					Hmd;
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				PerspectiveProjection[2];	// used for calc ortho projection matrices
 	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
 	ovrPosef				EyeRenderPose[2];
 	// U,V scale and offset needed for timewarp.
@@ -638,7 +628,7 @@ private: // data
 
 #endif // OVR_SDK_RENDERING
 	
-	OVR::Lock					StereoParamsLock;
+	FCriticalSection			StereoParamsLock;
 
 	// Params accessible from rendering thread. Should be filled at the beginning
 	// of the rendering thread under the StereoParamsLock.

@@ -1281,7 +1281,7 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		if (bFullscreen)
 		{
 			// CVar mode 2 is fullscreen with upscale
-			if(GSystemResolution.WindowMode == EWindowMode::WindowedFullscreen)
+			if(GSystemResolution.WindowMode == EWindowMode::WindowedFullscreen && !GEngine->IsStereoscopic3D(GEngine->GameViewport->GetGameViewport()))
 			{
 //				FIntPoint WindowSize = Viewport->GetSizeXY();
 				FIntPoint WindowSize = Family->RenderTarget->GetSizeXY();

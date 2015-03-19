@@ -15,7 +15,6 @@
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (push,8)
 #endif
-#include "../Src/Kernel/OVR_Log.h"
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (pop)
 #endif
@@ -68,55 +67,31 @@ void FOculusRiftPlugin::PreInit()
 
 #if !UE_BUILD_SHIPPING
 //////////////////////////////////////////////////////////////////////////
-class OculusLog : public OVR::Log
+static void OVR_CDECL OvrLogCallback(int level, const char* message)
 {
-public:
-	OculusLog()
+	const TCHAR* tbuf = ANSI_TO_TCHAR(message);
+	const TCHAR* levelStr = TEXT("");
+	switch (level)
 	{
-		SetLoggingMask(OVR::LogMask_Debug | OVR::LogMask_Regular);
+	case ovrLogLevel_Debug: levelStr = TEXT(" Debug:"); break;
+	case ovrLogLevel_Info:  levelStr = TEXT(" Info:"); break;
+	case ovrLogLevel_Error: levelStr = TEXT(" Error:"); break;
+	default:;
 	}
-
-	// This virtual function receives all the messages,
-	// developers should override this function in order to do custom logging
-	virtual void    LogMessageVarg(LogMessageType messageType, const char* fmt, va_list argList)
-	{
-		if ((messageType & GetLoggingMask()) == 0)
-			return;
-
-		ANSICHAR buf[1024];
-		int32 len = FCStringAnsi::GetVarArgs(buf, sizeof(buf), sizeof(buf) / sizeof(ANSICHAR), fmt, argList);
-		if (len > 0 && buf[len - 1] == '\n') // truncate the trailing new-line char, since Logf adds its own
-			buf[len - 1] = '\0';
-		TCHAR* tbuf = ANSI_TO_TCHAR(buf);
-		GLog->Logf(TEXT("OCULUS: %s"), tbuf);
-	}
-};
-
+	GLog->Logf(TEXT("OCULUS:%s %s"), levelStr, tbuf);
+}
 #endif
-
-//////////////////////////////////////////////////////////////////////////
-class ConditionalLocker
-{
-public:
-	ConditionalLocker(bool condition, OVR::Lock* plock) :
-		pLock((condition) ? plock : NULL)
-	{
-		OVR_ASSERT(!condition || pLock);
-		if (pLock)
-			pLock->DoLock();
-	}
-	~ConditionalLocker()
-	{
-		if (pLock)
-			pLock->Unlock();
-	}
-private:
-	OVR::Lock*	pLock;
-};
 
 void FOculusRiftHMD::PreInit()
 {
-	ovr_Initialize();
+	ovrInitParams initParams;
+	FMemory::MemSet(initParams, 0);
+	initParams.Flags = ovrInit_RequestVersion;
+	initParams.RequestedMinorVersion = OVR_MINOR_VERSION;
+#if !UE_BUILD_SHIPPING
+	initParams.LogCallback = OvrLogCallback;
+#endif
+	ovr_Initialize(&initParams);
 }
 
 bool FOculusRiftHMD::IsHMDConnected()
@@ -268,7 +243,7 @@ void FOculusRiftHMD::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat&
 	OutOrientation = ToFQuat(InPose.Orientation);
 
 	// correct position according to BaseOrientation and BaseOffset. 
-	const FVector Pos = ToFVector_M2U(Vector3f(InPose.Position)) - ToFVector_M2U(BaseOffset);
+	const FVector Pos = ToFVector_M2U(OVR::Vector3f(InPose.Position)) - ToFVector_M2U(BaseOffset);
 	OutPosition = BaseOrientation.Inverse().RotateVector(Pos);
 
 	// apply base orientation correction to OutOrientation
@@ -294,7 +269,7 @@ void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& Curre
 
 	// Save eye poses
 	ovrTrackingState ts;
-	ovrVector3f hmdToEyeViewOffset[2] = { EyeRenderDesc[0].HmdToEyeViewOffset, EyeRenderDesc[1].HmdToEyeViewOffset };
+	const ovrVector3f hmdToEyeViewOffset[2] = { EyeRenderDesc[0].HmdToEyeViewOffset, EyeRenderDesc[1].HmdToEyeViewOffset };
 	ovrHmd_GetEyePoses(Hmd, GFrameNumber, hmdToEyeViewOffset, EyeRenderPose, &ts);
 
 	const ovrPosef& ThePose = ts.HeadPose.ThePose;
@@ -340,7 +315,7 @@ void FOculusRiftHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotat
 	DeltaControlRotation.Pitch = 0;
 	DeltaControlRotation.Roll = 0;
 	{
-		ConditionalLocker lock(Flags.bUpdateOnRT, &StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 		DeltaControlOrientation = DeltaControlRotation.Quaternion();
 	}
 
@@ -373,7 +348,7 @@ void FOculusRiftHMD::UpdatePlayerCameraRotation(APlayerCameraManager* Camera, st
 
 	DeltaControlRotation = POV.Rotation;
 	{
-		ConditionalLocker lock(Flags.bUpdateOnRT, &StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 		DeltaControlOrientation = DeltaControlRotation.Quaternion();
 	}
 
@@ -1600,6 +1575,26 @@ FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(enum EStereoscopicPass StereoP
 	return proj;
 }
 
+void FOculusRiftHMD::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+{
+	OrthoDistance /= WorldToMetersScale; // This is meters from the camera (viewer) that we place the ortho plane.
+
+    const OVR::Vector2f orthoScale[2] = {
+        OVR::Vector2f(1.f) / OVR::Vector2f(EyeRenderDesc[0].PixelsPerTanAngleAtCenter),
+        OVR::Vector2f(1.f) / OVR::Vector2f(EyeRenderDesc[1].PixelsPerTanAngleAtCenter)
+    };
+
+	OVR::Matrix4f SubProjection[2];
+
+	SubProjection[0] = ovrMatrix4f_OrthoSubProjection(PerspectiveProjection[0], orthoScale[0], OrthoDistance, EyeRenderDesc[0].HmdToEyeViewOffset.x);
+	SubProjection[1] = ovrMatrix4f_OrthoSubProjection(PerspectiveProjection[1], orthoScale[1], OrthoDistance, EyeRenderDesc[1].HmdToEyeViewOffset.x);
+
+    //Translate the subprojection for half of the screen . map it from [0,1] to [-1,1] . The total translation is translated * 0.25.
+	OrthoProjection[0] = FTranslationMatrix(FVector(SubProjection[0].M[0][3] * RTWidth * .25 , 0 , 0));
+    //Right eye gets translated to right half of screen
+	OrthoProjection[1] = FTranslationMatrix(FVector(SubProjection[1].M[0][3] * RTWidth * .25 + RTWidth * .5, 0 , 0));
+}
+
 void FOculusRiftHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 {
 	// This is used for placing small HUDs (with names)
@@ -1614,67 +1609,6 @@ void FOculusRiftHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	HmdView.UpdateViewMatrix();
 	Canvas->ViewProjectionMatrix = HmdView.ViewProjectionMatrix;
 }
-
-void FOculusRiftHMD::PushViewportCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FViewport *InViewport) const
-{
-	if (StereoPass != eSSP_FULL)
-	{
-		int32 SideSizeX = FMath::TruncToInt(InViewport->GetSizeXY().X * 0.5);
-
-		// !AB: temporarily assuming all canvases are at Z = 1.0f and calculating
-		// stereo disparity right here. Stereo disparity should be calculated for each
-		// element separately, considering its actual Z-depth.
-		const float Z = 1.0f;
-		float Disparity = Z * HudOffset + Z * CanvasCenterOffset;
-		if (StereoPass == eSSP_RIGHT_EYE)
-			Disparity = -Disparity;
-
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = SideSizeX;
-			InCanvasObject->SizeY = InViewport->GetSizeXY().Y;
-			InCanvasObject->SetView(NULL);
-			InCanvasObject->Update();
-		}
-
-		float ScaleFactor = 1.0f;
-		FScaleMatrix m(ScaleFactor);
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(
-			FVector(((StereoPass == eSSP_RIGHT_EYE) ? SideSizeX : 0) + Disparity, 0, 0))*m);
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
-void FOculusRiftHMD::PushViewCanvas(EStereoscopicPass StereoPass, FCanvas *InCanvas, UCanvas *InCanvasObject, FSceneView *InView) const
-{
-	if (StereoPass != eSSP_FULL)
-	{
-		if (InCanvasObject)
-		{
-			//InCanvasObject->Init();
-			InCanvasObject->SizeX = InView->ViewRect.Width();
-			InCanvasObject->SizeY = InView->ViewRect.Height();
-			InCanvasObject->SetView(InView);
-			InCanvasObject->Update();
-		}
-
-		InCanvas->PushAbsoluteTransform(FTranslationMatrix(FVector(InView->ViewRect.Min.X, InView->ViewRect.Min.Y, 0)));
-	}
-	else
-	{
-		FMatrix m;
-		m.SetIdentity();
-		InCanvas->PushAbsoluteTransform(m);
-	}
-}
-
 
 //---------------------------------------------------
 // Oculus Rift ISceneViewExtension Implementation
@@ -1743,8 +1677,6 @@ FOculusRiftHMD::FOculusRiftHMD()
 	, UserDistanceToScreenModifier(0.f)
 	, HFOVInRadians(FMath::DegreesToRadians(90.f))
 	, VFOVInRadians(FMath::DegreesToRadians(90.f))
-	, HudOffset(0.f)
-	, CanvasCenterOffset(0.f)
 	, MirrorWindowSize(0, 0)
 	, NearClippingPlane(0)
 	, FarClippingPlane(0)
@@ -1818,12 +1750,6 @@ void FOculusRiftHMD::Startup()
 	// Custom allocator can also be specified here.
 	// Actually, most likely, the ovr_Initialize is already called from PreInit.
 	int8 bWasInitialized = ovr_Initialize();
-
-#if !UE_BUILD_SHIPPING
-	// Should be changed to CAPI when available.
-	static OculusLog OcLog;
-	OVR::Log::SetGlobalLog(&OcLog);
-#endif //#if !UE_BUILD_SHIPPING
 
 	if (GIsEditor)
 	{
@@ -1899,7 +1825,7 @@ void FOculusRiftHMD::Shutdown()
 	}
 #endif
 	{
-		OVR::Lock::Locker lock(&StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 		RenderParams_RenderThread.Clear();
 	}
 	ovr_Shutdown();
@@ -1937,7 +1863,7 @@ bool FOculusRiftHMD::InitDevice()
 		SupportedTrackingCaps &= ~ovrTrackingCap_Position;
 #endif
 
-		DistortionCaps = SupportedDistortionCaps & (ovrDistortionCap_Chromatic | ovrDistortionCap_TimeWarp | ovrDistortionCap_Vignette | ovrDistortionCap_Overdrive);
+		DistortionCaps = SupportedDistortionCaps & ( ovrDistortionCap_TimeWarp | ovrDistortionCap_Vignette | ovrDistortionCap_Overdrive);
 		TrackingCaps = SupportedTrackingCaps & (ovrTrackingCap_Orientation | ovrTrackingCap_MagYawCorrection | ovrTrackingCap_Position);
 		HmdCaps = SupportedHmdCaps & (ovrHmdCap_DynamicPrediction | ovrHmdCap_LowPersistence);
 		HmdCaps |= (Flags.bVSync ? 0 : ovrHmdCap_NoVSync);
@@ -1997,9 +1923,9 @@ void FOculusRiftHMD::UpdateDistortionCaps()
 	(Flags.bTimeWarp) ? DistortionCaps |= ovrDistortionCap_TimeWarp : DistortionCaps &= ~ovrDistortionCap_TimeWarp;
 	(Flags.bOverdrive) ? DistortionCaps |= ovrDistortionCap_Overdrive : DistortionCaps &= ~ovrDistortionCap_Overdrive;
 	(Flags.bHQDistortion) ? DistortionCaps |= ovrDistortionCap_HqDistortion : DistortionCaps &= ~ovrDistortionCap_HqDistortion;
-	(Flags.bChromaAbCorrectionEnabled) ? DistortionCaps |= ovrDistortionCap_Chromatic : DistortionCaps &= ~ovrDistortionCap_Chromatic;
+//	(Flags.bChromaAbCorrectionEnabled) ? DistortionCaps |= ovrDistortionCap_Chromatic : DistortionCaps &= ~ovrDistortionCap_Chromatic;
 #if !UE_BUILD_SHIPPING
-	(Flags.bProfiling) ? DistortionCaps |= ovrDistortionCap_ProfileNoTimewarpSpinWaits : DistortionCaps &= ~ovrDistortionCap_ProfileNoTimewarpSpinWaits;
+	(Flags.bProfiling) ? DistortionCaps |= ovrDistortionCap_ProfileNoSpinWaits : DistortionCaps &= ~ovrDistortionCap_ProfileNoSpinWaits;
 #endif // #if !UE_BUILD_SHIPPING
 
 #ifdef OVR_SDK_RENDERING 
@@ -2093,10 +2019,10 @@ void FOculusRiftHMD::UpdateHmdRenderInfo()
 		HFOVInRadians = FMath::Max(GetHorizontalFovRadians(EyeFov[0]), GetHorizontalFovRadians(EyeFov[1]));
 	}
 
-	const Sizei recommenedTex0Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Left, EyeFov[0], 1.0f);
-	const Sizei recommenedTex1Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Right, EyeFov[1], 1.0f);
+	const ovrSizei recommenedTex0Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Left, EyeFov[0], 1.0f);
+	const ovrSizei recommenedTex1Size = ovrHmd_GetFovTextureSize(Hmd, ovrEye_Right, EyeFov[1], 1.0f);
 
-	Sizei idealRenderTargetSize;
+	ovrSizei idealRenderTargetSize;
 	idealRenderTargetSize.w = recommenedTex0Size.w + recommenedTex1Size.w;
 	idealRenderTargetSize.h = FMath::Max(recommenedTex0Size.h, recommenedTex1Size.h);
 
@@ -2124,13 +2050,13 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 	}
 	if (IsInitialized() && Hmd)
 	{
-		Lock::Locker lock(&StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 
-		TextureSize = Sizei(EyeViewportSize.X * 2, EyeViewportSize.Y);
+		TextureSize = OVR::Sizei(EyeViewportSize.X * 2, EyeViewportSize.Y);
 
-		EyeRenderViewport[0].Pos = Vector2i(0, 0);
-		EyeRenderViewport[0].Size = Sizei(EyeViewportSize.X, EyeViewportSize.Y);
-		EyeRenderViewport[1].Pos = Vector2i(EyeViewportSize.X, 0);
+		EyeRenderViewport[0].Pos = OVR::Vector2i(0, 0);
+		EyeRenderViewport[0].Size = OVR::Sizei(EyeViewportSize.X, EyeViewportSize.Y);
+		EyeRenderViewport[1].Pos = OVR::Vector2i(EyeViewportSize.X, 0);
 		EyeRenderViewport[1].Size = EyeRenderViewport[0].Size;
 
 		//!AB: note, for Direct Rendering EyeRenderDesc is calculated twice, once
@@ -2144,39 +2070,19 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 			EyeRenderDesc[1].HmdToEyeViewOffset.x = -InterpupillaryDistance * 0.5f;
 		}
 
-		const bool bRightHanded = false;
+		const unsigned int ProjModifiers = ovrProjection_None; //@TODO revise to use ovrProjection_FarClipAtInfinity and/or ovrProjection_FarLessThanNear
 		// Far and Near clipping planes will be modified in GetStereoProjectionMatrix()
-		EyeProjectionMatrices[0] = ovrMatrix4f_Projection(EyeFov[0], 0.01f, 10000.0f, bRightHanded);
-		EyeProjectionMatrices[1] = ovrMatrix4f_Projection(EyeFov[1], 0.01f, 10000.0f, bRightHanded);
+		EyeProjectionMatrices[0] = ovrMatrix4f_Projection(EyeFov[0], 0.01f, 10000.0f, ProjModifiers);
+		EyeProjectionMatrices[1] = ovrMatrix4f_Projection(EyeFov[1], 0.01f, 10000.0f, ProjModifiers);
 
-		// 2D elements offset
-		if (!Flags.bOverride2D)
-		{
-			float ScreenSizeInMeters[2]; // 0 - width, 1 - height
-			float LensSeparationInMeters;
-			LensSeparationInMeters = ovrHmd_GetFloat(Hmd, "LensSeparation", 0);
-			ovrHmd_GetFloatArray(Hmd, "ScreenSize", ScreenSizeInMeters, 2);
-
-			// Recenter projection (meters)
-			const float LeftProjCenterM = ScreenSizeInMeters[0] * 0.25f;
-			const float LensRecenterM = LeftProjCenterM - LensSeparationInMeters * 0.5f;
-
-			// Recenter projection (normalized)
-			const float LensRecenter = 4.0f * LensRecenterM / ScreenSizeInMeters[0];
-
-			HudOffset = 0.25f * InterpupillaryDistance * (Hmd->Resolution.w / ScreenSizeInMeters[0]) / 15.0f;
-			CanvasCenterOffset = (0.25f * LensRecenter) * Hmd->Resolution.w;
-		}
+		PerspectiveProjection[0] = ovrMatrix4f_Projection(EyeFov[0], 0.01f, 10000.f, ProjModifiers | ovrProjection_RightHanded);
+		PerspectiveProjection[1] = ovrMatrix4f_Projection(EyeFov[1], 0.01f, 10000.f, ProjModifiers | ovrProjection_RightHanded);
 
 		PrecalculatePostProcess_NoLock();
 #ifdef OVR_SDK_RENDERING 
 		GetActiveRHIBridgeImpl()->SetNeedReinitRendererAPI();
 #endif // OVR_SDK_RENDERING
 		Flags.bNeedUpdateStereoRenderingParams = false;
-	}
-	else
-	{
-		CanvasCenterOffset = 0.f;
 	}
 }
 

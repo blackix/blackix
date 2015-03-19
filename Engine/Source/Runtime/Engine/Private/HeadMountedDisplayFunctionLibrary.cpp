@@ -125,7 +125,7 @@ void UHeadMountedDisplayFunctionLibrary::SetClippingPlanes(float NCP, float FCP)
 	}
 }
 
-void UHeadMountedDisplayFunctionLibrary::SetBaseRotationAndPositionOffset(const FRotator& BaseRot, const FVector& PosOffset, EOrientPositionSelector::Type Options)
+void UHeadMountedDisplayFunctionLibrary::SetBaseRotationAndPositionOffset(FRotator BaseRot, FVector PosOffset, EOrientPositionSelector::Type Options)
 {
 	if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHeadTrackingAllowed())
 	{

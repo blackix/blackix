@@ -283,7 +283,7 @@ public:
 	 * Draw desired debug information related to the HMD system.
 	 * @param Canvas The canvas on which to draw.
 	 */
-	virtual void DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass) {}
+	virtual void DrawDebug(UCanvas* Canvas) {}
 
 	/**
 	 * Passing key events to HMD.

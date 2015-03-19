@@ -5,8 +5,6 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
-#include "../Src/OVR_Stereo.h"
-
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
 #include "PostProcess/PostProcessHMD.h"
@@ -157,7 +155,7 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 #ifndef OVR_SDK_RENDERING 
 	{
 		// make a copy of StereoParams to access from the RenderThread.
-		Lock::Locker lock(&StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 		RenderParams_RenderThread.EyeRenderDesc[0] = EyeRenderDesc[0];
 		RenderParams_RenderThread.EyeRenderDesc[1] = EyeRenderDesc[1];
 		RenderParams_RenderThread.UVScale[0] = UVScaleOffset[0][0];
@@ -172,7 +170,7 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 #else
 	{
 		// make a copy of StereoParams to access from the RenderThread.
-		Lock::Locker lock(&StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 		RenderParams_RenderThread.EyeRenderDesc[0] = EyeRenderDesc[0];
 		RenderParams_RenderThread.EyeRenderDesc[1] = EyeRenderDesc[1];
 		RenderParams_RenderThread.EyeFov[0] = EyeFov[0];
@@ -182,19 +180,19 @@ void FOculusRiftHMD::PreRenderViewFamily_RenderThread(FSceneViewFamily& ViewFami
 	}
 #endif
 
+	BeginRendering_RenderThread();
+
 	if (RenderParams_RenderThread.ShowFlags.Rendering)
 	{
 		// get latest orientation/position and cache it
 		ovrTrackingState ts;
-		ovrVector3f hmdToEyeViewOffset[2] =
+		const ovrVector3f hmdToEyeViewOffset[2] =
 		{
 			RenderParams_RenderThread.EyeRenderDesc[0].HmdToEyeViewOffset,
 			RenderParams_RenderThread.EyeRenderDesc[1].HmdToEyeViewOffset
 		};
 		ovrHmd_GetEyePoses(Hmd, RenderParams_RenderThread.FrameNumber, hmdToEyeViewOffset, RenderParams_RenderThread.EyeRenderPose, &ts);
 	}
-
-	BeginRendering_RenderThread();
 }
 
 void FOculusRiftHMD::PreRenderView_RenderThread(FSceneView& View)
@@ -233,7 +231,7 @@ void FOculusRiftHMD::BeginRendering_RenderThread()
 
 #ifdef OVR_SDK_RENDERING 
 	{
-		Lock::Locker lock(&StereoParamsLock);
+		FScopeLock lock(&StereoParamsLock);
 
 		GetActiveRHIBridgeImpl()->BeginRendering();
 	}
@@ -318,15 +316,15 @@ void FOculusRiftHMD::FinishRenderingFrame_RenderThread(FRHICommandListImmediate&
 
 #endif // #ifdef OVR_SDK_RENDERING 
 
-static const char* FormatLatencyReading(char* buff, UPInt size, float val)
+static const char* FormatLatencyReading(char* buff, size_t size, float val)
 {
 	if (val < 0.000001f)
 	{
-		OVR_strcpy(buff, size, "N/A   ");
+		FCStringAnsi::Strcpy (buff, size, "N/A   ");
 	}
 	else
 	{
-		OVR_sprintf(buff, size, "%4.2fms", val * 1000.0f);
+		FCStringAnsi::Snprintf(buff, size, "%4.2fms", val * 1000.0f);
 	}
 	return buff;
 }
@@ -343,22 +341,23 @@ static void RenderLines(FCanvas* Canvas, int numLines, const FColor& c, float* x
 }
 #endif // #if !UE_BUILD_SHIPPING
 
-void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
+void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 {
 #if !UE_BUILD_SHIPPING
 	check(IsInGameThread());
-	if (StereoPass == eSSP_FULL)
 	{
 		if (Flags.bDrawGrid)
 		{
+			bool bStereo = Canvas->Canvas->IsStereoRendering();
+			Canvas->Canvas->SetStereoRendering(false);
 			bool bPopTransform = false;
-			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX / 2) ||
+			if (EyeRenderDesc[0].DistortedViewport.Size.w != FMath::CeilToInt(Canvas->ClipX) ||
 				EyeRenderDesc[0].DistortedViewport.Size.h != Canvas->ClipY)
 			{
 				// scale if resolution of the Canvas does not match the viewport
 				bPopTransform = true;
 				Canvas->Canvas->PushAbsoluteTransform(FScaleMatrix(
-					FVector((Canvas->ClipX * 0.5f) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
+					FVector((Canvas->ClipX) / float(EyeRenderDesc[0].DistortedViewport.Size.w),
 					Canvas->ClipY / float(EyeRenderDesc[0].DistortedViewport.Size.h),
 					1.0f)));
 			}
@@ -380,11 +379,11 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 				int renderViewportH = EyeRenderDesc[eye].DistortedViewport.Size.h;
 
 				lineStep = 48;
-				Vector2f rendertargetNDC = OVR::FovPort(EyeRenderDesc[eye].Fov).TanAngleToRendertargetNDC(Vector2f(0.0f));
+				OVR::Vector2f rendertargetNDC = OVR::FovPort(EyeRenderDesc[eye].Fov).TanAngleToRendertargetNDC(OVR::Vector2f(0.0f));
 				midX = (int)((rendertargetNDC.x * 0.5f + 0.5f) * (float)renderViewportW + 0.5f);
 				midY = (int)((rendertargetNDC.y * 0.5f + 0.5f) * (float)renderViewportH + 0.5f);
-				limitX = Alg::Max(renderViewportW - midX, midX);
-				limitY = Alg::Max(renderViewportH - midY, midY);
+				limitX = FMath::Max(renderViewportW - midX, midX);
+				limitY = FMath::Max(renderViewportH - midY, midY);
 
 				int spacerMask = (lineStep << 1) - 1;
 
@@ -443,10 +442,10 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 			{
 				Canvas->Canvas->PopTransform(); // optional scaling
 			}
+			Canvas->Canvas->SetStereoRendering(bStereo);
 		}
-		return;
 	}
-	else if (IsStereoEnabled() && Flags.bShowStats)
+	if (IsStereoEnabled() && Flags.bShowStats)
 	{
 		static const FColor TextColor(0,255,0);
 		// Pick a larger font on console.
@@ -501,18 +500,21 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas, EStereoscopicPass StereoPass)
 
 		if ((SupportedHmdCaps & ovrHmdCap_DynamicPrediction) != 0)
 		{
-			float latencies[3] = { 0.0f, 0.0f, 0.0f };
-			if (ovrHmd_GetFloatArray(Hmd, "DK2Latency", latencies, 3) == 3)
+			float latencies[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+			const int numOfEntries = sizeof(latencies) / sizeof(latencies[0]);
+			if (ovrHmd_GetFloatArray(Hmd, "DK2Latency", latencies, numOfEntries) == numOfEntries)
 			{
 				Y += RowHeight;
 
-				char buf[3][20];
+				char buf[numOfEntries][20];
 				char destStr[100];
 
-				OVR_sprintf(destStr, sizeof(destStr), "Latency, ren: %s tw: %s pp: %s",
+				FCStringAnsi::Snprintf(destStr, sizeof(destStr), "Latency, ren: %s tw: %s pp: %s err: %s %s",
 					FormatLatencyReading(buf[0], sizeof(buf[0]), latencies[0]),
 					FormatLatencyReading(buf[1], sizeof(buf[1]), latencies[1]),
-					FormatLatencyReading(buf[2], sizeof(buf[2]), latencies[2]));
+					FormatLatencyReading(buf[2], sizeof(buf[2]), latencies[2]),
+					FormatLatencyReading(buf[3], sizeof(buf[3]), latencies[3]),
+					FormatLatencyReading(buf[4], sizeof(buf[4]), latencies[4]));
 
 				Str = ANSI_TO_TCHAR(destStr);
 				Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
@@ -602,7 +604,10 @@ void FOculusRiftHMD::UpdateViewport(bool bUseSeparateRenderTarget, const FViewpo
 		if (wnd && wnd != OSWindowHandle)
 		{
 			OSWindowHandle = wnd;
-			ovrHmd_AttachToWindow(Hmd, OSWindowHandle, NULL, NULL);
+			if (!ovrHmd_AttachToWindow(Hmd, OSWindowHandle, NULL, NULL))
+			{
+				UE_LOG(LogHMD, Error, TEXT("ovrHmd_AttachToWindow failed."));
+			}
 		}
 	}
 #endif
@@ -670,7 +675,7 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering()
 	}
 	if (!bInitialized || D3DDevice != Cfg.D3D11.pDevice || D3DDeviceContext != Cfg.D3D11.pDeviceContext)
 	{
-		OVR::Lock::Locker lock(&ModifyLock);
+		FScopeLock lock(&ModifyLock);
 		Cfg.D3D11.Header.API = ovrRenderAPI_D3D11;
 		Cfg.D3D11.Header.Multisample = 1; //?? RenderParams.Multisample;
 		// Note, neither Device nor Context are AddRef-ed here. Not sure, if we need to.
@@ -684,7 +689,7 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering()
 	{
 		if (bNeedReinitRendererAPI)
 		{
-			OVR::Lock::Locker lock(&ModifyLock);
+			FScopeLock lock(&ModifyLock);
 			check(Cfg.D3D11.pSwapChain); // make sure Config is initialized
 			Plugin->UpdateDistortionCaps();
 			if (!ovrHmd_ConfigureRendering(Plugin->Hmd, &Cfg.Config, Plugin->DistortionCaps, 
@@ -704,7 +709,7 @@ void FOculusRiftHMD::D3D11Bridge::UpdateEyeTextures()
 {
 	if (bNeedReinitEyeTextures)
 	{
-		OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+		FScopeLock lock(&ModifyEyeTexturesLock);
 
 		ovrD3D11TextureData oldEye0 = EyeTexture_RenderThread[0].D3D11;
 		ovrD3D11TextureData oldEye1 = EyeTexture_RenderThread[1].D3D11;
@@ -773,7 +778,7 @@ void FOculusRiftHMD::D3D11Bridge::Reset_RenderThread()
 	Cfg.D3D11.pDevice = nullptr;
 	Cfg.D3D11.pDeviceContext = nullptr;
 
-	OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+	FScopeLock lock(&ModifyEyeTexturesLock);
 	if (EyeTexture[0].D3D11.pTexture)
 	{
 		EyeTexture[0].D3D11.pTexture->Release();
@@ -862,7 +867,7 @@ void FOculusRiftHMD::D3D11Bridge::UpdateViewport(const FViewport& Viewport, FRHI
 		Cfg.D3D11.Header.BackBufferSize.w != Viewport.GetSizeXY().X ||
 		Cfg.D3D11.Header.BackBufferSize.h != Viewport.GetSizeXY().Y)
 	{
-		OVR::Lock::Locker lock(&ModifyLock);
+		FScopeLock lock(&ModifyLock);
 		// Note, neither BackBufferRT nor SwapChain are AddRef-ed here. Not sure, if we need to.
 		// If yes, then them should be released in ReleaseBackBuffer().
 		Cfg.D3D11.pBackBufferRT = pD3DBBRT;
@@ -876,11 +881,11 @@ void FOculusRiftHMD::D3D11Bridge::UpdateViewport(const FViewport& Viewport, FRHI
 	if (EyeTexture[0].D3D11.pTexture != pD3DRT || EyeTexture[0].D3D11.pSRView != pD3DSRV ||
 		EyeTexture[0].D3D11.Header.TextureSize.w != RTSizeX || EyeTexture[0].D3D11.Header.TextureSize.h != RTSizeY)
 	{
-		OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+		FScopeLock lock(&ModifyEyeTexturesLock);
 
 		ovrD3D11TextureData oldEye0 = EyeTexture[0].D3D11;
 		EyeTexture[0].D3D11.Header.API = ovrRenderAPI_D3D11;
-		EyeTexture[0].D3D11.Header.TextureSize = Sizei(RTSizeX, RTSizeY);
+		EyeTexture[0].D3D11.Header.TextureSize = OVR::Sizei(RTSizeX, RTSizeY);
 		EyeTexture[0].D3D11.Header.RenderViewport = Plugin->EyeRenderViewport[0];
 		EyeTexture[0].D3D11.pTexture = pD3DRT;
 		EyeTexture[0].D3D11.pSRView = pD3DSRV;
@@ -962,16 +967,23 @@ FOculusRiftHMD::OGLBridge::OGLBridge(FOculusRiftHMD* plugin) :
 	memset(&Cfg, 0, sizeof(Cfg));
 	memset(&EyeTexture, 0, sizeof(EyeTexture));
 	memset(&EyeTexture_RenderThread, 0, sizeof(EyeTexture_RenderThread));
-	Init();
+	bInitialized = false;
 }
 
 void FOculusRiftHMD::OGLBridge::BeginRendering()
 {
+	if (!bInitialized)
+	{
+		Cfg.OGL.Header.API = ovrRenderAPI_OpenGL;
+		Cfg.OGL.Header.Multisample = 1;
+		bNeedReinitRendererAPI = true;
+		bInitialized = true;
+	}
 	if (bInitialized)
 	{
 		if (bNeedReinitRendererAPI)
 		{
-			OVR::Lock::Locker lock(&ModifyLock);
+			FScopeLock lock(&ModifyLock);
 			Plugin->UpdateDistortionCaps();
 			if (!ovrHmd_ConfigureRendering(Plugin->Hmd, &Cfg.Config, Plugin->DistortionCaps, 
 				Plugin->RenderParams_RenderThread.EyeFov, Plugin->RenderParams_RenderThread.EyeRenderDesc))
@@ -983,7 +995,7 @@ void FOculusRiftHMD::OGLBridge::BeginRendering()
 		}
 		if (bNeedReinitEyeTextures)
 		{
-			OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+			FScopeLock lock(&ModifyEyeTexturesLock);
 
 			EyeTexture_RenderThread[0] = EyeTexture[0];
 			EyeTexture_RenderThread[1] = EyeTexture[1];
@@ -1000,7 +1012,7 @@ void FOculusRiftHMD::OGLBridge::FinishRendering()
 	{
 		// make sure we use most recent textures, otherwise there will 
 		// be an assertion.
-		OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+		FScopeLock lock(&ModifyEyeTexturesLock);
 
 		EyeTexture_RenderThread[0] = EyeTexture[0];
 		EyeTexture_RenderThread[1] = EyeTexture[1];
@@ -1018,14 +1030,6 @@ void FOculusRiftHMD::OGLBridge::FinishRendering()
 	{
 		UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
 	}
-}
-
-void FOculusRiftHMD::OGLBridge::Init()
-{
-	Cfg.OGL.Header.API = ovrRenderAPI_OpenGL;
-	Cfg.OGL.Header.Multisample = 1; 
-	bNeedReinitRendererAPI = true;
-	bInitialized = true;
 }
 
 void FOculusRiftHMD::OGLBridge::Reset()
@@ -1070,9 +1074,9 @@ void FOculusRiftHMD::OGLBridge::UpdateViewport(const FViewport& Viewport, FRHIVi
 		Cfg.OGL.Header.BackBufferSize.w != Viewport.GetSizeXY().X ||
 		Cfg.OGL.Header.BackBufferSize.h != Viewport.GetSizeXY().Y)
 	{
-		OVR::Lock::Locker lock(&ModifyLock);
+		FScopeLock lock(&ModifyLock);
 
-		Cfg.OGL.Header.BackBufferSize = Sizei(Viewport.GetSizeXY().X, Viewport.GetSizeXY().Y);
+		Cfg.OGL.Header.BackBufferSize = OVR::Sizei(Viewport.GetSizeXY().X, Viewport.GetSizeXY().Y);
 #if PLATFORM_WINDOWS
 		Cfg.OGL.Window = Window;
 #elif PLATFORM_MAC
@@ -1094,10 +1098,10 @@ void FOculusRiftHMD::OGLBridge::UpdateViewport(const FViewport& Viewport, FRHIVi
 	if (EyeTexture[0].OGL.TexId != RTTexId ||
 		EyeTexture[0].OGL.Header.TextureSize.w != RTSizeX || EyeTexture[0].OGL.Header.TextureSize.h != RTSizeY)
 	{
-		OVR::Lock::Locker lock(&ModifyEyeTexturesLock);
+		FScopeLock lock(&ModifyEyeTexturesLock);
 
 		EyeTexture[0].OGL.Header.API = ovrRenderAPI_OpenGL;
-		EyeTexture[0].OGL.Header.TextureSize = Sizei(RTSizeX, RTSizeY);
+		EyeTexture[0].OGL.Header.TextureSize = OVR::Sizei(RTSizeX, RTSizeY);
 		EyeTexture[0].OGL.Header.RenderViewport = Plugin->EyeRenderViewport[0];
 		EyeTexture[0].OGL.TexId = RTTexId;
 
