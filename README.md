@@ -1,3 +1,26 @@
+Oculus integration with UE 4.7
+==============================================
+This is the source code page for the **Unreal Engine with Latest Oculus Support on GitHub**.
+Currently supported Oculus SDK version is 0.5.0, Windows and Mac are supported.
+Current integration supports Rift DK2 and backward compatible with all previous Rifts and prototypes.
+
+Before running UE4 with this integration, you must install Oculus RunTime. The installer downloaded from www.oculus.com (go to "Developer", register/login, "Downloads", "Oculus Runtime").
+Make sure you have installed the latest Run-Time (0.5.0 at the moment).
+For Windows: run the executable and follow the instructions.
+For Mac: double click on downloaded file and run the installer. Follow the instructions.
+
+If the headset is properly connected (do not use HDMI splitters), it should be automatically detected. In the "Extended Desktop to HMD" mode, switching to fullscreen should render on the HMD only. 
+In the "Direct HMD access from Apps" mode the Rift won't be detected by the system as a separate display; instead, it will be activated only when you switch to "fullscreen" (Alt-Enter). Note, in this mode
+UE4 won't switch to fullscreen, it will render the scene in window (and in Rift).
+It will be automatically de-activated once you switch back to non-stereo mode. 
+Only one HMD can be connected at a time.
+
+If stereo mode doesn't work then check the log-file (search for 'OCULUS' and 'LogHMD' sub-strings). Make sure the RunTime & Drivers are installed and the service is running. Check the Oculus User Guide for further details (available on www.oculus.com).
+
+See UE4-Oculus.txt for the new console commands.
+
+And now, back to Epic's notes.
+
 Unreal Engine
 =============
 
