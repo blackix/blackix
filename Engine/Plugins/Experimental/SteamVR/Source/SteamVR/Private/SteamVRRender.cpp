@@ -9,11 +9,12 @@
 
 #if STEAMVR_SUPPORTED_PLATFORMS
 
-void FSteamVRHMD::DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FSceneView& View, const FIntPoint& TextureSize)
+void FSteamVRHMD::DrawDistortionMesh_RenderThread(struct FRenderingCompositePassContext& Context, const FIntPoint& TextureSize)
 {
 	float ClipSpaceQuadZ = 0.0f;
 	FMatrix QuadTexTransform = FMatrix::Identity;
 	FMatrix QuadPosTransform = FMatrix::Identity;
+	const FSceneView& View = Context.View;
 	const FIntRect SrcRect = View.ViewRect;
 
 	FRHICommandListImmediate& RHICmdList = Context.RHICmdList;

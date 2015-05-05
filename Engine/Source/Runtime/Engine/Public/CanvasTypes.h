@@ -531,16 +531,28 @@ public:
 		return ViewRect;
 	}
 
-	FORCEINLINE void SetScaledToRenderTarget(bool scale = true)
+	FORCEINLINE void SetScaledToRenderTarget(bool bScale = true)
 	{
-		bScaledToRenderTarget = scale;
+		bScaledToRenderTarget = bScale;
 	}
 	FORCEINLINE bool IsScaledToRenderTarget() const { return bScaledToRenderTarget; }
+
+	FORCEINLINE void SetStereoRendering(bool bStereo = true)
+	{
+		bStereoRendering = bStereo;
+	}
+	FORCEINLINE bool IsStereoRendering() const { return bStereoRendering; }
+
+	/** Depth used for orthographic stereo projection. Uses World Units.*/
+	FORCEINLINE void SetStereoDepth(int32 InDepth)
+	{
+		StereoDepth = InDepth;
+	}
+	FORCEINLINE int32 GetStereoDepth() const { return StereoDepth; }
 
 public:
 	/** Private class for handling word wrapping behavior. */
 	TSharedPtr<FCanvasWordWrapper> WordWrapper;
-
 private:
 	/** Stack of SortKeys. All rendering is done using the top most sort key */
 	TArray<int32> DepthSortKeyStack;	
@@ -571,6 +583,18 @@ private:
 	/** Feature level that we are currently rendering with */
 	ERHIFeatureLevel::Type FeatureLevel;
 
+	/** true, if Canvas should be rendered in stereo */
+	bool bStereoRendering;
+
+	/** Depth used for orthographic stereo projection. Uses World Units.*/
+	int32 StereoDepth;
+
+	/** Cached render target size, depth and ortho-projection matrices for stereo rendering */
+	FMatrix CachedOrthoProjection[2];
+	int32 CachedRTWidth, CachedRTHeight, CachedDrawDepth;
+
+	bool GetOrthoProjectionMatrices(float InDrawDepth, FMatrix OutOrthoProjection[2]);
+
 	/** 
 	* Shared construction function
 	*/
@@ -598,21 +622,16 @@ public:
 	 *
 	 * @param Item			Item to draw
 	 */
-	FORCEINLINE void DrawItem( FCanvasItem& Item )
-	{
-		Item.Draw( this );
-	}
-	/** 
+	ENGINE_API void DrawItem(FCanvasItem& Item);
+
+	/**
 	 * Draw a CanvasItem at the given coordinates
 	 *
 	 * @param Item			Item to draw
 	 * @param InPosition	Position to draw item
 	 */
-	FORCEINLINE void DrawItem( FCanvasItem& Item, const FVector2D& InPosition )
-	{
-		Item.Draw( this, InPosition );
-	}
-	
+	ENGINE_API void DrawItem(FCanvasItem& Item, const FVector2D& InPosition);
+
 	/** 
 	 * Draw a CanvasItem at the given coordinates
 	 *
@@ -620,10 +639,7 @@ public:
 	 * @param X				X Position to draw item
 	 * @param Y				Y Position to draw item
 	 */
-	FORCEINLINE void DrawItem( FCanvasItem& Item, float X, float Y  )
-	{
-		Item.Draw( this, X, Y );
-	}
+	ENGINE_API void DrawItem(FCanvasItem& Item, float X, float Y);
 
 	/**
 	* Clear the canvas

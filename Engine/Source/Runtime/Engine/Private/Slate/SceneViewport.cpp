@@ -31,6 +31,7 @@ FSceneViewport::FSceneViewport( FViewportClient* InViewportClient, TSharedPtr<SV
 	, bPlayInEditorGetsMouseControl( true )
 	, bPlayInEditorIsSimulate( false )
 	, bCursorHiddenDueToCapture( false )
+	, RTTSize( 0, 0 )
 {
 	bIsSlateViewport = true;
 }
@@ -948,7 +949,7 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 				// Toggle fullscreen and resize
 				WindowToResize->SetWindowMode(DesiredWindowMode);
 
-				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected())
+				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDEnabled())
 				{
 					if (NewWindowMode == EWindowMode::Windowed)
 					{
@@ -1011,6 +1012,8 @@ bool FSceneViewport::IsStereoRenderingAllowed() const
 
 void FSceneViewport::ResizeViewport(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::Type NewWindowMode, int32 InPosX, int32 InPosY)
 {
+	//UE_LOG(LogSlate, Warning, TEXT("FSceneViewport::ResizeViewport, RT size %d x %d, mode %d"), NewSizeX, NewSizeY, int32(NewWindowMode));
+
 	// Do not resize if the viewport is an invalid size or our UI should be responsive
 	if( NewSizeX > 0 && NewSizeY > 0 && FSlateThrottleManager::Get().IsAllowingExpensiveTasks() )
 	{
@@ -1244,39 +1247,59 @@ void FSceneViewport::InitDynamicRHI()
 		// Initialize the hit proxy map.
 		HitProxyMap.Init(SizeX,SizeY);
 	}
+	RTTSize = FIntPoint(0, 0);
 
 	TSharedPtr<FSlateRenderer> Renderer = FSlateApplication::Get().GetRenderer();
 	FWidgetPath WidgetPath;
 	if( bUseSeparateRenderTarget )
 	{
+		bool bUseCustomPresentTexture = false;
 		uint32 TexSizeX = SizeX, TexSizeY = SizeY;
-		if (GEngine->IsStereoscopic3D(this))
+		
+		const bool bStereo = (IsStereoRenderingAllowed() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabledOnNextFrame());
+		
+		if (bStereo)
 		{
-			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(TexSizeX, TexSizeY);
-		}
-		FTexture2DRHIRef ShaderResourceTextureRHI;
+			GEngine->StereoRenderingDevice->CalculateRenderTargetSize(*this, TexSizeX, TexSizeY);
 
-		FRHIResourceCreateInfo CreateInfo;
-		RHICreateTargetableShaderResource2D( TexSizeX, TexSizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, RenderTargetTextureRHI, ShaderResourceTextureRHI );
-
-		if( !SlateRenderTargetHandle )
-		{
-			SlateRenderTargetHandle = new FSlateRenderTargetRHI( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
-			//UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY);
+			// If CustomPresent is used by the stereo rendering device AND if it allocates its own
+			// textures then do not allocate a 'regular' render target texture here.
+			FRHICustomPresent* CustomPresent;
+			if ((CustomPresent = GEngine->StereoRenderingDevice->GetCustomPresent()) != nullptr)
+			{
+				if ((RenderTargetTextureRHI = CustomPresent->AllocateRenderTargetTexture(TexSizeX, TexSizeY, PF_B8G8R8A8)) != nullptr)
+				{
+					RTTSize = FIntPoint(TexSizeX, TexSizeY);
+					bUseCustomPresentTexture = true;
+				}
+			}
 		}
-		else
+
+		if (!bUseCustomPresentTexture)
 		{
-			//UE_LOG(LogSlate, Log, TEXT("SRTH: %p, %d x %d, prev %p"), ShaderResourceTextureRHI.GetReference(), TexSizeX, TexSizeY, SlateRenderTargetHandle->GetRHIRef().GetReference());
-			SlateRenderTargetHandle->SetRHIRef( ShaderResourceTextureRHI, TexSizeX, TexSizeY );
+			FTexture2DRHIRef ShaderResourceTextureRHI;
+
+			FRHIResourceCreateInfo CreateInfo;
+			RHICreateTargetableShaderResource2D(TexSizeX, TexSizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, RenderTargetTextureRHI, ShaderResourceTextureRHI);
+
+			if (!SlateRenderTargetHandle)
+			{
+				SlateRenderTargetHandle = new FSlateRenderTargetRHI(ShaderResourceTextureRHI, TexSizeX, TexSizeY);
+			}
+			else
+			{
+				SlateRenderTargetHandle->SetRHIRef(ShaderResourceTextureRHI, TexSizeX, TexSizeY);
+			}
 		}
 
 		TSharedPtr<SWindow> Window = FSlateApplication::Get().FindWidgetWindow(ViewportWidget.Pin().ToSharedRef(), WidgetPath);
 		if (Window.IsValid())
 		{
 			// We need to pass a texture to the renderer only for stereo rendering. Otherwise, Editor will be rendered incorrectly.
-			if (GEngine->IsStereoscopic3D(this))
+			if (bStereo)
 			{
 				Renderer->SetWindowRenderTarget(*Window, RenderTargetTextureRHI);
+				RTTSize = FIntPoint(TexSizeX, TexSizeY);
 			}
 			else
 			{

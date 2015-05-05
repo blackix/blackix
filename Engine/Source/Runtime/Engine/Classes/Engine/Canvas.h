@@ -136,6 +136,8 @@ public:
 	/* Function to go through all constructed canvas items and update their safezone data */
 	static void UpdateAllCanvasSafeZoneData();
 	
+	/* Changes depth in game units . Used to render stereo projection*/
+	void SetStereoDepth(uint32 depth);
 
 	/** 
 	 * Draw arbitrary aligned rectangle.

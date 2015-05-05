@@ -4,50 +4,25 @@ using UnrealBuildTool;
 
 public class LibOVR : ModuleRules
 {
+	// Version of LibOVR
+	public const int LibOVR_Major = 0;
+	public const int LibOVR_Minor = 6;
+	public const int LibOVR_Patch = 0;
+
 	public LibOVR(TargetInfo Target)
 	{
-		/** Mark the current version of the Oculus SDK */
-		string LibOVRVersion = "_04";
 		Type = ModuleType.External;
 
-		string OculusThirdPartyDirectory = UEBuildConfiguration.UEThirdPartySourceDirectory + "Oculus/LibOVR/LibOVR" + LibOVRVersion;
+// MAKE A SYMLINK OF THE 0.6 LibOVR from Oculus repository as X:\LibOVR_0_6_0, where 'X' is the same drive as the Unreal repo is located on.
+// This will allow to use the latest 0.6 LibOVR every time automatically.
+// Make sure the latest LibOVRRT64_0_6.dll is located in the PATH or in Engine/Binaries/Win64 directory.
+// Alternatively, you may set the LIBOVR_DLL_DIR to the directory that contains the proper LibOVRRT64_0_6.dll.
 
-		if ((Target.Platform == UnrealTargetPlatform.Win64) ||
-			(Target.Platform == UnrealTargetPlatform.Win32))
-		{
-
-            PublicIncludePaths.Add(OculusThirdPartyDirectory + "/Include");
-
-            string LibraryPath = OculusThirdPartyDirectory + "/Lib/";
-			string LibraryName = "libovr";
-			if (Target.Platform == UnrealTargetPlatform.Win64)
-			{
-				LibraryPath += "x64/";
-				LibraryName += "64";
-			}
-            else if (Target.Platform == UnrealTargetPlatform.Win32)
-            {
-                LibraryPath += "Win32/";
-            }
-
-			//LibraryName += "_sp";
-
-			LibraryPath += "VS" + WindowsPlatform.GetVisualStudioCompilerVersionName() + "/";
-			PublicLibraryPaths.Add(LibraryPath);
-			PublicAdditionalLibraries.Add(LibraryName + ".lib");
-
-			PublicAdditionalLibraries.Add("Wtsapi32.lib");
-            //PublicAdditionalLibraries.Add(LibraryName + "d.lib");
-			//PublicDelayLoadDLLs.Add(LibraryName + ".dll");
-		}
-		else if ((Target.Platform == UnrealTargetPlatform.Mac))
-		{
-            PublicIncludePaths.Add(OculusThirdPartyDirectory + "/Include");
-
-            string LibraryPath = OculusThirdPartyDirectory + "/Lib/MacOS/Release/";
-			string LibraryName = "libovr";
-			PublicLibraryPaths.Add(LibraryPath);
-			PublicAdditionalLibraries.Add(LibraryPath + LibraryName + ".a");
-		}
+        PublicIncludePaths.Add(UEBuildConfiguration.UEThirdPartySourceDirectory + "Oculus/LibOVR/"+
+							   "/LibOVR_" + LibOVR_Major + "_" +
+							   LibOVR_Minor + "_" + LibOVR_Patch+"/Include");
+        PublicIncludePaths.Add(UEBuildConfiguration.UEThirdPartySourceDirectory + "Oculus/LibOVR/"+
+							   "/LibOVR_" + LibOVR_Major + "_" +
+							   LibOVR_Minor + "_" + LibOVR_Patch+"/Src");
 	}
 }

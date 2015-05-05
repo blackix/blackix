@@ -1,3 +1,11 @@
+Notes from Oculus
+=================
+**DISCLAIMER: THIS IS NOT A FINAL VERSION**
+
+This is an alpha version of UE 4.7 + Oculus SDK 0.6.0 integration. It is still under development and changes are going to be done in it, including core changes.
+
+GearVR plugin is not buildable in this version.
+
 Unreal Engine
 =============
 

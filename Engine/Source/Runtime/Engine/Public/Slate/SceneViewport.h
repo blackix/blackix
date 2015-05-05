@@ -216,6 +216,9 @@ public:
 	/** Should return true, if stereo rendering is allowed in this viewport */
 	virtual bool IsStereoRenderingAllowed() const;
 
+	/** Returns dimensions of RenderTarget texture. Can be called on a game thread. */
+	virtual FIntPoint GetRenderTargetTextureSizeXY() const { return (RTTSize.X != 0) ? RTTSize : GetSizeXY(); }
+
 private:
 	/**
 	 * Called when this viewport is destroyed
@@ -322,6 +325,8 @@ private:
 	bool bPlayInEditorIsSimulate;
 	/** Whether or not the cursor is hidden when the viewport captures the mouse */
 	bool bCursorHiddenDueToCapture;
+	/** Dimensions of RenderTarget texture. */
+	FIntPoint RTTSize;
 };
 
 

@@ -36,7 +36,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogD3D11RHI, Log, All);
 #define DX_MAX_MSAA_COUNT 8
 
 // Definitions.
-#define D3D11 1
+//@??? #define D3D11 1
 
 /**
  * The D3D RHI stats.
@@ -327,7 +327,7 @@ struct FD3DGPUProfiler : public FGPUProfiler
 };
 
 /** The interface which is implemented by the dynamically bound RHI. */
-class FD3D11DynamicRHI : public FDynamicRHI
+class D3D11RHI_API FD3D11DynamicRHI : public FDynamicRHI
 {
 public:
 

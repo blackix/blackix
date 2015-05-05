@@ -1,0 +1,53 @@
+UE4 Oculus
+----------
+Setup windows with extend desktop onto all displays, no mirroring. Single display is also ok.
+When running the game, if it is set for fullscreen (either in config or by pressing F11), and a HMD is detected, it will go into fullscreen on
+the HMD only. If you don't want to use fullscreen, the sensor is still used for positioning and stereo/lens distortion compensation can
+be enabled manually. The headset must be connected before running the game.  Only one HMD can be connected at a time.
+
+Contents:
+Console commands
+
+----------------
+Console commands
+----------------
+
+Stereo/HMD Configuration
+------------------------
+stereo on|off|toggle		Stereo mode on/off
+stereo hmd					Turns stereo on and re-direct rendering to the Rift.
+hmd enable|disable			Completely disables or re-enables HMD
+hmd pd 0.8					Sets pixel density in the center (default is 1.0).
+hmd sp 125					Overrides default screenpercentage for stereo mode. Deprecated, use 'hmd pd xxx' instead.
+hmd sp reset				Resets to original r.ScreenPercentage value. Deprecated, use 'hmd pd 1' instead.
+hmd mirror [on|off|toggle]	Enables/disables/toggles mirroring in a window (for "Application Only" mode only).
+hmd mirror 800x600			Sets mirror window dimension (for Direct mode only).
+hmd mirror mode 0|1|2		Sets mirror window mode: 0 - standard stereo distorted view, 1 - stereo undistorted view, 2 - mono view (a single eye)
+stereo e=0.064				Eye distance (m). Use 'stereo reset' to restore original value.
+stereo w2m=100				Overrides default worldunits-to-meters scale. Use 'stereo reset' to restore original value.
+stereo ncp=10 fcp=10000		Overrides near clipping and/or far clipping planes for stereo rendering (in cm). Use 'stereo reset' to restore original value.
+stereo show					Shows current ipd and head model offset
+stereo reset				Resets stereo settings
+
+hmdpos on|off				Enables/disables positional tracking.
+hmdpos reset				Resets forward direction and 'zero' position
+hmdpos reset -37			Resets forward direction and apply yaw rotation (in degrees) and 'zero' position
+hmdpos show					Shows status of positional tracking.
+hmdpos enforce				Toggles positional tracking even if not in stereo (for testing purposes). 
+
+Stereo/HMD Internals
+--------------------
+hmdmag on|off				Turns magnetometer on/off
+hmdmag show					Shows state of magnetometer
+
+Misc
+----
+hmd stats					Shows HMD-related stats.
+hmd grid					Toggles lens-centered grid.
+hmddbg showcamera [off | toggle] Draws a tracking camera frustum in the game's world.
+hmddbg cubes [on | off | toggle] Draws a 'sea of cubes' over the existing scene.
+
+hmd updateongt on|off		Turns on/off update-on-gamethread mode (for debugging). On by default.
+hmd updateonrt on|off		Turns on/off update-on-renderthread mode for lower latency. On by default.
+hmdversion					Prints Oculus SDK version used and Oculus Plugin info
+uncapfps 					Uncaps FPS (allows FPS > 62); to restore cap - "set Engine bSmoothFrameRate 1"

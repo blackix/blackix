@@ -10,9 +10,15 @@ class IStereoRendering
 {
 public:
 	/** 
-	 * Whether or not stereo rendering is on.
+	 * Whether or not stereo rendering is on this frame.
 	 */
 	virtual bool IsStereoEnabled() const = 0;
+
+	/** 
+	 * Whether or not stereo rendering is on on next frame. Useful to determine if some preparation work
+	 * should be done before stereo got enabled in next frame. 
+	 */
+	virtual bool IsStereoEnabledOnNextFrame() const { return IsStereoEnabled(); }
 
 	/** 
 	 * Switches stereo rendering on / off. Returns current state of stereo.
@@ -41,26 +47,14 @@ public:
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) = 0;
 
 	/**
-	 * Pushes transformations based on specified viewport into canvas. Necessary to call PopTransform on
-	 * FCanvas object afterwards.
-	 */
-	virtual void PushViewportCanvas(enum EStereoscopicPass StereoPass, class FCanvas *InCanvas, class UCanvas *InCanvasObject, class FViewport *InViewport) const = 0;
-
-	/**
-	 * Pushes transformations based on specified view into canvas. Necessary to call PopTransform on FCanvas 
-	 * object afterwards.
-	 */
-	virtual void PushViewCanvas(enum EStereoscopicPass StereoPass, class FCanvas *InCanvas, class UCanvas *InCanvasObject, class FSceneView *InView) const = 0;
-
-	/**
 	 * Returns eye render params, used from PostProcessHMD, RenderThread.
 	 */
-	virtual void GetEyeRenderParams_RenderThread(enum EStereoscopicPass StereoPass, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const {}
+	virtual void GetEyeRenderParams_RenderThread(const struct FRenderingCompositePassContext& Context, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const {}
 
 	/**
 	 * Returns timewarp matrices, used from PostProcessHMD, RenderThread.
 	 */
-	virtual void GetTimewarpMatrices_RenderThread(enum EStereoscopicPass StereoPass, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const {}
+	virtual void GetTimewarpMatrices_RenderThread(const struct FRenderingCompositePassContext& Context, FMatrix& EyeRotationStart, FMatrix& EyeRotationEnd) const {}
 
 	// Optional methods to support rendering into a texture.
 	/**
@@ -72,12 +66,12 @@ public:
 	/**
 	 * Calculates dimensions of the render target texture for direct rendering of distortion.
 	 */
-	virtual void CalculateRenderTargetSize(uint32& InOutSizeX, uint32& InOutSizeY) const {}
+	virtual void CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) {}
 
 	/**
 	 * Returns true, if render target texture must be re-calculated. 
 	 */
-	virtual bool NeedReAllocateViewportRenderTarget(const class FViewport& Viewport) const { return false; }
+	virtual bool NeedReAllocateViewportRenderTarget(const class FViewport& Viewport) { return false; }
 
 	// Whether separate render target should be used or not.
 	virtual bool ShouldUseSeparateRenderTarget() const { return false; }
@@ -90,4 +84,40 @@ public:
 	 * Called after Present is called.
 	 */
 	virtual void FinishRenderingFrame_RenderThread(class FRHICommandListImmediate& RHICmdList) {}
+
+	/**
+	 * Returns orthographic projection , used from Canvas::DrawItem.
+	 */
+	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
+	{
+		OrthoProjection[0] = OrthoProjection[1] = FMatrix::Identity;
+	}
+
+	/**
+	 * Sets screen percentage to be used for stereo rendering.
+	 *
+	 * @param ScreenPercentage	(in) Specifies the screen percentage to be used in VR mode. Use 0.0f value to reset to default value.
+	 */
+	virtual void SetScreenPercentage(float InScreenPercentage) {}
+	
+	/** 
+	 * Returns screen percentage to be used for stereo rendering.
+	 *
+	 * @return (float)	The screen percentage to be used in stereo mode. 0.0f, if default value is used.
+	 */
+	virtual float GetScreenPercentage() const { return 0.0f; }
+
+	/** 
+	 * Sets near and far clipping planes (NCP and FCP) for stereo rendering. Similar to 'stereo ncp= fcp' console command, but NCP and FCP set by this
+	 * call won't be saved in .ini file.
+	 *
+	 * @param NCP				(in) Near clipping plane, in centimeters
+	 * @param FCP				(in) Far clipping plane, in centimeters
+	 */
+	virtual void SetClippingPlanes(float NCP, float FCP) {}
+
+	/**
+	 * Returns currently active custom present. 
+	 */
+	virtual FRHICustomPresent* GetCustomPresent() { return nullptr; }
 };

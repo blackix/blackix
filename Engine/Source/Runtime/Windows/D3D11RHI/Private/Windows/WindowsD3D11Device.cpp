@@ -68,9 +68,31 @@ static bool IsDelayLoadException(PEXCEPTION_POINTERS ExceptionPointers)
 static void SafeCreateDXGIFactory(IDXGIFactory** DXGIFactory)
 {
 #if !D3D11_CUSTOM_VIEWPORT_CONSTRUCTOR
+	// If system supports CreateDXGIFactory1 then we need to use it (req-d for Oculus, for example).
+	// If there is no support for CreateDXGIFactory1 then the regular CreateDXGIFactory will be used.
+	HRESULT hr = E_FAIL;
+	HMODULE hModule;
+	typedef HRESULT (WINAPI *PtrCreateDXGIFactory1)(REFIID riid, _Out_ void **ppFactory);
+	union
+	{
+		PtrCreateDXGIFactory1   fn;
+		FARPROC					farproc;
+	} u;
 	__try
 	{
-		CreateDXGIFactory(__uuidof(IDXGIFactory),(void**)DXGIFactory);
+		hModule = GetModuleHandle(TEXT("dxgi"));
+		if (hModule != nullptr)
+		{
+			u.farproc = GetProcAddress(hModule, "CreateDXGIFactory1");
+			if (u.farproc)
+			{
+				hr = u.fn(IID_PPV_ARGS(DXGIFactory));
+			}
+		}
+		if (FAILED(hr))
+		{
+			hr = ::CreateDXGIFactory(IID_PPV_ARGS(DXGIFactory));
+		}
 	}
 	__except(IsDelayLoadException(GetExceptionInformation()))
 	{

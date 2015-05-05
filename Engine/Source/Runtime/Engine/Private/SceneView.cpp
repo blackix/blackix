@@ -16,6 +16,7 @@
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Engine/TextureCube.h"
 #include "Classes/Engine/RendererSettings.h"
+#include "IHeadMountedDisplay.h"
 
 DEFINE_LOG_CATEGORY(LogBufferVisualization);
 
@@ -501,7 +502,7 @@ float FSceneView::GetTemporalLODTransition() const
 void FSceneView::UpdateViewMatrix()
 {
 	FVector StereoViewLocation = ViewLocation;
-	if (GEngine->IsStereoscopic3D() && StereoPass != eSSP_FULL)
+	if (GEngine->StereoRenderingDevice.IsValid() && StereoPass != eSSP_FULL)
 	{
 		GEngine->StereoRenderingDevice->CalculateStereoViewOffset(StereoPass, ViewRotation, WorldToMetersScale, StereoViewLocation);
 		ViewLocation = StereoViewLocation;
@@ -1108,6 +1109,15 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		if(Value >= 0.0)
 		{
 			FinalPostProcessSettings.ScreenPercentage = Value;
+		}
+	}
+
+	{
+		const bool bStereoEnabled = StereoPass != eSSP_FULL;
+		const bool bScaledToRenderTarget = GEngine->HMDDevice.IsValid() && bStereoEnabled;
+		if (bScaledToRenderTarget)
+		{
+			GEngine->HMDDevice->UpdatePostProcessSettings(&FinalPostProcessSettings);
 		}
 	}
 

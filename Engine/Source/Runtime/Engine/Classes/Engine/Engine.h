@@ -1508,10 +1508,10 @@ public:
 	class FAudioDevice* AudioDevice;
 
 	/** Reference to the stereoscopic rendering interace, if any */
-	TSharedPtr< class IStereoRendering > StereoRenderingDevice;
+	TSharedPtr< class IStereoRendering, ESPMode::ThreadSafe > StereoRenderingDevice;
 
 	/** Reference to the HMD device that is attached, if any */
-	TSharedPtr< class IHeadMountedDisplay > HMDDevice;
+	TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > HMDDevice;
 	
 	/** Triggered when a world is added. */	
 	DECLARE_EVENT_OneParam( UEngine, FWorldAddedEvent , UWorld* );
