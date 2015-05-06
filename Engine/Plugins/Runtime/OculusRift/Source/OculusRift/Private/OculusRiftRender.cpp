@@ -153,11 +153,11 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 			(!CurrentFrame->Flags.bOrientationChanged && !CurrentFrame->Flags.bPositionChanged))
 		{
 			RenderContext.CurHeadPose = ts.HeadPose.ThePose;
-			FMemory::Memcpy(RenderContext.CurEyeRenderPose, EyeRenderPose);
+			FMemory::MemCopy(RenderContext.CurEyeRenderPose, EyeRenderPose);
 		}
 		else
 		{
-			FMemory::Memcpy<ovrPosef[2]>(RenderContext.CurEyeRenderPose, CurrentFrame->EyeRenderPose);
+			FMemory::MemCopy<ovrPosef[2]>(RenderContext.CurEyeRenderPose, CurrentFrame->EyeRenderPose);
 		}
 	}
 }

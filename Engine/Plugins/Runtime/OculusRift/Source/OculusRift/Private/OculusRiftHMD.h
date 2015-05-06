@@ -21,36 +21,12 @@
     #define OVR_GL
 #endif
 
-#ifdef OVR_VISION_ENABLED
-	#ifndef OVR_CAPI_VISIONSUPPORT
-		#define OVR_CAPI_VISIONSUPPORT
-	#endif
-#endif
-
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	#include <OVR_Version.h>
 	#include <OVR_CAPI_0_6_0.h>
 	#include <OVR_CAPI_Keys.h>
 	#include <Extras/OVR_Math.h>
     #include <OVR_CAPI_Util.h>
-
-#if PLATFORM_WINDOWS
-
-#ifdef OVR_D3D_VERSION
-#include "D3D11RHIPrivate.h"
-#include "D3D11Util.h"
-#endif
-
-#include "AllowWindowsPlatformTypes.h"
-
-#endif
-#ifdef OVR_D3D_VERSION
-	#include "OVR_CAPI_D3D.h"
-#endif // OVR_D3D_VERSION
-#ifdef OVR_GL
-	#include "OVR_CAPI_GL.h"
-#endif
-
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
@@ -60,9 +36,6 @@
 struct FDistortionVertex;
 class FOculusRiftHMD;
 
-// TEMPORARY hack, till 4.8
-#define Memset MemSet
-#define Memcpy MemCopy
 
 namespace OculusRift 
 {
@@ -512,7 +485,7 @@ private:
 
 private: // data
 
-	TRefCountPtr<D3D11Bridge>	pCustomPresent;
+	TRefCountPtr<FCustomPresent>pCustomPresent;
 	IRendererModule*			RendererModule;
 	ovrHmd						Hmd;
 

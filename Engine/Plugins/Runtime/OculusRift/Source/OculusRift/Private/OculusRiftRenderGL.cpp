@@ -5,6 +5,9 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
+#if defined(OVR_GL)
+#include "OVR_CAPI_GL.h"
+
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
 #include "PostProcess/PostProcessHMD.h"
@@ -13,7 +16,6 @@
 #include "SlateBasics.h"
 
 //////////////////////////////////////////////////////////////////////////
-#if defined(OVR_GL)
 FOculusRiftHMD::OGLBridge::OGLBridge() : 
 	FCustomPresent()
 {

@@ -5,14 +5,22 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
+#if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
+
+#include "D3D11RHIPrivate.h"
+#include "D3D11Util.h"
+
+#ifndef WINDOWS_PLATFORM_TYPES_GUARD
+#include "AllowWindowsPlatformTypes.h"
+#endif
+#include "OVR_CAPI_D3D.h"
+
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
 #include "PostProcess/PostProcessHMD.h"
 #include "ScreenRendering.h"
 
 #include "SlateBasics.h"
-
-#if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
 
 class FD3D11Texture2DSet : public FD3D11Texture2D
 {

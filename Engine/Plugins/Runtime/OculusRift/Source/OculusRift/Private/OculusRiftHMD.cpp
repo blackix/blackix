@@ -76,9 +76,9 @@ static void OVR_CDECL OvrLogCallback(int level, const char* message)
 //////////////////////////////////////////////////////////////////////////
 FSettings::FSettings()
 {
-	FMemory::Memset(EyeRenderDesc, 0);
-	FMemory::Memset(EyeProjectionMatrices, 0);
-	FMemory::Memset(EyeFov, 0);
+	FMemory::MemSet(EyeRenderDesc, 0);
+	FMemory::MemSet(EyeProjectionMatrices, 0);
+	FMemory::MemSet(EyeFov, 0);
 
 	SupportedTrackingCaps = SupportedHmdCaps = 0;
 	TrackingCaps = HmdCaps = 0;
@@ -87,7 +87,7 @@ FSettings::FSettings()
 
 	PixelDensity = 1.0f;
 
-	FMemory::Memset(EyeLayer, 0);
+	FMemory::MemSet(EyeLayer, 0);
 	EyeLayer.Header.Type = ovrLayerType_EyeFov;
 	EyeLayer.Header.Flags = ovrLayerFlag_HighQuality;
 
@@ -103,10 +103,10 @@ TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> FSettings::Clone() const
 //////////////////////////////////////////////////////////////////////////
 FGameFrame::FGameFrame()
 {
-	FMemory::Memset(CurEyeRenderPose, 0);
-	FMemory::Memset(CurTrackingState, 0);
-	FMemory::Memset(EyeRenderPose, 0);
-	FMemory::Memset(HeadPose, 0);
+	FMemory::MemSet(CurEyeRenderPose, 0);
+	FMemory::MemSet(CurTrackingState, 0);
+	FMemory::MemSet(EyeRenderPose, 0);
+	FMemory::MemSet(HeadPose, 0);
 }
 
 TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> FGameFrame::Clone() const
@@ -119,7 +119,7 @@ TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> FGameFrame::Clone() const
 void FOculusRiftHMD::PreInit()
 {
 	ovrInitParams initParams;
-	FMemory::Memset(initParams, 0);
+	FMemory::MemSet(initParams, 0);
 	initParams.Flags = ovrInit_RequestVersion;
 	initParams.RequestedMinorVersion = OVR_MINOR_VERSION;
 #if !UE_BUILD_SHIPPING
@@ -1586,7 +1586,7 @@ void FOculusRiftHMD::OnEndPlay()
 
 void FOculusRiftHMD::GetRawSensorData(SensorData& OutData)
 {
-	FMemory::Memset(OutData, 0);
+	FMemory::MemSet(OutData, 0);
 	InitDevice();
 	if (Hmd)
 	{
