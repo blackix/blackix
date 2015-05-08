@@ -11,9 +11,9 @@ FHMDSettings::FHMDSettings() :
 	, UserDistanceToScreenModifier(0.f)
 	, HFOVInRadians(FMath::DegreesToRadians(90.f))
 	, VFOVInRadians(FMath::DegreesToRadians(90.f))
-	, MirrorWindowSize(0, 0)
 	, NearClippingPlane(0)
 	, FarClippingPlane(0)
+	, MirrorWindowSize(0, 0)
 	, BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
 {
@@ -895,6 +895,54 @@ void FHeadMountedDisplay::ResetControlRotation() const
 		r.Pitch = 0;
 		pc->SetControlRotation(r);
 	}
+}
+
+void FHeadMountedDisplay::GetCurrentHMDPose(FQuat& CurrentOrientation, FVector& CurrentPosition,
+	bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
+{
+	// only supposed to be used from the game thread
+	check(IsInGameThread());
+	auto frame = GetCurrentFrame();
+	if (!frame)
+	{
+		CurrentOrientation = FQuat::Identity;
+		CurrentPosition = FVector::ZeroVector;
+		return;
+	}
+	if (PositionScale != FVector::ZeroVector)
+	{
+		frame->CameraScale3D = PositionScale;
+		frame->Flags.bCameraScale3DAlreadySet = true;
+	}
+	GetCurrentPose(CurrentOrientation, CurrentPosition, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera);
+	if (bUseOrienationForPlayerCamera)
+	{
+		frame->LastHmdOrientation = CurrentOrientation;
+		frame->Flags.bOrientationChanged = bUseOrienationForPlayerCamera;
+	}
+	if (bUsePositionForPlayerCamera)
+	{
+		frame->LastHmdPosition = CurrentPosition;
+		frame->Flags.bPositionChanged = bUsePositionForPlayerCamera;
+	}
+}
+
+void FHeadMountedDisplay::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition)
+{
+	GetCurrentHMDPose(CurrentOrientation, CurrentPosition, false, false, FVector::ZeroVector);
+}
+
+FVector FHeadMountedDisplay::GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale)
+{
+	const auto frame = GetCurrentFrame();
+	if (!frame)
+	{
+		return FVector::ZeroVector;
+	}
+	FVector UnrotatedPos = CurrentOrientation.Inverse().RotateVector(CurrentPosition);
+	UnrotatedPos.X -= frame->Settings->NeckToEyeInMeters.X * frame->WorldToMetersScale;
+	UnrotatedPos.Z -= frame->Settings->NeckToEyeInMeters.Y * frame->WorldToMetersScale;
+	return UnrotatedPos;
 }
 
 void FHeadMountedDisplay::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)

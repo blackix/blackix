@@ -326,54 +326,6 @@ void FGameFrame::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& Out
 	OutOrientation.Normalize();
 }
 
-void FOculusRiftHMD::GetCurrentHMDPose(FQuat& CurrentOrientation, FVector& CurrentPosition,
-	bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale)
-{
-	// only supposed to be used from the game thread
-	check(IsInGameThread());
-	auto frame = GetFrame();
-	if (!frame)
-	{
-		CurrentOrientation = FQuat::Identity;
-		CurrentPosition = FVector::ZeroVector;
-		return;
-	}
-	if (PositionScale != FVector::ZeroVector)
-	{
-		frame->CameraScale3D = PositionScale;
-		frame->Flags.bCameraScale3DAlreadySet = true;
-	}
-	GetCurrentPose(CurrentOrientation, CurrentPosition, bUseOrienationForPlayerCamera, bUsePositionForPlayerCamera);
-	if (bUseOrienationForPlayerCamera)
-	{
-		frame->LastHmdOrientation = CurrentOrientation;
-		frame->Flags.bOrientationChanged = bUseOrienationForPlayerCamera;
-	}
-	if (bUsePositionForPlayerCamera)
-	{
-		frame->LastHmdPosition = CurrentPosition;
-		frame->Flags.bPositionChanged = bUsePositionForPlayerCamera;
-	}
-}
-
-void FOculusRiftHMD::GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition)
-{
-	GetCurrentHMDPose(CurrentOrientation, CurrentPosition, false, false, FVector::ZeroVector);
-}
-
-FVector FOculusRiftHMD::GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale)
-{
-	const auto frame = GetFrame();
-	if (!frame)
-	{
-		return FVector::ZeroVector;
-	}
-	FVector UnrotatedPos = CurrentOrientation.Inverse().RotateVector(CurrentPosition);
-	UnrotatedPos.X -= frame->Settings->NeckToEyeInMeters.X * frame->WorldToMetersScale;
-	UnrotatedPos.Z -= frame->Settings->NeckToEyeInMeters.Y * frame->WorldToMetersScale;
-	return UnrotatedPos;
-}
-
 void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera)
 {
 	check(IsInGameThread());

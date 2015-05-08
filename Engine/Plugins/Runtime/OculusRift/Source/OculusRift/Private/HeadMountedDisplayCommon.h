@@ -305,6 +305,8 @@ public:
 	virtual bool IsHMDEnabled() const override;
 	virtual void EnableHMD(bool allow = true) override;
 
+	virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition) override;
+
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
 	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
@@ -345,7 +347,7 @@ public:
 	* @param PositionScale			(in) The 3D scale that will be applied to position.
 	* @return			The estimated neck position, calculated using NeckToEye vector from User Profile. Same coordinate space as CurrentPosition.
 	*/
-	virtual FVector GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale) { return FVector::ZeroVector; }
+	virtual FVector GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale);
 
 	/**
 	* Sets base position offset (in meters). The base position offset is the distance from the physical (0, 0, 0) position
@@ -374,6 +376,10 @@ public:
 
 	virtual void ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation) override;
 	virtual void UpdatePlayerCameraRotation(APlayerCameraManager*, struct FMinimalViewInfo& POV) override;
+
+	// An improved version of GetCurrentOrientationAndPostion, used from blueprints by OculusLibrary.
+	virtual void GetCurrentHMDPose(FQuat& CurrentOrientation, FVector& CurrentPosition,
+		bool bUseOrienationForPlayerCamera, bool bUsePositionForPlayerCamera, const FVector& PositionScale = FVector::ZeroVector);
 
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const = 0;
@@ -458,7 +464,7 @@ protected:
 	}
 
 #if !UE_BUILD_SHIPPING
-	TWeakObjectPtr<AStaticMeshActor> SeaOfCubesActorPtr;
+	TWeakObjectPtr<class AStaticMeshActor> SeaOfCubesActorPtr;
 	FVector							 CachedViewLocation;
 	FString							 CubeMeshName, CubeMaterialName;
 	float							 SideOfSingleCubeInMeters;
