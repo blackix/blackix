@@ -23,6 +23,7 @@
 
 #include "OVR.h"
 #include "VrApi.h"
+#include "VrApi_Android.h"
 
 #include <GLES2/gl2.h>
 
@@ -107,8 +108,14 @@ public:
 	int32			RenderTargetWidth;
 	int32			RenderTargetHeight;
 
+	/** Clamp warpswap to once every N vsyncs.  1 = 60Hz, 2 = 30Hz, etc. */
+	int32			MinimumVsyncs;
+
 	/** Motion prediction (in seconds). 0 - no prediction */
 	double			MotionPredictionInSeconds;
+
+	/** Vector defining center eye offset for head neck model in meters */
+	FVector			HeadModel;
 
 	OVR::Vector3f	HmdToEyeViewOffset[2]; 
 
@@ -172,7 +179,7 @@ class FGearVRCustomPresent : public FRHICustomPresent
 {
 	friend class FViewExtension;
 public:
-	FGearVRCustomPresent();
+	FGearVRCustomPresent(int32 MinimumVsyncs);
 
 	// Returns true if it is initialized and used.
 	bool IsInitialized() const { return bInitialized; }
@@ -195,11 +202,10 @@ public:
 	// Resets Viewport-specific resources.
 	virtual void OnBackBufferResize() override;
 	// Returns true if Engine should perform its own Present.
-	virtual bool Present(int SyncInterval) override;
+	virtual bool Present(int& SyncInterval) override;
 
 private:
 	void DicedBlit(uint32 SourceX, uint32 SourceY, uint32 DestX, uint32 DestY, uint32 Width, uint32 Height, uint32 NumXSteps, uint32 NumYSteps);
-
 
 protected:
 	void SetRenderContext(FHMDViewExtension* InRenderContext);
@@ -213,6 +219,7 @@ protected: // data
 	GLuint              CurrentSwapChainIndex;
 	GLuint              SwapChainTextures[2][3];
 	GLuint				RTTexId;
+	int32				MinimumVsyncs;
 };
 }  // namespace GearVR
 
@@ -233,9 +240,6 @@ public:
 	virtual EHMDDeviceType::Type GetHMDDeviceType() const override;
 	virtual bool GetHMDMonitorInfo(MonitorInfo&) override;
 
-    virtual void GetCurrentOrientationAndPosition(FQuat& CurrentOrientation, FVector& CurrentPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false, const FVector& PositionScale = FVector(1.0f, 1.0f, 1.0f)) override;
-	virtual FVector GetNeckPosition(const FQuat& CurrentOrientation, const FVector& CurrentPosition, const FVector& PositionScale) override;
-
 	virtual TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) override;
@@ -247,8 +251,8 @@ public:
 	virtual void InitCanvasFromView(FSceneView* InView, UCanvas* Canvas) override;
 
 	virtual void UpdateViewport(bool bUseSeparateRenderTarget, const FViewport& Viewport, SViewport* ViewportWidget) override;
-	virtual void CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) const override;
-	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) const override;
+	virtual void CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) override;
+	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) override;
 
 	virtual bool ShouldUseSeparateRenderTarget() const override
 	{
@@ -285,6 +289,7 @@ public:
 	TRefCountPtr<FGearVRCustomPresent> pGearVRBridge;
 
 	void ShutdownRendering();
+	void StartOVRGlobalMenu();
 
 private:
 	FGearVR* getThis() { return this; }
