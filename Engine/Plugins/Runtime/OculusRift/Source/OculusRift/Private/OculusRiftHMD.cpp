@@ -92,6 +92,7 @@ FSettings::FSettings()
 	EyeLayer.Header.Flags = ovrLayerFlag_HighQuality;
 
 	RenderTargetSize = FIntPoint(0, 0);
+	bQueueAheadEnabled = false;
 }
 
 TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> FSettings::Clone() const
@@ -397,6 +398,30 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			else
 			{
 				Ar.Logf(TEXT("Value is out of range (0.0..3.0f]"));
+			}
+			return true;
+		}
+		if (FParse::Command(&Cmd, TEXT("QAHEAD"))) // pixel density
+		{
+			FString CmdName = FParse::Token(Cmd, 0);
+
+			bool qaPrev = GetSettings()->bQueueAheadEnabled;
+			if (!FCString::Stricmp(*CmdName, TEXT("ON")))
+			{
+				GetSettings()->bQueueAheadEnabled = true;
+			}
+			else if (!FCString::Stricmp(*CmdName, TEXT("OFF")))
+			{
+				GetSettings()->bQueueAheadEnabled = false;
+			}
+			else
+			{
+				GetSettings()->bQueueAheadEnabled = !GetSettings()->bQueueAheadEnabled;
+			}
+
+			if (GetSettings()->bQueueAheadEnabled != qaPrev)
+			{
+				ovrHmd_SetBool(Hmd, "QueueAheadEnabled", (GetSettings()->bQueueAheadEnabled) ? ovrTrue : ovrFalse);
 			}
 			return true;
 		}
@@ -1131,6 +1156,8 @@ bool FOculusRiftHMD::InitDevice()
 		UpdateHmdRenderInfo();
 		UpdateStereoRenderingParams();
 		UpdateHmdCaps();
+
+		ovrHmd_SetBool(Hmd, "QueueAheadEnabled", (CurrentSettings->bQueueAheadEnabled) ? ovrTrue : ovrFalse);
 	}
 
 	return Hmd != nullptr;
@@ -1390,6 +1417,10 @@ void FOculusRiftHMD::LoadFromIni()
 	{
 		GetSettings()->PixelDensity = f;
 	}
+	if (GConfig->GetBool(OculusSettings, TEXT("QueueAheadEnabled"), v, GEngineIni))
+	{
+		GetSettings()->bQueueAheadEnabled = v;
+	}
 	if (GConfig->GetBool(OculusSettings, TEXT("bLowPersistenceMode"), v, GEngineIni))
 	{
 		Settings->Flags.bLowPersistenceMode = v;
@@ -1478,6 +1509,8 @@ void FOculusRiftHMD::SaveToIni()
 	}
 
 	GConfig->SetFloat(OculusSettings, TEXT("PixelDensity"), GetSettings()->PixelDensity, GEngineIni);
+
+	GConfig->SetFloat(OculusSettings, TEXT("QueueAheadEnabled"), GetSettings()->bQueueAheadEnabled, GEngineIni);
 
 	GConfig->SetBool(OculusSettings, TEXT("bLowPersistenceMode"), Settings->Flags.bLowPersistenceMode, GEngineIni);
 

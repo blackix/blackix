@@ -36,7 +36,6 @@
 struct FDistortionVertex;
 class FOculusRiftHMD;
 
-
 namespace OculusRift 
 {
 	/**
@@ -114,6 +113,8 @@ public:
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
+
+	bool					bQueueAheadEnabled;
 
 	unsigned				SupportedTrackingCaps;
 	unsigned				SupportedHmdCaps;

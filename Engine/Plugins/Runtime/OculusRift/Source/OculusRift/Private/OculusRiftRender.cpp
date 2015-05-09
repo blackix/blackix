@@ -449,6 +449,10 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 			Y += RowHeight;
 
+			Str = FString::Printf(TEXT("QueueAhead: %s"), (FrameSettings->bQueueAheadEnabled) ? TEXT("ON") : TEXT("OFF"));
+			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
+			Y += RowHeight;
+
 			Str = FString::Printf(TEXT("FOV V/H: %.2f / %.2f deg"), 
 				FMath::RadiansToDegrees(FrameSettings->VFOVInRadians), FMath::RadiansToDegrees(FrameSettings->HFOVInRadians));
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
