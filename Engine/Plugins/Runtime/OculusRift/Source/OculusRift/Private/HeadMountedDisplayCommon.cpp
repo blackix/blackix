@@ -16,6 +16,7 @@ FHMDSettings::FHMDSettings() :
 	, MirrorWindowSize(0, 0)
 	, BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
+	, PositionOffset(FVector::ZeroVector)
 {
 	Flags.Raw = 0;
 	Flags.bHMDEnabled = true;
@@ -744,6 +745,15 @@ bool FHeadMountedDisplay::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice&
 				Settings->Flags.bDrawCubes = !Settings->Flags.bDrawCubes;
 				return true;
 			}
+		}
+		else if (FParse::Command(&Cmd, TEXT("POSOFF")))
+		{
+			FString StrX = FParse::Token(Cmd, 0);
+			FString StrY = FParse::Token(Cmd, 0);
+			FString StrZ = FParse::Token(Cmd, 0);
+			Settings->PositionOffset.X = FCString::Atof(*StrX);
+			Settings->PositionOffset.Y = FCString::Atof(*StrY);
+			Settings->PositionOffset.Z = FCString::Atof(*StrZ);
 		}
 	}
 #endif //!UE_BUILD_SHIPPING

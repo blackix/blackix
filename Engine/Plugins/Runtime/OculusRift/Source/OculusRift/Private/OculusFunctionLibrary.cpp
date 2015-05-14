@@ -154,3 +154,30 @@ void UOculusFunctionLibrary::GetPlayerCameraManagerFollowHmd(bool& bFollowHmdOri
 		bFollowHmdPosition = OculusHMD->GetSettings()->Flags.bPlayerCameraManagerFollowsHmdPosition;
 	}
 }
+
+void UOculusFunctionLibrary::SetBaseRotationAndPositionOffset(FRotator BaseRot, FVector PosOffset, EOrientPositionSelector::Type Options)
+{
+	FOculusRiftHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	{
+		if (Options == EOrientPositionSelector::Orientation || EOrientPositionSelector::OrientationAndPosition)
+		{
+			GEngine->HMDDevice->SetBaseRotation(BaseRot);
+		}
+		if (Options == EOrientPositionSelector::Position || EOrientPositionSelector::OrientationAndPosition)
+		{
+			OculusHMD->GetSettings()->PositionOffset = PosOffset;
+		}
+	}
+}
+
+void UOculusFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset)
+{
+	FOculusRiftHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	{
+		OutRot = OculusHMD->GetBaseRotation();
+		OutPosOffset = OculusHMD->GetSettings()->PositionOffset;
+	}
+}
+

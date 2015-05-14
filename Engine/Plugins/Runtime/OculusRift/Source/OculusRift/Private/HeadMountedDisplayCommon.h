@@ -179,6 +179,10 @@ public:
 	/** Viewports for each eye, in render target texture coordinates */
 	FIntRect				EyeRenderViewport[2];
 
+	/** Deprecated position offset */
+	FVector					PositionOffset;
+
+
 	FHMDSettings();
 	virtual ~FHMDSettings() {}
 

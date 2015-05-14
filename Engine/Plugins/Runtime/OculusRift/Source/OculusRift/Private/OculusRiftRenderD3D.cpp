@@ -3,6 +3,7 @@
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
+#if !PLATFORM_MAC
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
@@ -591,3 +592,5 @@ bool FOculusRiftHMD::D3D11Bridge::Present(int32& SyncInterval)
 #endif // #if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
 
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
+#endif // #if !PLATFORM_MAC
+

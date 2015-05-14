@@ -3,6 +3,7 @@
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
+#if !PLATFORM_MAC // Mac uses 0.5/OculusRiftHMD_05.cpp
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #include "RendererPrivate.h"
@@ -212,9 +213,8 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 		// The HMDPosition already has HMD orientation applied.
 		// Apply rotational difference between HMD orientation and ViewRotation
 		// to HMDPosition vector. 
-		// PositionOffset should be already applied to View.ViewLocation on GT in PlayerCameraUpdate.
 		const FVector DeltaPosition = CurrentEyePosition - View.BaseHmdLocation;
-		const FVector vEyePosition = DeltaControlOrientation.RotateVector(DeltaPosition);
+		const FVector vEyePosition = DeltaControlOrientation.RotateVector(DeltaPosition) + CurrentFrame->Settings->PositionOffset;
 		View.ViewLocation += vEyePosition;
 
 		//UE_LOG(LogHMD, Log, TEXT("VDLTPOS: %.3f %.3f %.3f"), vEyePosition.X, vEyePosition.Y, vEyePosition.Z);
@@ -625,5 +625,5 @@ void FCustomPresent::MarkTexturesInvalid()
 	}
 }
 
-
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
+#endif // #if !PLATFORM_MAC // Mac uses 0.5/OculusRiftHMD_05.cpp

@@ -3,6 +3,7 @@
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
+#if !PLATFORM_MAC
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #if defined(OVR_GL)
@@ -157,3 +158,4 @@ bool FOculusRiftHMD::OGLBridge::Present(int SyncInterval)
 #endif // #if defined(OVR_GL)
 
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
+#endif //#if !PLATFORM_MAC

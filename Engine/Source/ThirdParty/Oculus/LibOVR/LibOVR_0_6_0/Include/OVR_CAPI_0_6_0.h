@@ -641,15 +641,26 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrSwapTextureSet_
 
     /// CurrentIndex specifies which of the Textures will be used by the ovrHmd_SubmitFrame call.
     /// This is manually incremented by the application, typically in a round-robin manner.
-    /// After ovrHmd_SubmitFrame, the application has two choices:
-    ///    -# Increment CurrentIndex by 1 and wrap it back to 0 if CurrentIndex == TextureCount.
-    ///        - In this case, the application must write to the texture
-    ///          at the new index before submitting.
-    ///    -# Don't increment CurrentIndex.
-    ///        - In this case, the old texture will be reused by the system 
-    ///          and the application must not modify it.
-    ///  ovrHmd_SubmitFrame always ensures the texture at the next index
-    ///  is available for rendering if the application decides to do so.
+    ///
+    /// Before selecting a Texture as a rendertarget, the application should increment CurrentIndex by
+    /// 1 and wrap it back to 0 if CurrentIndex == TextureCount, so that it gets a fresh rendertarget,
+    /// one that is not currently being used for display. It can then render to Textures[CurrentIndex].
+    ///
+    /// After rendering, the application calls ovrHmd_SubmitFrame using that same CurrentIndex value
+    /// to display the new rendertarget.
+    ///
+    /// The application can submit multiple frames with the same ovrSwapTextureSet and CurrentIndex 
+    /// value if the rendertarget does not need to be updated, for example when displaying an
+    /// information display whose text has not changed since the previous frame.
+    ///
+    /// Multiple layers can use the same ovrSwapTextureSet at the same time - there is no need to 
+    /// create a unique ovrSwapTextureSet for each layer. However, all the layers using a particular
+    /// ovrSwapTextureSet will share the same value of CurrentIndex, so they cannot use different
+    /// textures within the ovrSwapTextureSet.
+    ///
+    /// Once a particular Textures[CurrentIndex] has been sent to ovrHmd_SubmitFrame, that texture
+    /// should not be rendered to until a subsequent ovrHmd_SubmitFrame is made (either with a
+    /// different CurrentIndex value, or with a different ovrSwapTextureSet, or disabling the layer).
     int         CurrentIndex;
 } ovrSwapTextureSet;
 
@@ -1075,7 +1086,7 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerHeader_
 
 
 /// Describes a layer that specifies a monoscopic or stereoscopic view.
-/// This is the kind of layer that's typically used as layer 0 to OvrHmd_SubmitFrame,
+/// This is the kind of layer that's typically used as layer 0 to ovrHmd_SubmitFrame,
 /// as it is the kind of layer used to render a 3D stereoscopic view.
 ///
 /// Three options exist with respect to mono/stereo texture usage:
@@ -1105,7 +1116,7 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerEyeFov_
     ovrFovPort          Fov[ovrEye_Count];
 
     /// Specifies the position and orientation of each eye view, with the position specified in meters.
-    /// RenderPose will typically be the value returned from ovrHmd_CalcEyePoses,
+    /// RenderPose will typically be the value returned from ovr_CalcEyePoses,
     /// but can be different in special cases if a different head pose is used for rendering.
     ovrPosef            RenderPose[ovrEye_Count];
 
@@ -1146,7 +1157,7 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerEyeFovDepth_
     ovrFovPort          Fov[ovrEye_Count];
 
     /// Specifies the position and orientation of each eye view, with the position specified in meters.
-    /// RenderPose will typically be the value returned from ovrHmd_CalcEyePoses,
+    /// RenderPose will typically be the value returned from ovr_CalcEyePoses,
     /// but can be different in special cases if a different head pose is used for rendering.
     ovrPosef            RenderPose[ovrEye_Count];
 
@@ -1178,7 +1189,7 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerEyeFovDepth_
 ///
 /// \see ovrSwapTextureSet, ovrHmd_SubmitFrame
 ///
-typedef struct OVR_ALIGNAS(OVR_PTR_SIZE)
+typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerQuad_
 {
     /// Header.Type must be ovrLayerType_QuadInWorld or ovrLayerType_QuadHeadLocked.
     ovrLayerHeader      Header;
@@ -1223,16 +1234,17 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrLayerDirect_
 
 
 
-/// Union that combines two-texture ovrLayer types in a way that allows them
+/// Union that combines ovrLayer types in a way that allows them
 /// to be used in a polymorphic way.
-typedef union ovrLayerEye_Union_
+typedef union ovrLayer_Union_
 {
     ovrLayerHeader      Header;
-    ovrLayerDirect      Direct;
     ovrLayerEyeFov      EyeFov;
     ovrLayerEyeFovDepth EyeFovDepth;
+    ovrLayerQuad        Quad;
+    ovrLayerDirect      Direct;
 
-} ovrLayerEye_Union;
+} ovrLayer_Union;
 
 //@}
 
