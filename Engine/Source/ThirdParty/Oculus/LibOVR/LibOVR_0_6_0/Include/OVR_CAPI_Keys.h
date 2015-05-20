@@ -44,6 +44,7 @@ limitations under the License.
 #define OVR_KEY_CUSTOM_EYE_RENDER           "CustomEyeRender"     // bool
 #define OVR_KEY_CAMERA_POSITION				"CenteredFromWorld"   // double[7] ovrPosef quat rotation x, y, z, w, translation x, y, z
 
+#define OVR_KEY_DEMO_SHOULD_EXIT            "DemoShouldExit"
 
 // Default measurements empirically determined at Oculus to make us happy
 // The neck model numbers were derived as an average of the male and female averages from ANSUR-88

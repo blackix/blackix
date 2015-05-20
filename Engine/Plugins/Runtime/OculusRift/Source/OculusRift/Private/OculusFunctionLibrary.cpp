@@ -181,3 +181,16 @@ void UOculusFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& OutRot, 
 	}
 }
 
+bool UOculusFunctionLibrary::ShouldDemoExit()
+{
+#ifdef OVR_KEY_DEMO_SHOULD_EXIT
+	FOculusRiftHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr && OculusHMD->Hmd)
+	{
+		return ovrHmd_GetBool(OculusHMD->Hmd, OVR_KEY_DEMO_SHOULD_EXIT, ovrFalse) == ovrTrue;
+	}
+#else
+	UE_LOG(LogHMD, Warning, TEXT("ShouldDemoExit is not supported by this version of Oculus SDK. You need to update ThirdParty/Oculus/LibOVR with Partner SDK files."));
+#endif
+	return false;
+}

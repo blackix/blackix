@@ -176,6 +176,9 @@ class UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary", meta = (DeprecatedFunction, DeprecationMessage = "A hack, proper camera positioning should be used"))
 	static void GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset);
 
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static bool ShouldDemoExit();
+
 protected:
 	static class FOculusRiftHMD* GetOculusHMD();
 };
