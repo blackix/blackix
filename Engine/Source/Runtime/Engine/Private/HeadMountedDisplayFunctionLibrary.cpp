@@ -149,3 +149,31 @@ void UHeadMountedDisplayFunctionLibrary::GetBaseRotationAndPositionOffset(FRotat
 	}
 }
 
+void UHeadMountedDisplayFunctionLibrary::SetBaseOffsetInMeters(FVector BaseOffsetInMeters)
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		GEngine->HMDDevice->SetBaseOffsetInMeters(BaseOffsetInMeters);
+	}
+}
+
+void UHeadMountedDisplayFunctionLibrary::GetBaseOffsetInMeters(FVector& OutBaseOffsetInMeters)
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		OutBaseOffsetInMeters = GEngine->HMDDevice->GetBaseOffsetInMeters();
+	}
+	else
+	{
+		OutBaseOffsetInMeters = FVector::ZeroVector;
+	}
+}
+
+bool UHeadMountedDisplayFunctionLibrary::ShouldDemoExit()
+{
+	if (GEngine->HMDDevice.IsValid())
+	{
+		return GEngine->HMDDevice->ShouldDemoExit();
+	}
+	return false;
+}

@@ -153,6 +153,9 @@ public:
 	virtual void SetBaseOrientation(const FQuat& BaseOrient) override;
 	virtual FQuat GetBaseOrientation() const override;
 
+	virtual void SetBaseOffsetInMeters(const FVector& InBaseOffsetInMeters);
+	virtual FVector GetBaseOffsetInMeters() const;
+
 	virtual void SetPositionOffset(const FVector& PosOff) override;
 	virtual FVector GetPositionOffset() const override;
 
@@ -165,6 +168,8 @@ public:
 	virtual void OnEndPlay() override;
 
 	virtual void DrawDebug(UCanvas* Canvas) override;
+
+	virtual bool ShouldDemoExit() override;
 
 	bool DoEnableStereo(bool bStereo, bool bApplyToHmd);
 	void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition);
@@ -405,6 +410,7 @@ private:
 
 #if !UE_BUILD_SHIPPING
 	void DrawDebugTrackingCameraFrustum(class UWorld* InWorld, const FVector& ViewLocation);
+	void DrawSeaOfCubes(UWorld* World, FVector ViewLocation);
 #endif // #if !UE_BUILD_SHIPPING
 
 private: // data
@@ -519,6 +525,8 @@ private: // data
 			 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
 			 */
 			bool64				bDrawTrackingCameraFrustum : 1;
+
+			bool64				bDrawCubes : 1;
 
 			/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
 			bool64				bDoNotUpdateOnGT : 1;
@@ -663,6 +671,12 @@ private: // data
 	} RenderParams_RenderThread;
 
 	void*						OSWindowHandle;
+
+#if !UE_BUILD_SHIPPING
+	TWeakObjectPtr<AStaticMeshActor> SeaOfCubesActorPtr;
+	FVector							 CachedViewLocation;
+	FString							 CubeMeshName, CubeMaterialName;
+#endif
 };
 
 DEFINE_LOG_CATEGORY_STATIC(LogHMD, Log, All);

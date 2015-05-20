@@ -257,6 +257,26 @@ public:
 	virtual FQuat GetBaseOrientation() const { return FQuat::Identity; }
 
 	/**
+	 * Sets base position offset (in meters). The base position offset is the distance from the physical (0, 0, 0) position 
+	 * to current HMD position (bringing the (0, 0, 0) point to the current HMD position)
+	 * Note, this vector is set by ResetPosition call; use this method with care.
+	 * The axis of the vector are the same as in Unreal: X - forward, Y - right, Z - up.
+	 *
+	 * @param BaseOffset			(in) the vector to be set as base offset, in meters. 
+	 */
+	virtual void SetBaseOffsetInMeters(const FVector& BaseOffset) {}
+
+	/**
+	 * Returns the currently used base position offset, previously set by the 
+	 * ResetPosition or SetBasePositionOffset calls. It represents a vector that translates the HMD's position
+	 * into (0,0,0) point, in meters.
+	 * The axis of the vector are the same as in Unreal: X - forward, Y - right, Z - up.
+	 *
+	 * @return Base position offset, in meters.
+	 */
+	virtual FVector GetBaseOffsetInMeters() const { return FVector::ZeroVector; }
+
+	/**
 	 * Sets HMD position offset that will be added to current HMD position, 
 	 * effectively moving the virtual camera by the specified offset. The addition
 	 * occurs after the HMD orientation and position are applied.
@@ -318,6 +338,7 @@ public:
 	 */
 	virtual void RecordAnalytics() {}
 
+	virtual bool ShouldDemoExit() { return false; }
 private:
 	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */
 	FSlateRect PreFullScreenRect;

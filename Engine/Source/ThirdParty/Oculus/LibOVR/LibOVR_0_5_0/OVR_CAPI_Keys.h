@@ -40,6 +40,8 @@ limitations under the License.
 #define OVR_KEY_CUSTOM_EYE_RENDER           "CustomEyeRender"   // bool
 #define OVR_KEY_CAMERA_POSITION				"CenteredFromWorld" // double[7]
 
+#define OVR_KEY_DEMO_SHOULD_EXIT            "DemoShouldExit"
+
 // Default measurements empirically determined at Oculus to make us happy
 // The neck model numbers were derived as an average of the male and female averages from ANSUR-88
 // NECK_TO_EYE_HORIZONTAL = H22 - H43 = INFRAORBITALE_BACK_OF_HEAD - TRAGION_BACK_OF_HEAD

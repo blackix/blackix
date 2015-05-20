@@ -293,6 +293,88 @@ void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& Curre
 #endif // OVR_VISION_ENABLED
 }
 
+#if !UE_BUILD_SHIPPING
+void FOculusRiftHMD::DrawSeaOfCubes(UWorld* World, FVector ViewLocation)
+{
+	if (Flags.bDrawCubes && !SeaOfCubesActorPtr.IsValid())
+	{
+		FActorSpawnParameters SpawnInfo;
+		SpawnInfo.bNoCollisionFail = true;
+		SpawnInfo.bNoFail = true;
+		SpawnInfo.ObjectFlags = RF_Transient;
+		AStaticMeshActor* SeaOfCubesActor;
+		SeaOfCubesActorPtr = SeaOfCubesActor = World->SpawnActor<AStaticMeshActor>(SpawnInfo);
+
+		const float cube_side_in_meters = 0.12f;
+		const float cube_side = cube_side_in_meters * WorldToMetersScale;
+		const float cubes_volume_in_meters = 3.2f;
+		const float cubes_volume = cubes_volume_in_meters * WorldToMetersScale;
+		const int num_of_cubes = 11;
+		const TCHAR* const cube_resource_name = (CubeMeshName.IsEmpty()) ? TEXT("/Engine/BasicShapes/Cube.Cube") : *CubeMeshName;
+		const TCHAR* const cube_material_name = (CubeMaterialName.IsEmpty()) ? TEXT("/Engine/EngineMaterials/DefaultMaterial.DefaultMaterial") : *CubeMaterialName;
+
+		UStaticMesh* const BoxMesh = Cast<UStaticMesh>(StaticLoadObject(UStaticMesh::StaticClass(), NULL,
+			cube_resource_name, NULL, LOAD_None, NULL));
+
+		UMaterial* const BoxMat = Cast<UMaterial>(StaticLoadObject(UMaterial::StaticClass(), NULL,
+			cube_material_name, NULL, LOAD_None, NULL));
+
+		if (!BoxMesh)
+		{
+			SeaOfCubesActorPtr = nullptr;
+			UE_LOG(LogHMD, Log, TEXT("DrawSeaOfCubes: Can't find cube  resource: %s"), cube_resource_name);
+			return;
+		}
+		if (!BoxMat)
+		{
+			UE_LOG(LogHMD, Log, TEXT("DrawSeaOfCubes: Can't find cube material: %s"), cube_material_name);
+			// cubes still can be drawn w/o material, so proceed.
+		}
+		const FBoxSphereBounds bounds = BoxMesh->GetBounds();
+
+		// Calc dimensions to calculate proper scale to maintain proper size of cubes
+		UE_LOG(LogHMD, Log, TEXT("Cube %s: Box extent %s, sphere rad %f"), cube_resource_name, 
+			*bounds.BoxExtent.ToString(), bounds.SphereRadius);
+
+		const FVector box_scale(cube_side / (bounds.BoxExtent.X*2), cube_side / (bounds.BoxExtent.Y*2), cube_side / (bounds.BoxExtent.Z*2));
+
+		const FVector SeaOfCubesOrigin = ViewLocation;
+
+		UInstancedStaticMeshComponent* ISMComponent = ConstructObject<UInstancedStaticMeshComponent>(UInstancedStaticMeshComponent::StaticClass());
+		ISMComponent->AttachTo(SeaOfCubesActor->GetStaticMeshComponent());
+		ISMComponent->SetStaticMesh(BoxMesh);
+		ISMComponent->SetMaterial(0, BoxMat);
+		ISMComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		ISMComponent->SetCastShadow(false);
+		ISMComponent->SetEnableGravity(false);
+		ISMComponent->SetStaticLightingMapping(false, 0);
+		ISMComponent->InvalidateLightingCache();
+		ISMComponent->RegisterComponentWithWorld(World);
+
+		float X = SeaOfCubesOrigin.X - cubes_volume / 2;
+		for (int xn = 0; xn < num_of_cubes; ++xn, X += cubes_volume / num_of_cubes)
+		{
+			float Y = SeaOfCubesOrigin.Y - cubes_volume / 2;
+			for (int yn = 0; yn < num_of_cubes; ++yn, Y += cubes_volume / num_of_cubes)
+			{
+				float Z = SeaOfCubesOrigin.Z - cubes_volume / 2;
+				for (int zn = 0; zn < num_of_cubes; ++zn, Z += cubes_volume / num_of_cubes)
+				{
+					FTransform Transf(FQuat::Identity, FVector(X, Y, Z), box_scale);
+					ISMComponent->AddInstanceWorldSpace(Transf);
+				}
+			}
+		}
+	}
+	else if (!Flags.bDrawCubes && SeaOfCubesActorPtr.IsValid())
+	{
+		SeaOfCubesActorPtr.Get()->GetStaticMeshComponent()->SetVisibility(false, true);
+		World->DestroyActor(SeaOfCubesActorPtr.Get());
+		SeaOfCubesActorPtr = nullptr;
+	}
+}
+#endif
+
 void FOculusRiftHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotation)
 {
 #if !UE_BUILD_SHIPPING
@@ -325,6 +407,10 @@ void FOculusRiftHMD::ApplyHmdRotation(APlayerController* PC, FRotator& ViewRotat
 	if (Flags.bDrawTrackingCameraFrustum && PC->GetPawnOrSpectator())
 	{
 		DrawDebugTrackingCameraFrustum(PC->GetWorld(), PC->GetPawnOrSpectator()->GetPawnViewLocation());
+	}
+	if (PC->GetPawnOrSpectator())
+	{
+		DrawSeaOfCubes(PC->GetWorld(), CachedViewLocation);
 	}
 #endif
 }
@@ -360,6 +446,7 @@ void FOculusRiftHMD::UpdatePlayerCameraRotation(APlayerCameraManager* Camera, st
 	{
 		DrawDebugTrackingCameraFrustum(Camera->GetWorld(), POV.Location);
 	}
+	DrawSeaOfCubes(Camera->GetWorld(), POV.Location);
 #endif
 }
 
@@ -920,6 +1007,47 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 		}
 		return true;
     }
+#if !UE_BUILD_SHIPPING
+	else if (FParse::Command(&Cmd, TEXT("HMDDBG")))
+	{
+		if (FParse::Command(&Cmd, TEXT("SHOWCAMERA")))
+		{
+			if (FParse::Command(&Cmd, TEXT("OFF")))
+			{
+				Flags.bDrawTrackingCameraFrustum = false;
+				return true;
+			}
+			if (FParse::Command(&Cmd, TEXT("ON")))
+			{
+				Flags.bDrawTrackingCameraFrustum = true;
+				return true;
+			}
+			else
+			{
+				Flags.bDrawTrackingCameraFrustum = !Flags.bDrawTrackingCameraFrustum;
+				return true;
+			}
+		}
+		if (FParse::Command(&Cmd, TEXT("CUBES")))
+		{
+			if (FParse::Command(&Cmd, TEXT("OFF")))
+			{
+				Flags.bDrawCubes = false;
+				return true;
+			}
+			if (FParse::Command(&Cmd, TEXT("ON")))
+			{
+				Flags.bDrawCubes = true;
+				return true;
+			}
+			else
+			{
+				Flags.bDrawCubes = !Flags.bDrawCubes;
+				return true;
+			}
+		}
+	}
+#endif // #if !UE_BUILD_SHIPPING
 	else if (FParse::Command(&Cmd, TEXT("HMDPOS")))
 	{
 		if (FParse::Command(&Cmd, TEXT("RESET")))
@@ -954,26 +1082,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			UpdateHmdCaps();
 			return true;
 		}
-#if !UE_BUILD_SHIPPING
-		else if (FParse::Command(&Cmd, TEXT("SHOWCAMERA")))
-		{
-			if (FParse::Command(&Cmd, TEXT("OFF")))
-			{
-				Flags.bDrawTrackingCameraFrustum = false;
-				return true;
-			}
-			if (FParse::Command(&Cmd, TEXT("ON")))
-			{
-				Flags.bDrawTrackingCameraFrustum = true;
-				return true;
-			}
-			else 
-			{
-				Flags.bDrawTrackingCameraFrustum = !Flags.bDrawTrackingCameraFrustum;
-				return true;
-			}
-		}
-#endif // #if !UE_BUILD_SHIPPING
 		else if (FParse::Command(&Cmd, TEXT("SHOW")))
 		{
 			Ar.Logf(TEXT("hmdpos is %s, vision='%s'"), 
@@ -1448,6 +1556,10 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 			// to HMDPosition vector. 
 			const FVector vEyePosition = DeltaControlOrientation.RotateVector(CurEyePosition) + PositionOffset;
 			ViewLocation += vEyePosition;
+
+#if !UE_BUILD_SHIPPING
+			CachedViewLocation = ViewLocation;
+#endif
 		}
 	}
 	else if (IsInRenderingThread())
@@ -1541,6 +1653,16 @@ void FOculusRiftHMD::SetBaseOrientation(const FQuat& BaseOrient)
 FQuat FOculusRiftHMD::GetBaseOrientation() const
 {
 	return BaseOrientation;
+}
+
+void FOculusRiftHMD::SetBaseOffsetInMeters(const FVector& InBaseOffsetInMeters)
+{
+	BaseOffset = ToOVRVector<OVR::Vector3f>(InBaseOffsetInMeters);
+}
+
+FVector FOculusRiftHMD::GetBaseOffsetInMeters() const
+{
+	return ToFVector(BaseOffset);
 }
 
 void FOculusRiftHMD::SetPositionOffset(const FVector& PosOff)
@@ -1724,6 +1846,7 @@ FOculusRiftHMD::FOculusRiftHMD()
 	}
 	SupportedTrackingCaps = SupportedDistortionCaps = SupportedHmdCaps = 0;
 	OSWindowHandle = nullptr;
+
 	Startup();
 }
 
@@ -2168,6 +2291,18 @@ void FOculusRiftHMD::LoadFromIni()
 	{
 		NearClippingPlane = f;
 	}
+
+#if !UE_BUILD_SHIPPING
+	FString s;
+	if (GConfig->GetString(OculusSettings, TEXT("CubeMeshName"), s, GEngineIni))
+	{
+		CubeMeshName = s;
+	}
+	if (GConfig->GetString(OculusSettings, TEXT("CubeMaterialName"), s, GEngineIni))
+	{
+		CubeMaterialName = s;
+	}
+#endif
 }
 
 void FOculusRiftHMD::SaveToIni()
@@ -2253,6 +2388,19 @@ void FOculusRiftHMD::OnEndPlay()
 		EnableStereo(false);
 		ReleaseDevice();
 	}
+}
+
+bool FOculusRiftHMD::ShouldDemoExit()
+{
+#ifdef OVR_KEY_DEMO_SHOULD_EXIT
+	if (Hmd)
+	{
+		return ovrHmd_GetBool(Hmd, OVR_KEY_DEMO_SHOULD_EXIT, ovrFalse) == ovrTrue;
+	}
+#else
+	UE_LOG(LogHMD, Warning, TEXT("ShouldDemoExit is not supported by this version of Oculus SDK. You need to update ThirdParty/Oculus/LibOVR with Partner SDK files."));
+#endif
+	return false;
 }
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
