@@ -4474,3 +4474,9 @@ void FDynamicForceFeedbackDetails::Update(FForceFeedbackValues& Values) const
 		Values.RightSmall = FMath::Clamp(Intensity, Values.RightSmall, 1.f);
 	}
 }
+bool APlayerController::ShouldPerformFullTickWhenPaused() const
+{
+	bool bIsInVR = (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsStereoEnabled() && GEngine->HMDDevice->IsHMDConnected());
+	return bIsInVR || bShouldPerformFullTickWhenPaused;
+}
+
