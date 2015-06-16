@@ -4552,4 +4552,10 @@ void APlayerController::OnServerStartedVisualLogger_Implementation(bool bIsLoggi
 #endif
 }
 
+bool APlayerController::ShouldPerformFullTickWhenPaused() const
+{
+	bool bIsInVR = (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsStereoEnabled() && GEngine->HMDDevice->IsHMDConnected());
+	return bIsInVR || bShouldPerformFullTickWhenPaused;
+}
+
 #undef LOCTEXT_NAMESPACE

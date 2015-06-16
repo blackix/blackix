@@ -465,8 +465,8 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 		CleanupResources();
 	}
 
-	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumComputeUAVUnits) override
-	{
+	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumComputeUAVUnits) override;
+/*	{ //!AB: moved to CPP file to avoid extra dependencies and linker errors when included externally
 		check(!ShaderParameters);
 		FOpenGLCommonState::InitializeResources(NumCombinedTextures, NumComputeUAVUnits);
 		ShaderParameters = new FOpenGLShaderParameterCache[CrossCompiler::NUM_SHADER_STAGES];
@@ -490,7 +490,7 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 			DirtyUniformBuffers[Frequency] = MAX_uint16;
 		}
 	}
-
+*/
 	virtual void CleanupResources() override
 	{
 		delete [] ShaderParameters;
