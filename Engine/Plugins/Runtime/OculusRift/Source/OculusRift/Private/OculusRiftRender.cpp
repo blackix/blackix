@@ -515,7 +515,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 // 			Y += RowHeight;
 		}
 
-		if (FrameSettings->Flags.bDrawTrackingCameraFrustum)
+		if (Canvas && Canvas->SceneView && FrameSettings->Flags.bDrawTrackingCameraFrustum)
 		{
 			DrawDebugTrackingCameraFrustum(GWorld, Canvas->SceneView->ViewRotation, Canvas->SceneView->ViewLocation);
 		}
