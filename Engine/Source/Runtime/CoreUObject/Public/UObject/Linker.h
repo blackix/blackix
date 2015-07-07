@@ -1730,16 +1730,19 @@ private:
 #endif
 	void DetachAllBulkData(bool bEnsureBulkDataIsLoaded);
 public:
+
 	/**
-	 * Detaches linker from bulk data/ exports and removes itself from array of loaders.
-	 *
-	 * @param	bEnsureAllBulkDataIsLoaded	Whether to load all bulk data first before detaching.
+	 * Detaches linker from bulk data.
 	 */
 	void LoadAndDetachAllBulkData();
 
+	/**
+	* Detaches linker from bulk data/ exports and removes itself from array of loaders.
+	*/
+	void Detach();
+
 private:
 
-	void Detach();
 	void Seek( int64 InPos ) override;
 	int64 Tell() override;
 	int64 TotalSize() override;
@@ -1953,14 +1956,14 @@ private:
 	void ResolveDeferredExports(UClass* LoadClass);
 
 	/**
-	 * Query method to help handle recursive behavior. When this returns true, 
-	 * this linker is in the middle of, or is about to call FinalizeBlueprint()
-	 * (for a blueprint class somewhere in the current callstack). Needed when 
-	 * we get to finalizing a sub-class before we've finished finalizing its 
-	 * super (so we know we need to finish finalizing the super first).
-	 * 
-	 * @return True if FinalizeBlueprint() is currently being ran (or about to be ran) for an export (Blueprint) class.
-	 */
+	* Query method to help handle recursive behavior. When this returns true,
+	* this linker is in the middle of, or is about to call FinalizeBlueprint()
+	* (for a blueprint class somewhere in the current callstack). Needed when
+	* we get to finalizing a sub-class before we've finished finalizing its
+	* super (so we know we need to finish finalizing the super first).
+	*
+	* @return True if FinalizeBlueprint() is currently being ran (or about to be ran) for an export (Blueprint) class.
+	*/
 	bool IsBlueprintFinalizationPending() const;
 
 	/**
@@ -1992,8 +1995,9 @@ private:
 	 */
 	bool IsExportBeingResolved(int32 ExportIndex);
 
-
 	void ResetDeferredLoadingState();
+
+	friend class FObjectInitializer;
 public:
 	bool HasPerformedFullExportResolvePass();
 
@@ -2168,6 +2172,7 @@ typedef uint32 ELazyLoaderFlags;
 	Global functions
 -----------------------------------------------------------------------------*/
 
+/** Resets linkers on packages after they have finished loading */
 COREUOBJECT_API void ResetLoaders( UObject* InOuter );
 
 /**

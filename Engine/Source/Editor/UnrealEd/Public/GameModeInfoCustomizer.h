@@ -4,6 +4,7 @@
 
 #include "IDocumentation.h"
 #include "KismetEditorUtilities.h"
+#include "EditorClassUtils.h"
 #include "GameFramework/GameMode.h"
 #include "Engine/BlueprintGeneratedClass.h"
 
@@ -168,22 +169,14 @@ public:
 		FString ClassName;
 		DefaultGameModeClassHandle->GetValueAsFormattedString(ClassName);
 
-		if (ClassName.IsEmpty() || ClassName == "None")
+		// Blueprints may have type information before the class name, so make sure and strip that off now
+		ConstructorHelpers::StripObjectClass(ClassName);
+
+		// Do we have a valid cached class pointer? (Note: We can't search for the class while a save is happening)
+		if ((!CachedGameModeClass || CachedGameModeClass->GetPathName() != ClassName) && !GIsSavingPackage)
 		{
-			CachedGameModeClass = nullptr;
-			return nullptr;
+			CachedGameModeClass = FEditorClassUtils::GetClassFromString(ClassName);
 		}
-
-		FString StrippedClassName = ClassName;
-		ConstructorHelpers::StripObjectClass(StrippedClassName);
-
-		// Just returned the cached value if it's already up-to-date, or if we're saving packages since we can't search for the object while a save is happening
-		if ((CachedGameModeClass && CachedGameModeClass->GetPathName() == StrippedClassName) || GIsSavingPackage)
-		{
-			return CachedGameModeClass;
-		}
-
-		CachedGameModeClass = FindObject<UClass>(ANY_PACKAGE, *StrippedClassName);
 		return CachedGameModeClass;
 	}
 
