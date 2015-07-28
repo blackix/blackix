@@ -43,6 +43,10 @@ FGenericErrorReport::FGenericErrorReport(const FString& Directory)
 
 bool FGenericErrorReport::SetUserComment(const FText& UserComment, bool bAllowToBeContacted)
 {
+	const FString UserName1 = FPlatformProcess::UserName( false );
+	const FString UserName2 = FPlatformProcess::UserName( true );
+	const TCHAR* Anonymous = TEXT( "Anonymous" );
+
 	// Load the file and remove all PII if bAllowToBeContacted is set to false.
 	const bool bRemovePersonalData = !bAllowToBeContacted;
 	if( bRemovePersonalData )
@@ -63,6 +67,10 @@ bool FGenericErrorReport::SetUserComment(const FText& UserComment, bool bAllowTo
 
 			for( auto& It : Lines )
 			{
+				// Replace user name in assert message, command line etc.
+				It = It.Replace( *UserName1, Anonymous );
+				It = It.Replace( *UserName2, Anonymous );
+
 				if (It.Contains( TEXT( "<UserName>" ) ))
 				{
 					It = TEXT( "<UserName></UserName>" );
@@ -97,6 +105,43 @@ bool FGenericErrorReport::SetUserComment(const FText& UserComment, bool bAllowTo
 	if (!DynamicSignaturesNode)
 	{
 		return false;
+	}
+
+	if (bRemovePersonalData)
+	{
+		FXmlNode* ProblemNode = XmlFile.GetRootNode()->FindChildNode( TEXT( "ProblemSignatures" ) );
+		if (ProblemNode)
+		{
+			FXmlNode* Parameter8Node = ProblemNode->FindChildNode( TEXT( "Parameter8" ) );
+			if (Parameter8Node)
+			{
+				// Replace user name in assert message, command line etc.
+				FString Content = Parameter8Node->GetContent();
+				Content = Content.Replace( *UserName1, Anonymous );
+				Content = Content.Replace( *UserName2, Anonymous );
+
+				// Remove the command line. Command line is between first and second !
+				TArray<FString> ParsedParameters8;
+				Content.ParseIntoArray( ParsedParameters8, TEXT( "!" ), false );
+				if (ParsedParameters8.Num() > 1)
+				{
+					ParsedParameters8[1] = TEXT( "CommandLineRemoved" );
+				}
+
+				Content = FString::Join( ParsedParameters8, TEXT( "!" ) );
+
+				Parameter8Node->SetContent( Content );
+			}
+			FXmlNode* Parameter9Node = ProblemNode->FindChildNode( TEXT( "Parameter9" ) );
+			if (Parameter9Node)
+			{
+				// Replace user name in assert message, command line etc.
+				FString Content = Parameter9Node->GetContent();
+				Content = Content.Replace( *UserName1, Anonymous );
+				Content = Content.Replace( *UserName2, Anonymous );
+				Parameter9Node->SetContent( Content );
+			}
+		}
 	}
 
 	// Add or update the user comment.
