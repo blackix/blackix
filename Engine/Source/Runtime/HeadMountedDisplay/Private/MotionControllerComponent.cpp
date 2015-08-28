@@ -2,6 +2,7 @@
 //
 #include "HeadMountedDisplayPrivate.h"
 #include "MotionControllerComponent.h"
+#include "Features/IModularFeatures.h"
 
 UMotionControllerComponent::UMotionControllerComponent(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)
@@ -22,9 +23,13 @@ void UMotionControllerComponent::TickComponent(float DeltaTime, enum ELevelTick 
 	FVector Position = FVector::ZeroVector;
 	FRotator Orientation = FRotator::ZeroRotator;
 
-	if (PlayerIndex != INDEX_NONE)
+	const APlayerController* Actor = Cast<APlayerController>(GetOwner());
+	const bool bHasAuthority = !Actor || Actor->IsLocalPlayerController();
+
+	if ((PlayerIndex != INDEX_NONE) && bHasAuthority)
 	{
-		for (auto MotionController : GEngine->MotionControllerDevices)
+		TArray<IMotionController*> MotionControllers = IModularFeatures::Get().GetModularFeatureImplementations<IMotionController>( IMotionController::GetModularFeatureName() );
+		for( auto MotionController : MotionControllers )
 		{
 			if ((MotionController != nullptr) && MotionController->GetControllerOrientationAndPosition(PlayerIndex, Hand, Orientation, Position))
 			{

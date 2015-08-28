@@ -738,7 +738,6 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 
 	// Initialize the HMDs and motion controllers, if any
 	InitializeHMDDevice();
-	InitializeMotionControllers();
 
 	// Disable the screensaver when running the game.
 	if( GIsClient && !GIsEditor )
@@ -2179,17 +2178,6 @@ bool UEngine::InitializeHMDDevice()
 	}
  
 	return StereoRenderingDevice.IsValid();
-}
-
-bool UEngine::InitializeMotionControllers()
-{
-	TArray<IMotionController*> MotionControllers = IModularFeatures::Get().GetModularFeatureImplementations<IMotionController>(IMotionController::GetModularFeatureName());
-	for (auto MotionController : MotionControllers)
-	{
-		MotionControllerDevices.AddUnique(MotionController);
-	}
-
-	return (MotionControllerDevices.Num() > 0);
 }
 
 void UEngine::RecordHMDAnalytics()
@@ -7298,7 +7286,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	if( !GIsHighResScreenshot && !GIsDumpingMovie && GAreScreenMessagesEnabled )
 	{
-		const int32 MessageX = 40;
+		const int32 MessageX = ( GEngine->IsStereoscopic3D( Viewport ) ) ? Viewport->GetSizeXY().X * 0.5f * 0.3f : 40;
 
 		if (!GEngine->bSuppressMapWarnings)
 		{

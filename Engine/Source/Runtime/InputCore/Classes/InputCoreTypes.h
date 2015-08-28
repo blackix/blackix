@@ -6,6 +6,15 @@
 
 INPUTCORE_API DECLARE_LOG_CATEGORY_EXTERN(LogInput, Log, All);
 
+
+/** Defines the controller hands for tracking.  Could be expanded, as needed, to facilitate non-handheld controllers */
+UENUM(BlueprintType)
+enum class EControllerHand
+{
+	Left,
+	Right
+};
+
 USTRUCT(BlueprintType)
 struct INPUTCORE_API FKey
 {
@@ -162,6 +171,7 @@ namespace EConsoleForGamepadLabels
 		PS4
 	};
 }
+
 struct INPUTCORE_API EKeys
 {
 	static const FKey AnyKey;
@@ -410,11 +420,15 @@ struct INPUTCORE_API EKeys
 	static const FKey MotionController_Left_Thumbstick_X;
 	static const FKey MotionController_Left_Thumbstick_Y;
 	static const FKey MotionController_Left_TriggerAxis;
+	static const FKey MotionController_Left_Grip1Axis;
+	static const FKey MotionController_Left_Grip2Axis;
 
 	//		Right Controller
 	static const FKey MotionController_Right_Thumbstick_X;
 	static const FKey MotionController_Right_Thumbstick_Y;
 	static const FKey MotionController_Right_TriggerAxis;
+	static const FKey MotionController_Right_Grip1Axis;
+	static const FKey MotionController_Right_Grip2Axis;
 
 	// PS4-specific
 	static const FKey PS4_Special;
