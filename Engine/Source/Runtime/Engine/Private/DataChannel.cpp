@@ -587,8 +587,13 @@ bool UChannel::ReceivedNextBunch( FInBunch & Bunch, bool & bOutSkipAck )
 			// (unless we opened it locally, in which case it's safe to process packets)
 			if ( !OpenedLocally && !OpenAcked )
 			{
-				// If we receive a reliable at this point, this means reliables are out of order, which shouldn't be possible
-				check( !HandleBunch->bReliable );
+				if ( HandleBunch->bReliable )
+				{
+					UE_LOG( LogNetTraffic, Error, TEXT( "ReceivedNextBunch: Reliable bunch before channel was fully open. ChSequence: %i, ChIndex: %i, OpenPacketId.First: %i, OpenPacketId.Last: %i, bPartial: %i" ), Bunch.ChSequence, ChIndex, OpenPacketId.First, OpenPacketId.Last, ( int32 )HandleBunch->bPartial );
+					Bunch.SetError();
+					return false;
+				}
+
 				check( !Connection->InternalAck );	// Shouldn't be possible for 100% reliable connections
 
 				// Don't ack this packet (since we won't process all of it)
