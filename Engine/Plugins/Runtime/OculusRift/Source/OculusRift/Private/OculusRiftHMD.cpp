@@ -140,7 +140,8 @@ FSettings::FSettings()
 
 	FMemory::Memset(EyeLayer, 0);
 	EyeLayer.Header.Type = ovrLayerType_EyeFov;
-	EyeLayer.Header.Flags = ovrLayerFlag_HighQuality;
+	// Enabling High Quality distortion may cost additional ~1 ms of rendering time.
+	//EyeLayer.Header.Flags = ovrLayerFlag_HighQuality;
 
 	RenderTargetSize = FIntPoint(0, 0);
 	QueueAheadStatus = EQA_Default;
