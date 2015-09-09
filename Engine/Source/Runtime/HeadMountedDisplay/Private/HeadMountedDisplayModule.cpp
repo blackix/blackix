@@ -7,7 +7,7 @@
 */
 static TAutoConsoleVariable<int32> CVarHiddenAreaMask(
 	TEXT("vr.HiddenAreaMask"),
-	1,
+	0,
 	TEXT("0 to disable hidden area mask, 1 to enable."),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
