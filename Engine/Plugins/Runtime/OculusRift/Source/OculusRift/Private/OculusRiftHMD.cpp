@@ -34,6 +34,7 @@ class FOculusRiftPlugin : public IOculusRiftPlugin
 		check(IsInGameThread());
 		bool bRetVal = false;
 
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 		IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 		if (HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 		{
@@ -46,6 +47,7 @@ class FOculusRiftPlugin : public IOculusRiftPlugin
 				bRetVal = true;
 			}
 		}
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 		return bRetVal;
 	}
 
@@ -54,12 +56,14 @@ class FOculusRiftPlugin : public IOculusRiftPlugin
 		check(IsInGameThread());
 		ovrHmd bRetVal = nullptr;
 
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 		IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 		if (HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 		{
 			FOculusRiftHMD* OculusHMD = static_cast<FOculusRiftHMD*>(HMD);
 			bRetVal = OculusHMD->Hmd;
 		}
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 		return bRetVal;
 	}
 
@@ -68,6 +72,7 @@ class FOculusRiftPlugin : public IOculusRiftPlugin
 		check(IsInGameThread());
 		bool bRetVal = false;
 
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 		IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 		if (TrackingState && HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 		{
@@ -79,6 +84,7 @@ class FOculusRiftPlugin : public IOculusRiftPlugin
 				bRetVal = true;
 			}
 		}
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 		return bRetVal;
 	}
 
@@ -421,9 +427,15 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			if (FParse::Command(&Cmd, TEXT("SP")) ||              // screen percentage is deprecated 
 				FParse::Command(&Cmd, TEXT("SCREENPERCENTAGE")))  // use pd - pixel density
 			{
-				// convert screenpercentage to pixel density
-				float pd = Settings->ScreenPercentage / Settings->IdealScreenPercentage;
-				GetSettings()->PixelDensity = pd;
+				// need to convert screenpercentage to pixel density. Set PixelDensity to 0 to indicate that.
+				if (Settings->Flags.bOverrideScreenPercentage)
+				{
+					GetSettings()->PixelDensity = 0.f;
+				}
+				else
+				{
+					GetSettings()->PixelDensity = 1.f; // SP RESET. Set PD to 1.f
+				}
 				Flags.bNeedUpdateStereoRenderingParams = true;
 			}
 		}
@@ -1525,12 +1537,25 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 		CurrentSettings->PerspectiveProjection[0] = ovrMatrix4f_Projection(CurrentSettings->EyeFov[0], 0.01f, 10000.f, ProjModifiers | ovrProjection_RightHanded);
 		CurrentSettings->PerspectiveProjection[1] = ovrMatrix4f_Projection(CurrentSettings->EyeFov[1], 0.01f, 10000.f, ProjModifiers | ovrProjection_RightHanded);
 
+		if (CurrentSettings->PixelDensity == 0.f)
+		{
+			check(CurrentSettings->IdealScreenPercentage > 0 && CurrentSettings->ScreenPercentage > 0);
+			// calculate PixelDensity using ScreenPercentage and IdealScreenPercentage
+			float pd = CurrentSettings->ScreenPercentage / CurrentSettings->IdealScreenPercentage;
+			CurrentSettings->PixelDensity = pd;
+		}
+
 		const ovrSizei recommenedTex0Size = ovr_GetFovTextureSize(Hmd, ovrEye_Left, CurrentSettings->EyeFov[0], CurrentSettings->PixelDensity);
 		const ovrSizei recommenedTex1Size = ovr_GetFovTextureSize(Hmd, ovrEye_Right, CurrentSettings->EyeFov[1], CurrentSettings->PixelDensity);
 		const float texturePadding = CurrentSettings->GetTexturePaddingPerEye();
 		CurrentSettings->RenderTargetSize.X = recommenedTex0Size.w + recommenedTex1Size.w + texturePadding*2;
 		CurrentSettings->RenderTargetSize.Y = FMath::Max(recommenedTex0Size.h, recommenedTex1Size.h);
 		FSceneRenderTargets::QuantizeBufferSize(CurrentSettings->RenderTargetSize.X, CurrentSettings->RenderTargetSize.Y);
+		UE_CLOG(CurrentSettings->RenderTargetSize.X < 200 || CurrentSettings->RenderTargetSize.X > 10000 || CurrentSettings->RenderTargetSize.Y < 200 || CurrentSettings->RenderTargetSize.Y > 10000,
+			LogHMD, Warning, 
+			TEXT("The calculated render target size (%d x %d) looks strange. Are PixelDensity (%f) and EyeFov[0] (%f x %f) and EyeFov[1] (%f x %f) correct?"), 
+			CurrentSettings->RenderTargetSize.X, CurrentSettings->RenderTargetSize.Y, float(CurrentSettings->PixelDensity), float(CurrentSettings->EyeFov[0].LeftTan + CurrentSettings->EyeFov[0].RightTan), float(CurrentSettings->EyeFov[0].UpTan + CurrentSettings->EyeFov[0].DownTan), 
+			float(CurrentSettings->EyeFov[1].LeftTan + CurrentSettings->EyeFov[1].RightTan), float(CurrentSettings->EyeFov[1].UpTan + CurrentSettings->EyeFov[1].DownTan));
 
 		const int32 RTSizeX = CurrentSettings->RenderTargetSize.X;
 		const int32 RTSizeY = CurrentSettings->RenderTargetSize.Y;
@@ -1567,7 +1592,8 @@ void FOculusRiftHMD::LoadFromIni()
 		{
 			if (GConfig->GetFloat(OculusSettings, TEXT("IPD"), f, GEngineIni))
 			{
-				SetInterpupillaryDistance(f);
+				check(!FMath::IsNaN(f));
+				SetInterpupillaryDistance(FMath::Clamp(f, 0.0f, 1.0f));
 			}
 		}
 	}
@@ -1578,11 +1604,13 @@ void FOculusRiftHMD::LoadFromIni()
 		{
 			if (GConfig->GetFloat(OculusSettings, TEXT("HFOV"), f, GEngineIni))
 			{
-				Settings->HFOVInRadians = f;
+				check(!FMath::IsNaN(f));
+				Settings->HFOVInRadians = FMath::Clamp(f, FMath::DegreesToRadians(45), FMath::DegreesToRadians(200));
 			}
 			if (GConfig->GetFloat(OculusSettings, TEXT("VFOV"), f, GEngineIni))
 			{
-				Settings->VFOVInRadians = f;
+				check(!FMath::IsNaN(f));
+				Settings->VFOVInRadians = FMath::Clamp(f, FMath::DegreesToRadians(45), FMath::DegreesToRadians(200));
 			}
 		}
 	}
@@ -1596,10 +1624,15 @@ void FOculusRiftHMD::LoadFromIni()
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensity"), f, GEngineIni))
 	{
-		GetSettings()->PixelDensity = f;
+		check(!FMath::IsNaN(f));
+		GetSettings()->PixelDensity = FMath::Clamp(f, 0.3f, 2.0f);
 	}
 	if (GConfig->GetInt(OculusSettings, TEXT("QueueAheadEnabled2"), i, GEngineIni))
 	{
+		if (i < FSettings::EQueueAheadStatus::EQA_Default || i > FSettings::EQueueAheadStatus::EQA_Disabled)
+		{
+			i = FSettings::EQueueAheadStatus::EQA_Default;
+		}
 		GetSettings()->QueueAheadStatus = FSettings::EQueueAheadStatus(i);
 	}
 	if (GConfig->GetBool(OculusSettings, TEXT("bLowPersistenceMode"), v, GEngineIni))
@@ -1612,15 +1645,25 @@ void FOculusRiftHMD::LoadFromIni()
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("FarClippingPlane"), f, GEngineIni))
 	{
+		check(!FMath::IsNaN(f));
+		if (f < 0)
+		{
+			f = 0;
+		}
 		Settings->FarClippingPlane = f;
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("NearClippingPlane"), f, GEngineIni))
 	{
+		check(!FMath::IsNaN(f));
+		if (f < 0)
+		{
+			f = 0;
+		}
 		Settings->NearClippingPlane = f;
 	}
 	if (GConfig->GetVector(OculusSettings, TEXT("MirrorWindowSize"), vec, GEngineIni))
 	{
-		Settings->MirrorWindowSize = FIntPoint(vec.X, vec.Y);
+		Settings->MirrorWindowSize = FIntPoint(FMath::Clamp(int(vec.X), 0, 5000), FMath::Clamp(int(vec.Y), 0, 5000));
 	}
 	if (GConfig->GetInt(OculusSettings, TEXT("MirrorWindowMode"), i, GEngineIni))
 	{
@@ -1647,10 +1690,12 @@ void FOculusRiftHMD::LoadFromIni()
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("SideOfSingleCubeInMeters"), f, GEngineIni))
 	{
+		check(!FMath::IsNaN(f));
 		SideOfSingleCubeInMeters = f;
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("SeaOfCubesVolumeSizeInMeters"), f, GEngineIni))
 	{
+		check(!FMath::IsNaN(f));
 		SeaOfCubesVolumeSizeInMeters = f;
 	}
 	if (GConfig->GetInt(OculusSettings, TEXT("NumberOfCubesInOneSide"), i, GEngineIni))
@@ -1659,6 +1704,7 @@ void FOculusRiftHMD::LoadFromIni()
 	}
 	if (GConfig->GetVector(OculusSettings, TEXT("CenterOffsetInMeters"), vec, GEngineIni))
 	{
+		check(!FMath::IsNaN(vec.X) && !FMath::IsNaN(vec.Y));
 		CenterOffsetInMeters = vec;
 	}
 #endif
@@ -1802,8 +1848,8 @@ void FOculusRiftHMD::ApplySystemOverridesOnStereo(bool force)
 	// ALWAYS SET r.FinishCurrentFrame to 0! Otherwise the perf might be poor.
 	// @TODO: revise the FD3D11DynamicRHI::RHIEndDrawingViewport code (and other renderers)
 	// to ignore this var completely.
-	static const auto CFinishFrameVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.FinishCurrentFrame"));
-	CFinishFrameVar->Set(0);
+ 	static const auto CFinishFrameVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.FinishCurrentFrame"));
+ 	CFinishFrameVar->Set(0);
 }
 
 //////////////////////////////////////////////////////////////////////////
