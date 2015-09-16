@@ -348,6 +348,10 @@ void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, F
 	OutOrigin = Pos + frame->Settings->PositionOffset;
 }
 
+void FOculusRiftHMD::RebaseObjectOrientationAndPosition(FVector& OutPosition, FQuat& OutOrientation) const
+{
+}
+
 bool FOculusRiftHMD::IsInLowPersistenceMode() const
 {
 	return true;
@@ -916,6 +920,16 @@ bool FOculusRiftHMD::OnOculusStateChange(bool bIsEnabledNow)
 		DeltaControlRotation = FRotator::ZeroRotator;
 	}
 	return false;
+}
+
+float FOculusRiftHMD::GetVsyncToNextVsync() const
+{
+	return GetSettings()->VsyncToNextVsync;
+}
+
+FPerformanceStats FOculusRiftHMD::GetPerformanceStats() const
+{
+	return PerformanceStats;
 }
 
 void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation)
@@ -1496,6 +1510,9 @@ void FOculusRiftHMD::UpdateHmdRenderInfo()
 	float neck2eye[2] = { OVR_DEFAULT_NECK_TO_EYE_HORIZONTAL, OVR_DEFAULT_NECK_TO_EYE_VERTICAL };
 	ovr_GetFloatArray(Hmd, OVR_KEY_NECK_TO_EYE_DISTANCE, neck2eye, 2);
 	CurrentSettings->NeckToEyeInMeters = FVector2D(neck2eye[0], neck2eye[1]);
+
+	// cache VsyncToNextVsync value
+	CurrentSettings->VsyncToNextVsync = ovr_GetFloat(Hmd, "VsyncToNextVsync", 0.0f);
 
 	// Default texture size (per eye) is equal to half of W x H resolution. Will be overridden in SetupView.
 	//CurrentSettings->SetViewportSize(HmdDesc.Resolution.w / 2, HmdDesc.Resolution.h);

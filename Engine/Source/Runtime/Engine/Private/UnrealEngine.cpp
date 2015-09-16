@@ -738,6 +738,7 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 
 	// Initialize the HMDs and motion controllers, if any
 	InitializeHMDDevice();
+	InitializeMotionControllers();
 
 	// Disable the screensaver when running the game.
 	if( GIsClient && !GIsEditor )
@@ -994,10 +995,16 @@ void UEngine::PreExit()
 	{
 		auto SavedStereo = StereoRenderingDevice;
 		auto SavedHMD = HMDDevice;
+		auto SavedViewExtentions = ViewExtensions;
 		{
 			FSuspendRenderingThread Suspend(false);
 			StereoRenderingDevice.Reset();
 			HMDDevice.Reset();
+			for (auto& ViewExt : ViewExtensions)
+			{
+				ViewExt.Reset();
+			}
+			ViewExtensions.Empty();
 		}
 		// shutdown will occur here.
 	}
@@ -2178,6 +2185,17 @@ bool UEngine::InitializeHMDDevice()
 	}
  
 	return StereoRenderingDevice.IsValid();
+}
+
+bool UEngine::InitializeMotionControllers()
+{
+	TArray<IMotionController*> MotionControllers = IModularFeatures::Get().GetModularFeatureImplementations<IMotionController>(IMotionController::GetModularFeatureName());
+	for (auto MotionController : MotionControllers)
+	{
+		MotionControllerDevices.AddUnique(MotionController);
+	}
+
+	return (MotionControllerDevices.Num() > 0);
 }
 
 void UEngine::RecordHMDAnalytics()

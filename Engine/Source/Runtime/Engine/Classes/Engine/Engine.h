@@ -1500,6 +1500,12 @@ public:
 	/** Reference to the HMD device that is attached, if any */
 	TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > HMDDevice;
 
+	/** Extensions that can modify view parameters on the render thread. */
+	TArray<TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> > ViewExtensions;
+
+	/** Reference to the Motion Control devices that are attached, if any */
+	TArray < class IMotionController*> MotionControllerDevices;
+
 	/** Triggered when a world is added. */	
 	DECLARE_EVENT_OneParam( UEngine, FWorldAddedEvent , UWorld* );
 	
@@ -2196,9 +2202,9 @@ protected:
 	 */
 	virtual bool InitializeHMDDevice();
 
-	/**
-	 *	Record EngineAnalytics information for attached HMD devices
-	 */
+	virtual bool InitializeMotionControllers();
+
+	/**	Record EngineAnalytics information for attached HMD devices. */
 	virtual void RecordHMDAnalytics();
 
 	/**

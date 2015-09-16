@@ -144,10 +144,13 @@ struct FOculusTouchControllerState
 	/** Capacitive Touch axes */
 	FOculusTouchCapacitiveState CapacitiveAxes[EOculusTouchCapacitiveAxes::TotalAxisCount];
 
-	/** Force feedback frequency (zero to disable) */
+	/** Whether or not we're playing a haptic effect.  If true, force feedback calls will be early-outed in favor of the haptic effect */
+	bool bPlayingHapticEffect;
+
+	/** Haptic frequency (zero to disable) */
 	float HapticFrequency;
 
-	/** Force feedback amplitude (zero to disable) */
+	/** Haptic amplitude (zero to disable) */
 	float HapticAmplitude;
 
 
@@ -159,6 +162,7 @@ struct FOculusTouchControllerState
 		  TriggerAxis( 0.0f ),
 		  GripAxis( 0.0f ),
 		  ThumbstickAxes( FVector2D::ZeroVector ),
+		  bPlayingHapticEffect( false ),
 		  HapticFrequency( 0.0f ),
 		  HapticAmplitude( 0.0f )
 	{

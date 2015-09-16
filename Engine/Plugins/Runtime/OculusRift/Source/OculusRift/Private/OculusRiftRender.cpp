@@ -176,9 +176,15 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	
 	pPresentBridge->BeginRendering(RenderContext, ViewFamily.RenderTarget->GetRenderTargetTexture());
 
-	ovr_GetFrameTiming(Hmd, RenderContext.RenderFrame->FrameNumber);
+	ovrFrameTiming FrameTiming = ovr_GetFrameTiming(Hmd, RenderContext.RenderFrame->FrameNumber);
 
 	RenderContext.bFrameBegun = true;
+
+	// Update FPS stats
+	FOculusRiftHMD* OculusRiftHMD = static_cast<FOculusRiftHMD*>(RenderContext.Delegate);
+
+	OculusRiftHMD->PerformanceStats.Frames++;
+	OculusRiftHMD->PerformanceStats.Seconds += FrameTiming.FrameIntervalSeconds;
 
 	if (RenderContext.ShowFlags.Rendering)
 	{

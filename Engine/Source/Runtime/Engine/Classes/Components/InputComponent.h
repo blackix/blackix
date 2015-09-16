@@ -388,7 +388,7 @@ struct FInputAxisKeyBinding : public FInputBinding
 		, AxisKey(InAxisKey)
 		, AxisValue(0.f)
 	{
-		ensure(AxisKey.IsFloatAxis());
+//		ensure(AxisKey.IsFloatAxis());
 	}
 };
 

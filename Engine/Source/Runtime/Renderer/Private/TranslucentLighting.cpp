@@ -18,7 +18,7 @@ class FMaterial;
 /** Whether to allow rendering translucency shadow depths. */
 bool GUseTranslucencyShadowDepths = true;
  
-int32 GUseTranslucentLightingVolumes = 1;
+int32 GUseTranslucentLightingVolumes = 0;
 FAutoConsoleVariableRef CVarUseTranslucentLightingVolumes(
 	TEXT("r.TranslucentLightingVolume"),
 	GUseTranslucentLightingVolumes,

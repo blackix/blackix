@@ -71,6 +71,7 @@ FOculusInput::FOculusInput( const TSharedRef< FGenericApplicationMessageHandler 
 	LoadConfig();
 
 	IModularFeatures::Get().RegisterModularFeature( GetModularFeatureName(), this );
+	GEngine->MotionControllerDevices.AddUnique(this);
 
 	// Register the FKeys
 	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_Thumbstick, LOCTEXT("OculusTouch_Left_Thumbstick", "Oculus Touch (L) CapTouch 1"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
@@ -373,6 +374,11 @@ void FOculusInput::SetChannelValue( int32 ControllerId, FForceFeedbackChannelTyp
 		{
 			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)Hand ];
 
+			if (ControllerState.bPlayingHapticEffect)
+			{
+				continue;
+			}
+
 			// @todo: The SMALL channel controls frequency, the LARGE channel controls amplitude.  This is a bit of a weird fit.
 			if( ChannelType == FForceFeedbackChannelType::LEFT_SMALL || ChannelType == FForceFeedbackChannelType::RIGHT_SMALL )
 			{
@@ -398,14 +404,20 @@ void FOculusInput::SetChannelValues( int32 ControllerId, const FForceFeedbackVal
 		{
 			// @todo: The SMALL channel controls frequency, the LARGE channel controls amplitude.  This is a bit of a weird fit.
 			FOculusTouchControllerState& LeftControllerState = ControllerPair.ControllerStates[ (int32)EControllerHand::Left ];
-			LeftControllerState.HapticFrequency = Values.LeftSmall;
-			LeftControllerState.HapticAmplitude = Values.LeftLarge;
-			UpdateForceFeedback( ControllerPair, EControllerHand::Left );
+			if (!LeftControllerState.bPlayingHapticEffect)
+			{
+				LeftControllerState.HapticFrequency = Values.LeftSmall;
+				LeftControllerState.HapticAmplitude = Values.LeftLarge;
+				UpdateForceFeedback(ControllerPair, EControllerHand::Left);
+			}
 
-			FOculusTouchControllerState& RightControllerState = ControllerPair.ControllerStates[ (int32)EControllerHand::Right ];
-			RightControllerState.HapticFrequency = Values.RightSmall;
-			RightControllerState.HapticAmplitude = Values.RightLarge;
-			UpdateForceFeedback( ControllerPair, EControllerHand::Right );
+			FOculusTouchControllerState& RightControllerState = ControllerPair.ControllerStates[(int32)EControllerHand::Right];
+			if (!RightControllerState.bPlayingHapticEffect)
+			{
+				RightControllerState.HapticFrequency = Values.RightSmall;
+				RightControllerState.HapticAmplitude = Values.RightLarge;
+				UpdateForceFeedback(ControllerPair, EControllerHand::Right);
+			}
 		}
 	}
 }
@@ -417,7 +429,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 	check(IOculusRiftPlugin::IsAvailable());
 	ovrHmd OvrHmd = IOculusRiftPlugin::Get().GetHmd();
 
-	if( ControllerState.bIsCurrentlyTracked && OvrHmd)
+	if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrHmd)
 	{
 		float FreqMin, FreqMax = 0.f;
 		GetHapticFrequencyRange(FreqMin, FreqMax);
@@ -489,6 +501,8 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 						ovr_SetControllerVibration(OvrHmd, OvrController, Frequency, Amplitude);
 
 						UE_CLOG(0, LogOcInput, Log, TEXT("SetHapticFeedbackValues: Hand %d, freq %f, amp %f"), int(Hand), Frequency, Amplitude);
+
+						ControllerState.bPlayingHapticEffect = (Amplitude != 0.f) && (Frequency != 0.f);
 					}
 				}
 			}

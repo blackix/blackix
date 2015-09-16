@@ -125,6 +125,8 @@ public:
 	unsigned				TrackingCaps;
 	unsigned				HmdCaps;
 
+	float					VsyncToNextVsync;
+
 	enum MirrorWindowModeType
 	{
 		eMirrorWindow_Distorted,
@@ -267,6 +269,29 @@ protected: // data
 	bool				bNeedReAllocateMirrorTexture : 1;
 };
 
+
+//-------------------------------------------------------------------------------------------------
+// FPerformanceStats
+//-------------------------------------------------------------------------------------------------
+
+struct FPerformanceStats
+{
+	UINT64 Frames;
+	double Seconds;
+
+	FPerformanceStats(uint32 InFrames = 0, double InSeconds = 0.0)
+		: Frames(InFrames)
+		, Seconds(InSeconds) 
+	{}
+
+	FPerformanceStats operator - (const FPerformanceStats& PerformanceStats) const
+	{
+		return FPerformanceStats(
+			Frames - PerformanceStats.Frames,
+			Seconds - PerformanceStats.Seconds);
+	}
+};
+
 } // namespace OculusRift
 
 using namespace OculusRift;
@@ -290,6 +315,7 @@ public:
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
 	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
+	virtual void RebaseObjectOrientationAndPosition(FVector& OutPosition, FQuat& OutOrientation) const override;
 
 	virtual TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
@@ -374,6 +400,9 @@ protected:
 	virtual void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
 
 public:
+
+	float GetVsyncToNextVsync() const;
+	FPerformanceStats GetPerformanceStats() const;
 
 #if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
 	class D3D11Bridge : public FCustomPresent
@@ -504,6 +533,8 @@ private: // data
 		};
 		uint64 Raw;
 	} OCFlags;
+
+	FPerformanceStats			PerformanceStats;	
 
 	FGameFrame* GetGameFrame()
 	{
