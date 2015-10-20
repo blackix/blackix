@@ -211,7 +211,7 @@ public:
 class FHMDGameFrame : public TSharedFromThis<FHMDGameFrame, ESPMode::ThreadSafe>
 {
 public:
-	uint32					FrameNumber; // current frame number.
+	uint64					FrameNumber; // current frame number.
 	TSharedPtr<FHMDSettings, ESPMode::ThreadSafe>	Settings;
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */

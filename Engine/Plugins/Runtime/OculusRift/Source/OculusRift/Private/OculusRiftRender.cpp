@@ -14,6 +14,7 @@
 
 #include "SlateBasics.h"
 
+//////////////////////////////////////////////////////////////////////////
 bool FOculusRiftHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 {
 	check(Index == 0);
@@ -176,7 +177,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	
 	pPresentBridge->BeginRendering(RenderContext, ViewFamily.RenderTarget->GetRenderTargetTexture());
 
-	ovrFrameTiming FrameTiming = ovr_GetFrameTiming(Hmd, RenderContext.RenderFrame->FrameNumber);
+	const double DisplayTime = ovr_GetPredictedDisplayTime(OvrSession, RenderContext.RenderFrame->FrameNumber);
 
 	RenderContext.bFrameBegun = true;
 
@@ -184,14 +185,14 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	FOculusRiftHMD* OculusRiftHMD = static_cast<FOculusRiftHMD*>(RenderContext.Delegate);
 
 	OculusRiftHMD->PerformanceStats.Frames++;
-	OculusRiftHMD->PerformanceStats.Seconds += FrameTiming.FrameIntervalSeconds;
+	OculusRiftHMD->PerformanceStats.Seconds += DisplayTime;
 
 	if (RenderContext.ShowFlags.Rendering)
 	{
 		// get latest orientation/position and cache it
 		ovrTrackingState ts;
 		ovrPosef EyeRenderPose[2];
-		CurrentFrame->GetEyePoses(Hmd, EyeRenderPose, ts);
+		CurrentFrame->GetEyePoses(OvrSession, EyeRenderPose, ts);
 
 		// Take new EyeRenderPose is bUpdateOnRT.
 		// if !bOrientationChanged && !bPositionChanged then we still need to use new eye pose (for timewarp)
@@ -518,7 +519,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 			{
 				float latencies[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
 				const int numOfEntries = sizeof(latencies) / sizeof(latencies[0]);
-				if (ovr_GetFloatArray(Hmd, "DK2Latency", latencies, numOfEntries) == numOfEntries)
+				if (ovr_GetFloatArray(OvrSession, "DK2Latency", latencies, numOfEntries) == numOfEntries)
 				{
 					Y += RowHeight;
 

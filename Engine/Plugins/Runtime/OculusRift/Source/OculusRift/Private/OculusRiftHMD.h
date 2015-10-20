@@ -22,7 +22,7 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	#include <OVR_Version.h>
-	#include <OVR_CAPI_0_7_0.h>
+	#include <OVR_CAPI_0_8_0.h>
 	#include <OVR_CAPI_Keys.h>
 	#include <Extras/OVR_Math.h>
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
@@ -153,6 +153,7 @@ public:
 
 	ovrPosef				EyeRenderPose[2];	// eye render pose actually used
 	ovrPosef				HeadPose;			// position of head actually used
+	double					BeginFrameTimeInSec;
 
 	FGameFrame();
 	virtual ~FGameFrame() {}
@@ -172,7 +173,7 @@ public:
 	void PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const;
 
 	// Returns eye poses calculated from head pose. Head pose is available via ovrTrackingState.
-	void GetEyePoses(ovrHmd Hmd, ovrPosef outEyePoses[2], ovrTrackingState& outTrackingState) const;
+	void GetEyePoses(ovrSession InOvrSession, ovrPosef outEyePoses[2], ovrTrackingState& outTrackingState) const;
 };
 
 // View extension class that contains all the rendering-specific data (also referred as 'RenderContext').
@@ -191,7 +192,7 @@ public:
 public:
 	class FCustomPresent* pPresentBridge;
 	IRendererModule*	RendererModule;
-	ovrHmd				Hmd;
+	ovrSession			OvrSession;
 	ovrPosef			CurEyeRenderPose[2];// most recent eye render poses
 	ovrPosef			CurHeadPose;		// current position of head
 
@@ -204,7 +205,7 @@ class FCustomPresent : public FRHICustomPresent
 public:
 	FCustomPresent()
 		: FRHICustomPresent(nullptr)
-		, Hmd(nullptr)
+		, OvrSession(nullptr)
 		, MirrorTexture(nullptr)
 		, NeedToKillHmd(0)
 		, bInitialized(false)
@@ -232,7 +233,7 @@ public:
 	FViewExtension* GetRenderContext() const { return static_cast<FViewExtension*>(RenderContext.Get()); }
 	FSettings* GetFrameSetting() const { check(IsInRenderingThread()); return static_cast<FSettings*>(RenderContext->RenderFrame->GetSettings()); }
 
-	virtual void SetHmd(ovrHmd InHmd) { Hmd = InHmd; }
+	virtual void SetHmd(ovrSession InOvrSession) { OvrSession = InOvrSession; }
 
 	// marking textures invalid, that will force re-allocation of ones
 	void MarkTexturesInvalid();
@@ -256,7 +257,7 @@ protected:
 	void SetRenderContext(FHMDViewExtension* InRenderContext);
 
 protected: // data
-	ovrHmd				Hmd;
+	ovrSession			OvrSession;
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
 
 	// Mirror texture
@@ -388,7 +389,7 @@ public:
 
 	virtual FString GetVersionString() const override;
 
-	virtual bool IsHMDActive() override { return Hmd != nullptr; }
+	virtual bool IsHMDActive() override { return OvrSession != nullptr; }
 
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const override;
@@ -408,7 +409,7 @@ public:
 	class D3D11Bridge : public FCustomPresent
 	{
 	public:
-		D3D11Bridge(ovrHmd Hmd);
+		D3D11Bridge(ovrSession InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
@@ -419,11 +420,11 @@ public:
 			Reset();
 		}
 
-		virtual void SetHmd(ovrHmd InHmd) override;
+		virtual void SetHmd(ovrSession InHmd) override;
 
 		virtual bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
 	protected:
-		void Init(ovrHmd InHmd);
+		void Init(ovrSession InHmd);
 		void Reset_RenderThread();
 	protected: // data
 		TRefCountPtr<class FD3D11Texture2DSet>	ColorTextureSet;
@@ -436,7 +437,7 @@ public:
 	class OGLBridge : public FCustomPresent
 	{
 	public:
-		OGLBridge(ovrHmd Hmd);
+		OGLBridge(ovrSession InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
@@ -447,12 +448,12 @@ public:
 			Reset();
 		}
 
-		virtual void SetHmd(ovrHmd InHmd) override;
+		virtual void SetHmd(ovrSession InHmd) override;
 
 		virtual bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
 
 	protected:
-		void Init(ovrHmd InHmd);
+		void Init(ovrSession InHmd);
 		void Reset_RenderThread();
 	protected: // data
 		TRefCountPtr<class FOpenGLTexture2DSet>	ColorTextureSet;
@@ -518,7 +519,7 @@ private: // data
 
 	TRefCountPtr<FCustomPresent>pCustomPresent;
 	IRendererModule*			RendererModule;
-	ovrHmd						Hmd;
+	ovrSession					OvrSession;
 	ovrHmdDesc					HmdDesc;
 	ovrGraphicsLuid				Luid;
 

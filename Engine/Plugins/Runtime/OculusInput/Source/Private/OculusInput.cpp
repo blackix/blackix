@@ -74,19 +74,19 @@ FOculusInput::FOculusInput( const TSharedRef< FGenericApplicationMessageHandler 
 	GEngine->MotionControllerDevices.AddUnique(this);
 
 	// Register the FKeys
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_Thumbstick, LOCTEXT("OculusTouch_Left_Thumbstick", "Oculus Touch (L) CapTouch 1"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_FaceButton1, LOCTEXT("OculusTouch_Left_FaceButton1", "Oculus Touch (L) CapTouch 2"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_Trigger, LOCTEXT("OculusTouch_Left_Trigger", "Oculus Touch (L) CapTouch 3"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_FaceButton2, LOCTEXT("OculusTouch_Left_FaceButton2", "Oculus Touch (L) CapTouch 4"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_IndexPointing, LOCTEXT("OculusTouch_Left_IndexPointing", "Oculus Touch (L) CapTouch 5"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_ThumbUp, LOCTEXT("OculusTouch_Left_ThumbUp", "Oculus Touch (L) CapTouch 6"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_Thumbstick, LOCTEXT("OculusTouch_Left_Thumbstick", "Oculus Touch (L) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_FaceButton1, LOCTEXT("OculusTouch_Left_FaceButton1", "Oculus Touch (L) X Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_Trigger, LOCTEXT("OculusTouch_Left_Trigger", "Oculus Touch (L) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_FaceButton2, LOCTEXT("OculusTouch_Left_FaceButton2", "Oculus Touch (L) Y Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_IndexPointing, LOCTEXT("OculusTouch_Left_IndexPointing", "Oculus Touch (L) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Left_ThumbUp, LOCTEXT("OculusTouch_Left_ThumbUp", "Oculus Touch (L) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
 
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_Thumbstick, LOCTEXT("OculusTouch_Right_Thumbstick", "Oculus Touch (R) CapTouch 1"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_FaceButton1, LOCTEXT("OculusTouch_Right_FaceButton1", "Oculus Touch (R) CapTouch 2"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_Trigger, LOCTEXT("OculusTouch_Right_Trigger", "Oculus Touch (R) CapTouch 3"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_FaceButton2, LOCTEXT("OculusTouch_Right_FaceButton2", "Oculus Touch (R) CapTouch 4"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_IndexPointing, LOCTEXT("OculusTouch_Right_IndexPointing", "Oculus Touch (R) CapTouch 5"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
-	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_ThumbUp, LOCTEXT("OculusTouch_Right_ThumbUp", "Oculus Touch (R) CapTouch 6"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_Thumbstick, LOCTEXT("OculusTouch_Right_Thumbstick", "Oculus Touch (R) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_FaceButton1, LOCTEXT("OculusTouch_Right_FaceButton1", "Oculus Touch (R) A Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_Trigger, LOCTEXT("OculusTouch_Right_Trigger", "Oculus Touch (R) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_FaceButton2, LOCTEXT("OculusTouch_Right_FaceButton2", "Oculus Touch (R) B Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_IndexPointing, LOCTEXT("OculusTouch_Right_IndexPointing", "Oculus Touch (R) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
+	EKeys::AddKey(FKeyDetails(FOculusTouchCapacitiveKey::OculusTouch_Right_ThumbUp, LOCTEXT("OculusTouch_Right_ThumbUp", "Oculus Touch (R) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis));
 
 	UE_LOG(LogOcInput, Log, TEXT("OculusInput is initialized. Init status %d. Runtime version: %s"), int(initStatus), *FString(ANSI_TO_TCHAR(ovr_GetVersionString())));
 }
@@ -127,14 +127,14 @@ void FOculusInput::SendControllerEvents()
 
 	check(IOculusRiftPlugin::IsAvailable());
 	IOculusRiftPlugin& OculusRiftPlugin = IOculusRiftPlugin::Get();
-	ovrHmd OvrHmd = OculusRiftPlugin.GetHmd();
-	UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: OvrHmd = %p"), OvrHmd);
-	if (OvrHmd)
+	ovrSession OvrSession = OculusRiftPlugin.GetSession();
+	UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: OvrSession = %p"), OvrSession);
+	if (OvrSession)
 	{
 		ovrInputState OvrInput;
 		ovrTrackingState OvrTrackingState;
 
-		const ovrResult OvrRes = ovr_GetInputState(OvrHmd, ovrControllerType_Touch, &OvrInput);
+		const ovrResult OvrRes = ovr_GetInputState(OvrSession, ovrControllerType_Touch, &OvrInput);
 		const bool bOvrGCTRes = OculusRiftPlugin.GetCurrentTrackingState(&OvrTrackingState);
 
 		UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ovr_GetInputState() ret = %d, GetCurrentTrackingState ret = %d"), int(OvrRes), int(bOvrGCTRes));
@@ -427,9 +427,9 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 	const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)Hand ];
 
 	check(IOculusRiftPlugin::IsAvailable());
-	ovrHmd OvrHmd = IOculusRiftPlugin::Get().GetHmd();
+	ovrSession OvrSession = IOculusRiftPlugin::Get().GetSession();
 
-	if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrHmd)
+	if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrSession)
 	{
 		float FreqMin, FreqMax = 0.f;
 		GetHapticFrequencyRange(FreqMin, FreqMax);
@@ -441,7 +441,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 		const float ActualAmplitude = ControllerState.HapticAmplitude * GetHapticAmplitudeScale();
 
 		const ovrControllerType OvrController = ( Hand == EControllerHand::Left ) ? ovrControllerType_LTouch : ovrControllerType_RTouch;
-		ovr_SetControllerVibration( OvrHmd, OvrController, ActualFrequency, ActualAmplitude );
+		ovr_SetControllerVibration( OvrSession, OvrController, ActualFrequency, ActualAmplitude );
 	}
 }
 
@@ -483,8 +483,8 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 			if (ControllerState.bIsCurrentlyTracked)
 			{
 				check(IOculusRiftPlugin::IsAvailable());
-				ovrHmd OvrHmd = IOculusRiftPlugin::Get().GetHmd();
-				if (OvrHmd)
+				ovrSession OvrSession = IOculusRiftPlugin::Get().GetSession();
+				if (OvrSession)
 				{
 					float FreqMin, FreqMax = 0.f;
 					GetHapticFrequencyRange(FreqMin, FreqMax);
@@ -498,7 +498,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 						ControllerState.HapticFrequency = Frequency;
 
 						const ovrControllerType OvrController = (EControllerHand(Hand) == EControllerHand::Left) ? ovrControllerType_LTouch : ovrControllerType_RTouch;
-						ovr_SetControllerVibration(OvrHmd, OvrController, Frequency, Amplitude);
+						ovr_SetControllerVibration(OvrSession, OvrController, Frequency, Amplitude);
 
 						UE_CLOG(0, LogOcInput, Log, TEXT("SetHapticFeedbackValues: Hand %d, freq %f, amp %f"), int(Hand), Frequency, Amplitude);
 
