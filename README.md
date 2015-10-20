@@ -1,3 +1,12 @@
+Oculus Notes
+============
+
+This branch contains integration of UE 4.9.x + Oculus PC SDK 0.8 + OculusTouch support.
+To get a patch for the original version of UE4, plus a test map for the OculusTouch controllers, please download the following package: https://www.dropbox.com/s/1hfrblvffgzgbw9/ovr_ue4_0.8.0_src_4.9.2-release.zip?dl=0
+
+Check UE4-Oculus.txt file for additional console commands.
+Note: there is an additional command-line option '-vr' that forces UE4 app to run in VR mode.
+
 Unreal Engine
 =============
 
