@@ -157,6 +157,9 @@ private:
 	/** Determines which primitives are visible for each view. */
 	void InitViews(FRHICommandListImmediate& RHICmdList);
 
+	/** Latches view uniform shader parameters. */
+	void LatchViews(FRHICommandListImmediate& RHICmdList);
+
 	/**
 	 * Renders the scene's prepass and occlusion queries.
 	 * @return true if anything was rendered

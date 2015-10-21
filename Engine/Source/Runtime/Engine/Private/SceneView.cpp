@@ -263,6 +263,7 @@ FVector4 CreateInvDeviceZToWorldZTransform(FMatrix const & ProjMatrix)
 FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	: Family(InitOptions.ViewFamily)
 	, State(InitOptions.SceneViewStateInterface)
+	, UniformShaderParameters(NULL)
 	, ViewActor(InitOptions.ViewActor)
 	, Drawer(InitOptions.ViewElementDrawer)
 	, ViewRect(InitOptions.GetConstrainedViewRect())
@@ -492,6 +493,14 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 #endif
 }
 
+FSceneView::~FSceneView()
+{
+	// Delete uniform shader parameters.
+	// Intentionally allocated as an array of chars in order to avoid constructor/destructor.
+	delete [] (char*) UniformShaderParameters;
+	UniformShaderParameters = NULL;
+}
+
 static TAutoConsoleVariable<int32> CVarCompensateForFOV(
 	TEXT("lod.CompensateForFOV"),
 	1,
@@ -557,16 +566,15 @@ uint32 FSceneView::GetViewKey() const
 
 void FSceneView::UpdateViewMatrix()
 {
-	FVector StereoViewLocation = ViewLocation;
 	if (GEngine->StereoRenderingDevice.IsValid() && StereoPass != eSSP_FULL)
 	{
+		FVector StereoViewLocation = ViewLocation;
 		GEngine->StereoRenderingDevice->CalculateStereoViewOffset(StereoPass, ViewRotation, WorldToMetersScale, StereoViewLocation);
 		ViewLocation = StereoViewLocation;
 	}
 
-	ViewMatrices.ViewOrigin = StereoViewLocation;
-
-	ViewMatrices.ViewMatrix = FTranslationMatrix(-StereoViewLocation);
+	ViewMatrices.ViewOrigin = ViewLocation;
+	ViewMatrices.ViewMatrix = FTranslationMatrix(-ViewLocation);
 	ViewMatrices.ViewMatrix = ViewMatrices.ViewMatrix * FInverseRotationMatrix(ViewRotation);
 	ViewMatrices.ViewMatrix = ViewMatrices.ViewMatrix * FMatrix(
 		FPlane(0,	0,	1,	0),
@@ -587,6 +595,37 @@ void FSceneView::UpdateViewMatrix()
 	InvViewMatrix = ViewMatrices.ViewMatrix.Inverse();
 	InvViewProjectionMatrix = ViewMatrices.GetInvProjMatrix() * InvViewMatrix;
 }
+
+
+void FSceneView::UpdateLateLatchedUniformShaderParameters(FViewUniformShaderParameters* UniformShaderParameters, const FViewMatrices& ViewMatrices, 
+    const FViewMatrices& PrevViewMatrices, const FMatrix& EffectiveTranslatedViewMatrix, const FMatrix& EffectiveViewToTranslatedWorld, 
+    const FMatrix& ViewProjectionMatrix, const FMatrix& InvViewMatrix, const FMatrix& InvViewProjectionMatrix, const FMatrix& ScreenToView)
+{
+	UniformShaderParameters->TranslatedWorldToClip = ViewMatrices.TranslatedViewProjectionMatrix;
+	UniformShaderParameters->WorldToClip = ViewProjectionMatrix;
+	UniformShaderParameters->TranslatedWorldToView = EffectiveTranslatedViewMatrix;
+	UniformShaderParameters->ViewToTranslatedWorld = EffectiveViewToTranslatedWorld;
+	UniformShaderParameters->ViewToClip = ViewMatrices.ProjMatrix;
+	UniformShaderParameters->ClipToView = ViewMatrices.GetInvProjMatrix();
+	UniformShaderParameters->ClipToTranslatedWorld = ViewMatrices.InvTranslatedViewProjectionMatrix;
+	UniformShaderParameters->ViewForward = EffectiveTranslatedViewMatrix.GetColumn(2);
+	UniformShaderParameters->ViewUp = EffectiveTranslatedViewMatrix.GetColumn(1);
+	UniformShaderParameters->ViewRight = EffectiveTranslatedViewMatrix.GetColumn(0);
+	UniformShaderParameters->FieldOfViewWideAngles = 2.f * ViewMatrices.GetHalfFieldOfViewPerAxis();
+	UniformShaderParameters->ViewOrigin = EffectiveViewToTranslatedWorld.TransformPosition(FVector(0)) - ViewMatrices.PreViewTranslation;
+	UniformShaderParameters->TranslatedViewOrigin = ViewMatrices.ViewOrigin + ViewMatrices.PreViewTranslation;
+	UniformShaderParameters->PreViewTranslation = ViewMatrices.PreViewTranslation;
+	UniformShaderParameters->ViewOriginDelta = ViewMatrices.ViewOrigin - PrevViewMatrices.ViewOrigin;
+	UniformShaderParameters->ScreenToWorld = ScreenToView * InvViewProjectionMatrix;
+	UniformShaderParameters->ScreenToTranslatedWorld = ScreenToView * ViewMatrices.InvTranslatedViewProjectionMatrix;
+
+	FVector DeltaTranslation = PrevViewMatrices.PreViewTranslation - ViewMatrices.PreViewTranslation;
+	FMatrix InvViewProj = ViewMatrices.GetInvProjNoAAMatrix() * ViewMatrices.TranslatedViewMatrix.GetTransposed();
+	FMatrix PrevViewProj = FTranslationMatrix( DeltaTranslation ) * PrevViewMatrices.TranslatedViewMatrix * PrevViewMatrices.GetProjNoAAMatrix();
+
+	UniformShaderParameters->ClipToPrevClip = InvViewProj * PrevViewProj;
+}
+
 
 void FSceneView::SetScaledViewRect(FIntRect InScaledViewRect)
 {

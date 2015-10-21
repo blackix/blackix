@@ -465,7 +465,10 @@ public:
 	/** can be 0 (thumbnail rendering) */
 	FSceneViewStateInterface* State;
 
-	/** The uniform buffer for the view's parameters.  This is only initialized in the rendering thread's copies of the FSceneView. */
+	/** The view's shader parameters.  This is only initialized in the rendering thread's copies of the FSceneView. */
+	FViewUniformShaderParameters* UniformShaderParameters;
+
+	/** The uniform buffer for the view's shader parameters.  This is only initialized in the rendering thread's copies of the FSceneView. */
 	TUniformBufferRef<FViewUniformShaderParameters> UniformBuffer;
 
 	/** uniform buffer with the lights for forward lighting/shading */
@@ -502,6 +505,14 @@ public:
 	FViewMatrices ShadowViewMatrices;
 
 	FMatrix ProjectionMatrixUnadjustedForRHI;
+
+	FViewMatrices PrevViewMatrices;
+
+	/** Last frame's view and projection matrices */
+	FMatrix	PrevViewProjMatrix;
+
+	/** Last frame's view rotation and projection matrices */
+	FMatrix	PrevViewRotationProjMatrix;
 
 	FLinearColor BackgroundColor;
 	FLinearColor OverlayColor;
@@ -644,6 +655,9 @@ public:
 	/** Initialization constructor. */
 	FSceneView(const FSceneViewInitOptions& InitOptions);
 
+	/** Destructor */
+	~FSceneView();
+
 	/** used by ScreenPercentage */
 	void SetScaledViewRect(FIntRect InScaledViewRect);
 
@@ -744,6 +758,11 @@ public:
 
 	/** Allow things like HMD displays to update the view matrix at the last minute, to minimize perceived latency */
 	void UpdateViewMatrix();
+
+	/** Allow things like HMD displays to update the view matrix at the last minute, to minimize perceived latency */
+	static void UpdateLateLatchedUniformShaderParameters(FViewUniformShaderParameters* UniformShaderParameters, const FViewMatrices& ViewMatrices, 
+		const FViewMatrices& PrevViewMatrices, const FMatrix& EffectiveTranslatedViewMatrix, const FMatrix& EffectiveViewToTranslatedWorld, 
+		const FMatrix& ViewProjectionMatrix, const FMatrix& InvViewMatrix, const FMatrix& InvViewProjectionMatrix, const FMatrix& ScreenToView);
 
 	/** Setup defaults and depending on view position (postprocess volumes) */
 	void StartFinalPostprocessSettings(FVector InViewLocation);

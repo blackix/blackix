@@ -72,9 +72,9 @@ static TAutoConsoleVariable<float> CVarTranslucencyLightingVolumeOuterDistance(
 	TEXT("Distance from the camera that the second volume cascade should end"),
 	ECVF_RenderThreadSafe);
 
-void FViewInfo::CalcTranslucencyLightingVolumeBounds(FBox* InOutCascadeBoundsArray, int32 NumCascades) const
+void FViewInfo::CalcTranslucencyLightingVolumeBounds(FBox InOutCascadeBoundsArray[TVC_MAX]) const
 {
-	for (int32 CascadeIndex = 0; CascadeIndex < NumCascades; CascadeIndex++)
+	for (int32 CascadeIndex = 0; CascadeIndex < TVC_MAX; CascadeIndex++)
 	{
 		float InnerDistance = CVarTranslucencyLightingVolumeInnerDistance.GetValueOnRenderThread();
 		float OuterDistance = CVarTranslucencyLightingVolumeOuterDistance.GetValueOnRenderThread();
@@ -527,14 +527,7 @@ void FProjectedShadowInfo::RenderTranslucencyDepths(FRHICommandList& RHICmdList,
 
 	// Override the view matrix so that billboarding primitives will be aligned to the light
 	FoundView->ViewMatrices.ViewMatrix = ShadowViewMatrix;
-	FBox VolumeBounds[TVC_MAX];
-	FoundView->UniformBuffer = FoundView->CreateUniformBuffer(
-		RHICmdList,
-		nullptr,
-		ShadowViewMatrix, 
-		ShadowViewMatrix.Inverse(),
-		VolumeBounds,
-		TVC_MAX);
+	FoundView->InitUniformBuffer();
 
 	{
 #if WANTS_DRAW_MESH_EVENTS

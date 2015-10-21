@@ -9,6 +9,7 @@
 
 #include "OVR_Version.h"
 
+OVR_USES_REDACTION
 
 #define OVR_KEY_USER                        "User"                // string
 #define OVR_KEY_NAME                        "Name"                // string
@@ -28,6 +29,9 @@
 #define OVR_KEY_CAMERA_POSITION_2			"CenteredFromWorld2"   // double[7] ovrPosef quat rotation x, y, z, w, translation x, y, z
 #define OVR_KEY_CAMERA_POSITION OVR_KEY_CAMERA_POSITION_2 
 
+#ifdef OVR_PARTNER_CODE
+#define OVR_KEY_DEMO_SHOULD_EXIT            "DemoShouldExit"    // bool, Originally added for E3 to tell apps to quit after demo duration, app should call ovr_GetBool(OVR_KEY_DEMO_SHOULD_EXIT) once per frame.
+#endif // OVR_PARTNER_CODE
 
 // Default measurements empirically determined at Oculus to make us happy
 // The neck model numbers were derived as an average of the male and female averages from ANSUR-88
@@ -45,10 +49,17 @@
 
 #define OVR_PERF_HUD_MODE                   "PerfHudMode"   // allowed values are defined in enum ovrPerfHudMode
 
+#define OVR_LAYER_HUD_MODE "LayerHudMode" // allowed values are defined in enum ovrLayerHudMode
+#define OVR_LAYER_HUD_CURRENT_LAYER "LayerHudCurrentLayer" // The layer to show 
+#define OVR_LAYER_HUD_SHOW_ALL_LAYERS "LayerHudShowAll" // Hide other layers when the hud is enabled
+
 #define OVR_DEBUG_HUD_STEREO_MODE               "DebugHudStereoMode"                // allowed values are defined in enum ovrDebugHudStereoMode
+#define OVR_DEBUG_HUD_STEREO_GUIDE_INFO_ENABLE  "DebugHudStereoGuideInfoEnable"     // bool
 #define OVR_DEBUG_HUD_STEREO_GUIDE_SIZE         "DebugHudStereoGuideSize2f"         // float[2]
 #define OVR_DEBUG_HUD_STEREO_GUIDE_POSITION     "DebugHudStereoGuidePosition3f"     // float[3]
 #define OVR_DEBUG_HUD_STEREO_GUIDE_YAWPITCHROLL "DebugHudStereoGuideYawPitchRoll3f" // float[3]
 #define OVR_DEBUG_HUD_STEREO_GUIDE_COLOR        "DebugHudStereoGuideColor4f"        // float[4]
+
+
 
 #endif // OVR_CAPI_Keys_h

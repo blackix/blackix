@@ -34,6 +34,23 @@ struct FForceFeedbackValues
 	{ }
 };
 
+struct FHapticFeedbackValues
+{
+	float Frequency;
+	float Amplitude;
+
+	FHapticFeedbackValues()
+		: Frequency(0.f)
+		, Amplitude(0.f)
+	{
+	}
+
+	FHapticFeedbackValues(const float InFrequency, const float InAmplitude)
+	{
+		Frequency = FMath::Clamp(InFrequency, 0.f, 1.f);
+		Amplitude = FMath::Clamp(InAmplitude, 0.f, 1.f);
+	}
+};
 
 /**
  * Interface for the input interface.
@@ -67,6 +84,16 @@ public:
 	DEPRECATED(4.7, "Please use SetForceFeedbackChannelValues()")
 	void SetChannelValues(int32 ControllerId, const FForceFeedbackValues &Values) { SetForceFeedbackChannelValues(ControllerId, Values); }
 	virtual void SetForceFeedbackChannelValues(int32 ControllerId, const FForceFeedbackValues &Values) = 0;
+
+	/**
+	* Sets the frequency and amplitude of haptic feedback channels for a given controller id.
+	* Some devices / platforms may support just haptics, or just force feedback.
+	*
+	* @param ControllerId	ID of the controller to issue haptic feedback for
+	* @param HandId			Which hand id (e.g. left or right) to issue the feedback for.  These usually correspond to EControllerHands
+	* @param Values			Frequency and amplitude to haptics at
+	*/
+	virtual void SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const FHapticFeedbackValues& Values) {}
 
 	/*
 	 * Sets the controller for the given controller.  Ignored if controller does not support a color.

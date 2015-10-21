@@ -178,7 +178,8 @@ FUniformBufferRHIRef FD3D11DynamicRHI::RHICreateUniformBuffer(const void* Conten
 			// No pooling
 			D3D11_BUFFER_DESC Desc;
 			Desc.ByteWidth = NumBytes;
-			Desc.Usage = D3D11_USAGE_IMMUTABLE;
+			// Use D3D11_USAGE_DEFAULT instead of D3D11_USAGE_IMMUTABLE to allow for HMD late latching
+			Desc.Usage = D3D11_USAGE_DEFAULT;
 			Desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 			Desc.CPUAccessFlags = 0;
 			Desc.MiscFlags = 0;

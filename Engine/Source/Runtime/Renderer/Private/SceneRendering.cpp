@@ -413,14 +413,26 @@ void FViewInfo::SetupSkyIrradianceEnvironmentMapConstants(FVector4* OutSkyIrradi
 }
 
 /** Creates the view's uniform buffer given a set of view transforms. */
-TUniformBufferRef<FViewUniformShaderParameters> FViewInfo::CreateUniformBuffer(
+void FViewInfo::InitUniformBuffer()
+{
+	FBox TranslucentCascadeBoundsArray[TVC_MAX];
+
+	InitUniformBuffer(
+        FRHICommandListExecutor::GetImmediateCommandList(),
+		nullptr,
+		ViewMatrices.ViewMatrix,
+		ViewMatrices.ViewMatrix.Inverse(),
+		TranslucentCascadeBoundsArray);
+}
+
+void FViewInfo::InitUniformBuffer(
 	FRHICommandList& RHICmdList,
-	const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>* DirectionalLightShadowInfo,	
+	const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>* DirectionalLightShadowInfo,
 	const FMatrix& EffectiveTranslatedViewMatrix, 
 	const FMatrix& EffectiveViewToTranslatedWorld, 
-	FBox* OutTranslucentCascadeBoundsArray, 
-	int32 NumTranslucentCascades) const
+	FBox OutTranslucentCascadeBoundsArray[TVC_MAX])
 {
+	check(IsInRenderingThread());
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	check(Family);
@@ -467,36 +479,28 @@ TUniformBufferRef<FViewUniformShaderParameters> FViewInfo::CreateUniformBuffer(
 
 	const bool bIsUnlitView = !Family->EngineShowFlags.Lighting;
 
-	// Create the view's uniform buffer.
+	// Create the view's uniform shader parameters
+	// Intentionally allocated as an array of chars in order to avoid constructor/destructor
 	// TODO: We should use a view and previous view uniform buffer to avoid code duplication and keep consistency
-	FViewUniformShaderParameters ViewUniformShaderParameters;
-	ViewUniformShaderParameters.TranslatedWorldToClip = ViewMatrices.TranslatedViewProjectionMatrix;
-	ViewUniformShaderParameters.WorldToClip = ViewProjectionMatrix;
-	ViewUniformShaderParameters.TranslatedWorldToView = EffectiveTranslatedViewMatrix;
-	ViewUniformShaderParameters.ViewToTranslatedWorld = EffectiveViewToTranslatedWorld;
-	ViewUniformShaderParameters.ViewToClip = ViewMatrices.ProjMatrix;
-	ViewUniformShaderParameters.ClipToView = ViewMatrices.GetInvProjMatrix();
-	ViewUniformShaderParameters.ClipToTranslatedWorld = ViewMatrices.InvTranslatedViewProjectionMatrix;
-	ViewUniformShaderParameters.ViewForward = EffectiveTranslatedViewMatrix.GetColumn(2);
-	ViewUniformShaderParameters.ViewUp = EffectiveTranslatedViewMatrix.GetColumn(1);
-	ViewUniformShaderParameters.ViewRight = EffectiveTranslatedViewMatrix.GetColumn(0);
-	ViewUniformShaderParameters.FieldOfViewWideAngles = 2.f * ViewMatrices.GetHalfFieldOfViewPerAxis();
+	if(!UniformShaderParameters)
+		UniformShaderParameters = (FViewUniformShaderParameters*) new char[sizeof(FViewUniformShaderParameters)];
+
+	FViewUniformShaderParameters& ViewUniformShaderParameters = *UniformShaderParameters;
+	FMemory::Memzero(ViewUniformShaderParameters);
+
+	// NOTE: Late-Latched shader parameters (parameters which depend on the current view matrix) are set in UpdateLateLatchedShaderParameters() below
 	ViewUniformShaderParameters.PrevFieldOfViewWideAngles = 2.f * PrevViewMatrices.GetHalfFieldOfViewPerAxis();
 	ViewUniformShaderParameters.InvDeviceZToWorldZTransform = InvDeviceZToWorldZTransform;
 	ViewUniformShaderParameters.ScreenPositionScaleBias = ScreenPositionScaleBias;
 	ViewUniformShaderParameters.ViewRectMin = FVector4(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, 0.0f);
 	ViewUniformShaderParameters.ViewSizeAndInvSize = FVector4(ViewRect.Width(), ViewRect.Height(), 1.0f / float(ViewRect.Width()), 1.0f / float(ViewRect.Height()));
 	ViewUniformShaderParameters.BufferSizeAndInvSize = FVector4(BufferSize.X, BufferSize.Y, InvBufferSizeX, InvBufferSizeY);
-	ViewUniformShaderParameters.ViewOrigin = ViewMatrices.ViewOrigin;
-	ViewUniformShaderParameters.TranslatedViewOrigin = ViewMatrices.ViewOrigin + ViewMatrices.PreViewTranslation;
 	ViewUniformShaderParameters.DiffuseOverrideParameter = LocalDiffuseOverrideParameter;
 	ViewUniformShaderParameters.SpecularOverrideParameter = SpecularOverrideParameter;
 	ViewUniformShaderParameters.NormalOverrideParameter = NormalOverrideParameter;
 	ViewUniformShaderParameters.RoughnessOverrideParameter = LocalRoughnessOverrideParameter;
 	ViewUniformShaderParameters.PrevFrameGameTime = Family->CurrentWorldTime - Family->DeltaWorldTime;
 	ViewUniformShaderParameters.PrevFrameRealTime = Family->CurrentRealTime - Family->DeltaWorldTime;
-	ViewUniformShaderParameters.PreViewTranslation = ViewMatrices.PreViewTranslation;
-	ViewUniformShaderParameters.ViewOriginDelta = ViewMatrices.ViewOrigin - PrevViewMatrices.ViewOrigin;
 	ViewUniformShaderParameters.CullingSign = bReverseCulling ? -1.0f : 1.0f;
 	ViewUniformShaderParameters.NearPlane = GNearClippingPlane;
 	ViewUniformShaderParameters.PrevProjection = PrevViewMatrices.ProjMatrix;
@@ -512,32 +516,17 @@ TUniformBufferRef<FViewUniformShaderParameters> FViewInfo::CreateUniformBuffer(
 	// can be optimized
 	ViewUniformShaderParameters.PrevInvViewProj = PrevViewProjMatrix.Inverse();
 
-	ViewUniformShaderParameters.ScreenToWorld = FMatrix(
+	FMatrix ScreenToView(
 		FPlane(1,0,0,0),
 		FPlane(0,1,0,0),
 		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[2][2],1),
-		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[3][2],0))
-		* InvViewProjectionMatrix;
+		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[3][2],0));
 
-	ViewUniformShaderParameters.ScreenToTranslatedWorld = FMatrix(
-		FPlane(1,0,0,0),
-		FPlane(0,1,0,0),
-		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[2][2],1),
-		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[3][2],0))
-		* ViewMatrices.InvTranslatedViewProjectionMatrix;
+	ViewUniformShaderParameters.PrevScreenToTranslatedWorld = ScreenToView * PrevViewMatrices.InvTranslatedViewProjectionMatrix;
 
-	ViewUniformShaderParameters.PrevScreenToTranslatedWorld = FMatrix(
-		FPlane(1,0,0,0),
-		FPlane(0,1,0,0),
-		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[2][2],1),
-		FPlane(0,0,ProjectionMatrixUnadjustedForRHI.M[3][2],0))
-		* PrevViewMatrices.InvTranslatedViewProjectionMatrix;
+	// Update late-latched shader parameters (parameters which depend on the current view matrix)
+	UpdateLateLatchedUniformShaderParameters(&ViewUniformShaderParameters, ViewMatrices, PrevViewMatrices, EffectiveTranslatedViewMatrix, EffectiveViewToTranslatedWorld, ViewProjectionMatrix, InvViewMatrix, InvViewProjectionMatrix, ScreenToView);
 
-	FVector DeltaTranslation = PrevViewMatrices.PreViewTranslation - ViewMatrices.PreViewTranslation;
-	FMatrix InvViewProj = ViewMatrices.GetInvProjNoAAMatrix() * ViewMatrices.TranslatedViewMatrix.GetTransposed();
-	FMatrix PrevViewProj = FTranslationMatrix( DeltaTranslation ) * PrevViewMatrices.TranslatedViewMatrix * PrevViewMatrices.GetProjNoAAMatrix();
-
-	ViewUniformShaderParameters.ClipToPrevClip = InvViewProj * PrevViewProj;
 
 	// is getting clamped in the shader to a value larger than 0 (we don't want the triangles to disappear)
 	ViewUniformShaderParameters.AdaptiveTessellationFactor = 0.0f;
@@ -717,10 +706,10 @@ TUniformBufferRef<FViewUniformShaderParameters> FViewInfo::CreateUniformBuffer(
 				}
 			}
 		}
-		PrimaryView->CalcTranslucencyLightingVolumeBounds(OutTranslucentCascadeBoundsArray, NumTranslucentCascades);
+		PrimaryView->CalcTranslucencyLightingVolumeBounds(OutTranslucentCascadeBoundsArray);
 	}
 
-	for (int32 CascadeIndex = 0; CascadeIndex < NumTranslucentCascades; CascadeIndex++)
+	for (int32 CascadeIndex = 0; CascadeIndex < TVC_MAX; CascadeIndex++)
 	{
 		const float VolumeVoxelSize = (OutTranslucentCascadeBoundsArray[CascadeIndex].Max.X - OutTranslucentCascadeBoundsArray[CascadeIndex].Min.X) / GTranslucencyLightingVolumeDim;
 		const FVector VolumeSize = OutTranslucentCascadeBoundsArray[CascadeIndex].Max - OutTranslucentCascadeBoundsArray[CascadeIndex].Min;
@@ -814,7 +803,7 @@ TUniformBufferRef<FViewUniformShaderParameters> FViewInfo::CreateUniformBuffer(
 		(FeatureLevel == ERHIFeatureLevel::ES2 || FeatureLevel == ERHIFeatureLevel::ES3_1) &&
 		GMaxRHIFeatureLevel > ERHIFeatureLevel::ES3_1) ? 1.0f : 0.0f;
 
-	return TUniformBufferRef<FViewUniformShaderParameters>::CreateUniformBufferImmediate(ViewUniformShaderParameters, UniformBuffer_SingleFrame);
+	UniformBuffer = TUniformBufferRef<FViewUniformShaderParameters>::CreateUniformBufferImmediate(ViewUniformShaderParameters, UniformBuffer_SingleFrame);
 }
 
 void FViewInfo::CreateForwardLightDataUniformBuffer(FForwardLightData &OutForwardLightData) const
@@ -967,25 +956,23 @@ void FViewInfo::CreateLightGrid()
 
 void FViewInfo::InitRHIResources(const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>* DirectionalLightShadowInfo)
 {
-	FBox VolumeBounds[TVC_MAX];
-
 	/** The view transform, starting from world-space points translated by -ViewOrigin. */
 	FMatrix TranslatedViewMatrix = FTranslationMatrix(-ViewMatrices.PreViewTranslation) * ViewMatrices.ViewMatrix;
+	FBox TranslucentCascadeBoundsArray[TVC_MAX];
 
 	check(IsInRenderingThread());
-	UniformBuffer = CreateUniformBuffer(
+	InitUniformBuffer(
 		FRHICommandListExecutor::GetImmediateCommandList(),
 		DirectionalLightShadowInfo,
 		TranslatedViewMatrix,
 		InvViewMatrix * FTranslationMatrix(ViewMatrices.PreViewTranslation),
-		VolumeBounds,
-		TVC_MAX);
+		TranslucentCascadeBoundsArray);
 
 	for (int32 CascadeIndex = 0; CascadeIndex < TVC_MAX; CascadeIndex++)
 	{
-		TranslucencyLightingVolumeMin[CascadeIndex] = VolumeBounds[CascadeIndex].Min;
-		TranslucencyVolumeVoxelSize[CascadeIndex] = (VolumeBounds[CascadeIndex].Max.X - VolumeBounds[CascadeIndex].Min.X) / GTranslucencyLightingVolumeDim;
-		TranslucencyLightingVolumeSize[CascadeIndex] = VolumeBounds[CascadeIndex].Max - VolumeBounds[CascadeIndex].Min;
+		TranslucencyLightingVolumeMin[CascadeIndex] = TranslucentCascadeBoundsArray[CascadeIndex].Min;
+		TranslucencyVolumeVoxelSize[CascadeIndex] = (TranslucentCascadeBoundsArray[CascadeIndex].Max.X - TranslucentCascadeBoundsArray[CascadeIndex].Min.X) / GTranslucencyLightingVolumeDim;
+		TranslucencyLightingVolumeSize[CascadeIndex] = TranslucentCascadeBoundsArray[CascadeIndex].Max - TranslucentCascadeBoundsArray[CascadeIndex].Min;
 	}
 
 	// Initialize the dynamic resources used by the view's FViewElementDrawer.

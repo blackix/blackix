@@ -2187,10 +2187,30 @@ void FDeferredShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLi
 	{
 		// Initialize the view's RHI resources.
 		Views[ViewIndex].InitRHIResources(nullptr);
+    }
+
+	// Notify view extensions that views have been initialized
+	for(int ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ViewExt++)
+	{
+		ViewFamily.ViewExtensions[ViewExt]->InitViewFamily_RenderThread(RHICmdList, ViewFamily);
 	}
 
 	OnStartFrame();
 }
+
+
+/**
+ * Latch scene's views.
+ */
+void FDeferredShadingSceneRenderer::LatchViews(FRHICommandListImmediate& RHICmdList)
+{
+	// Notify view extensions to latch view uniform shader parameters
+	for(int ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ViewExt++)
+	{
+		ViewFamily.ViewExtensions[ViewExt]->LatchViewFamily_RenderThread(RHICmdList, ViewFamily);
+	}
+}
+
 
 /*------------------------------------------------------------------------------
 	FLODSceneTree Implementation

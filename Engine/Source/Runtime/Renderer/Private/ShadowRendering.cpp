@@ -1737,14 +1737,7 @@ void FProjectedShadowInfo::ModifyViewForShadow(FRHICommandList& RHICmdList, FVie
 	// Override the view matrix so that billboarding primitives will be aligned to the light
 	//@todo - creating a new uniform buffer is expensive, only do this when the vertex factory needs an accurate view matrix (particle sprites)
 	FoundView->ViewMatrices.ViewMatrix = ShadowViewMatrix;
-	FBox VolumeBounds[TVC_MAX];
-	FoundView->UniformBuffer = FoundView->CreateUniformBuffer(
-		RHICmdList,
-		nullptr,
-		ShadowViewMatrix, 
-		ShadowViewMatrix.Inverse(),
-		VolumeBounds,
-		TVC_MAX);
+	FoundView->InitUniformBuffer();
 
 	// we are going to set this back now because we only want the correct view rect for the uniform buffer. For LOD calculations, we want the rendering viewrect and proj matrix.
 	FoundView->ViewRect = OriginalViewRect;

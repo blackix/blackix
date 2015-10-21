@@ -33,4 +33,14 @@ public:
      * Called on render thread at the start of rendering, for each view, after PreRenderViewFamily_RenderThread call.
      */
     virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) = 0;
+
+	/**
+	 * Called on render thread after RHI resources for views have been initialized.
+	 */
+	virtual void InitViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) = 0;
+
+	/**
+	 * Called on render thread before RHI resource for views are used for the first time.
+	 */
+	virtual void LatchViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) = 0;
 };

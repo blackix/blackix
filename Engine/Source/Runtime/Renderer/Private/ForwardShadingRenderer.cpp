@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "ScenePrivate.h"
 #include "FXSystem.h"
+#include "SceneViewExtension.h"
 #include "PostProcessing.h"
 #include "SceneFilterRendering.h"
 #include "PostProcessMobile.h"
@@ -71,7 +72,25 @@ void FForwardShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLis
 		Views[ViewIndex].InitRHIResources(DirectionalLightShadowInfo);
 	}
 
+	// Notify view extensions that views have been initialized
+	for(int ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ViewExt++)
+	{
+		ViewFamily.ViewExtensions[ViewExt]->InitViewFamily_RenderThread(RHICmdList, ViewFamily);
+	}
+
 	OnStartFrame();
+}
+
+/**
+ * Latch scene's views.
+ */
+void FForwardShadingSceneRenderer::LatchViews(FRHICommandListImmediate& RHICmdList)
+{
+	// Notify view extensions to latch view uniform shader parameters
+	for(int ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ViewExt++)
+	{
+		ViewFamily.ViewExtensions[ViewExt]->LatchViewFamily_RenderThread(RHICmdList, ViewFamily);
+	}
 }
 
 /** 
@@ -97,6 +116,7 @@ void FForwardShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	// Find the visible primitives.
 	InitViews(RHICmdList);
+	LatchViews(RHICmdList);
 	
 	// Notify the FX system that the scene is about to be rendered.
 	if (Scene->FXSystem)

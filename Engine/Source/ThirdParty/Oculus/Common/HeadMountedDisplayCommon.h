@@ -77,6 +77,9 @@ public:
 			/** Whether world-to-meters scale is overriden or not. */
 			uint64 bWorldToMetersOverride : 1;
 
+			/** Whether camera scale is overriden or not. */
+			uint64 bCameraScale3DOverride : 1;
+
 			/** Distortion on/off */
 			uint64 bHmdDistortion : 1;
 
@@ -94,6 +97,12 @@ public:
 				See 'HMD UPDATEONRT ON|OFF' console command.
 			*/
 			uint64 bUpdateOnRT : 1;
+
+			/** Turns on/off updating view's orientation/position on a background thread until GPU begins to process draw commands.
+				See 'HMD LATELATCHING ON|OFF' console command.
+			*/
+			uint64 bLateLatching : 1;
+			uint64 bLateLatchingOrientation : 1;
 
 			/** Enforces headtracking to work even in non-stereo mode (for debugging or screenshots). 
 				See 'MOTION ENFORCE' console command. */
@@ -171,6 +180,12 @@ public:
 	/** Optional far clipping plane for projection matrix */
 	float FarClippingPlane;
 
+	/** Scale the camera positional movement */
+	FVector		CameraScale3D;
+
+	/** Scale the positional movement */
+	FVector		PositionScale3D;
+
 	/** Size of mirror window; {0,0} if size is the default one */
 	FIntPoint	MirrorWindowSize;
 
@@ -202,7 +217,7 @@ public:
 class FHMDGameFrame : public TSharedFromThis<FHMDGameFrame, ESPMode::ThreadSafe>
 {
 public:
-	uint32					FrameNumber; // current frame number.
+	uint64					FrameNumber; // current frame number.
 	TSharedPtr<FHMDSettings, ESPMode::ThreadSafe>	Settings;
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
@@ -265,6 +280,8 @@ public:
 	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override;
 	virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
 	virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) override;
+	virtual void InitViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
+	virtual void LatchViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
 
 public: // data
 	FHeadMountedDisplay* Delegate;
@@ -346,6 +363,9 @@ public:
 
 	virtual void SetBaseOrientation(const FQuat& BaseOrient) override;
 	virtual FQuat GetBaseOrientation() const override;
+
+	virtual void SetPositionScale3D(FVector PosScale3D);
+	virtual FVector GetPositionScale3D() const;
 
 	// Returns true, if HMD is currently active
 	virtual bool IsHMDActive() { return IsHMDConnected(); }

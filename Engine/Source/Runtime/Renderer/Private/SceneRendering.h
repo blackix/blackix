@@ -518,14 +518,6 @@ public:
 	/** Bitmask of all shading models used by primitives in this view */
 	uint16 ShadingModelMaskInView;
 
-	FViewMatrices PrevViewMatrices;
-
-	/** Last frame's view and projection matrices */
-	FMatrix	PrevViewProjMatrix;
-
-	/** Last frame's view rotation and projection matrices */
-	FMatrix	PrevViewRotationProjMatrix;
-
 	/** An intermediate number of visible static meshes.  Doesn't account for occlusion until after FinishOcclusionQueries is called. */
 	int32 NumVisibleStaticMeshElements;
 
@@ -576,14 +568,16 @@ public:
 	*/
 	~FViewInfo();
 
-	/** Creates the view's uniform buffer given a set of view transforms. */
-	TUniformBufferRef<FViewUniformShaderParameters> CreateUniformBuffer(
+	/** Initializes the view's uniform buffer given a set of view transforms. */
+	void InitUniformBuffer();
+
+	/** Initializes the view's uniform buffer given a set of view transforms. */
+	void InitUniformBuffer(
 		FRHICommandList& RHICmdList,
 		const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>* DirectionalLightShadowInfo,
 		const FMatrix& EffectiveTranslatedViewMatrix, 
 		const FMatrix& EffectiveViewToTranslatedWorld, 
-		FBox* OutTranslucentCascadeBoundsArray, 
-		int32 NumTranslucentCascades) const;
+		FBox OutTranslucentCascadeBoundsArray[TVC_MAX]);
 
 	/** Initializes the RHI resources used by this view. */
 	void InitRHIResources(const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>* DirectionalLightShadowInfo);
@@ -634,7 +628,7 @@ private:
 	void Init();
 
 	/** Calculates bounding boxes for the translucency lighting volume cascades. */
-	void CalcTranslucencyLightingVolumeBounds(FBox* InOutCascadeBoundsArray, int32 NumCascades) const;
+	void CalcTranslucencyLightingVolumeBounds(FBox InOutCascadeBoundsArray[TVC_MAX]) const;
 
 	/** Sets the sky SH irradiance map coefficients. */
 	void SetupSkyIrradianceEnvironmentMapConstants(FVector4* OutSkyIrradianceEnvironmentMap) const;
@@ -881,6 +875,8 @@ public:
 protected:
 
 	void InitViews(FRHICommandListImmediate& RHICmdList);
+
+	void LatchViews(FRHICommandListImmediate& RHICmdList);
 
 	/** Finds the visible dynamic shadows for each view. */
 	void InitDynamicShadows(FRHICommandListImmediate& RHICmdList);

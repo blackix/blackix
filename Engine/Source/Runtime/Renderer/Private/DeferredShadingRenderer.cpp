@@ -810,6 +810,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 	// Find the visible primitives.
 	InitViews(RHICmdList);
+	LatchViews(RHICmdList);
 
 	if (GRHICommandList.UseParallelAlgorithms())
 	{

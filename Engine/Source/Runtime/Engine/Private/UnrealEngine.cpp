@@ -6736,15 +6736,13 @@ void UEngine::PerformanceCapture(const FString& CaptureName)
 		PathName = ( PathName + TEXT( "_" ) ) + DeviceTypeString;
 	}
 
-	PathName += TEXT("/");
-
 	//mapname/CaptureName/platform/version.png
 
 	//Make path relative to the root.
 	PathName = FPaths::AutomationDir() + PathName;
 	FPaths::MakePathRelativeTo(PathName,*FPaths::RootDir());
 	
-	FString ScreenshotName = FString::Printf(TEXT("%s%d.png"), *PathName, GEngineVersion.GetChangelist());
+	FString ScreenshotName = FString::Printf(TEXT("%s/%d.png"), *PathName, GEngineVersion.GetChangelist());
 	
 	const bool bShowUI = false;
 	const bool bAddFilenameSuffix = false;
