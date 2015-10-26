@@ -55,28 +55,24 @@ protected:
 			bInitializeCalled = true;
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
-			// Only load LibOVR when running Game or Editor
-			if(IsRunningGame() || GIsEditor)
-			{
-				ovrInitParams initParams;
-				FMemory::Memset(initParams, 0);
-				initParams.Flags = ovrInit_RequestVersion;
-				initParams.RequestedMinorVersion = OVR_MINOR_VERSION;
+			ovrInitParams initParams;
+			FMemory::Memset(initParams, 0);
+			initParams.Flags = ovrInit_RequestVersion;
+			initParams.RequestedMinorVersion = OVR_MINOR_VERSION;
 #if !UE_BUILD_SHIPPING
-				initParams.LogCallback = OvrLogCallback;
+			initParams.LogCallback = OvrLogCallback;
 #endif
-				ovrResult result = ovr_Initialize(&initParams);
+			ovrResult result = ovr_Initialize(&initParams);
 
-				if(OVR_SUCCESS(result))
-				{
-					bInitialized = true;
-				}
-				else if(ovrError_LibLoad == result)
-				{
-					// Can't load library!
-					UE_LOG(LogHMD, Log, TEXT("Can't find Oculus library %s: is proper Runtime installed? Version: %s"), 
-						TEXT(OVR_FILE_DESCRIPTION_STRING), TEXT(OVR_VERSION_STRING));
-				}
+			if(OVR_SUCCESS(result))
+			{
+				bInitialized = true;
+			}
+			else if(ovrError_LibLoad == result)
+			{
+				// Can't load library!
+				UE_LOG(LogHMD, Log, TEXT("Can't find Oculus library %s: is proper Runtime installed? Version: %s"), 
+					TEXT(OVR_FILE_DESCRIPTION_STRING), TEXT(OVR_VERSION_STRING));
 			}
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
 		}
@@ -113,14 +109,23 @@ protected:
 	virtual TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > CreateHeadMountedDisplay() override
 	{
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
-		if(Initialize())
+		// Only init plugin when running Game or Editor
+		if(IsRunningGame() || GIsEditor)
 		{
-			TSharedPtr< FOculusRiftHMD, ESPMode::ThreadSafe > OculusRiftHMD( new FOculusRiftHMD() );
-			if( OculusRiftHMD->IsInitialized() )
+			if (Initialize())
 			{
-				HeadMountedDisplay = OculusRiftHMD;
-				return OculusRiftHMD;
+				TSharedPtr< FOculusRiftHMD, ESPMode::ThreadSafe > OculusRiftHMD(new FOculusRiftHMD());
+				if (OculusRiftHMD->IsInitialized())
+				{
+					HeadMountedDisplay = OculusRiftHMD;
+					return OculusRiftHMD;
+				}
 			}
+		}
+		else if (bInitialized)
+		{
+			ovr_Shutdown();
+			bInitialized = true;
 		}
 #endif//OCULUS_RIFT_SUPPORTED_PLATFORMS
 		HeadMountedDisplay = nullptr;
