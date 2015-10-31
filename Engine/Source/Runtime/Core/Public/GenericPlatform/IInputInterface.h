@@ -4,7 +4,6 @@
 
 #include "HAL/Platform.h"
 
-
 // General identifiers for potential force feedback channels. These will be mapped according to the
 // platform specific implementation.
 // For example, the PS4 only listens to the XXX_LARGE channels and ignores the rest, while the XBox One could
@@ -47,8 +46,9 @@ struct FHapticFeedbackValues
 
 	FHapticFeedbackValues(const float InFrequency, const float InAmplitude)
 	{
-		Frequency = FMath::Clamp(InFrequency, 0.f, 1.f);
-		Amplitude = FMath::Clamp(InAmplitude, 0.f, 1.f);
+		// can't use FMath::Clamp here due to header files dependencies
+		Frequency = (InFrequency < 0.f) ? 0.f : ((InFrequency > 1.f) ? 1.f : InFrequency);
+		Amplitude = (InAmplitude < 0.f) ? 0.f : ((InAmplitude > 1.f) ? 1.f : InAmplitude);
 	}
 };
 
@@ -98,5 +98,5 @@ public:
 	/*
 	 * Sets the controller for the given controller.  Ignored if controller does not support a color.
 	 */
-	virtual void SetLightColor(int32 ControllerId, FColor Color) = 0;
+	virtual void SetLightColor(int32 ControllerId, struct FColor Color) = 0;
 };
