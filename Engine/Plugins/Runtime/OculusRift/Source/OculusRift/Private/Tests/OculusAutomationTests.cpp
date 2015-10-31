@@ -494,3 +494,4 @@ bool FOculusAutomationTest_Screenshots::RunTest(const FString& Parameters)
 }
 #endif
 
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
