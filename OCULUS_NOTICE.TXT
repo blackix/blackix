@@ -1,0 +1,2 @@
+No license is granted by Oculus to any Epic Engine Code or to any Third Party Software contained in the Engine Code. 
+Your use of Engine Code and any Third Party Software is governed by the Unreal Engine End User License Agreement.
