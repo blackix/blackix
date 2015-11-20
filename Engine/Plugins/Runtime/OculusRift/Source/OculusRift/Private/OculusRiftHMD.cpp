@@ -445,6 +445,17 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 				Flags.bNeedUpdateStereoRenderingParams = true;
 			}
 		}
+		else if (FParse::Command(&Cmd, TEXT("HMDPOS")))
+		{
+			if (FParse::Command(&Cmd, TEXT("ENFORCE")))
+			{
+				// need to init device
+				if (Settings->Flags.bHeadTrackingEnforced)
+				{
+					InitDevice();
+				}
+			}
+		}
 		return true;
 	}
 
