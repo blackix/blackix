@@ -150,3 +150,6 @@ Saved/
 
 # Explcitly ignore Mac DS_Store files, regardless of where they are
 .DS_Store
+
+# Add exceptions for our little download tools
+!/Engine/Source/ThirdParty/Oculus/OculusMobile/**

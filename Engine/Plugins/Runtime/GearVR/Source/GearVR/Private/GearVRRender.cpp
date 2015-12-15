@@ -11,6 +11,7 @@
 #include "VrApi_Helpers.h"
 #include "VrApi_LocalPrefs.h"
 #include "Android/AndroidJNI.h"
+#include "Android/AndroidEGL.h"
 
 #define NUM_BUFFERS 3
 
@@ -281,37 +282,45 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 void FGearVR::EnterVRMode()
 {
 	check(pGearVRBridge);
+
 	if (IsInRenderingThread())
 	{
-		//auto RenderFrame = static_cast<FGameFrame*>(GetRenderFrame());
-		pGearVRBridge->DoEnterVRMode();
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ EnterVRMode ++++++, On RT! tid = %d"), gettid());
+		pGearVRBridge->EnterVRMode_RenderThread();
 	}
 	else
 	{
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ EnterVRMode ++++++, tid = %d"), gettid());
 		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(EnterVRMode,
 		FGearVRCustomPresent*, pGearVRBridge, pGearVRBridge,
 		{
-			pGearVRBridge->DoEnterVRMode();
+			pGearVRBridge->EnterVRMode_RenderThread();
 		});
 		FlushRenderingCommands();
 	}
+
+	FPlatformMisc::LowLevelOutputDebugStringf(TEXT("------- EnterVRMode -------, tid = %d"), gettid());
 }
 
 void FGearVR::LeaveVRMode()
 {
 	if (IsInRenderingThread())
 	{
-		pGearVRBridge->DoLeaveVRMode();
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ LeaveVRMode ++++++, On RT! tid = %d"), gettid());
+		pGearVRBridge->LeaveVRMode_RenderThread();
 	}
 	else
 	{
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ LeaveVRMode ++++++, tid = %d"), gettid());
 		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(LeaveVRMode,
 		FGearVRCustomPresent*, pGearVRBridge, pGearVRBridge,
 		{
-			pGearVRBridge->DoLeaveVRMode();
+			pGearVRBridge->LeaveVRMode_RenderThread();
 		});
 		FlushRenderingCommands();
 	}
+
+	FPlatformMisc::LowLevelOutputDebugStringf(TEXT("------- LeaveVRMode -------, tid = %d"), gettid());
 }
 
 void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& ViewFamily)
@@ -455,11 +464,13 @@ FGearVRCustomPresent::FGearVRCustomPresent(jobject InActivityObject, int InMinim
 	FRHICustomPresent(nullptr),
 	bInitialized(false),
 	bLoadingIconIsActive(false),
+	bExtraLatencyMode(true),
 	MinimumVsyncs(InMinimumVsyncs),
 	LoadingIconTextureSet(nullptr),
 	OvrMobile(nullptr),
 	ActivityObject(InActivityObject)
 {
+	bHMTWasMounted = false;
 	Init();
 }
 
@@ -474,7 +485,7 @@ void FGearVRCustomPresent::Shutdown()
 	FScopeLock lock(&OvrMobileLock);
 	if (OvrMobile)
 	{
-		DoLeaveVRMode();
+		LeaveVRMode_RenderThread();
 	}
 
 	auto GLRHI = static_cast<FOpenGLDynamicRHI*>(GDynamicRHI);
@@ -522,7 +533,6 @@ void FGearVRCustomPresent::BeginRendering(FHMDViewExtension& InRenderContext, co
 		}
 	}
 	FrameParms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TexCoordsFromTanAngles.M[0][2] -= 1.0 - ((float)RTSizeY / (float)RTSizeX);
-	FrameParms.WarpProgram = VRAPI_FRAME_PROGRAM_MIDDLE_CLAMP;
 
 	static const ovrRectf LeftEyeRect  = { 0.0f, 0.0f, 0.5f, 1.0f };
 	static const ovrRectf RightEyeRect = { 0.5f, 0.0f, 0.5f, 1.0f };
@@ -555,6 +565,9 @@ void FGearVRCustomPresent::FinishRendering()
 				FrameParms.PerformanceParms.GpuLevel = RenderContext->GetFrameSetting()->GpuLevel;
 				FrameParms.PerformanceParms.MainThreadTid = RenderContext->GetRenderFrame()->GameThreadId;
 				FrameParms.PerformanceParms.RenderThreadTid = gettid();
+				FrameParms.Java = JavaRT;
+				SystemActivities_Update_RenderThread();
+
 				vrapi_SubmitFrame(OvrMobile, &FrameParms);
 
 				TextureSet->SwitchToNextElement();
@@ -639,75 +652,70 @@ bool FGearVRCustomPresent::Present(int& SyncInterval)
 	return false; // indicates that we are presenting here, UE shouldn't do Present.
 }
 
-void FGearVRCustomPresent::DoEnterVRMode()
+void FGearVRCustomPresent::EnterVRMode_RenderThread()
 {
 	check(IsInRenderingThread());
-	check(!IsInGameThread())
 
 	FScopeLock lock(&OvrMobileLock);
 	if (!OvrMobile)
 	{
-		JavaRT.Vm = GJavaVM;
-		JavaRT.ActivityObject = ActivityObject;
-		GJavaVM->AttachCurrentThread(&JavaRT.Env, nullptr);
+		ovrJava JavaVM;
+		JavaVM.Vm = GJavaVM;
+		JavaVM.ActivityObject = ActivityObject;
+		GJavaVM->AttachCurrentThread(&JavaVM.Env, nullptr);
 
-		LoadingIconParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_LOADING_ICON, 0);
+		LoadingIconParms = vrapi_DefaultFrameParms(&JavaVM, VRAPI_FRAME_INIT_LOADING_ICON, vrapi_GetTimeInSeconds(), nullptr);
 		LoadingIconParms.MinimumVsyncs = MinimumVsyncs;
 
-		FrameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_DEFAULT, 0);
+		FrameParms = vrapi_DefaultFrameParms(&JavaVM, VRAPI_FRAME_INIT_DEFAULT, vrapi_GetTimeInSeconds(), nullptr);
 		FrameParms.MinimumVsyncs = MinimumVsyncs;
-		FrameParms.ExtraLatencyMode = VRAPI_EXTRA_LATENCY_MODE_ALWAYS;
+		FrameParms.ExtraLatencyMode = (bExtraLatencyMode) ? VRAPI_EXTRA_LATENCY_MODE_ON : VRAPI_EXTRA_LATENCY_MODE_OFF;
 
-		RenderThreadId = gettid();
-		ovrModeParms parms = vrapi_DefaultModeParms(&JavaRT);
-		parms.ResetWindowFullscreen = false; // Reset may cause weird issues
-		parms.AllowPowerSave = false;		 // If power saving is on then perf may suffer
+		ovrModeParms parms = vrapi_DefaultModeParms(&JavaVM);
+		// Reset may cause weird issues
+		// If power saving is on then perf may suffer
+		parms.Flags &= ~(VRAPI_MODE_FLAG_ALLOW_POWER_SAVE | VRAPI_MODE_FLAG_RESET_WINDOW_FULLSCREEN);
 
-		UE_LOG(LogHMD, Log, TEXT("        eglGetCurrentSurface( EGL_DRAW ) = %p, fr = %d"), eglGetCurrentSurface(EGL_DRAW), GFrameNumber);
+		parms.Flags |= VRAPI_MODE_FLAG_NATIVE_WINDOW;
+		parms.Display = (size_t)AndroidEGL::GetInstance()->GetDisplay();
+		parms.WindowSurface = (size_t)AndroidEGL::GetInstance()->GetNativeWindow();
+		parms.ShareContext = (size_t)AndroidEGL::GetInstance()->GetRenderingContext()->eglContext;
 
 		OvrMobile = vrapi_EnterVrMode(&parms);
-
-		UE_LOG(LogHMD, Log, TEXT("        vrapi_EnterVrMode()"));
-		UE_LOG(LogHMD, Log, TEXT("        eglGetCurrentSurface( EGL_DRAW ) = %p"), eglGetCurrentSurface(EGL_DRAW));
 	}
 }
 
-void FGearVRCustomPresent::DoLeaveVRMode()
+void FGearVRCustomPresent::LeaveVRMode_RenderThread()
 {
 	check(IsInRenderingThread());
 
 	FScopeLock lock(&OvrMobileLock);
 	if (OvrMobile)
 	{
-		UE_LOG(LogHMD, Log, TEXT("        eglGetCurrentSurface( EGL_DRAW ) = %p"), eglGetCurrentSurface(EGL_DRAW));
-
 		check(PlatformOpenGLContextValid());
 		vrapi_LeaveVrMode(OvrMobile);
 		OvrMobile = NULL;
 		check(PlatformOpenGLContextValid());
-
-		UE_LOG(LogHMD, Log, TEXT("        vrapi_LeaveVrMode()"));
-		UE_LOG(LogHMD, Log, TEXT("        eglGetCurrentSurface( EGL_DRAW ) = %p"), eglGetCurrentSurface(EGL_DRAW));
-
 		RenderThreadId = 0;
 	}
 }
 
 void FGearVRCustomPresent::OnAcquireThreadOwnership()
 {
-	UE_LOG(LogHMD, Log, TEXT("!!! Rendering thread is acquired! tid = 0x%X"), gettid());
+	UE_LOG(LogHMD, Log, TEXT("!!! Rendering thread is acquired! tid = %d"), gettid());
 
 	JavaRT.Vm = GJavaVM;
 	JavaRT.ActivityObject = ActivityObject;
 	GJavaVM->AttachCurrentThread(&JavaRT.Env, nullptr);
+	RenderThreadId = gettid();
 }
 
 void FGearVRCustomPresent::OnReleaseThreadOwnership()
 {
-	UE_LOG(LogHMD, Log, TEXT("!!! Rendering thread is released! tid = 0x%X"), gettid());
+	UE_LOG(LogHMD, Log, TEXT("!!! Rendering thread is released! tid = %d"), gettid());
 
 	check(RenderThreadId == 0 || RenderThreadId == gettid());
-	DoLeaveVRMode();
+	LeaveVRMode_RenderThread();
 
 	if (JavaRT.Env)
 	{
@@ -739,7 +747,7 @@ void FGearVRCustomPresent::SetLoadingIconTexture_RenderThread(FTextureRHIRef Tex
 	}
 
 	// Reset LoadingIconParms
-	LoadingIconParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_LOADING_ICON, 0);
+	LoadingIconParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_LOADING_ICON, vrapi_GetTimeInSeconds(), nullptr);
 	LoadingIconParms.MinimumVsyncs = MinimumVsyncs;
 
 	if (Texture && Texture->GetTexture2D())
@@ -794,8 +802,60 @@ void FGearVRCustomPresent::DoRenderLoadingIcon_RenderThread(int CpuLevel, int Gp
 			}
 		}
 
+		SystemActivities_Update_RenderThread();
+
 		vrapi_SubmitFrame(OvrMobile, &LoadingIconParms);
 	}
+}
+
+void FGearVRCustomPresent::PushBlackFinal(const FGameFrame& frame)
+{
+	check(IsInRenderingThread());
+
+	if (OvrMobile)
+	{
+		UE_LOG(LogHMD, Log, TEXT("PushBlackFinal()"));
+		ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_BLACK_FINAL, vrapi_GetTimeInSeconds(), NULL );
+		FrameParms.PerformanceParms = DefaultPerfParms;
+		const FSettings* Settings = frame.GetSettings();
+		FrameParms.PerformanceParms.CpuLevel = Settings->CpuLevel;
+		FrameParms.PerformanceParms.GpuLevel = Settings->GpuLevel;
+		FrameParms.PerformanceParms.MainThreadTid = frame.GameThreadId;
+		FrameParms.PerformanceParms.RenderThreadTid = gettid();
+
+		frameParms.FrameIndex = frame.FrameNumber;
+		vrapi_SubmitFrame(OvrMobile, &frameParms );
+	}
+}
+
+void FGearVRCustomPresent::SystemActivities_Update_RenderThread()
+{
+	check(IsInRenderingThread());
+
+	if (!IsInitialized() || !OvrMobile)
+	{
+		return;
+	}
+
+	SystemActivitiesAppEventList_t	AppEvents;
+
+	// process any SA events
+	SystemActivities_Update(OvrMobile, &JavaRT, &AppEvents);
+
+	bool isHMTMounted = (vrapi_GetSystemStatusInt(&JavaRT, VRAPI_SYS_STATUS_MOUNTED) != VRAPI_FALSE);
+	if (isHMTMounted && isHMTMounted != bHMTWasMounted)
+	{
+		UE_LOG(LogHMD, Log, TEXT("Just mounted"));
+		// We just mounted so push a reorient event to be handled in SystemActivities_Update.
+		// This event will be handled just as if System Activities sent it to the application
+		char reorientMessage[1024];
+		SystemActivities_CreateSystemActivitiesCommand("", SYSTEM_ACTIVITY_EVENT_REORIENT, "", "",
+			reorientMessage, sizeof(reorientMessage));
+		SystemActivities_AppendAppEvent(&AppEvents, reorientMessage);
+	}
+	bHMTWasMounted = isHMTMounted;
+
+	SystemActivities_PostUpdate(OvrMobile, &JavaRT, &AppEvents);
 }
 
 #endif //GEARVR_SUPPORTED_PLATFORMS

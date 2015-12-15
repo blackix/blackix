@@ -1,0 +1,1 @@
+For GearVR, copy Oculus osig files here. Osig files can be generated at: https://developer.oculus.com/osig/

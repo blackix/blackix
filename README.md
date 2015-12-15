@@ -7,6 +7,24 @@ To get a patch for the original version of UE4, plus a test map for the OculusTo
 Check UE4-Oculus.txt file for additional console commands.
 Note: there is an additional command-line option '-vr' that forces UE4 app to run in VR mode.
 
+Oculus Mobile SDK 1.0.1 Update
+------------------------------
+
+This reporsitory contains Oculus SDK 1.0.1 Update. Please, run SetupOculusMobileSDK.bat **AFTER** running Setup.bat.
+Please, check the [Oculus Mobile SDK 1.0 Release Notes](https://developer.oculus.com/documentation/mobilesdk/latest/concepts/release/)
+
+Specifically these sections under “Important Changes to SystemActivities”:
+ 
+**“When updating to the latest SDK, it is important to make sure the device is online to allow the SystemActivities to be automatically updated. If for some reason the SystemActivities is not up to date when launching a new application, you may get the message “Oculus updates needed.” To allow the application to run, the SystemActivities must be updated. **
+ 
+**If the auto-update function has not delivered the latest SystemActivities to your device, please ensure that you are connected to a working Wi-Fi network. It may take up to 24 hours for the update to trigger, so please be patient.” **
+
+Note, you also may need to uninstall Oculus SystemActivities manually if the automatic update fails (may happen if you already have custom SystemActivities installed from Oculus Mobile SDK.
+
+We do not distribute SystemActivities as a separate .apk anymore. 
+
+Before building your app, copy OSIG file(s) to Engine/Build/Android/Java/assets directory. [The OSIG file can be generated here](https://developer.oculus.com/osig/)
+
 Unreal Engine
 =============
 
