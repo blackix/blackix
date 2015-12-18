@@ -16,7 +16,9 @@
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "OVR_Math.h"
 #include "VrApi.h"
-//#include "VrApi_Android.h"
+#include "VrApi_Helpers.h"
+#include "VrApi_LocalPrefs.h"
+#include "SystemActivities.h"
 PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS
 
 #include <GLES2/gl2.h>

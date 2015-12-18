@@ -8,11 +8,6 @@
 #include "Android/AndroidApplication.h"
 #include "RHIStaticStates.h"
 #include "SceneViewport.h"
-#include "SystemActivities.h"
-
-#if GEARVR_SUPPORTED_PLATFORMS
-#include "VrApi_Helpers.h"
-#endif
 
 #include <android_native_app_glue.h>
 

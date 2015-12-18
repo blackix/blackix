@@ -8,8 +8,6 @@
 
 #include "OpenGLDrvPrivate.h"
 #include "OpenGLResources.h"
-#include "VrApi_Helpers.h"
-#include "VrApi_LocalPrefs.h"
 #include "Android/AndroidJNI.h"
 #include "Android/AndroidEGL.h"
 
