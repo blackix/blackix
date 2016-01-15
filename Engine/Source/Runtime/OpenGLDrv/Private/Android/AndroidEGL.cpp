@@ -280,9 +280,13 @@ void AndroidEGL::CreateEGLSurface(ANativeWindow* InWindow, bool bCreateWndSurfac
 			EGL_NONE
 		};
 
+		checkf(PImplData->eglWidth != 0, TEXT("eglWidth is ZERO; could be a problem!"));
+		checkf(PImplData->eglHeight != 0, TEXT("eglHeight is ZERO; could be a problem!"));
 		pbufferAttribs[1] = PImplData->eglWidth;
 		pbufferAttribs[3] = PImplData->eglHeight;
 
+		FPlatformMisc::LowLevelOutputDebugStringf( TEXT("AndroidEGL::CreateEGLSurface(%d), eglSurface = eglCreatePbufferSurface(), %dx%d" ),
+			int(bCreateWndSurface), pbufferAttribs[1], pbufferAttribs[3]);
 		PImplData->eglSurface = eglCreatePbufferSurface(PImplData->eglDisplay, PImplData->eglConfigParam, pbufferAttribs);
 		if(PImplData->eglSurface== EGL_NO_SURFACE )
 		{
@@ -300,9 +304,13 @@ void AndroidEGL::CreateEGLSurface(ANativeWindow* InWindow, bool bCreateWndSurfac
 		EGL_NONE
 	};
 
+	checkf(PImplData->eglWidth != 0, TEXT("eglWidth is ZERO; could be a problem!"));
+	checkf(PImplData->eglHeight != 0, TEXT("eglHeight is ZERO; could be a problem!"));
 	pbufferAttribs[1] = PImplData->eglWidth;
 	pbufferAttribs[3] = PImplData->eglHeight;
 
+	FPlatformMisc::LowLevelOutputDebugStringf( TEXT("AndroidEGL::CreateEGLSurface(%d), auxSurface = eglCreatePbufferSurface(), %dx%d" ), 
+		int(bCreateWndSurface), pbufferAttribs[1], pbufferAttribs[3]);
 	PImplData->auxSurface = eglCreatePbufferSurface(PImplData->eglDisplay, PImplData->eglConfigParam, pbufferAttribs);
 	if(PImplData->auxSurface== EGL_NO_SURFACE )
 	{
@@ -450,8 +458,8 @@ eglDisplay(EGL_NO_DISPLAY)
 	,eglConfigParam(NULL)
 	,eglSurface(EGL_NO_SURFACE)
 	,auxSurface(EGL_NO_SURFACE)
-	,eglWidth(0)
-	,eglHeight(0)
+	,eglWidth(8)  // required for GearVR apps with internal win surf mgmt
+	,eglHeight(8) // required for GearVR apps with internal win surf mgmt
 	,eglRatio(0)
 	,DepthSize(0)
 	,SwapBufferFailureCount(0)

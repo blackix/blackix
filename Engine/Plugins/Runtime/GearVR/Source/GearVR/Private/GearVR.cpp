@@ -100,9 +100,11 @@ void FGearVRPlugin::PreInit()
 #if GEARVR_SUPPORTED_PLATFORMS
 	if (!AndroidThunkCpp_IsGearVRApplication())
 	{
+		UE_LOG(LogHMD, Log, TEXT("GearVR: not packaged for GearVR"));
 		// don't do anything if we aren't packaged for GearVR
 		return;
 	}
+	UE_LOG(LogHMD, Log, TEXT("GearVR: it is packaged for GearVR!"));
 #endif//GEARVR_SUPPORTED_PLATFORMS
 }
 
@@ -433,12 +435,14 @@ bool FGearVR::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		if (!IsInLoadingIconMode())
 		{
-			const TCHAR* iconPath = TEXT("/Game/Loading/LoadingIconTexture.LoadingIconTexture");
+			const TCHAR* iconPath = TEXT("/Game/Tuscany_OculusCube.Tuscany_OculusCube");
+			//const TCHAR* iconPath = TEXT("/Game/Loading/LoadingIconTexture.LoadingIconTexture");
 			UE_LOG(LogHMD, Log, TEXT("Loading texture for loading icon %s..."), iconPath);
 			UTexture2D* LoadingTexture = LoadObject<UTexture2D>(NULL, iconPath, NULL, LOAD_None, NULL);
 			UE_LOG(LogHMD, Log, TEXT("...EEE"));
 			if (LoadingTexture != nullptr)
 			{
+				LoadingTexture->AddToRoot();
 				ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
 				SetRenderLoadingTex,
 				FGearVR*, pGearVR, this,

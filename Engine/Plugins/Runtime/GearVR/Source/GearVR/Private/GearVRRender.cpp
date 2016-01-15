@@ -678,7 +678,8 @@ void FGearVRCustomPresent::EnterVRMode_RenderThread()
 		parms.Display = (size_t)AndroidEGL::GetInstance()->GetDisplay();
 		parms.WindowSurface = (size_t)AndroidEGL::GetInstance()->GetNativeWindow();
 		parms.ShareContext = (size_t)AndroidEGL::GetInstance()->GetRenderingContext()->eglContext;
-
+		UE_LOG(LogHMD, Log, TEXT("EnterVRMode: Display 0x%llX, Window 0x%llX, ShareCtx %llX"), 
+			(unsigned long long)parms.Display, (unsigned long long)parms.WindowSurface, (unsigned long long)parms.ShareContext);
 		OvrMobile = vrapi_EnterVrMode(&parms);
 	}
 }
@@ -755,7 +756,7 @@ void FGearVRCustomPresent::SetLoadingIconTexture_RenderThread(FTextureRHIRef Tex
 
 		const ovrTextureFormat VrApiFormat = VRAPI_TEXTURE_FORMAT_8888;
 
-		LoadingIconTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D_EXTERNAL, VrApiFormat, SizeX, SizeY, 0, false);
+		LoadingIconTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D, VrApiFormat, SizeX, SizeY, 0, false);
 		// set the icon
 		GLuint LoadingIconTexID = *(GLuint*)SrcLoadingIconTexture->GetNativeResource();
 		
