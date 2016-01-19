@@ -87,6 +87,8 @@ void FAppEventManager::Tick()
 				FTaskGraphInterface::Get().WaitUntilTaskCompletes(WillTerminateTask);
 			}
 			GIsRequestingExit = true; //destroy immediately. Game will shutdown.
+			FirstInitialized = false;
+			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("APP_EVENT_STATE_ON_DESTROY"));
 			break;
 		case APP_EVENT_STATE_ON_STOP:
 			bHaveGame = false;
@@ -145,6 +147,7 @@ void FAppEventManager::Tick()
 			}
 
 			bRunning = true;
+			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Execution has been resumed!"));
 		}
 		else if (bRunning && (!bHaveWindow || !bHaveGame))
 		{
@@ -166,6 +169,7 @@ void FAppEventManager::Tick()
 			PauseAudio();
 
 			bRunning = false;
+			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Execution has been paused..."));
 		}
 
 		if (bDestroyWindow)

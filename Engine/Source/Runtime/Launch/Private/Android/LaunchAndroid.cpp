@@ -325,6 +325,9 @@ int32 AndroidMain(struct android_app* state)
 	// exit out!
 	GEngineLoop.Exit();
 
+	UE_LOG(LogAndroid, Log, TEXT("Exiting is over"));
+
+	FPlatformMisc::RequestExit(1);
 	return 0;
 }
 
