@@ -54,7 +54,7 @@ private:
 	{
 	public:
 
-		FD3D12CommandListData(ID3D12Device* Direct3DDevice, D3D12_COMMAND_LIST_TYPE CommandListType, FD3D12CommandAllocator& CommandAllocator, FD3D12CommandListManager* InCommandListManager)
+		FD3D12CommandListData(ID3D12Device* Direct3DDevice, D3D12_COMMAND_LIST_TYPE InCommandListType, FD3D12CommandAllocator& CommandAllocator, FD3D12CommandListManager* InCommandListManager)
 			: CommandListManager(InCommandListManager)
 			, CurrentGeneration(1)
 			, LastCompleteGeneration(0)
@@ -62,6 +62,7 @@ private:
 			, PendingResourceBarriers()
 			, CurrentOwningContext(nullptr)
 			, CurrentCommandAllocator(&CommandAllocator)
+			, CommandListType(InCommandListType)
 		{
 			VERIFYD3D11RESULT(Direct3DDevice->CreateCommandList(0, CommandListType, CommandAllocator.GetCommandAllocator(), nullptr, IID_PPV_ARGS(CommandList.GetInitReference())));
 
@@ -219,6 +220,7 @@ private:
 		mutable FThreadSafeCounter				NumRefs;
 		FD3D12CommandListManager*				CommandListManager;
 		FD3D12CommandContext*					CurrentOwningContext;
+		D3D12_COMMAND_LIST_TYPE                 CommandListType;
 		TRefCountPtr<ID3D12GraphicsCommandList>	CommandList;		// Raw D3D command list pointer
 		FD3D12CommandAllocator*					CurrentCommandAllocator;	// Command allocator currently being used for recording the command list
 		uint64									CurrentGeneration;
@@ -461,6 +463,12 @@ public:
 	D3D12_RESOURCE_BARRIER* GetResourceBarrierScratchSpace()
 	{
 		return CommandListData->ResourceBarrierScratchSpace;
+	}
+
+	D3D12_COMMAND_LIST_TYPE GetCommandListType() const
+	{
+		check(CommandListData);
+		return CommandListData->CommandListType;
 	}
 
 private:
@@ -3311,6 +3319,7 @@ class FD3D12ResourceAllocator : public FD3D12DeviceChild
 public:
 
 	FD3D12ResourceAllocator(FD3D12Device* ParentDevice,
+		FString Name,
 		eBuddyAllocationStrategy allocationStrategy,
 		D3D12_HEAP_TYPE heapType,
 		D3D12_HEAP_FLAGS heapFlags,
@@ -3348,9 +3357,9 @@ public:
 
 	void ReleaseAllResources();
 
-	bool CanAllocate(uint32 size);
-
 private:
+	const FString DebugName;
+
 	TRefCountPtr<FD3D12Resource> BackingResource;
 	void* BaseAddress;
 
@@ -3389,14 +3398,18 @@ private:
 	uint32 AllocateBlock(uint32 order);
 	void DeallocateBlock(uint32 offset, uint32 order);
 
+	bool CanAllocate(uint32 size);
+	FD3D12ResourceBlockInfo* Allocate(uint32 SizeInBytes, uint32 Alignment, const void* InitialData = nullptr);
+
 protected:
+
+	FD3D12ResourceBlockInfo* TryAllocate(uint32 SizeInBytes, uint32 Alignment, const void* InitialData = nullptr);
+
 	TRefCountPtr<ID3D12Heap> BackingHeap;
 
 	// Any allocation larger than this just gets straight up allocated (i.e. not pooled).
 	// These large allocations should be infrequent so the CPU overhead should be minimal
 	const uint32 MaximumAllocationSizeForPooling;
-
-	FD3D12ResourceBlockInfo* Allocate(uint32 SizeInBytes, uint32 Alignment, const void* InitialData = nullptr);
 
 	void InitializeDefaultBuffer(FD3D12Resource* Destination, uint64 DestinationOffset, const void* Data, uint64 DataSize);
 
@@ -3408,10 +3421,10 @@ protected:
 	uint32 InternalFragmentation;
 	uint32 NumBlocksInDeferredDeletionQueue;
 	uint32 PeakUsage;
+	uint32 FailedAllocationSpace;
 #endif
 
 	bool HeapFullMessageDisplayed;
-
 };
 
 struct FD3D12FastAllocatorPage
@@ -3540,7 +3553,7 @@ class FD3D12DynamicHeapAllocator : public FD3D12ResourceAllocator
 
 public:
 
-	FD3D12DynamicHeapAllocator(FD3D12Device* InParent, eBuddyAllocationStrategy allocationStrategy,
+	FD3D12DynamicHeapAllocator(FD3D12Device* InParent, FString Name, eBuddyAllocationStrategy allocationStrategy,
 		uint32 MaxSizeForPooling,
 		uint32 maxBlockSize,
 		uint32 minBlockSize);
@@ -3567,7 +3580,7 @@ public:
 class FD3D12DefaultBufferPool : public FD3D12ResourceAllocator
 {
 public:
-	FD3D12DefaultBufferPool(FD3D12Device* InParent, eBuddyAllocationStrategy allocationStrategy,
+	FD3D12DefaultBufferPool(FD3D12Device* InParent, FString Name, eBuddyAllocationStrategy allocationStrategy,
 		uint32 MaxSizeForPooling,
 		D3D12_RESOURCE_FLAGS flags,
 		uint32 maxBlockSize,
@@ -3615,8 +3628,8 @@ public:
 class FD3D12TextureAllocator : public FD3D12ResourceAllocator
 {
 public:
-	FD3D12TextureAllocator(FD3D12Device* Device, uint32 HeapSize, D3D12_HEAP_FLAGS Flags) :
-		FD3D12ResourceAllocator(Device,
+	FD3D12TextureAllocator(FD3D12Device* Device, FString Name, uint32 HeapSize, D3D12_HEAP_FLAGS Flags) :
+		FD3D12ResourceAllocator(Device, Name,
 			kPlacedResourceStrategy,
 			D3D12_HEAP_TYPE_DEFAULT,
 			Flags | D3D12_HEAP_FLAG_DENY_BUFFERS,
@@ -3634,7 +3647,7 @@ class FD3D12TextureAllocatorPool : public FD3D12DeviceChild
 {
 public:
 	FD3D12TextureAllocatorPool(FD3D12Device* Device) :
-		ReadOnlyTexturePool(Device, TEXTURE_POOL_SIZE_READABLE, D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES),
+		ReadOnlyTexturePool(Device, FString(L"Small Read-Only Texture allocator"), TEXTURE_POOL_SIZE_READABLE, D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES),
 		FD3D12DeviceChild(Device)
 	{};
 
@@ -3837,4 +3850,9 @@ template<>
 struct TD3D12ResourceTraits<FRHIBlendState>
 {
 	typedef FD3D12BlendState TConcreteType;
+};
+template<>
+struct TD3D12ResourceTraits<FRHIComputeFence>
+{
+	typedef FD3D12Fence TConcreteType;
 };

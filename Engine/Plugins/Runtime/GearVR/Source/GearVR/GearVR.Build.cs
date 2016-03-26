@@ -12,7 +12,7 @@ namespace UnrealBuildTool.Rules
 				new string[] {
 					"GearVR/Private",
 					"../../../../Source/Runtime/Renderer/Private",
-//					"../../../../Source/Runtime/Launch/Private",
+					"../../../../Source/Runtime/Launch/Private",
  					"../../../../Source/ThirdParty/Oculus/Common",
 					// ... add other private include paths required here ...
 				}
@@ -29,7 +29,6 @@ namespace UnrealBuildTool.Rules
 					"RenderCore",
 					"Renderer",
 					"ShaderCore",
-					"Launch",
 					"HeadMountedDisplay"
 				}
 				);

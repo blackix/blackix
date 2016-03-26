@@ -28,7 +28,6 @@ FAppEventManager* FAppEventManager::GetInstance()
 
 void FAppEventManager::Tick()
 {
-	//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ FAppEventManager::Tick begin, tid = %d"), gettid());
 	bool bWindowCreatedThisTick = false;
 	
 	while (!Queue.IsEmpty())
@@ -190,8 +189,6 @@ void FAppEventManager::Tick()
 	{
 		EventHandlerEvent->Wait();
 	}
-
-	//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ Tick end, tid = %d"), gettid());
 }
 
 void FAppEventManager::TriggerEmptyQueue()
@@ -452,9 +449,7 @@ void FAppEventManager::WaitForEmptyQueue()
 {
 	if (EmptyQueueHandlerEvent && GEventHandlerInitialized && !GIsRequestingExit)
 	{
-		//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ Waiting, tid = %d"), gettid());
 		EmptyQueueHandlerEvent->Wait();
-		//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ Waiting is over, tid = %d"), gettid());
 	}
 }
 

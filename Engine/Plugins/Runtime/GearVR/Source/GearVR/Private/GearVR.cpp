@@ -8,6 +8,7 @@
 #include "Android/AndroidApplication.h"
 #include "RHIStaticStates.h"
 #include "SceneViewport.h"
+//#include "Android/AndroidEGL.h"
 
 #include <android_native_app_glue.h>
 
@@ -474,23 +475,6 @@ FString FGearVR::GetVersionString() const
 	FString s = FString::Printf(TEXT("%s, VrLib: %s, built %s, %s"), *FEngineVersion::Current().ToString(), *VerStr,
 		UTF8_TO_TCHAR(__DATE__), UTF8_TO_TCHAR(__TIME__));
 	return s;
-}
-
-void FGearVR::GetRawSensorData(SensorData& OutData)
-{
-	FMemory::Memset(OutData, 0);
-	const auto frame = GetFrame();
-	if (!frame)
-	{
-		return;
-	}
-#if 0 // TBD, once OculusFunctionLibrary is updated
-	OutData.AngularAcceleration = ToFVector(frame->HeadPose.AngularAcceleration);
-	OutData.LinearAcceleration = ToFVector(frame->HeadPose.LinearAcceleration);
-	OutData.AngularVelocity = ToFVector(frame->HeadPose.AngularVelocity);
-	OutData.LinearVelocity = ToFVector(frame->HeadPose.LinearVelocity);
-	OutData.TimeInSeconds = frame->HeadPose.TimeInSeconds;
-#endif
 }
 
 void FGearVR::OnScreenModeChange(EWindowMode::Type WindowMode)
@@ -1121,7 +1105,7 @@ void FGearVR::DrawDebug(UCanvas* Canvas)
 	const auto frame = GetCurrentFrame();
 	if (frame)
 	{
-		if (frame->Settings->Flags.bDrawSensorFrustum)
+		if (frame->Settings->Flags.bDrawTrackingCameraFrustum)
 		{
 			DrawDebugTrackingCameraFrustum(GWorld, Canvas->SceneView->ViewRotation, Canvas->SceneView->ViewLocation);
 		}
@@ -1282,6 +1266,9 @@ FViewExtension::FViewExtension(FHeadMountedDisplay* InDelegate)
 	auto GearVRHMD = static_cast<FGearVR*>(InDelegate);
 	pPresentBridge = GearVRHMD->pGearVRBridge;
 }
+
+//////////////////////////////////////////////////////////////////////////
+
 #endif //GEARVR_SUPPORTED_PLATFORMS
 
 //////////////////////////////////////////////////////////////////////////
