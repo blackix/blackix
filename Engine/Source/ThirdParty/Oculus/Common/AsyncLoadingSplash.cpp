@@ -6,11 +6,7 @@
 DEFINE_LOG_CATEGORY_STATIC(LogLoadingSplash, Log, All);
 
 FAsyncLoadingSplash::FAsyncLoadingSplash() : 
-	LoadingTexture(nullptr)
-	, QuadCenterDistanceInMeters(4.0f, 0.f, 0.f)
-	, QuadSizeInMeters(3.f, 3.f)
-	, RotationDeltaInDeg(0)
-	, RotationAxis(1.f, 0, 0)
+	bAutoShow(true)
 	, bInitialized(false)
 {
 }
@@ -19,6 +15,18 @@ FAsyncLoadingSplash::~FAsyncLoadingSplash()
 {
 	// Make sure RenTicker is freed in Shutdown
 	check(!RenTicker.IsValid())
+}
+
+void FAsyncLoadingSplash::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	FScopeLock ScopeLock(&SplashScreensLock);
+	for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
+	{
+		if (SplashScreenDescs[i].LoadingTexture)
+		{
+			Collector.AddReferencedObject(SplashScreenDescs[i].LoadingTexture);
+		}
+	}
 }
 
 void FAsyncLoadingSplash::Startup()
@@ -43,7 +51,13 @@ void FAsyncLoadingSplash::Shutdown()
 {
 	if (bInitialized)
 	{
-		UnloadTexture();
+		{
+			FScopeLock ScopeLock(&SplashScreensLock);
+			for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
+			{
+				UnloadTexture(SplashScreenDescs[i]);
+			}
+		}
 
 		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(UnregisterAsyncTick, 
 		TSharedPtr<FTicker>&, RenTicker, RenTicker,
@@ -57,62 +71,96 @@ void FAsyncLoadingSplash::Shutdown()
 		FCoreUObjectDelegates::PostLoadMap.RemoveAll(this);
 
 		bInitialized = false;
-		LoadingCompleted.Set(0);
-		LoadingStarted.Set(0);
+		LoadingCompleted = false;
+		LoadingStarted = false;
 	}
 }
 
-void FAsyncLoadingSplash::LoadTexture(const FString& TexturePath)
+void FAsyncLoadingSplash::LoadTexture(FSplashDesc& InSplashDesc)
 {
-	UnloadTexture();
+	check(IsInGameThread());
+	UnloadTexture(InSplashDesc);
 
-	UE_LOG(LogLoadingSplash, Log, TEXT("Loading texture for splash %s..."), *TexturePath);
-	LoadingTexture = LoadObject<UTexture2D>(NULL, *TexturePath, NULL, LOAD_None, NULL);
-	if (LoadingTexture != nullptr)
+	UE_LOG(LogLoadingSplash, Log, TEXT("Loading texture for splash %s..."), *InSplashDesc.TexturePath);
+	InSplashDesc.LoadingTexture = LoadObject<UTexture2D>(NULL, *InSplashDesc.TexturePath, NULL, LOAD_None, NULL);
+	if (InSplashDesc.LoadingTexture != nullptr)
 	{
-		LoadingTexture->AddToRoot();
 		UE_LOG(LogLoadingSplash, Log, TEXT("...Success. "));
 	}
 }
 
-void FAsyncLoadingSplash::UnloadTexture()
+void FAsyncLoadingSplash::UnloadTexture(FSplashDesc& InSplashDesc)
 {
-	if (LoadingTexture && LoadingTexture->IsValidLowLevel())
+	check(IsInGameThread());
+	if (InSplashDesc.LoadingTexture && InSplashDesc.LoadingTexture->IsValidLowLevel())
 	{
-		LoadingTexture->RemoveFromRoot();
-		LoadingTexture = nullptr;
+		InSplashDesc.LoadingTexture = nullptr;
 	}
 }
 
 void FAsyncLoadingSplash::OnLoadingBegins()
 {
-	UE_LOG(LogLoadingSplash, Log, TEXT("Loading begins"));
-	LoadingStarted.Set(1);
-	LoadingCompleted.Set(0);
+	if (bAutoShow)
+	{
+		UE_LOG(LogLoadingSplash, Log, TEXT("Loading begins"));
+		LoadingStarted = true;
+		LoadingCompleted = false;
+		Show(ShowAtLoading);
+	}
 }
 
 void FAsyncLoadingSplash::OnLoadingEnds()
 {
-	UE_LOG(LogLoadingSplash, Log, TEXT("Loading ends"));
-	LoadingStarted.Set(0);
-	LoadingCompleted.Set(1);
+	if (bAutoShow)
+	{
+		UE_LOG(LogLoadingSplash, Log, TEXT("Loading ends"));
+		LoadingStarted = false;
+		LoadingCompleted = true;
+		Hide(ShowAtLoading);
+	}
 }
 
-void FAsyncLoadingSplash::SetParams(const FString& InTexturePath, const FVector& InDistanceInMeters, const FVector2D& InSizeInMeters, const FVector& InRotationAxis, float InRotationDeltaInDeg)
+bool FAsyncLoadingSplash::AddSplash(const FSplashDesc& Desc)
 {
-	TexturePath						= InTexturePath;
-	QuadCenterDistanceInMeters		= InDistanceInMeters;
-	QuadSizeInMeters				= InSizeInMeters;
-	RotationDeltaInDeg				= InRotationDeltaInDeg;
-	RotationAxis					= InRotationAxis;
+	check(IsInGameThread());
+	FScopeLock ScopeLock(&SplashScreensLock);
+	if (SplashScreenDescs.Num() < SPLASH_MAX_NUM)
+	{
+#if !UE_BUILD_SHIPPING
+		// check if we already have very same layer; if yes, print out a warning
+		for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
+		{
+			if (SplashScreenDescs[i] == Desc)
+			{
+				UE_LOG(LogHMD, Warning, TEXT(""))
+			}
+		}
+#endif // #if !UE_BUILD_SHIPPING
+		SplashScreenDescs.Add(Desc);
+		return true;
+	}
+	return false;
 }
 
-void FAsyncLoadingSplash::GetParams(FString& OutTexturePath, FVector& OutDistanceInMeters, FVector2D& OutSizeInMeters, FVector& OutRotationAxis, float& OutRotationDeltaInDeg) const
+void FAsyncLoadingSplash::ClearSplashes()
 {
-	OutTexturePath			= TexturePath;
-	OutDistanceInMeters		= QuadCenterDistanceInMeters;
-	OutSizeInMeters			= QuadSizeInMeters;
-	OutRotationDeltaInDeg	= RotationDeltaInDeg;
-	OutRotationAxis			= RotationAxis;
+	check(IsInGameThread());
+	FScopeLock ScopeLock(&SplashScreensLock);
+	for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
+	{
+		UnloadTexture(SplashScreenDescs[i]);
+	}
+	SplashScreenDescs.SetNum(0);
 }
 
+bool FAsyncLoadingSplash::GetSplash(unsigned index, FSplashDesc& OutDesc)
+{
+	check(IsInGameThread());
+	FScopeLock ScopeLock(&SplashScreensLock);
+	if (index < unsigned(SplashScreenDescs.Num()))
+	{
+		OutDesc = SplashScreenDescs[int32(index)];
+		return true;
+	}
+	return false;
+}

@@ -186,6 +186,53 @@ class OCULUSLIBRARY_API UOculusFunctionLibrary : public UBlueprintFunctionLibrar
 	static void GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset);
 
 	/**
+	 * Adds loading splash screen with parameters
+	 *
+	 * @param Texture			(in) A texture asset to be used for the splash. GearVR uses it as a path for loading icon; all other params are currently ignored by GearVR.
+	 * @param TranslationInMeters (in) Initial translation of the center of the splash screen (in meters).
+	 * @param Rotation			(in) Initial rotation of the splash screen, with the origin at the center of the splash screen.
+	 * @param SizeInMeters		(in) Size, in meters, of the quad with the splash screen.
+	 * @param DeltaRotation		(in) Incremental rotation, that is added each 2nd frame to the quad transform. The quad is rotated around the center of the quad.
+	 * @param bClearBeforeAdd	(in) If true, clears splashes before adding a new one.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void AddLoadingSplashScreen(class UTexture2D* Texture, FVector TranslationInMeters, FRotator Rotation, FVector2D SizeInMeters = FVector2D(1.0f, 1.0f), FRotator DeltaRotation = FRotator::ZeroRotator, bool bClearBeforeAdd = false);
+
+	/**
+	 * Removes all the splash screens.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void ClearLoadingSplashScreens();
+
+	/**
+	 * Shows loading splash screen.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void ShowLoadingSplashScreen();
+
+	/**
+	 * Hides loading splash screen.
+	 *
+	 * @param	bClear	(in) Clear all splash screens after hide.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void HideLoadingSplashScreen(bool bClear = false);
+
+	/**
+	 * Enables/disables splash screen to be automatically shown when LoadMap is called.
+	 *
+	 * @param	bAutoShowEnabled	(in)	True, if automatic showing of splash screens is enabled when map is being loaded.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void EnableAutoLoadingSplashScreen(bool bAutoShowEnabled);
+
+	/**
+	 * Returns true, if the splash screen is automatically shown when LoadMap is called.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static bool IsAutoLoadingSplashScreenEnabled();
+
+	/**
 	 * Sets loading splash screen parameters. 
 	 *
 	 * @param TexturePath		(in) A path to the texture asset to be used for the splash. GearVR uses it as a path for loading icon; all other params are currently ignored by GearVR.
@@ -194,7 +241,7 @@ class OCULUSLIBRARY_API UOculusFunctionLibrary : public UBlueprintFunctionLibrar
 	 * @param RotationAxes		(in) A vector that specifies the axis of the splash screen rotation (if RotationDelta is specified).
 	 * @param RotationDeltaInDeg (in) Rotation delta, in degrees, that is added each 2nd frame to the quad transform. The quad is rotated around the vector "RotationAxes".
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary", meta = (DeprecatedFunction, DeprecationMessage = "use AddLoadingSplashScreen / ClearLoadingSplashScreens"))
 	static void SetLoadingSplashParams(FString TexturePath, FVector DistanceInMeters, FVector2D SizeInMeters, FVector RotationAxis, float RotationDeltaInDeg);
 
 	/**
@@ -206,7 +253,7 @@ class OCULUSLIBRARY_API UOculusFunctionLibrary : public UBlueprintFunctionLibrar
 	 * @param RotationAxes		(out) A vector that specifies the axis of the splash screen rotation (if RotationDelta is specified).
 	 * @param RotationDeltaInDeg (out) Rotation delta, in degrees, that is added each 2nd frame to the quad transform. The quad is rotated around the vector "RotationAxes".
 	 */
-	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary", meta = (DeprecatedFunction, DeprecationMessage = "use AddLoadingSplashScreen / ClearLoadingSplashScreens"))
 	static void GetLoadingSplashParams(FString& TexturePath, FVector& DistanceInMeters, FVector2D& SizeInMeters, FVector& RotationAxis, float& RotationDeltaInDeg);
 
 	/**

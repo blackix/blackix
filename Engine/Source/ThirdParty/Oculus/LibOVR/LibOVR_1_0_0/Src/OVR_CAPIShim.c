@@ -3,16 +3,16 @@
 Filename    :   OVR_CAPIShim.c
 Content     :   CAPI DLL user library
 Created     :   November 20, 2014
-Copyright   :   Copyright 2014 Oculus VR, LLC All Rights reserved.
+Copyright   :   Copyright 2014-2016 Oculus VR, LLC All Rights reserved.
 
-Licensed under the Oculus VR Rift SDK License Version 3.2 (the "License");
+Licensed under the Oculus VR Rift SDK License Version 3.3 (the "License");
 you may not use the Oculus VR Rift SDK except in compliance with the License,
 which is provided at the time of installation or download, or which
 otherwise accompanies this software in either electronic or hard copy form.
 
 You may obtain a copy of the License at
 
-http://www.oculusvr.com/licenses/LICENSE-3.2
+http://www.oculusvr.com/licenses/LICENSE-3.3
 
 Unless required by applicable law or agreed to in writing, the Oculus VR SDK
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -488,7 +488,15 @@ PtrWinVerifyTrust m_PtrWinVerifyTrust = 0;
 PtrWTHelperProvDataFromStateData m_PtrWTHelperProvDataFromStateData = 0;
 PtrWTHelperGetProvSignerFromChain m_PtrWTHelperGetProvSignerFromChain = 0;
 
-static int ValidateCertificateContents(CertificateEntry* chain, CRYPT_PROVIDER_SGNR* cps)
+typedef enum ValidateCertificateContentsResult_
+{
+    VCCRSuccess          =  0,
+    VCCRErrorCertCount   = -1,
+    VCCRErrorTrust       = -2,
+    VCCRErrorValidation  = -3
+} ValidateCertificateContentsResult;
+
+static ValidateCertificateContentsResult ValidateCertificateContents(CertificateEntry* chain, CRYPT_PROVIDER_SGNR* cps)
 {
     int certIndex;
 
@@ -496,7 +504,7 @@ static int ValidateCertificateContents(CertificateEntry* chain, CRYPT_PROVIDER_S
         !cps->pasCertChain ||
         cps->csCertChain != ExpectedNumCertificates)
     {
-        return -1;
+        return VCCRErrorCertCount;
     }
 
     for (certIndex = 0; certIndex < ExpectedNumCertificates; ++certIndex)
@@ -508,7 +516,7 @@ static int ValidateCertificateContents(CertificateEntry* chain, CRYPT_PROVIDER_S
         if ((pCertData->fSelfSigned && !pCertData->fTrustedRoot) ||
             pCertData->fTestCert)
         {
-            return -2;
+            return VCCRErrorTrust;
         }
 
         m_PtrCertGetNameStringW(
@@ -530,11 +538,11 @@ static int ValidateCertificateContents(CertificateEntry* chain, CRYPT_PROVIDER_S
         if (wcscmp(subjectStr, chain[certIndex].Subject) != 0 ||
             wcscmp(issuerStr, chain[certIndex].Issuer) != 0)
         {
-            return -3;
+            return VCCRErrorValidation;
         }
     }
 
-    return 0;
+    return VCCRSuccess;
 }
 
 #define OVR_SIGNING_CONVERT_PTR(ftype, fptr, procaddr) { \
@@ -1229,14 +1237,16 @@ static void OVR_UnloadSharedLibrary()
     ovr_GetStringPtr = NULL;
     ovr_SetStringPtr = NULL;
     ovr_TraceMessagePtr = NULL;
-    #if defined (_WIN32)
+#if defined (_WIN32)
     ovr_CreateTextureSwapChainDXPtr = NULL;
     ovr_CreateMirrorTextureDXPtr = NULL;
     ovr_GetTextureSwapChainBufferDXPtr = NULL;
     ovr_GetMirrorTextureBufferDXPtr = NULL;
-    ovr_GetAudioDeviceOutGuidStrPtr = NULL;
-    ovr_GetAudioDeviceOutWaveIdPtr = NULL;
     ovr_GetAudioDeviceInWaveIdPtr = NULL;
+    ovr_GetAudioDeviceOutWaveIdPtr = NULL;
+    ovr_GetAudioDeviceInGuidStrPtr = NULL;
+    ovr_GetAudioDeviceOutGuidStrPtr = NULL;
+    ovr_GetAudioDeviceInGuidPtr = NULL;
     ovr_GetAudioDeviceOutGuidPtr = NULL;
 #endif
     ovr_CreateTextureSwapChainGLPtr = NULL;

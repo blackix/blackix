@@ -1,7 +1,7 @@
 /********************************************************************************//**
 \file  OVR_ErrorCode.h
 \brief     This header provides LibOVR error code declarations.
-\copyright Copyright 2015 Oculus VR, LLC All Rights reserved.
+\copyright Copyright 2015-2016 Oculus VR, LLC All Rights reserved.
 *************************************************************************************/
 
 #ifndef OVR_ErrorCode_h
@@ -69,6 +69,7 @@ typedef enum ovrSuccessType_
     ovrSuccess_HMDFirmwareMismatch        = 4100,   ///< The HMD Firmware is out of date but is acceptable.
     ovrSuccess_TrackerFirmwareMismatch    = 4101,   ///< The Tracker Firmware is out of date but is acceptable.
     ovrSuccess_ControllerFirmwareMismatch = 4104,   ///< The controller firmware is out of date but is acceptable.
+    ovrSuccess_TrackerDriverNotFound      = 4105,   ///< The tracker driver interface was not found. Can be a temporary error
 
 } ovrSuccessType;
 #endif
@@ -118,12 +119,13 @@ typedef enum ovrErrorType_
     ovrError_DisabledOrDefaultAdapter   = -3017,   ///< No supported VR display system found, but disabled or driverless adapter found.
     ovrError_HybridGraphicsNotSupported = -3018,   ///< The system is using hybrid graphics (Optimus, etc...), which is not support.
     ovrError_DisplayManagerInit         = -3019,   ///< Initialization of the DisplayManager failed.
+    ovrError_TrackerDriverInit          = -3020,   ///< Failed to get the interface for an attached tracker
 
     /* Hardware errors */
     ovrError_InvalidBundleAdjustment    = -4000,   ///< Headset has no bundle adjustment data.
     ovrError_USBBandwidth               = -4001,   ///< The USB hub cannot handle the camera frame bandwidth.
     ovrError_USBEnumeratedSpeed         = -4002,   ///< The USB camera is not enumerating at the correct device speed.
-    ovrError_ImageSensorCommError      = -4003,   ///< Unable to communicate with the image sensor.
+    ovrError_ImageSensorCommError       = -4003,   ///< Unable to communicate with the image sensor.
     ovrError_GeneralTrackerFailure      = -4004,   ///< We use this to report various sensor issues that don't fit in an easily classifiable bucket.
     ovrError_ExcessiveFrameTruncation   = -4005,   ///< A more than acceptable number of frames are coming back truncated.
     ovrError_ExcessiveFrameSkipping     = -4006,   ///< A more than acceptable number of frames have been skipped.
@@ -135,6 +137,9 @@ typedef enum ovrErrorType_
     ovrError_TrackerDriverFailure       = -4012,   ///< The sensor driver has encountered a problem.
     ovrError_TrackerNRFFailure          = -4013,   ///< The sensor wireless subsystem has encountered a problem.
     ovrError_HardwareGone               = -4014,   ///< The hardware has been unplugged
+    ovrError_NordicEnabledNoSync        = -4015,   ///< The nordic indicates that sync is enabled but it is not sending sync pulses
+    ovrError_NordicSyncNoFrames         = -4016,   ///< It looks like we're getting a sync signal, but no camera frames have been received
+    ovrError_CatastrophicFailure        = -4017,   ///< A catastrophic failure has occurred.  We will attempt to recover by resetting the device
 
     ovrError_HMDFirmwareMismatch        = -4100,   ///< The HMD Firmware is out of date and is unacceptable.
     ovrError_TrackerFirmwareMismatch    = -4101,   ///< The sensor Firmware is out of date and is unacceptable.
@@ -159,15 +164,17 @@ typedef enum ovrErrorType_
     ovrError_RuntimeException           = -7000,   ///< A runtime exception occurred. The application is required to shutdown LibOVR and re-initialize it before this error state will be cleared.
 
 
-    ovrError_MetricsUnknownApp    = -90000,
-    ovrError_MetricsDuplicateApp  = -90001,
-    ovrError_MetricsNoEvents      = -90002,
-    ovrError_MetricsRuntime       = -90003,
-    ovrError_MetricsFile          = -90004,
-    ovrError_MetricsNoClientInfo  = -90005,
-    ovrError_MetricsNoAppMetaData = -90006,
-    ovrError_MetricsNoApp         = -90007,
-    ovrError_MetricsOafFailure    = -90008,
+    ovrError_MetricsUnknownApp            = -90000,
+    ovrError_MetricsDuplicateApp          = -90001,
+    ovrError_MetricsNoEvents              = -90002,
+    ovrError_MetricsRuntime               = -90003,
+    ovrError_MetricsFile                  = -90004,
+    ovrError_MetricsNoClientInfo          = -90005,
+    ovrError_MetricsNoAppMetaData         = -90006,
+    ovrError_MetricsNoApp                 = -90007,
+    ovrError_MetricsOafFailure            = -90008,
+    ovrError_MetricsSessionAlreadyActive  = -90009,
+    ovrError_MetricsSessionNotActive      = -90010,
 
 } ovrErrorType;
 

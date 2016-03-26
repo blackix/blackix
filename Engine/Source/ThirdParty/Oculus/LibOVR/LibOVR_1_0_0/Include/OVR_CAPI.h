@@ -1,7 +1,7 @@
 /********************************************************************************//**
 \file      OVR_CAPI.h
 \brief     C Interface to the Oculus PC SDK tracking and rendering library.
-\copyright Copyright 2014 Oculus VR, LLC All Rights reserved.
+\copyright Copyright 2014-2016 Oculus VR, LLC All Rights reserved.
 ************************************************************************************/
 
 #ifndef OVR_CAPI_h  //   We don't use version numbers within this name, as all versioned variations of this file are currently mutually exclusive.
@@ -738,7 +738,7 @@ typedef enum ovrButton_
     ovrButton_B         = 0x00000002,
     ovrButton_RThumb    = 0x00000004,
     ovrButton_RShoulder = 0x00000008,
-    
+
     // Bit mask of all buttons on the right Touch controller
     ovrButton_RMask     = ovrButton_A | ovrButton_B | ovrButton_RThumb | ovrButton_RShoulder,
 
@@ -748,7 +748,7 @@ typedef enum ovrButton_
     ovrButton_LShoulder = 0x00000800,
 
     // Bit mask of all buttons on the left Touch controller
-    ovrButton_LMask     =  ovrButton_X | ovrButton_Y | ovrButton_LThumb | ovrButton_LShoulder,
+    ovrButton_LMask     = ovrButton_X | ovrButton_Y | ovrButton_LThumb | ovrButton_LShoulder,
 
     // Navigation through DPad.
     ovrButton_Up        = 0x00010000,
@@ -785,7 +785,7 @@ typedef enum ovrTouch_
     ovrTouch_LIndexTrigger  = 0x00001000,
 
     // Bit mask of all the button touches on the left controller
-    ovrTouch_LButtonMask = ovrTouch_X | ovrTouch_Y | ovrTouch_LThumb | ovrTouch_LIndexTrigger,
+    ovrTouch_LButtonMask    = ovrTouch_X | ovrTouch_Y | ovrTouch_LThumb | ovrTouch_LIndexTrigger,
 
     // Finger pose state 
     // Derived internally based on distance, proximity to sensors and filtering.

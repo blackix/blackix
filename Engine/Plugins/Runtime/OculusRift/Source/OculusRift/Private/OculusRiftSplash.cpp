@@ -2,47 +2,71 @@
 //
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
-#include "OculusRiftSplash.h"
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
-FOculusRiftSplash::FOculusRiftSplash(FOculusRiftHMD* InPlugin) : 
-	LayerMgr(InPlugin->GetCustomPresent_Internal())
-	, pPlugin(InPlugin)
-	, SplashLID(~0u)
-	, SplashLID_RenderThread(~0u)
-	, DisplayRefreshRate(1/90.f)
-	, CurrentAngle(0.f)
-{
-	QuadCenterDistanceInMeters = FVector::ZeroVector;
-	QuadSizeInMeters = FVector2D::ZeroVector;
-	RotationDeltaInDeg = 0;
-	RotationAxis = FVector::ZeroVector;
+#include "OculusRiftSplash.h"
 
+FOculusRiftSplash::FOculusRiftSplash(FOculusRiftHMD* InPlugin) : 
+	LayerMgr(MakeShareable(new OculusRift::FLayerManager(InPlugin->GetCustomPresent_Internal())))
+	, pPlugin(InPlugin)
+	, DisplayRefreshRate(1/90.f)
+	, ShowType(None)
+{
 	const TCHAR* SplashSettings = TEXT("Oculus.Splash.Settings");
 	float f;
 	FVector vec;
 	FVector2D vec2d;
 	FString s;
-	if (GConfig->GetString(SplashSettings, TEXT("TexturePath"), s, GEngineIni))
+	bool b;
+	FRotator r;
+	if (GConfig->GetBool(SplashSettings, TEXT("bAutoEnabled"), b, GEngineIni))
 	{
-		TexturePath = s;
+		bAutoShow = b;
 	}
-	if (GConfig->GetVector(SplashSettings, TEXT("DistanceInMeters"), vec, GEngineIni))
+	FString num;
+	for (int32 i = 0; ; ++i)
 	{
-		QuadCenterDistanceInMeters = vec;
-	}
-	if (GConfig->GetVector2D(SplashSettings, TEXT("SizeInMeters"), vec2d, GEngineIni))
-	{
-		QuadSizeInMeters = vec2d;
-	}
-	if (GConfig->GetFloat(SplashSettings, TEXT("RotationDeltaInDegrees"), f, GEngineIni))
-	{
-		RotationDeltaInDeg = f;
-	}
-	if (GConfig->GetVector(SplashSettings, TEXT("RotationAxis"), vec, GEngineIni))
-	{
-		RotationAxis = vec;
+		FSplashDesc SplashDesc;
+		if (GConfig->GetString(SplashSettings, *(FString(TEXT("TexturePath")) + num), s, GEngineIni))
+		{
+			SplashDesc.TexturePath = s;
+		}
+		else
+		{
+			break;
+		}
+		if (GConfig->GetVector(SplashSettings, *(FString(TEXT("DistanceInMeters")) + num), vec, GEngineIni))
+		{
+			SplashDesc.TransformInMeters.SetTranslation(vec);
+		}
+		if (GConfig->GetRotator(SplashSettings, *(FString(TEXT("Rotation")) + num), r, GEngineIni))
+		{
+			SplashDesc.TransformInMeters.SetRotation(FQuat(r));
+		}
+		if (GConfig->GetVector2D(SplashSettings, *(FString(TEXT("SizeInMeters")) + num), vec2d, GEngineIni))
+		{
+			SplashDesc.QuadSizeInMeters = vec2d;
+		}
+		if (GConfig->GetRotator(SplashSettings, *(FString(TEXT("DeltaRotation")) + num), r, GEngineIni))
+		{
+			SplashDesc.DeltaRotation = FQuat(r);
+		}
+		else
+		{
+			if (GConfig->GetVector(SplashSettings, *(FString(TEXT("RotationAxis")) + num), vec, GEngineIni))
+			{
+				if (GConfig->GetFloat(SplashSettings, *(FString(TEXT("RotationDeltaInDegrees")) + num), f, GEngineIni))
+				{
+					SplashDesc.DeltaRotation = FQuat(vec, f);
+				}
+			}
+		}
+		if (!SplashDesc.TexturePath.IsEmpty())
+		{
+			AddSplash(SplashDesc);
+		}
+		num = LexicalConversion::ToString(i);
 	}
 }
 
@@ -52,115 +76,140 @@ void FOculusRiftSplash::Startup()
 
 	ovrHmdDesc Desc = ovr_GetHmdDesc(nullptr);
 	DisplayRefreshRate = Desc.DisplayRefreshRate;
-	LayerMgr.Startup();
+	LayerMgr->Startup();
 }
 
 void FOculusRiftSplash::Shutdown()
 {
-	LayerMgr.RemoveAllLayers();
+	SplashIsShown = false;
+	UnloadTextures();
+	LayerMgr->RemoveAllLayers();
 
 	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
-	if (SplashLID != ~0u && pCustomPresent)
+	if (pCustomPresent)
 	{
 		pCustomPresent->UnlockSubmitFrame();
 	}
-	SplashLID = ~0u;
-	ShowingBlack.Set(0);
-	LayerMgr.Shutdown();
+	ShowingBlack = false;
+	LayerMgr->Shutdown();
 
 	FAsyncLoadingSplash::Shutdown();
 }
 
-void FOculusRiftSplash::ReleaseResources()
+void FOculusRiftSplash::PreShutdown()
 {
-	if (SplashLID != ~0u)
-	{
-		LayerMgr.RemoveLayer(SplashLID);
-		SplashLID = ~0u;
-
-		FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
-		if (pCustomPresent)
-		{
-			pCustomPresent->UnlockSubmitFrame();
-		}
-	}
-	ShowingBlack.Set(0);
-	LayerMgr.ReleaseTextureSets();
+	// force Ticks to stop
+	SplashIsShown = false;
 }
 
 void FOculusRiftSplash::Tick(float DeltaTime)
 {
+	check(IsInRenderingThread());
 	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
 	FGameFrame* pCurrentFrame = (FGameFrame*)RenderFrame.Get();
-	if (pCustomPresent && pCurrentFrame && pCustomPresent->GetSession())
+	FOvrSessionShared::AutoSession OvrSession(pCustomPresent->GetSession());
+	if (pCustomPresent && pCurrentFrame && pCustomPresent->GetSession()->IsActive())
 	{
 		static double LastHighFreqTime = FPlatformTime::Seconds();
 		double CurTime = FPlatformTime::Seconds();
 		double DeltaSecondsHighFreq = CurTime - LastHighFreqTime;
 
-		// Let update only each 10 fps
-		if ((RotationDeltaInDeg != 0.f && DeltaSecondsHighFreq > 2.f / DisplayRefreshRate) ||
-			DeltaSecondsHighFreq > 30.f / DisplayRefreshRate)
+		FScopeLock ScopeLock2(&RenderSplashScreensLock);
+		for (int32 i = 0; i < RenderSplashScreens.Num(); ++i)
 		{
-			const FHMDLayerDesc* pLayerDesc = LayerMgr.GetLayerDesc(SplashLID_RenderThread);
-			if (pLayerDesc)
+			FRenderSplashInfo& Splash = RenderSplashScreens[i];
+			// Let update only each 1/3 secs or each 2nd frame if rotation is needed
+			if ((!Splash.Desc.DeltaRotation.Equals(FQuat::Identity) && DeltaSecondsHighFreq > 2.f / DisplayRefreshRate) ||
+				DeltaSecondsHighFreq > 1.f / 3.f)
 			{
-				FHMDLayerDesc layerDesc = *pLayerDesc;
-				FTransform transform(layerDesc.GetTransform());
-				FQuat quat(RotationAxis, CurrentAngle);
-				transform.SetRotation(quat);
-				layerDesc.SetTransform(transform);
-				LayerMgr.UpdateLayer(layerDesc);
-				CurrentAngle += FMath::DegreesToRadians(RotationDeltaInDeg);
-			}
+				const FHMDLayerDesc* pLayerDesc = LayerMgr->GetLayerDesc(Splash.SplashLID);
+				if (pLayerDesc)
+				{
+					FHMDLayerDesc layerDesc = *pLayerDesc;
+					FTransform transform(layerDesc.GetTransform());
+					if (!Splash.Desc.DeltaRotation.Equals(FQuat::Identity))
+					{
+						const FQuat prevRotation(transform.GetRotation());
+						const FQuat resultRotation(Splash.Desc.DeltaRotation * prevRotation);
+						transform.SetRotation(resultRotation);
+						layerDesc.SetTransform(transform);
+					}
+					LayerMgr->UpdateLayer(layerDesc);
+				}
+				pCurrentFrame->FrameNumber = pPlugin->GetCurrentFrameNumber();
+				ovr_GetPredictedDisplayTime(OvrSession, pCurrentFrame->FrameNumber);
 
-			LayerMgr.PreSubmitUpdate_RenderThread(FRHICommandListExecutor::GetImmediateCommandList(), pCurrentFrame, false);
-			check(pCustomPresent->GetSession());
-			LayerMgr.SubmitFrame_RenderThread(pCustomPresent->GetSession(), pCurrentFrame, false);
+				LayerMgr->PreSubmitUpdate_RenderThread(FRHICommandListExecutor::GetImmediateCommandList(), pCurrentFrame, false);
 
-			if (DeltaSecondsHighFreq > 0.5)
-			{
-				UE_LOG(LogHMD, Log, TEXT("DELTA > 0.5f, ie: %.4f %.4f"), DeltaTime, float(DeltaSecondsHighFreq));
+				LayerMgr->SubmitFrame_RenderThread(OvrSession, pCurrentFrame, false);
+
+				if (DeltaSecondsHighFreq > 0.5)
+				{
+					UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::Tick, DELTA > 0.5 secs, ie: %.4f %.4f"), DeltaTime, float(DeltaSecondsHighFreq));
+				}
+				LastHighFreqTime = CurTime;
 			}
-			LastHighFreqTime = CurTime;
 		}
 	}
 }
 
 bool FOculusRiftSplash::IsTickable() const
 {
-	return IsLoadingStarted() && !IsDone() && ShowingBlack.GetValue() != 1;
+	return /*(IsLoadingStarted() && !IsDone() && ShowingBlack) || */ SplashIsShown;
 }
 
-void FOculusRiftSplash::Show()
+void FOculusRiftSplash::Show(EShowType InShowType)
 {
+	check(IsInGameThread());
+	Hide(InShowType);
+
+	ShowType = InShowType;
+
 	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
 	if (pCustomPresent)
 	{
-		if (!TexturePath.IsEmpty())
+		bool ReadyToPush = false;
+
+		LayerMgr->RemoveAllLayers();
+
+		// scope lock
 		{
-			LoadTexture(TexturePath);
-		}
-		if (LoadingTexture->IsValidLowLevel())
-		{
-			if (SplashLID != ~0u)
+			FScopeLock ScopeLock(&SplashScreensLock);
+			for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
 			{
-				LayerMgr.RemoveLayer(SplashLID);
-				SplashLID = ~0u;
+				FRenderSplashInfo RenSplash;
+				if (!SplashScreenDescs[i].TexturePath.IsEmpty())
+				{
+					// load temporary texture (if TexturePath was specified)
+					LoadTexture(SplashScreenDescs[i]);
+				}
+				if (SplashScreenDescs[i].LoadingTexture->IsValidLowLevel())
+				{
+					// use X (depth) as layers priority
+					const uint32 Prio = FHMDLayerDesc::MaxPriority - uint32(SplashScreenDescs[i].TransformInMeters.GetTranslation().X * 1000.f);
+					TSharedPtr<FHMDLayerDesc> layer = LayerMgr->AddLayer(FHMDLayerDesc::Quad, Prio, FHMDLayerManager::Layer_TorsoLocked, RenSplash.SplashLID);
+					check(layer.IsValid());
+					layer->SetTexture(SplashScreenDescs[i].LoadingTexture);
+					layer->SetTransform(SplashScreenDescs[i].TransformInMeters);
+					layer->SetQuadSize(SplashScreenDescs[i].QuadSizeInMeters);
+
+					ReadyToPush = true;
+
+					RenSplash.Desc = SplashScreenDescs[i];
+
+					FScopeLock ScopeLock2(&RenderSplashScreensLock);
+					RenderSplashScreens.Add(RenSplash);
+				}
 			}
+		}
 
-			TSharedPtr<FHMDLayerDesc> layer = LayerMgr.AddLayer(FHMDLayerDesc::Quad, 10, FHMDLayerManager::Layer_TorsoLocked, SplashLID);
-			check(layer.IsValid());
-			layer->SetTexture(LoadingTexture);
-			FTransform tr(QuadCenterDistanceInMeters);
-			layer->SetTransform(tr);
-			layer->SetQuadSize(QuadSizeInMeters);
+		// this will push black frame, if texture is not loaded
+		pPlugin->InitDevice();
 
-			// this will push black frame, if texture is not loaded
-			pPlugin->InitDevice();
-
-			ShowingBlack.Set(0);
-			CurrentAngle = 0.f;
+		SplashIsShown = true;
+		if (ReadyToPush)
+		{
+			ShowingBlack = false;
 			PushFrame();
 		}
 		else
@@ -168,52 +217,51 @@ void FOculusRiftSplash::Show()
 			PushBlackFrame();
 		}
 		pCustomPresent->LockSubmitFrame();
+		UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::Show"));
 	}
 }
 
-struct FSplashRenParams 
-{
-	FCustomPresent*		pCustomPresent;
-	FHMDGameFrameRef	CurrentFrame;
-	FHMDGameFrameRef*	RenderFrameRef;
-	uint32				SplashLID;
-	uint32*				pSplashLID_RenderThread;
-};
-
 void FOculusRiftSplash::PushFrame()
 {
+	check(IsInGameThread());
 	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
 	check(pCustomPresent);
-	if (pCustomPresent && pCustomPresent->GetSession())
+	FOvrSessionShared::AutoSession OvrSession(pCustomPresent->GetSession());
+	if (pCustomPresent && pCustomPresent->GetSession()->IsActive())
 	{
 		// Create a fake frame to pass it to layer manager
 		TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CurrentFrame = pPlugin->CreateNewGameFrame();
 		CurrentFrame->Settings = pPlugin->GetSettings()->Clone();
-		CurrentFrame->FrameNumber = GFrameCounter + 1; // make sure no 0 frame is used.
+		CurrentFrame->FrameNumber = pPlugin->GetCurrentFrameNumber(); // make sure no 0 frame is used.
 		// keep units in meters rather than UU (because UU make not much sense).
 		CurrentFrame->WorldToMetersScale = CurrentFrame->Settings->WorldToMetersScale = 1.0f;
 
-		ovr_GetPredictedDisplayTime(pCustomPresent->GetSession(), CurrentFrame->FrameNumber);
+		ovr_GetPredictedDisplayTime(OvrSession, CurrentFrame->FrameNumber);
+
+		struct FSplashRenParams
+		{
+			FCustomPresent*		pCustomPresent;
+			FHMDGameFrameRef	CurrentFrame;
+			FHMDGameFrameRef*	RenderFrameRef;
+		};
 
 		FSplashRenParams params;
 		params.pCustomPresent = pCustomPresent;
 		params.CurrentFrame = CurrentFrame;
 		params.RenderFrameRef = &RenderFrame;
-		params.SplashLID = SplashLID;
-		params.pSplashLID_RenderThread = &SplashLID_RenderThread;
 
 		ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(SubmitSplash,
 		const FSplashRenParams&, Params, params,
-		FLayerManager&, LayerMgr, LayerMgr,
+		FLayerManager*, LayerMgr, LayerMgr.Get(),
 		{
-			*Params.RenderFrameRef			= Params.CurrentFrame;
-			*Params.pSplashLID_RenderThread = Params.SplashLID;
+			*Params.RenderFrameRef = Params.CurrentFrame;
 
 			auto pCurrentFrame = (FGameFrame*)Params.CurrentFrame.Get();
-			check(Params.pCustomPresent->GetSession());
-			ovr_GetPredictedDisplayTime(Params.pCustomPresent->GetSession(), pCurrentFrame->FrameNumber);
-			LayerMgr.PreSubmitUpdate_RenderThread(RHICmdList, pCurrentFrame, false);
-			LayerMgr.SubmitFrame_RenderThread(Params.pCustomPresent->GetSession(), pCurrentFrame, false);
+			FOvrSessionShared::AutoSession OvrSession(Params.pCustomPresent->GetSession());
+			check(Params.pCustomPresent->GetSession()->IsActive());
+			ovr_GetPredictedDisplayTime(OvrSession, pCurrentFrame->FrameNumber);
+			LayerMgr->PreSubmitUpdate_RenderThread(RHICmdList, pCurrentFrame, false);
+			LayerMgr->SubmitFrame_RenderThread(OvrSession, pCurrentFrame, false);
 		});
 		FlushRenderingCommands();
 	}
@@ -221,49 +269,61 @@ void FOculusRiftSplash::PushFrame()
 
 void FOculusRiftSplash::PushBlackFrame()
 {
-	ShowingBlack.Set(1);
-	if (SplashLID != ~0u)
-	{
-		LayerMgr.RemoveLayer(SplashLID);
-		SplashLID = ~0u;
-	}
+	check(IsInGameThread());
+	ShowingBlack = true;
+	LayerMgr->RemoveAllLayers();
 
 	// create an empty quad layer with no texture
-	TSharedPtr<FHMDLayerDesc> layer = LayerMgr.AddLayer(FHMDLayerDesc::Quad, 10, FHMDLayerManager::Layer_TorsoLocked, SplashLID);
+	uint32 BlackSplashLID;
+	TSharedPtr<FHMDLayerDesc> layer = LayerMgr->AddLayer(FHMDLayerDesc::Quad, 0, FHMDLayerManager::Layer_TorsoLocked, BlackSplashLID);
 	check(layer.IsValid());
 	layer->SetQuadSize(FVector2D(0.01f, 0.01f));
 	PushFrame();
+	UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::PushBlackFrame"));
 }
 
-void FOculusRiftSplash::Hide()
+void FOculusRiftSplash::UnloadTextures()
 {
-	if (SplashLID != ~0u)
+	check(IsInGameThread());
+	// unload temporary loaded textures
+	FScopeLock ScopeLock(&SplashScreensLock);
+	for (int32 i = 0; i < SplashScreenDescs.Num(); ++i)
 	{
-		LayerMgr.RemoveLayer(SplashLID);
-		SplashLID = ~0u;
+		FRenderSplashInfo RenSplash;
+		if (!SplashScreenDescs[i].TexturePath.IsEmpty())
+		{
+			UnloadTexture(SplashScreenDescs[i]);
+		}
 	}
-	PushBlackFrame();
-	UnloadTexture();
+}
 
-	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
-	if (pCustomPresent)
+void FOculusRiftSplash::Hide(EShowType InShowType)
+{
+	check(IsInGameThread());
+	if ((InShowType == ShowManually || InShowType == ShowType) && SplashIsShown)
 	{
-		pCustomPresent->UnlockSubmitFrame();
+		UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::Hide"));
+		{
+			FScopeLock ScopeLock2(&RenderSplashScreensLock);
+			for (int32 i = 0; i < RenderSplashScreens.Num(); ++i)
+			{
+				LayerMgr->RemoveLayer(RenderSplashScreens[i].SplashLID);
+			}
+			RenderSplashScreens.SetNum(0);
+		}
+		UnloadTextures();
+
+		PushBlackFrame();
+
+		FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
+		if (pCustomPresent)
+		{
+			pCustomPresent->UnlockSubmitFrame();
+		}
+		SplashIsShown = false;
+		ShowType = None;
 	}
 }
-
-void FOculusRiftSplash::OnLoadingBegins()
-{
-	FAsyncLoadingSplash::OnLoadingBegins();
-	Show();
-}
-
-void FOculusRiftSplash::OnLoadingEnds()
-{
-	FAsyncLoadingSplash::OnLoadingEnds();
-	Hide();
-}
-
 
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
 

@@ -87,7 +87,7 @@ public:
 
 	static FD3D11Texture2DSet* D3D11CreateTexture2DSet(
 		FD3D11DynamicRHI* InD3D11RHI,
-		ovrSession OvrSession,
+		FOvrSessionSharedParamRef OvrSession,
 		ovrTextureSwapChain InTextureSet,
 		const D3D11_TEXTURE2D_DESC& InDsDesc,
 		EPixelFormat InFormat,
@@ -110,7 +110,7 @@ protected:
 class FD3D11Texture2DSetProxy : public FTexture2DSetProxy
 {
 public:
-	FD3D11Texture2DSetProxy(ovrSession InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips)
+	FD3D11Texture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips)
 		: FTexture2DSetProxy(InOvrSession, InTexture, SrcSizeX, SrcSizeY, SrcFormat, SrcNumMips) {}
 
 	virtual ovrTextureSwapChain GetSwapTextureSet() const override
@@ -128,6 +128,7 @@ public:
 		if (RHITexture.IsValid())
 		{
 			auto D3D11TS = static_cast<FD3D11Texture2DSet*>(RHITexture->GetTexture2D());
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			D3D11TS->SwitchToNextElement(OvrSession);
 		}
 	}
@@ -137,6 +138,7 @@ public:
 		if (RHITexture.IsValid())
 		{
 			auto D3D11TS = static_cast<FD3D11Texture2DSet*>(RHITexture->GetTexture2D());
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			D3D11TS->ReleaseResources(OvrSession);
 			RHITexture = nullptr;
 		}
@@ -199,13 +201,14 @@ void FD3D11Texture2DSet::ReleaseResources(ovrSession InOvrSession)
 
 FD3D11Texture2DSet* FD3D11Texture2DSet::D3D11CreateTexture2DSet(
 	FD3D11DynamicRHI* InD3D11RHI,
-	ovrSession OvrSession,
+	FOvrSessionSharedParamRef InOvrSession,
 	ovrTextureSwapChain InTextureSet,
 	const D3D11_TEXTURE2D_DESC& InDsDesc,
 	EPixelFormat InFormat,
 	uint32 InFlags
 	)
 {
+	FOvrSessionShared::AutoSession OvrSession(InOvrSession);
 	check(InTextureSet);
 
 	TArray<TRefCountPtr<ID3D11RenderTargetView> > TextureSetRenderTargetViews;
@@ -394,135 +397,16 @@ static FD3D11Texture2D* D3D11CreateTexture2DAlias(
 
 
 //-------------------------------------------------------------------------------------------------
-// FOculusRiftHMD::D3D11Bridge
+// FOculusRiftPlugin
 //-------------------------------------------------------------------------------------------------
 
-FOculusRiftHMD::D3D11Bridge::D3D11Bridge(ovrSession InOvrSession)
-	: FCustomPresent()
-{
-	Init(InOvrSession);
-}
-
-void FOculusRiftHMD::D3D11Bridge::SetSession(ovrSession InOvrSession)
-{
-	if (InOvrSession != OvrSession)
-	{
-		Reset();
-		Init(InOvrSession);
-		bNeedReAllocateTextureSet = true;
-		bNeedReAllocateMirrorTexture = true;
-	}
-}
-
-void FOculusRiftHMD::D3D11Bridge::Init(ovrSession InOvrSession)
-{
-	OvrSession = InOvrSession;
-	bInitialized = true;
-}
-
-void FOculusRiftHMD::D3D11Bridge::DisableSLI()
+void FOculusRiftPlugin::DisableSLI()
 {
 	// Disable SLI by default
 	NvAPI_D3D_ImplicitSLIControl(DISABLE_IMPLICIT_SLI);
 }
 
-struct DirectSoundCaptureEnumerateContext
-{
-	LPCWSTR DeviceID;
-	int DeviceIndex;
-	bool DeviceFound;
-};
-
-/** Callback to access all the voice capture devices on the platform */
-static BOOL CALLBACK DirectSoundCaptureEnumerateCallback(
-	LPGUID Guid,
-	LPCWSTR Description,
-	LPCWSTR DeviceID,
-	DirectSoundCaptureEnumerateContext* Context)
-{
-	if(wcscmp(DeviceID, Context->DeviceID) == 0)
-	{
-		Context->DeviceFound = true;
-		return FALSE;
-	}
-	else
-	{
-		Context->DeviceIndex++;
-		return TRUE;
-	}
-}
-
-void FOculusRiftHMD::D3D11Bridge::SetHmdAudioDeviceIn()
-{
-	// Find the DirectSound deviceIndex where the HMD is connected
-	WCHAR DeviceID[OVR_AUDIO_MAX_DEVICE_STR_SIZE];
-
-	if(OVR_SUCCESS(ovr_GetAudioDeviceInGuidStr(DeviceID)))
-	{
-		IDirectSound8* DirectSound;
-
-		if(SUCCEEDED(DirectSoundCreate8(NULL, &DirectSound, NULL)))
-		{
-			DirectSoundCaptureEnumerateContext Context;
-			Context.DeviceID = DeviceID;
-			Context.DeviceIndex = 0;
-			Context.DeviceFound = false;
-
-			DirectSoundCaptureEnumerate((LPDSENUMCALLBACK)DirectSoundCaptureEnumerateCallback, &Context);
-
-			if(Context.DeviceFound)
-			{
-				// Remember this DeviceIndex so we use the right device, even when we startup without HMD connected
-				SetConsoleVariable(L"hmd.DirectSoundVoiceCaptureDeviceIndex", Context.DeviceIndex);
-			}
-
-			DirectSound->Release();
-		}
-	}
-}
-
-void FOculusRiftHMD::D3D11Bridge::SetHmdAudioDeviceOut()
-{
-	// Find the XAudio2 deviceIndex where the HMD audio is connected
-	WCHAR DeviceID[OVR_AUDIO_MAX_DEVICE_STR_SIZE];
-
-	if(OVR_SUCCESS(ovr_GetAudioDeviceOutGuidStr(DeviceID)))
-	{
-		if(FWindowsPlatformMisc::CoInitialize())
-		{
-			IXAudio2* XAudio2;
-
-			if(SUCCEEDED(XAudio2Create(&XAudio2)))
-			{
-				uint32 DeviceCount;
-
-				if(SUCCEEDED(XAudio2->GetDeviceCount(&DeviceCount)))
-				{
-					for(uint32 DeviceIndex = 0; DeviceIndex < DeviceCount; DeviceIndex++)
-					{
-						XAUDIO2_DEVICE_DETAILS DeviceDetails;
-
-						if(SUCCEEDED(XAudio2->GetDeviceDetails(DeviceIndex, &DeviceDetails)))
-						{
-							if(!wcsncmp(DeviceDetails.DeviceID, DeviceID, sizeof(DeviceDetails.DeviceID) / sizeof(DeviceDetails.DeviceID[0])))
-							{
-								// Remember this DeviceIndex so we use the right device, even when we startup without HMD connected
-								SetConsoleVariable(L"hmd.XAudio2DeviceIndex", DeviceIndex);
-								break;
-							}
-						}
-					}
-				}
-
-				XAudio2->Release();
-			}
-
-			FWindowsPlatformMisc::CoUninitialize();
-		}
-	}
-}
-
-void FOculusRiftHMD::D3D11Bridge::SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
+void FOculusRiftPlugin::SetGraphicsAdapter(const ovrGraphicsLuid& luid)
 {
 	TRefCountPtr<IDXGIFactory> DXGIFactory;
 
@@ -542,14 +426,24 @@ void FOculusRiftHMD::D3D11Bridge::SetHmdGraphicsAdapter(const ovrGraphicsLuid& l
 			if(!FMemory::Memcmp(&luid, &DXGIAdapterDesc.AdapterLuid, sizeof(LUID)))
 			{
 				// Remember this adapterIndex so we use the right adapter, even when we startup without HMD connected
-				SetConsoleVariable(L"hmd.D3D11GraphicsAdapter", adapterIndex);
+				GConfig->SetInt(TEXT("Oculus.Settings"), TEXT("GraphicsAdapter"), adapterIndex, GEngineIni);
 				break;
 			}
 		}
 	}
 }
 
-bool FOculusRiftHMD::D3D11Bridge::IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
+
+//-------------------------------------------------------------------------------------------------
+// FOculusRiftHMD::D3D11Bridge
+//-------------------------------------------------------------------------------------------------
+
+FOculusRiftHMD::D3D11Bridge::D3D11Bridge(FOvrSessionSharedParamRef InOvrSession)
+	: FCustomPresent(InOvrSession)
+{
+}
+
+bool FOculusRiftHMD::D3D11Bridge::IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid)
 {
 	TRefCountPtr<ID3D11Device> D3D11Device;
 
@@ -596,9 +490,10 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 	const uint32 RTSizeX = RT->GetSizeX();
 	const uint32 RTSizeY = RT->GetSizeY();
 
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	const FVector2D ActualMirrorWindowSize = CurrentFrame->WindowSize;
 	// detect if mirror texture needs to be re-allocated or freed
-	if (OvrSession && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || OvrSession != RenderContext->OvrSession ||
+	if (Session->IsActive() && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || 
 		(FrameSettings->Flags.bMirrorToWindow && (
 		FrameSettings->MirrorWindowMode != FSettings::eMirrorWindow_Distorted ||
 		ActualMirrorWindowSize != FVector2D(MirrorTextureRHI->GetSizeX(), MirrorTextureRHI->GetSizeY()))) ||
@@ -658,44 +553,6 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 	}
 }
 
-void FOculusRiftHMD::D3D11Bridge::Reset_RenderThread()
-{
-	if (MirrorTexture)
-	{
-		ovr_DestroyMirrorTexture(OvrSession, MirrorTexture);
-		MirrorTextureRHI = nullptr;
-		MirrorTexture = nullptr;
-	}
-	LayerMgr.ReleaseRenderLayers_RenderThread();
-	OvrSession = nullptr;
-
-	if (RenderContext.IsValid())
-	{
-		RenderContext->bFrameBegun = false;
-		SetRenderContext(nullptr);
-	}
-}
-
-void FOculusRiftHMD::D3D11Bridge::Reset()
-{
-	if (IsInGameThread())
-	{
-		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(ResetD3D,
-		FOculusRiftHMD::D3D11Bridge*, Bridge, this,
-		{
-			Bridge->Reset_RenderThread();
-		});
-		// Wait for all resources to be released
-		FlushRenderingCommands();
-	}
-	else
-	{
-		Reset_RenderThread();
-	}
-
-	bInitialized = false;
-}
-
 FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
 {
 	auto D3D11RHI = static_cast<FD3D11DynamicRHI*>(GDynamicRHI);
@@ -731,6 +588,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32
 		desc.MiscFlags |= ovrTextureMisc_AllowGenerateMips;
 	}
 
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	ovrTextureSwapChain textureSet;
 	ovrResult res = ovr_CreateTextureSwapChainDX(OvrSession, D3DDevice, &desc, &textureSet);
 
@@ -766,7 +624,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32
 
 	TRefCountPtr<FD3D11Texture2DSet> ColorTextureSet = FD3D11Texture2DSet::D3D11CreateTexture2DSet(
 		D3D11RHI,
-		OvrSession,
+		Session,
 		textureSet,
 		dsDesc,
 		Format,
@@ -774,7 +632,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32
 		);
 	if (ColorTextureSet)
 	{
-		return MakeShareable(new FD3D11Texture2DSetProxy(OvrSession, ColorTextureSet->GetTexture2D(), InSizeX, InSizeY, InSrcFormat, InNumMips));
+		return MakeShareable(new FD3D11Texture2DSetProxy(Session, ColorTextureSet->GetTexture2D(), InSizeX, InSizeY, InSrcFormat, InNumMips));
 	}
 	return nullptr;
 }

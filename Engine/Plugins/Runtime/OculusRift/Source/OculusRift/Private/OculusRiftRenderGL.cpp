@@ -75,7 +75,7 @@ public:
 
 	static FOpenGLTexture2DSet* CreateTexture2DSet(
 		FOpenGLDynamicRHI* InGLRHI,
-		ovrSession OvrSession,
+		FOvrSessionSharedParamRef OvrSession,
 		ovrTextureSwapChain InTextureSet,
 		const ovrTextureSwapChainDesc& InDesc,
 		uint32 InNumSamples,
@@ -96,7 +96,7 @@ protected:
 class FOpenGLTexture2DSetProxy : public FTexture2DSetProxy
 {
 public:
-	FOpenGLTexture2DSetProxy(ovrSession InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips) 
+	FOpenGLTexture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips) 
 		: FTexture2DSetProxy(InOvrSession, InTexture, SrcSizeX, SrcSizeY, SrcFormat, SrcNumMips) {}
 
 	virtual ovrTextureSwapChain GetSwapTextureSet() const override
@@ -114,6 +114,7 @@ public:
 		if (RHITexture.IsValid())
 		{
 			auto GLTS = static_cast<FOpenGLTexture2DSet*>(RHITexture->GetTexture2D());
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			GLTS->SwitchToNextElement(OvrSession);
 		}
 	}
@@ -123,6 +124,7 @@ public:
 		if (RHITexture.IsValid())
 		{
 			auto GLTS = static_cast<FOpenGLTexture2DSet*>(RHITexture->GetTexture2D());
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			GLTS->ReleaseResources(OvrSession);
 			RHITexture = nullptr;
 		}
@@ -186,7 +188,7 @@ void FOpenGLTexture2DSet::ReleaseResources(ovrSession InOvrSession)
 
 FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
 	FOpenGLDynamicRHI* InGLRHI,
-	ovrSession OvrSession,
+	FOvrSessionSharedParamRef Session,
 	ovrTextureSwapChain InTextureSet,
 	const ovrTextureSwapChainDesc& InDesc,
 	uint32 InNumSamples,
@@ -217,6 +219,7 @@ FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
 	UE_LOG(LogHMD, Log, TEXT("Allocated textureSet 0x%p (%d x %d)"), NewTextureSet, SizeX, SizeY);
 
 	int TexCount;
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	ovr_GetTextureSwapChainLength(OvrSession, InTextureSet, &TexCount);
 
 	for (int32 i = 0; i < TexCount; ++i)
@@ -288,38 +291,15 @@ static FOpenGLTexture2D* OpenGLCreateTexture2DAlias(
 }
 
 //////////////////////////////////////////////////////////////////////////
-FOculusRiftHMD::OGLBridge::OGLBridge(ovrSession InOvrSession) :
-	FCustomPresent()
+FOculusRiftHMD::OGLBridge::OGLBridge(FOvrSessionSharedRef InOvrSession) :
+	FCustomPresent(InOvrSession)
 {
-	Init(InOvrSession);
 }
 
-void FOculusRiftHMD::OGLBridge::SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
-{
-	// UNDONE
-}
-
-bool FOculusRiftHMD::OGLBridge::IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
+bool FOculusRiftHMD::OGLBridge::IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid)
 {
 	// UNDONE
 	return true;
-}
-
-void FOculusRiftHMD::OGLBridge::SetSession(ovrSession InOvrSession)
-{
-	if (InOvrSession != OvrSession)
-	{
-		Reset();
-		Init(InOvrSession);
-		bNeedReAllocateTextureSet = true;
-		bNeedReAllocateMirrorTexture = true;
-	}
-}
-
-void FOculusRiftHMD::OGLBridge::Init(ovrSession InOvrSession)
-{
-	OvrSession = InOvrSession;
-	bInitialized = true;
 }
 
 FTexture2DSetProxyRef FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
@@ -359,6 +339,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 I
 		desc.MiscFlags |= ovrTextureMisc_AllowGenerateMips;
 	}
 	ovrTextureSwapChain textureSet;
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	ovrResult res = ovr_CreateTextureSwapChainGL(OvrSession, &desc, &textureSet);
 	if (!textureSet || !OVR_SUCCESS(res))
 	{
@@ -375,7 +356,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 I
 
 	TRefCountPtr<FOpenGLTexture2DSet> ColorTextureSet = FOpenGLTexture2DSet::CreateTexture2DSet(
 		GLRHI,
-		OvrSession,
+		Session,
 		textureSet,
 		desc,
 		1,
@@ -384,7 +365,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 I
 		);
 	if (ColorTextureSet)
 	{
-		return MakeShareable(new FOpenGLTexture2DSetProxy(OvrSession, ColorTextureSet->GetTexture2D(), InSizeX, InSizeY, InSrcFormat, InNumMips));
+		return MakeShareable(new FOpenGLTexture2DSetProxy(Session, ColorTextureSet->GetTexture2D(), InSizeX, InSizeY, InSrcFormat, InNumMips));
 	}
 	return nullptr;
 }
@@ -405,7 +386,8 @@ void FOculusRiftHMD::OGLBridge::BeginRendering(FHMDViewExtension& InRenderContex
 
 	const FVector2D ActualMirrorWindowSize = CurrentFrame->WindowSize;
 	// detect if mirror texture needs to be re-allocated or freed
-	if (OvrSession && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || OvrSession != RenderContext->OvrSession ||
+	FOvrSessionShared::AutoSession OvrSession(Session);
+	if (Session->IsActive() && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || 
 		(FrameSettings->Flags.bMirrorToWindow && (
 		FrameSettings->MirrorWindowMode != FSettings::eMirrorWindow_Distorted ||
 		ActualMirrorWindowSize != FVector2D(MirrorTextureRHI->GetSizeX(), MirrorTextureRHI->GetSizeY()))) ||
@@ -458,43 +440,6 @@ void FOculusRiftHMD::OGLBridge::BeginRendering(FHMDViewExtension& InRenderContex
 			(EPixelFormat)PF_R8G8B8A8,
 			TexCreate_RenderTargetable);
 		bNeedReAllocateMirrorTexture = false;
-	}
-}
-
-void FOculusRiftHMD::OGLBridge::Reset_RenderThread()
-{
-	if (MirrorTexture)
-	{
-		ovr_DestroyMirrorTexture(OvrSession, MirrorTexture);
-		MirrorTextureRHI = nullptr;
-		MirrorTexture = nullptr;
-	}
-	LayerMgr.ReleaseRenderLayers_RenderThread();
-	OvrSession = nullptr;
-
-	if (RenderContext.IsValid())
-	{
-		RenderContext->bFrameBegun = false;
-		SetRenderContext(nullptr);
-	}
-}
-
-
-void FOculusRiftHMD::OGLBridge::Reset()
-{
-	if (IsInGameThread())
-	{
-		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(ResetOGL,
-			FOculusRiftHMD::OGLBridge*, Bridge, this,
-		{
-			Bridge->Reset_RenderThread();
-		});
-		// Wait for all resources to be released
-		FlushRenderingCommands();
-	}
-	else
-	{
-		Reset_RenderThread();
 	}
 }
 

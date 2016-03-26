@@ -16,6 +16,13 @@ namespace UnrealBuildTool.Rules
 				}
 				);
 
+			PrivateIncludePaths.AddRange(
+				new string[] {
+					"../../OculusRift/Source/OculusRift/Private",
+					// ... add other private include paths required here ...
+				}
+				);
+
 			PublicIncludePathModuleNames.AddRange( new string[] {"OculusRift"} );
 
 			PrivateIncludePathModuleNames.AddRange(

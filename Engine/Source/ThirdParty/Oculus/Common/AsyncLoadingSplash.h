@@ -5,9 +5,9 @@
 #include "TickableObjectRenderThread.h"
 
 // Base class for asynchronous loading splash.
-class FAsyncLoadingSplash : public TSharedFromThis<FAsyncLoadingSplash>
+class FAsyncLoadingSplash : public TSharedFromThis<FAsyncLoadingSplash>, public FGCObject
 {
-public:
+protected:
 	class FTicker : public FTickableObjectRenderThread, public TSharedFromThis<FTicker>
 	{
 	public:
@@ -20,24 +20,68 @@ public:
 		FAsyncLoadingSplash* pSplash;
 	};
 
+public:
+	USTRUCT()
+	struct FSplashDesc
+	{
+		UPROPERTY()
+		UTexture2D*			LoadingTexture;					// a UTexture pointer, either loaded manually or passed externally.
+		FString				TexturePath;					// a path to a texture for auto loading, can be empty if LoadingTexture is specified explicitly
+		FTransform			TransformInMeters;				// transform of center of quad (meters)
+		FVector2D			QuadSizeInMeters;				// dimensions in meters
+		FQuat				DeltaRotation;					// a delta rotation that will be added each rendering frame (half rate of full vsync)
+
+		FSplashDesc() : LoadingTexture(nullptr)
+			, TransformInMeters(FVector(4.0f, 0.f, 0.f))
+			, QuadSizeInMeters(3.f, 3.f)
+			, DeltaRotation(FQuat::Identity)
+		{
+		}
+		bool operator==(const FSplashDesc& d) const
+		{
+			return LoadingTexture == d.LoadingTexture && TexturePath == d.TexturePath && 
+				TransformInMeters.Equals(d.TransformInMeters) && 
+				QuadSizeInMeters == d.QuadSizeInMeters && DeltaRotation.Equals(d.DeltaRotation);
+		}
+	};
+
 	FAsyncLoadingSplash();
 	virtual ~FAsyncLoadingSplash();
+
+	// FGCObject interface
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+	// End of FGCObject interface
 
 	// FTickableObjectRenderThread implementation
 	virtual void Tick(float DeltaTime) {}
 	virtual bool IsTickable() const { return IsLoadingStarted() && !IsDone(); }
+	// End of FTickableObjectRenderThread interface
 
 	virtual void Startup();
 	virtual void Shutdown();
 
-	virtual bool IsLoadingStarted() const	{ return LoadingStarted.GetValue() == 1; }
-	virtual bool IsDone() const				{ return LoadingCompleted.GetValue() == 1; }
+	virtual bool IsLoadingStarted() const	{ return LoadingStarted; }
+	virtual bool IsDone() const				{ return LoadingCompleted; }
 
 	virtual void OnLoadingBegins();
 	virtual void OnLoadingEnds();
 
-	virtual void SetParams(const FString& InTexturePath, const FVector& InDistanceInMeters, const FVector2D& InSizeInMeters, const FVector& InRotationAxis, float InRotationDeltaInDeg);
-	virtual void GetParams(FString& OutTexturePath, FVector& OutDistanceInMeters, FVector2D& OutSizeInMeters, FVector& OutRotationAxis, float& OutRotationDeltaInDeg) const;
+	virtual bool AddSplash(const FSplashDesc&);
+	virtual void ClearSplashes();
+	virtual bool GetSplash(unsigned index, FSplashDesc& OutDesc);
+
+	virtual void SetAutoShow(bool bInAuto) { bAutoShow = bInAuto; }
+	virtual bool IsAutoShow() const { return bAutoShow; }
+
+	enum EShowType
+	{
+		None,
+		ShowAtLoading,
+		ShowManually
+	};
+
+	virtual void Show(enum EShowType) = 0;
+	virtual void Hide(enum EShowType) = 0;
 
 	// delegate method, called when loading begins
 	void OnPreLoadMap() { OnLoadingBegins(); }
@@ -46,22 +90,19 @@ public:
 	void OnPostLoadMap() { OnLoadingEnds(); }
 
 protected:
-	void LoadTexture(const FString& TexturePath);
-	void UnloadTexture();
+	void LoadTexture(FSplashDesc& InSplashDesc);
+	void UnloadTexture(FSplashDesc& InSplashDesc);
 
 	TSharedPtr<FTicker>	RenTicker;
 
+	const int32 SPLASH_MAX_NUM = 10;
+
+	mutable FCriticalSection SplashScreensLock;
 	UPROPERTY()
-	UTexture2D*			LoadingTexture;
+	TArray<FSplashDesc> SplashScreenDescs;
 
-	FThreadSafeCounter	LoadingCompleted;
-	FThreadSafeCounter	LoadingStarted;
-
-	FString				TexturePath;
-	FVector				QuadCenterDistanceInMeters;
-	FVector2D			QuadSizeInMeters;
-	float				RotationDeltaInDeg;
-	FVector				RotationAxis;
-
+	FThreadSafeBool		LoadingCompleted;
+	FThreadSafeBool		LoadingStarted;
+	bool				bAutoShow;			// whether or not show splash screen automatically (when LoadMap is called)
 	bool				bInitialized;
 };
