@@ -822,7 +822,7 @@ FReply FSceneViewport::OnFocusReceived(const FFocusEvent& InFocusEvent)
 
 		if ((FApp::IsGame() && !GIsEditor) || bIsPlayInEditorViewport)
 		{
-			if (IsForegroundWindow())
+			if (IsForegroundWindow() || FApp::UseVRFocus())
 			{
 				bool bIsCursorForcedVisible = false;
 				if (ViewportClient->GetWorld() && ViewportClient->GetWorld()->GetFirstPlayerController())
@@ -915,7 +915,9 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 			uint32 ViewportSizeX = NewSizeX;
 			uint32 ViewportSizeY = NewSizeY;
 
-			if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected())
+			bool bIsHMDConnected = GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected();
+
+			if (bIsHMDConnected)
 			{
 				WindowToResize->SetViewportSizeDrivenByWindow(true);
 				// Resize & move only if moving to a fullscreen mode
@@ -946,11 +948,11 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 			}
 
 			// Avoid resizing if nothing changes.
-			bool bNeedsResize = SizeX != ViewportSizeX || SizeY != ViewportSizeY || NewWindowMode != DesiredWindowMode || DesiredWindowMode != WindowToResize->GetWindowMode();
+			bool bNeedsResize = SizeX != ViewportSizeX || SizeY != ViewportSizeY || NewWindowMode != WindowMode || DesiredWindowMode != WindowToResize->GetWindowMode();
 
 			if (bNeedsResize)
 			{
-				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDConnected())
+				if (bIsHMDConnected)
 				{
 					// Resize & move only if moving to a fullscreen mode
 					if (NewWindowMode != EWindowMode::Windowed)
@@ -973,7 +975,7 @@ void FSceneViewport::ResizeFrame(uint32 NewSizeX, uint32 NewSizeY, EWindowMode::
 				// Toggle fullscreen and resize
 				WindowToResize->SetWindowMode(DesiredWindowMode);
 
-				if (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDEnabled())
+				if (bIsHMDConnected)
 				{
 					if (NewWindowMode == EWindowMode::Windowed)
 					{

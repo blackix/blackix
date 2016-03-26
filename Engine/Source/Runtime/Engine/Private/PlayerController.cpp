@@ -3616,6 +3616,7 @@ void APlayerController::ProcessForceFeedbackAndHaptics(const float DeltaTime, co
 			{
 				InputInterface->SetHapticFeedbackValues(ControllerId, (int32)EControllerHand::Right, RightHaptics);
 			}
+
 		}
 	}
 }
@@ -4612,7 +4613,7 @@ void APlayerController::OnServerStartedVisualLogger_Implementation(bool bIsLoggi
 
 bool APlayerController::ShouldPerformFullTickWhenPaused() const
 {
-	bool bIsInVR = (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsStereoEnabled() && GEngine->HMDDevice->IsHMDConnected());
+	bool bIsInVR = (GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsStereoEnabled() /* && GEngine->HMDDevice->IsHMDConnected()*/);
 	return bIsInVR || bShouldPerformFullTickWhenPaused;
 }
 

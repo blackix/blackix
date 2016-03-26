@@ -150,3 +150,7 @@ Saved/
 
 # Explcitly ignore Mac DS_Store files, regardless of where they are
 .DS_Store
+
+# Add exceptions for OculusMobile and NVidia nvapi
+!/Engine/Source/ThirdParty/Oculus/OculusMobile/**
+!/Engine/Source/ThirdParty/NVIDIA/nvapi/**

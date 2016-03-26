@@ -56,8 +56,8 @@ struct FHmdUserProfile
 		PlayerHeight(0.f), EyeHeight(0.f), IPD(0.f), NeckToEyeDistance(FVector2D::ZeroVector) {}
 };
 
-UCLASS(MinimalAPI)
-class UOculusFunctionLibrary : public UBlueprintFunctionLibrary
+UCLASS()
+class OCULUSLIBRARY_API UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 {
 	GENERATED_UCLASS_BODY()
 	
@@ -77,14 +77,14 @@ class UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	/**
 	* Reports raw sensor data. If HMD doesn't support any of the parameters then it will be set to zero.
 	*
-	* @param Accelerometer	(out) Acceleration reading in m/s^2.
-	* @param Gyro			(out) Rotation rate in rad/s.
-	* @param Magnetometer	(out) Magnetic field in Gauss.
-	* @param Temperature	(out) Temperature of the sensor in degrees Celsius.
-	* @param TimeInSeconds	(out) Time when the reported IMU reading took place, in seconds.
+	* @param AngularAcceleration	(out) Angular acceleration in radians per second per second.
+	* @param LinearAcceleration		(out) Acceleration in meters per second per second.
+	* @param AngularVelocity		(out) Angular velocity in radians per second.
+	* @param LinearVelocity			(out) Velocity in meters per second.
+	* @param TimeInSeconds			(out) Time when the reported IMU reading took place, in seconds.
 	*/
 	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
-	static void GetRawSensorData(FVector& Accelerometer, FVector& Gyro, FVector& Magnetometer, float& Temperature, float& TimeInSeconds);
+	static void GetRawSensorData(FVector& AngularAcceleration, FVector& LinearAcceleration, FVector& AngularVelocity, FVector& LinearVelocity, float& TimeInSeconds);
 
 	/**
 	* Returns current user profile.
@@ -155,6 +155,14 @@ class UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	static void GetPlayerCameraManagerFollowHmd(bool& bFollowHmdOrientation, bool& bFollowHmdPosition);
 
 	/**
+	 * Scales the HMD position that gets added to the virtual camera position.
+	 *
+	 * @param PosScale3D	(in) the scale to apply to the HMD position.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void SetPositionScale3D(FVector PosScale3D);
+
+	/**
 	 * Sets 'base rotation' - the rotation that will be subtracted from
 	 * the actual HMD orientation.
 	 * The position offset might be added to current HMD position,
@@ -177,6 +185,34 @@ class UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary", meta = (DeprecatedFunction, DeprecationMessage = "A hack, proper camera positioning should be used"))
 	static void GetBaseRotationAndPositionOffset(FRotator& OutRot, FVector& OutPosOffset);
 
+	/**
+	 * Sets loading splash screen parameters. 
+	 *
+	 * @param TexturePath		(in) A path to the texture asset to be used for the splash. GearVR uses it as a path for loading icon; all other params are currently ignored by GearVR.
+	 * @param DistanceInMeters	(in) Distance, in meters, to the center of the splash screen. 
+	 * @param SizeInMeters		(in) Size, in meters, of the quad with the splash screen.
+	 * @param RotationAxes		(in) A vector that specifies the axis of the splash screen rotation (if RotationDelta is specified).
+	 * @param RotationDeltaInDeg (in) Rotation delta, in degrees, that is added each 2nd frame to the quad transform. The quad is rotated around the vector "RotationAxes".
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void SetLoadingSplashParams(FString TexturePath, FVector DistanceInMeters, FVector2D SizeInMeters, FVector RotationAxis, float RotationDeltaInDeg);
+
+	/**
+	 * Returns loading splash screen parameters. 
+	 *
+	 * @param TexturePath		(out) A path to the texture asset to be used for the splash. GearVR uses it as a path for loading icon; all other params are currently ignored by GearVR.
+	 * @param DistanceInMeters	(out) Distance, in meters, to the center of the splash screen. 
+	 * @param SizeInMeters		(out) Size, in meters, of the quad with the splash screen.
+	 * @param RotationAxes		(out) A vector that specifies the axis of the splash screen rotation (if RotationDelta is specified).
+	 * @param RotationDeltaInDeg (out) Rotation delta, in degrees, that is added each 2nd frame to the quad transform. The quad is rotated around the vector "RotationAxes".
+	 */
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static void GetLoadingSplashParams(FString& TexturePath, FVector& DistanceInMeters, FVector2D& SizeInMeters, FVector& RotationAxis, float& RotationDeltaInDeg);
+
+	/**
+	 * Returns IStereoLayers interface to work with overlays.
+	 */
+	static class IStereoLayers* GetStereoLayers();
 protected:
 	static class FHeadMountedDisplay* GetOculusHMD();
 };

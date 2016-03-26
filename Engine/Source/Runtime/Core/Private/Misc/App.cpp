@@ -4,6 +4,7 @@
 #include "Runtime/Launch/Resources/Version.h"
 #include "Misc/App.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogApp, Log, All);
 
 /* FApp static initialization
  *****************************************************************************/
@@ -21,6 +22,8 @@ double FApp::LastTime = 0.0;
 double FApp::DeltaTime = 1 / 30.0;
 float FApp::VolumeMultiplier = 1.0f;
 float FApp::UnfocusedVolumeMultiplier = 0.0f;
+bool FApp::bUseVRFocus = false;
+bool FApp::bHasVRFocus = false;
 
 
 /* FApp static interface
@@ -153,4 +156,16 @@ float FApp::GetUnfocusedVolumeMultiplier()
 		GConfig->GetFloat(TEXT("Audio"), TEXT("UnfocusedVolumeMultiplier"), UnfocusedVolumeMultiplier, GEngineIni);
 	}
 	return UnfocusedVolumeMultiplier;
+}
+
+void FApp::SetUseVRFocus(bool bInUseVRFocus)
+{
+	UE_CLOG(bUseVRFocus != bInUseVRFocus, LogApp, Log, TEXT("UseVRFocus has changed to %d"), int(bInUseVRFocus));
+	bUseVRFocus = bInUseVRFocus;
+}
+
+void FApp::SetHasVRFocus(bool bInHasVRFocus)
+{
+	UE_CLOG(bHasVRFocus != bInHasVRFocus, LogApp, Log, TEXT("HasVRFocus has changed to %d"), int(bInHasVRFocus));
+	bHasVRFocus = bInHasVRFocus;
 }

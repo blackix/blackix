@@ -6,6 +6,26 @@
 #include "VoiceCodecOpus.h"
 #include "Voice.h"
 
+
+/** Hoops we need to go through to be able to include IHeadMountedDisplayModule.h */
+#ifndef HEADMOUNTEDDISPLAY_API
+#define HEADMOUNTEDDISPLAY_API
+#endif 
+
+struct FFilterVertex
+{
+	FVector4 Position;
+	FVector2D UV;
+};
+
+#include "Runtime/HeadMountedDisplay/Public/IHeadMountedDisplayModule.h"
+
+static TAutoConsoleVariable<int32> CVarHmdDirectSoundVoiceCaptureDeviceIndex(
+	TEXT("hmd.DirectSoundVoiceCaptureDeviceIndex"),
+	-1,
+	TEXT("Specifies the DirectSound device index to use when HMD is connected. (-1 == Unknown)\n"),
+	ECVF_Default);
+
 FVoiceCaptureDeviceWindows* FVoiceCaptureDeviceWindows::Singleton = NULL;
 
 /** Helper for printing MS guids */
@@ -32,8 +52,17 @@ BOOL CALLBACK CaptureDeviceCallback(
 	)
 {
 	// @todo identify the proper device
-	FVoiceCaptureWindows* VCPtr = (FVoiceCaptureWindows*)(lpContext);
+	FVoiceCaptureDeviceWindows* VCPtr = (FVoiceCaptureDeviceWindows*)(lpContext);
 	UE_LOG(LogVoiceCapture, Display, TEXT("Device: %s Desc: %s GUID: %s Context:0x%08x"), lpcstrDescription, lpcstrModule, *PrintMSGUID(lpGuid), lpContext);
+
+	// Allow HMD to override the voice capture device
+	if(VCPtr->VoiceCaptureDeviceCount == VCPtr->HmdVoiceCaptureDeviceIndex)
+	{
+		UE_LOG(LogVoice, Display, TEXT("VoiceCapture device overridden by HMD to use '%s' %s"), lpcstrDescription, *PrintMSGUID(lpGuid));
+		VCPtr->VoiceCaptureDeviceGuid = *lpGuid;
+	}
+
+	VCPtr->VoiceCaptureDeviceCount++;
 	return true;
 }
 
@@ -245,16 +274,11 @@ bool FVoiceCaptureDeviceWindows::Init()
 		UE_LOG(LogVoiceCapture, Warning, TEXT("Failed to init DirectSound %d"), hr);
 		return false;
 	}
-	
-	if (0)
-	{
-		hr = DirectSoundEnumerate((LPDSENUMCALLBACK)CaptureDeviceCallback, this);
-		if (FAILED(hr))
-		{
-			UE_LOG(LogVoiceCapture, Warning, TEXT("Failed to enumerate render devices %d"), hr);
-			return false;
-		}
-	}
+
+	bool bHmdAvailable = IModularFeatures::Get().IsModularFeatureAvailable(IHeadMountedDisplayModule::GetModularFeatureName());
+	HmdVoiceCaptureDeviceIndex = bHmdAvailable ? CVarHmdDirectSoundVoiceCaptureDeviceIndex.GetValueOnGameThread() : -1;
+	VoiceCaptureDeviceCount = 0;
+	VoiceCaptureDeviceGuid = DSDEVID_DefaultVoiceCapture;
 
 	hr = DirectSoundCaptureEnumerate((LPDSENUMCALLBACK)CaptureDeviceCallback, this);
 	if (FAILED(hr))

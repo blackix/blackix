@@ -2,18 +2,21 @@
 
 #pragma once
 #include "IHeadMountedDisplay.h"
-#include "HeadMountedDisplayCommon.h"
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
+#include "HeadMountedDisplayCommon.h"
+#include "Stats.h"
 #include "SceneViewExtension.h"
+#include "OculusRiftLayers.h"
+#include "OculusRiftSplash.h"
 
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (push,8)
 #endif
 
 #if PLATFORM_WINDOWS
-	#define OVR_D3D_VERSION 11
+	#define OVR_D3D
 	#define OVR_GL
 #elif PLATFORM_MAC
 	#define OVR_VISION_ENABLED
@@ -22,90 +25,110 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	#include <OVR_Version.h>
-	#include <OVR_CAPI_0_8_0.h>
+	#include <OVR_CAPI.h>
 	#include <OVR_CAPI_Keys.h>
 	#include <Extras/OVR_Math.h>
-    #include <Extras/OVR_CAPI_Util.h>
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (pop)
 #endif
 
-DECLARE_STATS_GROUP(TEXT("OculusRiftHMD"), STATGROUP_OculusRiftHMD, STATCAT_Advanced);
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BeginRendering"), STAT_BeginRendering, STATGROUP_OculusRiftHMD, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("FinishRendering"), STAT_FinishRendering, STATGROUP_OculusRiftHMD, );
-DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("LatencyRender"), STAT_LatencyRender, STATGROUP_OculusRiftHMD, );
-DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("LatencyTimewarp"), STAT_LatencyTimewarp, STATGROUP_OculusRiftHMD, );
-DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("LatencyPostPresent"), STAT_LatencyPostPresent, STATGROUP_OculusRiftHMD, );
-DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("ErrorRender"), STAT_ErrorRender, STATGROUP_OculusRiftHMD, );
-DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("ErrorTimewarp"), STAT_ErrorTimewarp, STATGROUP_OculusRiftHMD, );
 
 struct FDistortionVertex;
 class FOculusRiftHMD;
 
+DECLARE_STATS_GROUP(TEXT("OculusRiftHMD"), STATGROUP_OculusRiftHMD, STATCAT_Advanced);
+DECLARE_CYCLE_STAT_EXTERN(TEXT("BeginRendering"), STAT_BeginRendering, STATGROUP_OculusRiftHMD, );
+
 namespace OculusRift 
 {
-	/**
-	 * Converts quat from Oculus ref frame to Unreal
-	 */
-	template <typename OVRQuat>
-	FORCEINLINE FQuat ToFQuat(const OVRQuat& InQuat)
-	{
-		return FQuat(float(-InQuat.z), float(InQuat.x), float(InQuat.y), float(-InQuat.w));
-	}
-	/**
-	 * Converts vector from Oculus to Unreal
-	 */
-	template <typename OVRVector3>
-	FORCEINLINE FVector ToFVector(const OVRVector3& InVec)
-	{
-		return FVector(float(-InVec.z), float(InVec.x), float(InVec.y));
-	}
+/**
+ * Converts quat from Oculus ref frame to Unreal
+ */
+template <typename OVRQuat>
+FORCEINLINE FQuat ToFQuat(const OVRQuat& InQuat)
+{
+	return FQuat(float(-InQuat.z), float(InQuat.x), float(InQuat.y), float(-InQuat.w));
+}
+template <typename OVRQuat>
+FORCEINLINE OVRQuat ToOVRQuat(const FQuat& InQuat)
+{
+	return OVRQuat(float(InQuat.Y), float(InQuat.Z), float(-InQuat.X), float(-InQuat.W));
+}
+/**
+ * Converts vector from Oculus to Unreal
+ */
+template <typename OVRVector3>
+FORCEINLINE FVector ToFVector(const OVRVector3& InVec)
+{
+	return FVector(float(-InVec.z), float(InVec.x), float(InVec.y));
+}
 
-	/**
-	 * Converts vector from Oculus to Unreal, also converting meters to UU (Unreal Units)
-	 */
-	template <typename OVRVector3>
-	FORCEINLINE FVector ToFVector_M2U(const OVRVector3& InVec, float WorldToMetersScale)
-	{
-		return FVector(float(-InVec.z * WorldToMetersScale), 
-			           float(InVec.x  * WorldToMetersScale), 
-					   float(InVec.y  * WorldToMetersScale));
-	}
-	/**
-	 * Converts vector from Oculus to Unreal, also converting UU (Unreal Units) to meters.
-	 */
-	template <typename OVRVector3>
-	FORCEINLINE OVRVector3 ToOVRVector_U2M(const FVector& InVec, float WorldToMetersScale)
-	{
-		return OVRVector3(float(InVec.Y * (1.f / WorldToMetersScale)), 
-			              float(InVec.Z * (1.f / WorldToMetersScale)), 
-					     float(-InVec.X * (1.f / WorldToMetersScale)));
-	}
-	/**
-	 * Converts vector from Oculus to Unreal.
-	 */
-	template <typename OVRVector3>
-	FORCEINLINE OVRVector3 ToOVRVector(const FVector& InVec)
-	{
-		return OVRVector3(float(InVec.Y), float(InVec.Z), float(-InVec.X));
-	}
+/**
+ * Converts vector from Oculus to Unreal, also converting meters to UU (Unreal Units)
+ */
+template <typename OVRVector3>
+FORCEINLINE FVector ToFVector_M2U(const OVRVector3& InVec, float WorldToMetersScale)
+{
+	return FVector(float(-InVec.z * WorldToMetersScale), 
+			        float(InVec.x  * WorldToMetersScale), 
+					float(InVec.y  * WorldToMetersScale));
+}
+/**
+ * Converts vector from Oculus to Unreal, also converting UU (Unreal Units) to meters.
+ */
+template <typename OVRVector3>
+FORCEINLINE OVRVector3 ToOVRVector_U2M(const FVector& InVec, float WorldToMetersScale)
+{
+	return OVRVector3(float(InVec.Y * (1.f / WorldToMetersScale)), 
+			            float(InVec.Z * (1.f / WorldToMetersScale)), 
+					    float(-InVec.X * (1.f / WorldToMetersScale)));
+}
+/**
+ * Converts vector from Oculus to Unreal.
+ */
+template <typename OVRVector3>
+FORCEINLINE OVRVector3 ToOVRVector(const FVector& InVec)
+{
+	return OVRVector3(float(InVec.Y), float(InVec.Z), float(-InVec.X));
+}
 
-	FORCEINLINE FMatrix ToFMatrix(const OVR::Matrix4f& vtm)
-	{
-		// Rows and columns are swapped between OVR::Matrix4f and FMatrix
-		return FMatrix(
-			FPlane(vtm.M[0][0], vtm.M[1][0], vtm.M[2][0], vtm.M[3][0]),
-			FPlane(vtm.M[0][1], vtm.M[1][1], vtm.M[2][1], vtm.M[3][1]),
-			FPlane(vtm.M[0][2], vtm.M[1][2], vtm.M[2][2], vtm.M[3][2]),
-			FPlane(vtm.M[0][3], vtm.M[1][3], vtm.M[2][3], vtm.M[3][3]));
-	}
+FORCEINLINE FMatrix ToFMatrix(const OVR::Matrix4f& vtm)
+{
+	// Rows and columns are swapped between OVR::Matrix4f and FMatrix
+	return FMatrix(
+		FPlane(vtm.M[0][0], vtm.M[1][0], vtm.M[2][0], vtm.M[3][0]),
+		FPlane(vtm.M[0][1], vtm.M[1][1], vtm.M[2][1], vtm.M[3][1]),
+		FPlane(vtm.M[0][2], vtm.M[1][2], vtm.M[2][2], vtm.M[3][2]),
+		FPlane(vtm.M[0][3], vtm.M[1][3], vtm.M[2][3], vtm.M[3][3]));
+}
 
-	FORCEINLINE OVR::Recti ToOVRRecti(const FIntRect& rect)
+FORCEINLINE OVR::Recti ToOVRRecti(const FIntRect& rect)
+{
+	return OVR::Recti(rect.Min.X, rect.Min.Y, rect.Size().X, rect.Size().Y);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SetConsoleVariable
+//-------------------------------------------------------------------------------------------------
+
+static void SetConsoleVariable(const WCHAR* Name, int32 Value)
+{
+	IConsoleVariable* ConsoleVariable = IConsoleManager::Get().FindConsoleVariable(Name);
+
+	if(!ConsoleVariable)
 	{
-		return OVR::Recti(rect.Min.X, rect.Min.Y, rect.Size().X, rect.Size().Y);
+		// Create unregistered console variable, which will override value when real one gets registered.
+		IConsoleManager::Get().RegisterConsoleVariable(Name, Value, L"", ECVF_Unregistered);
 	}
+	else if(Value != ConsoleVariable->GetInt())
+	{
+		// Update existing console variable
+		ConsoleVariable->Set(Value);
+	}
+}
 
 
 //-------------------------------------------------------------------------------------------------
@@ -127,7 +150,6 @@ public:
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				PerspectiveProjection[2];	// used for calc ortho projection matrices
 	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
-	ovrLayer_Union			EyeLayer;
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
@@ -162,30 +184,6 @@ public:
 
 
 //-------------------------------------------------------------------------------------------------
-// FDetectHmd
-//-------------------------------------------------------------------------------------------------
-
-class FDetectHmd : public FRunnable
-{
-public:
-	FOculusRiftHMD* OculusRiftHMD;
-	TAutoPtr<FEvent> StopEvent;
-	TAutoPtr<FRunnableThread> RunnableThread;
-
-public:
-	FDetectHmd(FOculusRiftHMD* InOculusRiftHMD, bool bForced);
-	virtual ~FDetectHmd();
-	
-	void InitThread();
-	void ReleaseThread();	
-
-	// FRunnable overrides
-	virtual uint32 Run() override;
-	virtual void Stop() override;
-};
-
-
-//-------------------------------------------------------------------------------------------------
 // FGameFrame
 //-------------------------------------------------------------------------------------------------
 
@@ -197,6 +195,7 @@ public:
 	ovrPosef			CurEyeRenderPose[2];		// current eye render poses
 	ovrPosef			HeadPose;					// position of head actually used
 	ovrPosef			EyeRenderPose[2];			// eye render pose actually used
+	ovrSessionStatus	SessionStatus;
 
 	FGameFrame();
 	virtual ~FGameFrame() {}
@@ -240,13 +239,11 @@ public:
 
 public:
 	class FCustomPresent* pPresentBridge;
-	IRendererModule*	RendererModule;
 	ovrSession			OvrSession;
 
 	FEngineShowFlags	ShowFlags; // a copy of showflags
 	bool				bFrameBegun : 1;
 };
-
 
 //-------------------------------------------------------------------------------------------------
 // FCustomPresent 
@@ -255,27 +252,21 @@ public:
 class FCustomPresent : public FRHICustomPresent
 {
 public:
-	FCustomPresent()
-		: FRHICustomPresent(nullptr)
-		, OvrSession(nullptr)
-		, MirrorTexture(nullptr)
-		, NeedToKillHmd(0)
-		, bInitialized(false)
-		, bNeedReAllocateTextureSet(true)
-		, bNeedReAllocateMirrorTexture(true)
-	{}
+	FCustomPresent();
 
 	// Returns true if it is initialized and used.
 	bool IsInitialized() const { return bInitialized; }
 
+	virtual bool IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid) = 0;
+
 	virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) = 0;
-	virtual void FinishRendering() = 0;
+	virtual void FinishRendering();
 
 	// Resets Viewport-specific pointers (BackBufferRT, SwapChain).
 	virtual void OnBackBufferResize() override;
 
 	virtual void Reset() = 0;
-	virtual void Shutdown() = 0;
+	virtual void Shutdown();
 
 	// Returns true if Engine should perform its own Present.
 	virtual bool Present(int32& SyncInterval) override;
@@ -285,7 +276,8 @@ public:
 	FViewExtension* GetRenderContext() const { return static_cast<FViewExtension*>(RenderContext.Get()); }
 	FSettings* GetFrameSetting() const { check(IsInRenderingThread()); return static_cast<FSettings*>(RenderContext->RenderFrame->GetSettings()); }
 
-	virtual void SetHmd(ovrSession InOvrSession) { OvrSession = InOvrSession; }
+	virtual void SetSession(ovrSession InOvrSession) { OvrSession = InOvrSession; }
+	ovrSession GetSession() const { return OvrSession; }
 
 	// marking textures invalid, that will force re-allocation of ones
 	void MarkTexturesInvalid();
@@ -294,16 +286,60 @@ public:
 
 	virtual FTexture2DRHIRef GetMirrorTexture() { return MirrorTextureRHI; }
 
+	enum ELayerFlags
+	{
+		None = 0,
+		HighQuality = 0x1
+	};
 	// Allocates render target texture
 	// If returns false then a default RT texture will be used.
-	virtual bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples) = 0;
+	// TextureFlags - TexCreate_<>
+	// LayerFlags   - see ELayerFlag
+	bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 TextureFlags, uint32 LayerFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture);
 
 	// Can be called on any thread. Returns true, if HMD is marked as invalid and it must be killed.
 	// This function resets the flag.
 	bool NeedsToKillHmd()
 	{
+		// This keeps the flag value
+		return FPlatformAtomics::InterlockedAdd(&NeedToKillHmd, 0) != 0;
+	}
+	bool ResetNeedsToKillHmd()
+	{
+		// This resets the flag to 0
 		return FPlatformAtomics::InterlockedExchange(&NeedToKillHmd, 0) != 0;
 	}
+
+	// Returns true, if everything is ready for frame submission.
+	bool IsReadyToSubmitFrame() const { return bReady; }
+	int32 LockSubmitFrame() { return SubmitFrameLocker.Set(1); }
+	int32 UnlockSubmitFrame() { return SubmitFrameLocker.Set(0); }
+	bool IsSubmitFrameLocked() const { return SubmitFrameLocker.GetValue() != 0; }
+
+	enum ECreateTexFlags
+	{
+		StaticImage			= 0x1,
+		RenderTargetable	= 0x2,
+		ShaderResource		= 0x4,
+		EyeBuffer			= 0x8,
+
+		Default				= RenderTargetable | ShaderResource,
+		DefaultStaticImage	= StaticImage | Default,
+		DefaultEyeBuffer	= EyeBuffer | Default,
+	};
+	// Create and destroy textureset from a texture.
+	virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
+
+	// Copies one texture to another
+	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect()) const;
+
+	FLayerManager& GetLayerMgr() { return LayerMgr; }
+	void UpdateLayers(FRHICommandListImmediate& RHICmdList);
+
+	static uint32 GetNumMipLevels(uint32 w, uint32 h, uint32 InCreateTexFlags);
+
+	bool GetLastVisibilityState() const { return LayerMgr.GetLastVisibilityState(); }
+	ovrResult GetLastSubmitFrameResult() const { return LayerMgr.GetLastSubmitFrameResult(); }
 
 protected:
 	void SetRenderContext(FHMDViewExtension* InRenderContext);
@@ -311,15 +347,21 @@ protected:
 protected: // data
 	ovrSession			OvrSession;
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
+	IRendererModule*	RendererModule;
+
+	FLayerManager		LayerMgr;
 
 	// Mirror texture
-	ovrTexture*			MirrorTexture;
+	ovrMirrorTexture	MirrorTexture;
 	FTexture2DRHIRef	MirrorTextureRHI;
+
+	FThreadSafeCounter  SubmitFrameLocker;
 
 	volatile int32		NeedToKillHmd;
 	bool				bInitialized : 1;
 	bool				bNeedReAllocateTextureSet : 1;
 	bool				bNeedReAllocateMirrorTexture : 1;
+	bool				bReady : 1;
 };
 
 
@@ -354,11 +396,17 @@ using namespace OculusRift;
  */
 class FOculusRiftHMD : public FHeadMountedDisplay
 {
-	friend class FDetectHmd;
 	friend class FViewExtension;
 	friend class UOculusFunctionLibrary;
 	friend class FOculusRiftPlugin;
+	friend class FLayerManager;
+	friend class FOculusRiftSplash;
 public:
+
+	static void PreInit();
+	static void SetConsoleVariable(const WCHAR* Name, int32 Value);
+	static void SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid);
+
 	/** IHeadMountedDisplay interface */
 	virtual bool OnStartGameFrame( FWorldContext& WorldContext ) override;
 
@@ -409,7 +457,10 @@ public:
     virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
 	virtual FRHICustomPresent* GetCustomPresent() override { return pCustomPresent; }
 	virtual uint32 GetNumberOfBufferedFrames() const override { return 1; }
-	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	
+	// InTexFlags - TexCreate_<>
+	// InTargetableTextureFlags - TexCreate_RenderTargetable or 0
+	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 
 	/** Positional tracking control methods */
 	virtual bool IsHeadTrackingAllowed() const override;
@@ -444,6 +495,10 @@ public:
 
 	virtual bool IsHMDActive() override { return OvrSession != nullptr; }
 
+	virtual FHMDLayerManager* GetLayerManager() override { return &pCustomPresent->GetLayerMgr(); }
+
+	virtual void			SetTrackingOrigin(ETrackingOrigin) override;
+	virtual ETrackingOrigin GetTrackingOrigin() override;
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const override;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const override;
@@ -458,32 +513,49 @@ public:
 	float GetVsyncToNextVsync() const;
 	FPerformanceStats GetPerformanceStats() const;
 
-#if defined(OVR_D3D_VERSION) && (OVR_D3D_VERSION == 11)
+#ifdef OVR_D3D
 	class D3D11Bridge : public FCustomPresent
 	{
 	public:
 		D3D11Bridge(ovrSession InOvrSession);
+		static void DisableSLI();
+		static void SetHmdAudioDeviceIn();
+		static void SetHmdAudioDeviceOut();
+		static void SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid);
 
 		// Implementation of FCustomPresent, called by Plugin itself
+		virtual bool IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
-		virtual void FinishRendering() override;
 		virtual void Reset() override;
-		virtual void Shutdown() override
-		{
-			Reset();
-		}
+		virtual void SetSession(ovrSession InHmd) override;
 
-		virtual void SetHmd(ovrSession InHmd) override;
-
-		virtual bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
+		// Create and destroy textureset from a texture.
+		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		
 	protected:
 		void Init(ovrSession InHmd);
 		void Reset_RenderThread();
-	protected: // data
-		TRefCountPtr<class FD3D11Texture2DSet>	ColorTextureSet;
-		TRefCountPtr<class FD3D11Texture2DSet>	DepthTextureSet;
 	};
 
+	class D3D12Bridge : public FCustomPresent
+	{
+	public:
+		D3D12Bridge(ovrSession InOvrSession);
+		static void SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid);
+
+		// Implementation of FCustomPresent, called by Plugin itself
+		virtual bool IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid) override;
+		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
+		virtual void Reset() override;
+		virtual void SetSession(ovrSession InHmd) override;
+
+		// Create and destroy textureset from a texture.
+		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		
+	protected:
+		void Init(ovrSession InHmd);
+		void Reset_RenderThread();
+	};
 #endif
 
 #ifdef OVR_GL
@@ -491,26 +563,21 @@ public:
 	{
 	public:
 		OGLBridge(ovrSession InOvrSession);
+		static void SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid);
 
 		// Implementation of FCustomPresent, called by Plugin itself
+		virtual bool IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
-		virtual void FinishRendering() override;
 		virtual void Reset() override;
-		virtual void Shutdown() override
-		{
-			Reset();
-		}
+		virtual void Shutdown() override;
+		virtual void SetSession(ovrSession InHmd) override;
 
-		virtual void SetHmd(ovrSession InHmd) override;
-
-		virtual bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
+		// Create and destroy textureset from a texture.
+		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 
 	protected:
 		void Init(ovrSession InHmd);
 		void Reset_RenderThread();
-	protected: // data
-		TRefCountPtr<class FOpenGLTexture2DSet>	ColorTextureSet;
-		TRefCountPtr<class FOpenGLTexture2DSet>	DepthTextureSet;
 	};
 #endif // OVR_GL
 
@@ -522,6 +589,8 @@ public:
 	/** Destructor */
 	virtual ~FOculusRiftHMD();
 
+	FCustomPresent* GetCustomPresent_Internal() const { return pCustomPresent; }
+	
 private:
 	FOculusRiftHMD* getThis() { return this; }
 
@@ -567,26 +636,29 @@ private:
 	FGameFrame* GetFrame();
 	const FGameFrame* GetFrame() const;
 
-	// Copies one texture to another
-	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect()) const;
-
+	virtual FAsyncLoadingSplash* GetAsyncLoadingSplash() const override { return Splash.Get(); }
 private: // data
 
-	TAutoPtr<FDetectHmd>		DetectHmd;
-	volatile int32				HmdDetected;
 	TRefCountPtr<FCustomPresent>pCustomPresent;
 	IRendererModule*			RendererModule;
 	ovrSession					OvrSession;
 	ovrHmdDesc					HmdDesc;
+	ovrTrackingOrigin			OvrOrigin;
 
 	TWeakPtr<SWindow>			CachedWindow;
 	TWeakPtr<SWidget>			CachedViewportWidget;
+
+	TSharedPtr<FOculusRiftSplash> Splash;
 
 	union
 	{
 		struct
 		{
-			uint64	_PlaceHolder_ : 1;
+			uint64 NeedSetTrackingOrigin : 1; // set to true when origin was set while OvrSession == null; the origin will be set ASA OvrSession != null
+
+			uint64 EnforceExit : 1; // enforces exit; used mostly for testing
+
+			uint64 AppIsPaused : 1; // set if a game is paused by the plugin
 		};
 		uint64 Raw;
 	} OCFlags;

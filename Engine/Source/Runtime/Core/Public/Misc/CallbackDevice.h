@@ -217,6 +217,10 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FPlatformChangedLaptopMode, EConvertibleLaptopMode);
 	static FPlatformChangedLaptopMode PlatformChangedLaptopMode;
 
+	/** Sent when the platform requests a low-level VR recentering */
+	DECLARE_MULTICAST_DELEGATE(FVRHeadsetRecenter);
+	static FVRHeadsetRecenter VRHeadsetRecenter;
+
 private:
 
 	// Callbacks for hotfixes
