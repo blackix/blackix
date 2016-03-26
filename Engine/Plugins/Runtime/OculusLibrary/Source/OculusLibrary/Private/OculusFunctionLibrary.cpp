@@ -2,6 +2,7 @@
 
 #include "OculusFunctionLibraryPrivatePCH.h"
 #include "OculusFunctionLibrary.h"
+#include "AsyncLoadingSplash.h"
 
 #include "IOculusRiftPlugin.h"
 #include "IGearVRPlugin.h"
@@ -62,7 +63,7 @@ void UOculusFunctionLibrary::SetBaseRotationAndBaseOffsetInMeters(FRotator Rotat
 {
 #if OCULUS_SUPPORTED_PLATFORMS
 	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
-	if ((OculusHMD != nullptr) && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	if (OculusHMD != nullptr)
 	{
 		if ((Options == EOrientPositionSelector::Orientation) || (Options == EOrientPositionSelector::OrientationAndPosition))
 		{
@@ -80,7 +81,7 @@ void UOculusFunctionLibrary::GetBaseRotationAndBaseOffsetInMeters(FRotator& OutR
 {
 #if OCULUS_SUPPORTED_PLATFORMS
 	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
-	if ((OculusHMD != nullptr) && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	if (OculusHMD != nullptr)
 	{
 		OutRotation = OculusHMD->GetBaseRotation();
 		OutBaseOffsetInMeters = OculusHMD->GetBaseOffsetInMeters();
@@ -93,7 +94,7 @@ void UOculusFunctionLibrary::GetBaseRotationAndBaseOffsetInMeters(FRotator& OutR
 #endif // OCULUS_SUPPORTED_PLATFORMS
 }
 
-void UOculusFunctionLibrary::GetRawSensorData(FVector& Accelerometer, FVector& Gyro, FVector& Magnetometer, float& Temperature, float& TimeInSeconds)
+void UOculusFunctionLibrary::GetRawSensorData(FVector& AngularAcceleration, FVector& LinearAcceleration, FVector& AngularVelocity, FVector& LinearVelocity, float& TimeInSeconds)
 {
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
@@ -102,10 +103,10 @@ void UOculusFunctionLibrary::GetRawSensorData(FVector& Accelerometer, FVector& G
 		FHeadMountedDisplay::SensorData Data;
 		OculusHMD->GetRawSensorData(Data);
 
-		Accelerometer = Data.Accelerometer;
-		Gyro = Data.Gyro;
-		Magnetometer = Data.Magnetometer;
-		Temperature = Data.Temperature;
+		AngularAcceleration = Data.AngularAcceleration;
+		LinearAcceleration = Data.LinearAcceleration;
+		AngularVelocity = Data.AngularVelocity;
+		LinearVelocity = Data.LinearVelocity;
 		TimeInSeconds = Data.TimeInSeconds;
 	}
 #endif // OCULUS_SUPPORTED_PLATFORMS
@@ -200,7 +201,7 @@ void UOculusFunctionLibrary::SetBaseRotationAndPositionOffset(FRotator BaseRot, 
 {
 #if OCULUS_SUPPORTED_PLATFORMS
 	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	if (OculusHMD != nullptr)
 	{
 		if (Options == EOrientPositionSelector::Orientation || EOrientPositionSelector::OrientationAndPosition)
 		{
@@ -218,10 +219,40 @@ void UOculusFunctionLibrary::GetBaseRotationAndPositionOffset(FRotator& OutRot, 
 {
 #if OCULUS_SUPPORTED_PLATFORMS
 	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr && GEngine->HMDDevice->IsHeadTrackingAllowed())
+	if (OculusHMD != nullptr)
 	{
 		OutRot = OculusHMD->GetBaseRotation();
 		OutPosOffset = OculusHMD->GetSettings()->PositionOffset;
+	}
+#endif // OCULUS_SUPPORTED_PLATFORMS
+}
+
+void UOculusFunctionLibrary::SetLoadingSplashParams(FString TexturePath, FVector DistanceInMeters, FVector2D SizeInMeters, FVector RotationAxis, float RotationDeltaInDeg)
+{
+#if OCULUS_SUPPORTED_PLATFORMS
+	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		FAsyncLoadingSplash* Splash = OculusHMD->GetAsyncLoadingSplash();
+		if (Splash)
+		{
+			Splash->SetParams(TexturePath, DistanceInMeters, SizeInMeters, RotationAxis, RotationDeltaInDeg);
+		}
+	}
+#endif // OCULUS_SUPPORTED_PLATFORMS
+}
+
+void UOculusFunctionLibrary::GetLoadingSplashParams(FString& TexturePath, FVector& DistanceInMeters, FVector2D& SizeInMeters, FVector& RotationAxis, float& RotationDeltaInDeg)
+{
+#if OCULUS_SUPPORTED_PLATFORMS
+	FHeadMountedDisplay* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		FAsyncLoadingSplash* Splash = OculusHMD->GetAsyncLoadingSplash();
+		if (Splash)
+		{
+			Splash->GetParams(TexturePath, DistanceInMeters, SizeInMeters, RotationAxis, RotationDeltaInDeg);
+		}
 	}
 #endif // OCULUS_SUPPORTED_PLATFORMS
 }
@@ -234,6 +265,6 @@ class IStereoLayers* UOculusFunctionLibrary::GetStereoLayers()
 	{
 		return OculusHMD;
 	}
-#endif // OCULUS_SUPPORTED_PLATFORMS
 	return nullptr;
+#endif // OCULUS_SUPPORTED_PLATFORMS
 }

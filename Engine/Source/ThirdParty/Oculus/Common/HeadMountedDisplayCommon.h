@@ -39,6 +39,9 @@ public:
 			/** Whether stereo is currently on or off. */
 			uint64 bStereoEnabled : 1;
 
+			/** Whether game wants to be in stereo mode. (WindowMode != Windowed) */
+			uint64 bStereoDesired : 1;
+
 			/** Whether stereo was enforced by the console command. Doesn't make sense w/o bStereoEnabled == true. */
 			uint64 bStereoEnforced : 1;
 
@@ -123,11 +126,17 @@ public:
 
 			/** True, if PlayerCameraManager should follow HMD position */
 			uint64				bPlayerCameraManagerFollowsHmdPosition : 1;
+
+			/** Rendering should be (could be) paused */
+			uint64				bPauseRendering : 1;
+
+			/** HQ Distortion */
+			uint64				bHQDistortion : 1;
 #if !UE_BUILD_SHIPPING
-			/** Draw tracking camera frustum, for debugging purposes. 
+			/** Draw sensor frustum, for debugging purposes. 
 			 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
 			 */
-			uint64				bDrawTrackingCameraFrustum : 1;
+			uint64				bDrawSensorFrustum : 1;
 
 			uint64				bDrawCubes : 1;
 
@@ -186,7 +195,7 @@ public:
 
 	/** HMD base values, specify forward orientation and zero pos offset */
 	FVector2D				NeckToEyeInMeters;  // neck-to-eye vector, in meters (X - horizontal, Y - vertical)
-	FVector					BaseOffset;			// base position, in meters, relatively to the tracker //@todo hmd: clients need to stop using oculus space
+	FVector					BaseOffset;			// base position, in meters, relatively to the sensor //@todo hmd: clients need to stop using oculus space
 	FQuat					BaseOrientation;	// base orientation
 
 	/** Viewports for each eye, in render target texture coordinates */
@@ -267,6 +276,8 @@ public:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> Clone() const;
 };
 
+typedef TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> FHMDGameFrameRef;
+
 class FHMDViewExtension : public ISceneViewExtension, public TSharedFromThis<FHMDViewExtension, ESPMode::ThreadSafe>
 {
 public:
@@ -291,9 +302,9 @@ public: // data
 class FTextureSetProxy : public TSharedFromThis<FTextureSetProxy, ESPMode::ThreadSafe>
 {
 public:
-	FTextureSetProxy():SourceSizeX(0),SourceSizeY(0),SourceFormat(PF_Unknown) {}
-	FTextureSetProxy(uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat)
-		: SourceSizeX(InSrcSizeX), SourceSizeY(InSrcSizeY), SourceFormat(InSrcFormat) {}
+	FTextureSetProxy():SourceSizeX(0),SourceSizeY(0),SourceNumMips(1),SourceFormat(PF_Unknown) {}
+	FTextureSetProxy(uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat, uint32 InSrcNumMips)
+		: SourceSizeX(InSrcSizeX), SourceSizeY(InSrcSizeY), SourceNumMips(InSrcNumMips), SourceFormat(InSrcFormat) {}
 	virtual ~FTextureSetProxy() {}
 
 	virtual FTextureRHIRef GetRHITexture() const = 0;
@@ -315,13 +326,14 @@ public:
 	virtual void ReleaseResources() = 0;
 	virtual void SwitchToNextElement() = 0;
 
-	virtual bool Commit() = 0;
+	virtual bool Commit(FRHICommandListImmediate& RHICmdList) = 0;
 
 	uint32 GetSourceSizeX() const { return SourceSizeX; }
 	uint32 GetSourceSizeY() const { return SourceSizeY; }
 	EPixelFormat GetSourceFormat() const { return SourceFormat; }
+	uint32 GetSourceNumMips() const { return SourceNumMips; }
 protected:
-	uint32			SourceSizeX, SourceSizeY;
+	uint32			SourceSizeX, SourceSizeY, SourceNumMips;
 	EPixelFormat	SourceFormat;
 };
 typedef TSharedPtr<FTextureSetProxy, ESPMode::ThreadSafe>	FTextureSetProxyParamRef;
@@ -369,6 +381,7 @@ public:
 	uint32 GetPriority() const { return Priority; }
 	uint32 GetId() const { return Id; }
 
+	void SetHighQuality(bool bHQ = true) { bHighQuality = bHQ; }
 	void SetLockedToHead(bool bToHead = true) { bHeadLocked = bToHead; }
 	void SetLockedToTorso(bool bToTorso = true) { bTorsoLocked = bToTorso; }
 	void SetLockedToWorld() { bHeadLocked = bTorsoLocked = false; }
@@ -382,6 +395,7 @@ public:
 	FHMDLayerDesc& operator=(const FHMDLayerDesc&);
 
 	bool IsTextureChanged() const { return bTextureHasChanged; }
+	void MarkTextureChanged() { bTextureHasChanged = true; }
 	bool IsTransformChanged() const { return bTransformHasChanged; }
 	void ResetChangedFlags() { bTextureHasChanged = bTransformHasChanged = bNewLayer = bAlreadyAdded = false; }
 
@@ -416,6 +430,9 @@ public:
 
 	virtual void ReleaseResources();
 
+	// This method checks if the layer is completely setup, and if it is not it will be excluded from rendering. May be called on RenderThread.
+	virtual bool IsFullySetup() const { return LayerInfo.GetType() != FHMDLayerDesc::Eye || TextureSet.IsValid(); }
+
 	const FHMDLayerDesc& GetLayerDesc() const { return LayerInfo; }
 	void SetLayerDesc(const FHMDLayerDesc& InDesc) { LayerInfo = InDesc; }
 
@@ -426,14 +443,15 @@ public:
 		bOwnsTextureSet = true;
 	}
 
-	bool CommitTextureSet()
+	bool CommitTextureSet(FRHICommandListImmediate& RHICmdList)
 	{
 		if (TextureSet.IsValid())
 		{
-			return TextureSet->Commit();
+			return TextureSet->Commit(RHICmdList);
 		}
 		return false;
 	}
+	void ResetChangedFlags() { LayerInfo.ResetChangedFlags(); }
 
 protected:
 	FHMDLayerDesc		LayerInfo;
@@ -450,8 +468,19 @@ public:
 	FHMDLayerManager();
 	virtual ~FHMDLayerManager();
 	
+	virtual void Startup();
+	virtual void Shutdown();
+
+	enum LayerOriginType
+	{
+		Layer_UnknownOrigin = 0,
+		Layer_WorldLocked = 1,
+		Layer_HeadLocked  = 2,
+		Layer_TorsoLocked = 3,
+	};
+
 	// Adds layer, returns the layer and its' ID.
-	virtual TSharedPtr<FHMDLayerDesc> AddLayer(FHMDLayerDesc::ELayerTypeMask InType, uint32 InPriority, bool bInHeadLocked, uint32& OutLayerId);
+	virtual TSharedPtr<FHMDLayerDesc> AddLayer(FHMDLayerDesc::ELayerTypeMask InType, uint32 InPriority, LayerOriginType InLayerOriginType, uint32& OutLayerId);
 	
 	virtual void RemoveLayer(uint32 LayerId);
 	
@@ -462,7 +491,9 @@ public:
 	virtual void SetDirty() { bLayersChanged = true; }
 
 	// Releases all textureSets resources used by all layers. Shouldn't touch anything else.
-	virtual void ReleaseTextureSets_RenderThread_NoLock() {}
+	virtual void ReleaseTextureSets_RenderThread_NoLock();
+
+	void RemoveAllLayers();
 
 	void ReleaseRenderLayers_RenderThread()
 	{
@@ -472,7 +503,11 @@ public:
 		bLayersChanged = true;
 	}
 
-	const FHMDRenderLayer* GetRenderLayer_RenderThread_NoLock(uint32 LayerId) const;
+	FHMDRenderLayer* GetRenderLayer_RenderThread_NoLock(uint32 LayerId);
+	const FHMDRenderLayer* GetRenderLayer_RenderThread_NoLock(uint32 LayerId) const
+	{
+		return const_cast<FHMDLayerManager*>(this)->GetRenderLayer_RenderThread_NoLock(LayerId);
+	}
 
 protected:
 	// Creates a layer. Could be overridden by inherited class to create custom layers. Called on a RenderThread
@@ -482,11 +517,13 @@ protected:
 
 	// Should be called before SubmitFrame is called.
 	// Updates sizes, distances, orientations, textures of each layer, as needed.
-	virtual void PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICmdList, const FHMDGameFrame* CurrentFrame);
+	virtual void PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICmdList, const FHMDGameFrame* CurrentFrame, bool ShowFlagsRendering);
 
 	static uint32 FindLayerIndex(const TArray<TSharedPtr<FHMDLayerDesc> >& Layers, uint32 LayerId);
 	const TArray<TSharedPtr<FHMDLayerDesc> >& GetLayersArrayById(uint32 LayerId) const;
 	TArray<TSharedPtr<FHMDLayerDesc> >& GetLayersArrayById(uint32 LayerId);
+
+	void ReleaseTextureSetsInArray_RenderThread_NoLock(TArray<TSharedPtr<FHMDLayerDesc> >& Layers);
 protected:
 	int32 CurrentId;
 
@@ -617,11 +654,11 @@ public:
 	/* Raw sensor data structure. */
 	struct SensorData
 	{
-		FVector Accelerometer;	// Acceleration reading in m/s^2.
-		FVector Gyro;			// Rotation rate in rad/s.
-		FVector Magnetometer;   // Magnetic field in Gauss.
-		float Temperature;		// Temperature of the sensor in degrees Celsius.
-		float TimeInSeconds;	// Time when the reported IMU reading took place, in seconds.
+		FVector AngularAcceleration; // Angular acceleration in radians per second per second.
+		FVector LinearAcceleration;  // Acceleration in meters per second per second.
+		FVector AngularVelocity;     // Angular velocity in radians per second.
+		FVector LinearVelocity;      // Velocity in meters per second.
+		double TimeInSeconds;		 // Time when the reported IMU reading took place, in seconds.
 	};
 
 	/**
@@ -663,12 +700,15 @@ public:
 
 	virtual FHMDLayerManager* GetLayerManager() { return nullptr; }
 
+	virtual uint32 CreateLayerEx(UTexture2D* InTexture, int32 InPrioirity, FHMDLayerManager::LayerOriginType InLayerOriginType);
 	//** IStereoLayers implementation
 	virtual uint32 CreateLayer(UTexture2D* InTexture, int32 InPrioirity, bool bFixedToFace = false) override;
 	virtual void DestroyLayer(uint32 LayerId) override;
 	virtual void SetTransform(uint32 LayerId, const FTransform& InTransform) override;
 	virtual void SetQuadSize(uint32 LayerId, const FVector2D& InSize) override;
 	virtual void SetTextureViewport(uint32 LayerId, const FBox2D& UVRect) override;
+
+	virtual class FAsyncLoadingSplash* GetAsyncLoadingSplash() const { return nullptr; }
 
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const = 0;
@@ -773,6 +813,7 @@ public:
 		return Settings.Get();
 	}
 
+	static void QuantizeBufferSize(int32& InOutBufferSizeX, int32& InOutBufferSizeY, uint32 DividableBy = 32);
 };
 
 DEFINE_LOG_CATEGORY_STATIC(LogHMD, Log, All);
