@@ -29,7 +29,7 @@
 class FD3D12Texture2DSetProxy : public FTexture2DSetProxy
 {
 public:
-	FD3D12Texture2DSetProxy(ovrSession InOvrSession, ovrTextureSwapChain InOvrTextureSwapChain, FTexture2DRHIParamRef InRHITexture, const TArray<FTexture2DRHIRef>& InRHITextureSwapChain, EPixelFormat SrcFormat) : 
+	FD3D12Texture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, ovrTextureSwapChain InOvrTextureSwapChain, FTexture2DRHIParamRef InRHITexture, const TArray<FTexture2DRHIRef>& InRHITextureSwapChain, EPixelFormat SrcFormat) : 
 		FTexture2DSetProxy(InOvrSession, InRHITexture, InRHITexture->GetSizeX(), InRHITexture->GetSizeY(), SrcFormat, InRHITexture->GetNumMips()),
 		OvrTextureSwapChain(InOvrTextureSwapChain), RHITextureSwapChain(InRHITextureSwapChain) {}
 
@@ -42,6 +42,7 @@ public:
 	{
 		if (RHITexture.IsValid())
 		{
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			int CurrentIndex;
 			ovr_GetTextureSwapChainCurrentIndex(OvrSession, OvrTextureSwapChain, &CurrentIndex);
 
@@ -58,6 +59,7 @@ public:
 
 		if (OvrTextureSwapChain)
 		{
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			ovr_DestroyTextureSwapChain(OvrSession, OvrTextureSwapChain);
 			OvrTextureSwapChain = nullptr;
 		}
@@ -73,8 +75,8 @@ protected:
 // FOculusRiftHMD::D3D12Bridge
 //-------------------------------------------------------------------------------------------------
 
-FOculusRiftHMD::D3D12Bridge::D3D12Bridge(ovrSession InOvrSession)
-	: FCustomPresent()
+FOculusRiftHMD::D3D12Bridge::D3D12Bridge(FOvrSessionSharedParamRef InOvrSession)
+	: FCustomPresent(InOvrSession)
 {
 	check(IsInGameThread());
 
@@ -84,56 +86,9 @@ FOculusRiftHMD::D3D12Bridge::D3D12Bridge(ovrSession InOvrSession)
 		FSuspendRenderingThread SuspendRenderingThread(true);
 		GUseRHIThread = false;
 	}
-
-	Init(InOvrSession);
 }
 
-
-void FOculusRiftHMD::D3D12Bridge::SetSession(ovrSession InOvrSession)
-{
-	if (InOvrSession != OvrSession)
-	{
-		Reset();
-		Init(InOvrSession);
-		bNeedReAllocateTextureSet = true;
-		bNeedReAllocateMirrorTexture = true;
-	}
-}
-
-void FOculusRiftHMD::D3D12Bridge::Init(ovrSession InOvrSession)
-{
-	OvrSession = InOvrSession;
-	bInitialized = true;
-}
-
-void FOculusRiftHMD::D3D12Bridge::SetHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
-{
-	TRefCountPtr<IDXGIFactory> DXGIFactory;
-
-	if(SUCCEEDED(CreateDXGIFactory(__uuidof(IDXGIFactory), (void**) DXGIFactory.GetInitReference())))
-	{
-		for(int32 adapterIndex = 0;; adapterIndex++)
-		{
-			TRefCountPtr<IDXGIAdapter> DXGIAdapter;
-			DXGI_ADAPTER_DESC DXGIAdapterDesc;
-
-			if( FAILED(DXGIFactory->EnumAdapters(adapterIndex, DXGIAdapter.GetInitReference())) ||
-				FAILED(DXGIAdapter->GetDesc(&DXGIAdapterDesc)) )
-			{
-				break;
-			}
-
-			if(!FMemory::Memcmp(&luid, &DXGIAdapterDesc.AdapterLuid, sizeof(LUID)))
-			{
-				// Remember this adapterIndex so we use the right adapter, even when we startup without HMD connected
-				SetConsoleVariable(L"hmd.D3D12GraphicsAdapter", adapterIndex);
-				break;
-			}
-		}
-	}
-}
-
-bool FOculusRiftHMD::D3D12Bridge::IsUsingHmdGraphicsAdapter(const ovrGraphicsLuid& luid)
+bool FOculusRiftHMD::D3D12Bridge::IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid)
 {
 	TRefCountPtr<ID3D12Device> D3DDevice;
 
@@ -174,7 +129,8 @@ void FOculusRiftHMD::D3D12Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 
 	const FVector2D ActualMirrorWindowSize = CurrentFrame->WindowSize;
 	// detect if mirror texture needs to be re-allocated or freed
-	if (OvrSession && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || OvrSession != RenderContext->OvrSession ||
+	FOvrSessionShared::AutoSession OvrSession(Session);
+	if (Session->IsActive() && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || 
 		(FrameSettings->Flags.bMirrorToWindow && (
 		FrameSettings->MirrorWindowMode != FSettings::eMirrorWindow_Distorted ||
 		ActualMirrorWindowSize != FVector2D(MirrorTextureRHI->GetSizeX(), MirrorTextureRHI->GetSizeY()))) ||
@@ -229,44 +185,6 @@ void FOculusRiftHMD::D3D12Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 	}
 }
 
-void FOculusRiftHMD::D3D12Bridge::Reset_RenderThread()
-{
-	if (MirrorTexture)
-	{
-		ovr_DestroyMirrorTexture(OvrSession, MirrorTexture);
-		MirrorTextureRHI = nullptr;
-		MirrorTexture = nullptr;
-	}
-	LayerMgr.ReleaseRenderLayers_RenderThread();
-	OvrSession = nullptr;
-
-	if (RenderContext.IsValid())
-	{
-		RenderContext->bFrameBegun = false;
-		SetRenderContext(nullptr);
-	}
-}
-
-void FOculusRiftHMD::D3D12Bridge::Reset()
-{
-	if (IsInGameThread())
-	{
-		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(ResetD3D,
-		FOculusRiftHMD::D3D12Bridge*, Bridge, this,
-		{
-			Bridge->Reset_RenderThread();
-		});
-		// Wait for all resources to be released
-		FlushRenderingCommands();
-	}
-	else
-	{
-		Reset_RenderThread();
-	}
-
-	bInitialized = false;
-}
-
 FTexture2DSetProxyRef FOculusRiftHMD::D3D12Bridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
 {
 	const EPixelFormat Format = PF_B8G8R8A8;
@@ -302,6 +220,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D12Bridge::CreateTextureSet(const uint32
 	FD3D12DynamicRHI* DynamicRHI = static_cast<FD3D12DynamicRHI*>(GDynamicRHI);
 
 	ovrTextureSwapChain OvrTextureSwapChain;
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	ovrResult res = ovr_CreateTextureSwapChainDX(OvrSession, DynamicRHI->RHIGetD3DCommandQueue(), &desc, &OvrTextureSwapChain);
 
 	if (!OvrTextureSwapChain || !OVR_SUCCESS(res))
@@ -356,7 +275,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D12Bridge::CreateTextureSet(const uint32
 		}
 	}
 
-	return MakeShareable(new FD3D12Texture2DSetProxy(OvrSession, OvrTextureSwapChain, RHITexture, RHITextureSwapChain, InSrcFormat));
+	return MakeShareable(new FD3D12Texture2DSetProxy(Session, OvrTextureSwapChain, RHITexture, RHITextureSwapChain, InSrcFormat));
 }
 
 #if PLATFORM_WINDOWS

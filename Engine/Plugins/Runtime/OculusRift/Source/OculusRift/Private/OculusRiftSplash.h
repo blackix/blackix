@@ -21,27 +21,37 @@ public:
 	virtual void Startup() override;
 	virtual void Shutdown() override;
 
-	virtual void OnLoadingBegins() override;
-	virtual void OnLoadingEnds() override;
+	virtual void Show(enum EShowType) override;
+	virtual void Hide(enum EShowType) override;
 
-	void Show();
-	void Hide();
 
-	void ReleaseResources();
+	void PreShutdown();
 
 protected:
 
 	void PushFrame();
 	void PushBlackFrame();
+	void UnloadTextures();
 
 private:
 	class FOculusRiftHMD*		pPlugin;
 	TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> RenderFrame;
-	OculusRift::FLayerManager	LayerMgr;
-	uint32						SplashLID, SplashLID_RenderThread;
-	FThreadSafeCounter			ShowingBlack;
+	TSharedPtr<OculusRift::FLayerManager> LayerMgr;
+
+	struct FRenderSplashInfo
+	{
+		FSplashDesc Desc;
+		uint32	SplashLID;
+
+		FRenderSplashInfo() :SplashLID(~0u) {}	
+	};
+	mutable FCriticalSection	RenderSplashScreensLock;
+	TArray<FRenderSplashInfo>	RenderSplashScreens;
+
+	FThreadSafeBool				ShowingBlack;
+	FThreadSafeBool				SplashIsShown;
 	float						DisplayRefreshRate;
-	float						CurrentAngle;
+	EShowType					ShowType;
 };
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS

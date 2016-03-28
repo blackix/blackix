@@ -6,6 +6,8 @@
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
+#include "OculusRiftCommon.h"
+
 #if PLATFORM_SUPPORTS_PRAGMA_PACK
 #pragma pack (push,8)
 #endif
@@ -27,9 +29,16 @@ namespace OculusRift {
 class FTexture2DSetProxy : public FTextureSetProxy
 {
 public:
-	FTexture2DSetProxy(ovrSession InOvrSession, FTextureRHIParamRef InTexture, uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat, uint32 InSrcNumMips) 
+	FTexture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIParamRef InTexture, uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat, uint32 InSrcNumMips) 
 		: FTextureSetProxy(InSrcSizeX, InSrcSizeY, InSrcFormat, InSrcNumMips)
-		, OvrSession(InOvrSession), RHITexture(InTexture) {}
+		, Session(InOvrSession), RHITexture(InTexture) 
+	{
+		DestroyDelegateHandle = Session->AddRawDestroyDelegate(this, &FTexture2DSetProxy::OnSessionDestroy);
+	}
+	~FTexture2DSetProxy()
+	{
+		Session->RemoveDestroyDelegate(DestroyDelegateHandle);
+	}
 
 	virtual ovrTextureSwapChain GetSwapTextureSet() const = 0;
 	virtual FTextureRHIRef GetRHITexture() const override { return RHITexture; }
@@ -46,6 +55,7 @@ public:
 		ovrTextureSwapChain TextureSwapSet = GetSwapTextureSet();
 		if (TextureSwapSet)
 		{
+			FOvrSessionShared::AutoSession OvrSession(Session);
 			ovrResult res = ovr_CommitTextureSwapChain(OvrSession, TextureSwapSet);
 			if (!OVR_SUCCESS(res))
 			{
@@ -56,10 +66,16 @@ public:
 		}
 		return false;
 	}
+protected:
+	void OnSessionDestroy(ovrSession InSession)
+	{
+		ReleaseResources();
+	}
 
 protected:
-	ovrSession		OvrSession;
-	FTextureRHIRef	RHITexture;
+	FOvrSessionSharedRef Session;
+	FTextureRHIRef		 RHITexture;
+	FDelegateHandle		 DestroyDelegateHandle;
 };
 typedef TSharedPtr<FTexture2DSetProxy, ESPMode::ThreadSafe>	FTexture2DSetProxyParamRef;
 typedef TSharedPtr<FTexture2DSetProxy, ESPMode::ThreadSafe>	FTexture2DSetProxyRef;

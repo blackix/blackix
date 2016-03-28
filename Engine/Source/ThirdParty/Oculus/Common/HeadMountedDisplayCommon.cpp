@@ -30,6 +30,7 @@ FHMDSettings::FHMDSettings() :
 	Flags.bLowPersistenceMode = true;
 	Flags.bUpdateOnRT = true;
 	Flags.bMirrorToWindow = true;
+	Flags.bFullscreenAllowed = false;
 	Flags.bTimeWarp = true;
 	Flags.bHmdPosTracking = true;
 	Flags.bPlayerControllerFollowsHmd = true;
@@ -143,6 +144,8 @@ FHeadMountedDisplay::FHeadMountedDisplay()
 	NumberOfCubesInOneSide = 0;
 	CenterOffsetInMeters = FVector::ZeroVector; // offset from the center of 'sea of cubes'
 #endif
+
+	CurrentFrameNumber.Set(1);
 }
 
 bool FHeadMountedDisplay::IsInitialized() const
@@ -177,7 +180,7 @@ TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> FHeadMountedDisplay::CreateNewSett
 
 FHMDGameFrame* FHeadMountedDisplay::GetCurrentFrame() const
 {
-	//UE_LOG(LogHMD, Log, TEXT("Getting current frame, frame number %d"), int(GFrameCounter));
+	//UE_LOG(LogHMD, Log, TEXT("Getting current frame, frame number %d"), int(CurrentFrameNumber.GetValue()));
 	if (!Frame.IsValid())
 	{
 		//UE_LOG(LogHMD, Log, TEXT("		----- frame is null!!!"));
@@ -194,7 +197,7 @@ FHMDGameFrame* FHeadMountedDisplay::GetCurrentFrame() const
 	// Technically speaking, we should return the frame only if frame counters are equal.
 	// However, there are some calls UE makes from outside of the frame (for example, when 
 	// switching to/from fullscreen), thus, returning the previous frame in this case.
-	if (Frame->FrameNumber == GFrameCounter || Frame->Flags.bOutOfFrame)
+	if (Frame->FrameNumber == CurrentFrameNumber.GetValue() || Frame->Flags.bOutOfFrame)
 	{
 		//UE_LOG(LogHMD, Log, TEXT("		+++++ game frame, %d"), Frame->FrameNumber);
 		return Frame.Get();
@@ -268,7 +271,7 @@ bool FHeadMountedDisplay::OnStartGameFrame(FWorldContext& WorldContext)
 	auto CurrentFrame = CreateNewGameFrame();
 	Frame = CurrentFrame;
 
-	CurrentFrame->FrameNumber = GFrameCounter;
+	CurrentFrame->FrameNumber = (uint32)CurrentFrameNumber.Increment();
 	CurrentFrame->Flags.bOutOfFrame = false;
 
 	if (Settings->Flags.bWorldToMetersOverride)
@@ -317,9 +320,9 @@ bool FHeadMountedDisplay::OnEndGameFrame(FWorldContext& WorldContext)
 	//@todo hmd	check(CurrentRenderFrame->FrameNumber != CurrentGameFrame->FrameNumber);
 
 	// make sure end frame matches the start
-	check(GFrameCounter == CurrentGameFrame->FrameNumber);
+	check(CurrentFrameNumber.GetValue() == CurrentGameFrame->FrameNumber);
 
-	if (GFrameCounter == CurrentGameFrame->FrameNumber)
+	if (CurrentFrameNumber.GetValue() == CurrentGameFrame->FrameNumber)
 	{
 		RenderFrame = Frame;
 	}
@@ -1401,6 +1404,7 @@ void FHeadMountedDisplay::QuantizeBufferSize(int32& InOutBufferSizeX, int32& InO
 FHMDLayerDesc::FHMDLayerDesc(class FHMDLayerManager& InLayerMgr, ELayerTypeMask InType, uint32 InPriority, uint32 InID) :
 	LayerManager(InLayerMgr)
 	, Id(InID | InType)
+	, Texture(nullptr)
 	, TextureUV(ForceInit)
 	, QuadSize(FVector2D::ZeroVector)
 	, Priority(InPriority & IdMask)
@@ -1519,6 +1523,32 @@ FHMDLayerManager::FHMDLayerManager() :
 
 FHMDLayerManager::~FHMDLayerManager()
 {
+}
+
+void FHMDLayerManager::AddReferencedObjects(FReferenceCollector& Collector)
+{
+	//Collector.AddReferencedObject(WidgetVertexColorMaterial);
+	for (uint32 i = 0, n = EyeLayers.Num(); i < n; ++i)
+	{
+		if (EyeLayers[i].IsValid() && EyeLayers[i]->HasTexture())
+		{
+			Collector.AddReferencedObject(EyeLayers[i]->GetUTextureRef());
+		}
+	}
+	for (uint32 i = 0, n = QuadLayers.Num(); i < n; ++i)
+	{
+		if (QuadLayers[i].IsValid() && QuadLayers[i]->HasTexture())
+		{
+			Collector.AddReferencedObject(QuadLayers[i]->GetUTextureRef());
+		}
+	}
+	for (uint32 i = 0, n = DebugLayers.Num(); i < n; ++i)
+	{
+		if (DebugLayers[i].IsValid() && DebugLayers[i]->HasTexture())
+		{
+			Collector.AddReferencedObject(DebugLayers[i]->GetUTextureRef());
+		}
+	}
 }
 
 void FHMDLayerManager::Startup()

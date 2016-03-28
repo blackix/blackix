@@ -109,6 +109,9 @@ public:
 			/** Is mirroring enabled or not (see 'HMD MIRROR' console cmd) */
 			uint64 bMirrorToWindow : 1;
 
+			/** Is mirror fullscreen or windowed (see 'HMD FULLSCREEN' console cmd) */
+			uint64 bFullscreenAllowed : 1;
+
 			/** Whether timewarp is enabled or not */
 			uint64 bTimeWarp : 1;
 
@@ -346,7 +349,7 @@ class FHMDLayerDesc : public TSharedFromThis<FHMDLayerDesc>
 {
 	friend class FHMDLayerManager;
 public:
-	enum ELayerTypeMask
+	enum ELayerTypeMask : uint32
 	{
 		Unknown,
 		Eye   = 0x00000000,
@@ -354,7 +357,9 @@ public:
 		Debug = 0x80000000,
 
 		TypeMask = (Eye | Quad | Debug),
-		IdMask =  ~TypeMask
+		IdMask =  ~TypeMask,
+
+		MaxPriority = TypeMask - 1
 	};
 
 	FHMDLayerDesc(class FHMDLayerManager&, ELayerTypeMask InType, uint32 InPriority, uint32 InID);
@@ -367,8 +372,8 @@ public:
 	FVector2D GetQuadSize() const { return QuadSize; }
 
 	void SetTexture(UTexture* InTexture);
-	UTexture* GetTexture() const { return Texture.Get(); }
-	bool HasTexture() const { return Texture.IsValid(); }
+	UTexture* GetTexture() const { return (HasTexture()) ? Texture : nullptr; }
+	bool HasTexture() const { return Texture && Texture->IsValidLowLevel(); }
 
 	void SetTextureSet(FTextureSetProxyParamRef InTextureSet);
 	FTextureSetProxyRef GetTextureSet() const { return TextureSet; }
@@ -400,10 +405,13 @@ public:
 	void ResetChangedFlags() { bTextureHasChanged = bTransformHasChanged = bNewLayer = bAlreadyAdded = false; }
 
 protected:
+	UTexture*& GetUTextureRef() const { return Texture; }
+
+protected:
 	class FHMDLayerManager& LayerManager;
 	uint32			Id;		// ELayerTypeMask | Id
-	TWeakObjectPtr<UTexture> Texture;		// Source texture (for quads)
-	FTextureSetProxyRef		 TextureSet;	// TextureSet (for eye buffers)
+	mutable UTexture* Texture;// Source texture (for quads) (mutable for GC)
+	FTextureSetProxyRef TextureSet;	// TextureSet (for eye buffers)
 	FBox2D			TextureUV;
 	FTransform		Transform; // layer world or HMD transform (Rotation, Translation, Scale), see bHeadLocked.
 	FVector2D		QuadSize;  // size of the quad in UU
@@ -462,12 +470,16 @@ protected:
 /**
  * Base implementation for a layer manager.
  */
-class FHMDLayerManager
+class FHMDLayerManager : public TSharedFromThis<FHMDLayerManager>, public FGCObject
 {
 public:
 	FHMDLayerManager();
 	virtual ~FHMDLayerManager();
 	
+	// FGCObject interface
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+	// End of FGCObject interface
+
 	virtual void Startup();
 	virtual void Shutdown();
 
@@ -710,6 +722,8 @@ public:
 
 	virtual class FAsyncLoadingSplash* GetAsyncLoadingSplash() const { return nullptr; }
 
+	uint32 GetCurrentFrameNumber() const { return CurrentFrameNumber.GetValue(); }
+
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const = 0;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const = 0;
@@ -745,7 +759,9 @@ protected:
 	TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> Frame;
 	TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> RenderFrame;
 
-	FRotator		DeltaControlRotation;  // used from ApplyHmdRotation
+	FRotator			DeltaControlRotation;  // used from ApplyHmdRotation
+	
+	FThreadSafeCounter	CurrentFrameNumber;
 
 	union
 	{

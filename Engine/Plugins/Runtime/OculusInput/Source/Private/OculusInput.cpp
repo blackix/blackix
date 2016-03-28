@@ -3,6 +3,7 @@
 #include "OculusInput.h"
 #include "Features/IModularFeatures.h"
 #include "IOculusRiftPlugin.h"
+#include "OculusRiftCommon.h"
 
 #if OCULUS_INPUT_SUPPORTED_PLATFORMS
 
@@ -188,8 +189,8 @@ void FOculusInput::SendControllerEvents()
 	if(IOculusRiftPlugin::IsAvailable())
 	{
 		IOculusRiftPlugin& OculusRiftPlugin = IOculusRiftPlugin::Get();
-		ovrSession OvrSession = OculusRiftPlugin.GetSession();
-		UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: OvrSession = %p"), OvrSession);
+		FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
+		UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: OvrSession = %p"), ovrSession(OvrSession));
 		if (OvrSession && MessageHandler.IsValid() && FApp::HasVRFocus())
 		{
 			ovrInputState OvrInput;
@@ -580,7 +581,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 
 	if(IOculusRiftPlugin::IsAvailable())
 	{
-		ovrSession OvrSession = IOculusRiftPlugin::Get().GetSession();
+		FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
 
 		if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrSession && FApp::HasVRFocus())
 		{
@@ -638,7 +639,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 			{
 				if(IOculusRiftPlugin::IsAvailable())
 				{
-					ovrSession OvrSession = IOculusRiftPlugin::Get().GetSession();
+					FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
 					if (OvrSession && FApp::HasVRFocus())
 					{
 						float FreqMin, FreqMax = 0.f;

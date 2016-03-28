@@ -2,6 +2,9 @@
 
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
+
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
+
 #include "OculusRiftLayers.h"
 
 FRenderLayer::FRenderLayer(FHMDLayerDesc& InDesc) :
@@ -80,6 +83,7 @@ void FLayerManager::ReleaseTextureSets()
 {
 	if (IsInRenderingThread())
 	{
+		FScopeLock Lock(&LayersLock);
 		ReleaseTextureSets_RenderThread_NoLock();
 	}
 	else
@@ -185,10 +189,11 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 
 #if DO_CHECK
 				// some runtime checks to make sure swaptextureset is valid
-				if (EyeLayer.EyeFov.ColorTexture[0] && pPresentBridge->GetSession())
+				if (EyeLayer.EyeFov.ColorTexture[0] && pPresentBridge->GetSession()->IsActive())
 				{
+					FOvrSessionShared::AutoSession OvrSession(pPresentBridge->GetSession());
 					ovrTextureSwapChainDesc schDesc;
-					check(OVR_SUCCESS(ovr_GetTextureSwapChainDesc(pPresentBridge->GetSession(), EyeLayer.EyeFov.ColorTexture[0], &schDesc)));
+					check(OVR_SUCCESS(ovr_GetTextureSwapChainDesc(OvrSession, EyeLayer.EyeFov.ColorTexture[0], &schDesc)));
 					check(schDesc.Type == ovrTexture_2D);
 				}
 #endif
@@ -219,6 +224,10 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				// Physical size of the quad in meters.
 				OVR::Vector2f quadSize(LayerDesc.GetQuadSize().X / WorldToMetersScale, LayerDesc.GetQuadSize().Y / WorldToMetersScale);
 
+				// apply the scale from transform. We use Y for width and Z for height to match the UE coord space
+				quadSize.x *= LayerDesc.GetTransform().GetScale3D().Y;
+				quadSize.y *= LayerDesc.GetTransform().GetScale3D().Z;
+
 				if (LayerDesc.IsWorldLocked())
 				{
 					// calculate the location of the quad considering the player's location/orientation
@@ -239,7 +248,7 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				FTextureRHIRef Texture;
 				int32 SizeX = 16, SizeY = 16; // 16x16 default texture size for black rect (if the actual texture is not set)
 				EPixelFormat Format = EPixelFormat::PF_B8G8R8A8;
-				if (TextureObj && TextureObj->Resource && TextureObj->Resource->TextureRHI)
+				if (TextureObj && TextureObj->IsValidLowLevel() && TextureObj->Resource && TextureObj->Resource->TextureRHI)
 				{
 					Texture = TextureObj->Resource->TextureRHI;
 					SizeX = Texture->GetTexture2D()->GetSizeX();
@@ -270,7 +279,7 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 					RenderLayer->TextureSet->ReleaseResources();
 					RenderLayer->TextureSet.Reset();
 				}
-				if (!RenderLayer->TextureSet.IsValid())
+				if (!RenderLayer->TextureSet.IsValid() || !RenderLayer->TextureSet->GetRHITexture())
 				{
 					// create texture set
 					check(pPresentBridge);
@@ -281,10 +290,11 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 
 #if DO_CHECK
 				// some runtime checks to make sure swaptextureset is valid
-				if (RenderLayer->Layer.Quad.ColorTexture && pPresentBridge->GetSession())
+				if (RenderLayer->Layer.Quad.ColorTexture && pPresentBridge->GetSession()->IsActive())
 				{
+					FOvrSessionShared::AutoSession OvrSession(pPresentBridge->GetSession());
 					ovrTextureSwapChainDesc schDesc;
-					check(OVR_SUCCESS(ovr_GetTextureSwapChainDesc(pPresentBridge->GetSession(), RenderLayer->Layer.Quad.ColorTexture, &schDesc)));
+					check(OVR_SUCCESS(ovr_GetTextureSwapChainDesc(OvrSession, RenderLayer->Layer.Quad.ColorTexture, &schDesc)));
 					check(schDesc.Type == ovrTexture_2D);
 				}
 #endif
@@ -294,7 +304,7 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				{
 					if (Texture)
 					{
-						pPresentBridge->CopyTexture_RenderThread(RHICmdList, RenderLayer->TextureSet->GetRHITexture2D(), Texture->GetTexture2D());
+						pPresentBridge->CopyTexture_RenderThread(RHICmdList, RenderLayer->TextureSet->GetRHITexture2D(), Texture->GetTexture2D(), FIntRect(), FIntRect(), true);
 					}
 					RenderLayer->CommitTextureSet(RHICmdList);
 				}
@@ -357,4 +367,6 @@ ovrResult FLayerManager::SubmitFrame_RenderThread(ovrSession OvrSession, const F
 	}
 	return res;
 }
+
+#endif // #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 

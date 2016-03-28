@@ -61,6 +61,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	
 	pPresentBridge->BeginRendering(RenderContext, ViewFamily.RenderTarget->GetRenderTargetTexture());
 
+	FOvrSessionShared::AutoSession OvrSession(Session);
 	const double DisplayTime = ovr_GetPredictedDisplayTime(OvrSession, RenderContext.RenderFrame->FrameNumber);
 
 	RenderContext.bFrameBegun = true;
@@ -175,7 +176,7 @@ bool FOculusRiftHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uin
 }
 
 void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, 
-	FIntRect DstRect, FIntRect SrcRect) const
+	FIntRect DstRect, FIntRect SrcRect, bool bAlphaPremultiply) const
 {
 	check(IsInRenderingThread());
 
@@ -204,7 +205,16 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 	SetRenderTarget(RHICmdList, DstTexture, FTextureRHIRef());
 	RHICmdList.SetViewport(DstRect.Min.X, DstRect.Min.Y, 0, DstRect.Max.X, DstRect.Max.Y, 1.0f);
 
-	RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+	if (bAlphaPremultiply)
+	{
+		// for quads, write RGBA, RGB = src.rgb * src.a + dst.rgb * 0, A = src.a + dst.a * 0
+		RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
+	}
+	else
+	{
+		// for mirror window
+		RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+	}
 	RHICmdList.SetRasterizerState(TStaticRasterizerState<>::GetRHI());
 	RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
 
@@ -264,15 +274,35 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_SingleEye)
 		{
 			auto FrameSettings = RenderContext->GetFrameSettings();
-			FIntRect SrcViewRect(FrameSettings->EyeRenderViewport[0]);
+			FIntRect srcRect(FrameSettings->EyeRenderViewport[0]);
 
 			// avoid vignetting caused by HiddenAreaMesh masking
-			SrcViewRect.Min.X = 150;
-			SrcViewRect.Min.Y = 150;
-			SrcViewRect.Max.X -= 150;
-			SrcViewRect.Max.Y -= 150;
+			srcRect.Min.X = 150;
+			srcRect.Min.Y = 150;
+			srcRect.Max.X -= 150;
+			srcRect.Max.Y -= 150;
 
-			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), SrcViewRect);
+			// maintain aspect ratio
+			FIntPoint srcSize = srcRect.Max - srcRect.Min;
+			FIntPoint destSize((int32) BackBuffer->GetSizeX(), (int32) BackBuffer->GetSizeY());
+
+			if(srcSize.X > srcSize.Y * destSize.X / destSize.Y)
+			{
+				// Crop width to fit
+				srcSize.X = srcSize.Y * destSize.X / destSize.Y;
+			}
+			else
+			{
+				// Crop height to fit
+				srcSize.Y = srcSize.X * destSize.Y / destSize.X;
+			}
+
+			srcRect.Min.X = (srcRect.Min.X + srcRect.Max.X - srcSize.X) / 2;
+			srcRect.Min.Y = (srcRect.Min.Y + srcRect.Max.Y - srcSize.Y) / 2;
+			srcRect.Max.X = srcRect.Min.X + srcSize.X;
+			srcRect.Max.Y = srcRect.Min.Y + srcSize.Y;
+
+			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), srcRect);
 		}
 	}
 }
@@ -540,6 +570,7 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 			{
 				float latencies[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
 				const int numOfEntries = sizeof(latencies) / sizeof(latencies[0]);
+				FOvrSessionShared::AutoSession OvrSession(Session);
 				if (ovr_GetFloatArray(OvrSession, "DK2Latency", latencies, numOfEntries) == numOfEntries)
 				{
 					Y += RowHeight;
@@ -689,18 +720,17 @@ void FOculusRiftHMD::ShutdownRendering()
 // FCustomPresent
 //-------------------------------------------------------------------------------------------------
 
-FCustomPresent::FCustomPresent()
+FCustomPresent::FCustomPresent(FOvrSessionSharedParamRef InOvrSession)
 	: FRHICustomPresent(nullptr)
-	, OvrSession(nullptr)
-	, LayerMgr(this)
+	, Session(InOvrSession)
+	, LayerMgr(MakeShareable(new FLayerManager(this)))
 	, MirrorTexture(nullptr)
 	, NeedToKillHmd(0)
-	, bInitialized(false)
 	, bNeedReAllocateTextureSet(true)
 	, bNeedReAllocateMirrorTexture(true)
 	, bReady(false)
 {
-	LayerMgr.Startup();
+	LayerMgr->Startup();
 	// grab a pointer to the renderer module for displaying our mirror window
 	static const FName RendererModuleName("Renderer");
 	RendererModule = FModuleManager::GetModulePtr<IRendererModule>(RendererModuleName);
@@ -709,7 +739,7 @@ FCustomPresent::FCustomPresent()
 void FCustomPresent::Shutdown()
 {
 	Reset();
-	LayerMgr.Shutdown();
+	LayerMgr->Shutdown();
 }
 
 void FCustomPresent::SetRenderContext(FHMDViewExtension* InRenderContext)
@@ -781,13 +811,13 @@ void FCustomPresent::UpdateLayers(FRHICommandListImmediate& RHICmdList)
 {
 	check(IsInRenderingThread());
 
-	if (RenderContext.IsValid())
+	if (RenderContext.IsValid() && !IsSubmitFrameLocked())
 	{
 		if (RenderContext->ShowFlags.Rendering)
 		{
 			check(RenderContext->GetRenderFrame());
 
-			LayerMgr.PreSubmitUpdate_RenderThread(RHICmdList, RenderContext->GetRenderFrame(), RenderContext->ShowFlags.Rendering);
+			LayerMgr->PreSubmitUpdate_RenderThread(RHICmdList, RenderContext->GetRenderFrame(), RenderContext->ShowFlags.Rendering);
 		}
 	}
 }
@@ -820,7 +850,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 	}
 
 	// it is possible that eye layer is not added to RenderLayers yet, or previously allocated textureSet is not transferred there yet.
-	const FHMDLayerDesc* pEyeLayerDesc = LayerMgr.GetLayerDesc(0);
+	const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetLayerDesc(0);
 	check(pEyeLayerDesc);
 	auto TextureSet = pEyeLayerDesc->GetTextureSet();
 	bool bEyeLayerIsHQ = false;
@@ -829,7 +859,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 	{
 		// grab texture set from the RenderLayers; this should be fine, since RT is suspended.
 		check(GIsRenderingThreadSuspended);
-		const FHMDRenderLayer* pEyeLayer = LayerMgr.GetRenderLayer_RenderThread_NoLock(0);
+		const FHMDRenderLayer* pEyeLayer = LayerMgr->GetRenderLayer_RenderThread_NoLock(0);
 		if (pEyeLayer)
 		{
 			TextureSet = pEyeLayer->GetLayerDesc().GetTextureSet();
@@ -856,7 +886,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 		UE_LOG(LogHMD, Log, TEXT("Reallocation of eye buffer was requested"));
 	}
 
-	if (OvrSession && bNeedReAllocateTextureSet)
+	if (Session->IsActive() && bNeedReAllocateTextureSet)
 	{
 		uint32 NumMips = 1;
 		if (bEyeLayerShouldBeHQ)
@@ -867,19 +897,19 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 		if (TextureSet.IsValid())
 		{
 			TextureSet->ReleaseResources();
-			LayerMgr.InvalidateTextureSets();
+			LayerMgr->InvalidateTextureSets();
 		}
 
 		FTexture2DSetProxyRef ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
 		if (ColorTextureSet.IsValid())
 		{
 			// update the eye layer textureset. at the moment only one eye layer is supported
-			const FHMDLayerDesc* pEyeLayerDesc = LayerMgr.GetLayerDesc(0);
+			const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetLayerDesc(0);
 			check(pEyeLayerDesc);
 			FHMDLayerDesc EyeLayerDesc = *pEyeLayerDesc;
 			EyeLayerDesc.SetHighQuality(bEyeLayerShouldBeHQ);
 			EyeLayerDesc.SetTextureSet(ColorTextureSet);
-			LayerMgr.UpdateLayer(EyeLayerDesc);
+			LayerMgr->UpdateLayer(EyeLayerDesc);
 
 			bNeedReAllocateTextureSet = false;
 			bNeedReAllocateMirrorTexture = true;
@@ -904,12 +934,8 @@ void FCustomPresent::FinishRendering()
 	{
 		if (RenderContext->bFrameBegun)
 		{
-			if (RenderContext->GetFrameSettings()->Flags.bPauseRendering)
-			{
-				Sleep(100);
-			}
-
-			ovrResult res = LayerMgr.SubmitFrame_RenderThread(OvrSession, RenderContext->GetRenderFrame(), RenderContext->ShowFlags.Rendering);
+			FOvrSessionShared::AutoSession OvrSession(Session);
+			ovrResult res = LayerMgr->SubmitFrame_RenderThread(OvrSession, RenderContext->GetRenderFrame(), RenderContext->ShowFlags.Rendering);
 			if (!OVR_SUCCESS(res))
 			{
 				if (res == ovrError_DisplayLost || res == ovrError_NoHmd)
@@ -933,7 +959,7 @@ void FCustomPresent::FinishRendering()
 
 			const unsigned int DK2LatencyCount = sizeof(DK2Latency) / sizeof(float);
 
-			if (ovr_GetFloatArray(RenderContext->OvrSession, "DK2Latency", (float*)&DK2Latency, DK2LatencyCount) == DK2LatencyCount)
+			if (ovr_GetFloatArray(OvrSession, "DK2Latency", (float*)&DK2Latency, DK2LatencyCount) == DK2LatencyCount)
 			{
 				SET_FLOAT_STAT(STAT_LatencyRender, DK2Latency.LatencyRender * 1000.0f);
 				SET_FLOAT_STAT(STAT_LatencyTimewarp, DK2Latency.LatencyTimewarp * 1000.0f);
@@ -950,6 +976,41 @@ void FCustomPresent::FinishRendering()
 	}
 	RenderContext->bFrameBegun = false;
 	SetRenderContext(nullptr);
+}
+
+void FCustomPresent::Reset_RenderThread()
+{
+	if (MirrorTexture)
+	{
+		FOvrSessionShared::AutoSession OvrSession(Session);
+		ovr_DestroyMirrorTexture(OvrSession, MirrorTexture);
+		MirrorTextureRHI = nullptr;
+		MirrorTexture = nullptr;
+	}
+
+	if (RenderContext.IsValid())
+	{
+		RenderContext->bFrameBegun = false;
+		SetRenderContext(nullptr);
+	}
+}
+
+void FCustomPresent::Reset()
+{
+	if (IsInGameThread())
+	{
+		ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(ResetD3D,
+		FCustomPresent*, Bridge, this,
+		{
+			Bridge->Reset_RenderThread();
+		});
+		// Wait for all resources to be released
+		FlushRenderingCommands();
+	}
+	else
+	{
+		Reset_RenderThread();
+	}
 }
 
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS

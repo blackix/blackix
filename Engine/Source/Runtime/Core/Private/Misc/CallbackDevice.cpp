@@ -75,3 +75,5 @@ FCoreDelegates::FApplicationLicenseChange FCoreDelegates::ApplicationLicenseChan
 FCoreDelegates::FPlatformChangedLaptopMode FCoreDelegates::PlatformChangedLaptopMode;
 
 FCoreDelegates::FVRHeadsetRecenter FCoreDelegates::VRHeadsetRecenter;
+FCoreDelegates::FVRHeadsetLost FCoreDelegates::VRHeadsetLost;
+FCoreDelegates::FVRHeadsetReconnected FCoreDelegates::VRHeadsetReconnected;

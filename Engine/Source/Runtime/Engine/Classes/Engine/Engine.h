@@ -1574,6 +1574,8 @@ public:
 	/** Called at shutdown, just before the exit purge.	 */
 	virtual void PreExit();
 	virtual void ShutdownAudioDeviceManager();
+	
+	void ShutdownHMD();
 
 	/** Called at startup, in the middle of FEngineLoop::Init.	 */
 	void ParseCommandline();

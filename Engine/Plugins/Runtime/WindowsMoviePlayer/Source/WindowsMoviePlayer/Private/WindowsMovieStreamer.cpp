@@ -7,6 +7,12 @@
 #include "Slate/SlateTextures.h"
 #include "MoviePlayer.h"
 
+#ifndef HEADMOUNTEDDISPLAY_API
+#define HEADMOUNTEDDISPLAY_API
+#endif 
+
+#include "Runtime/HeadMountedDisplay/Public/IHeadMountedDisplayModule.h"
+
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib, "mf")
 #pragma comment(lib, "mfplat")
@@ -408,6 +414,18 @@ FIntPoint FVideoPlayer::AddStreamToTopology(IMFTopology* Topology, IMFPresentati
 		{
 			HResult = MFCreateAudioRendererActivate(&SinkActivate);
 			check(SUCCEEDED(HResult));
+
+			// Allow HMD, if present, to override audio output device
+			if (IHeadMountedDisplayModule::IsAvailable())
+			{
+				FString AudioOutputDevice = IHeadMountedDisplayModule::Get().GetAudioOutputDevice();
+
+				if(!AudioOutputDevice.IsEmpty())
+				{
+					HResult = SinkActivate->SetString(MF_AUDIO_RENDERER_ATTRIBUTE_ENDPOINT_ID, *AudioOutputDevice);
+					check(SUCCEEDED(HResult));
+				}
+			}
 		}
 		else if (MajorType == MFMediaType_Video)
 		{

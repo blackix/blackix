@@ -114,10 +114,7 @@ public:
 	int				CpuLevel;
 	int				GpuLevel;
 
-	/** Vector defining center eye offset for head neck model in meters */
-	FVector			HeadModel;
-
-	OVR::Vector3f	HmdToEyeViewOffset[2]; 
+	ovrHeadModelParms HeadModelParms;
 
 	FSettings();
 	virtual ~FSettings() override {}
