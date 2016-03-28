@@ -586,7 +586,20 @@ ShaderType* CompileOpenGLShader(const TArray<uint8>& InShaderCode)
 		}
 	}
 
-	Shader = new ShaderType();
+#if PLATFORM_IOS // fix for running out of memory in the driver when compiling/linking a lot of shaders on the first frame
+    if (FOpenGL::IsLimitingShaderCompileCount())
+    {
+        static int CompileCount = 0;
+        CompileCount++;
+        if (CompileCount == 2500)
+        {
+            glFlush();
+            CompileCount = 0;
+        }
+    }
+#endif
+
+    Shader = new ShaderType();
 	Shader->Resource = Resource;
 	Shader->Bindings = Header.Bindings;
 	Shader->UniformBuffersCopyInfo = Header.UniformBuffersCopyInfo;
@@ -1150,7 +1163,7 @@ public:
 		for (int32 Index = 0; Index < PackedGlobalArrays.Num(); ++Index)
 		{
 			auto& PackedArray = PackedGlobalArrays[Index];
-			int32 FoundIndex = -1;
+			FPackedUniformInfo OutInfo = {-1, PackedArray.TypeName, CrossCompiler::PACKED_TYPEINDEX_MAX};
 
 			// Find this Global Array in the reflection list
 			for (int32 FindIndex = 0; FindIndex < ReflectedUniformInfos.Num(); ++FindIndex)
@@ -1158,11 +1171,12 @@ public:
 				auto& ReflectedInfo = ReflectedUniformInfos[FindIndex];
 				if (ReflectedInfo.ArrayType == PackedArray.TypeName)
 				{
-					FoundIndex = FindIndex;
-					OutPackedUniformInfos.Add(ReflectedInfo);
+					OutInfo = ReflectedInfo;
 					break;
 				}
 			}
+
+			OutPackedUniformInfos.Add(OutInfo);
 		}
 	}
 };
@@ -2729,6 +2743,12 @@ void FOpenGLShaderParameterCache::CommitPackedGlobals(const FOpenGLLinkedProgram
 	for (int32 PackedUniform = 0; PackedUniform < PackedUniforms.Num(); ++PackedUniform)
 	{
 		const FOpenGLLinkedProgram::FPackedUniformInfo& UniformInfo = PackedUniforms[PackedUniform];
+		if (UniformInfo.Location < 0)
+		{
+			// Probably this uniform array was optimized away in a linked program
+			continue;
+		}
+		
 		const uint32 ArrayIndex = UniformInfo.Index;
 		check(ArrayIndex < CrossCompiler::PACKED_TYPEINDEX_MAX);
 		const int32 NumVectors = PackedArrays[PackedUniform].Size / BytesPerRegister;

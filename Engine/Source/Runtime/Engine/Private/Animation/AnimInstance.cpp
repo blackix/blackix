@@ -407,6 +407,7 @@ void UAnimInstance::PreUpdateAnimation(float DeltaSeconds)
 	bNeedsUpdate = true;
 
 	NotifyQueue.Reset(GetSkelMeshComponent());
+	RootMotionBlendQueue.Reset();
 
 	GetProxyOnGameThread<FAnimInstanceProxy>().PreUpdate(this, DeltaSeconds);
 }
@@ -423,9 +424,18 @@ void UAnimInstance::PostUpdateAnimation()
 
 	Proxy.PostUpdate(this);
 
+	FRootMotionMovementParams& ExtractedRootMotion = Proxy.GetExtractedRootMotion();
+
+	// blend in any montage-blended root motion that we now have correct weights for
+	for(const FQueuedRootMotionBlend& RootMotionBlend : RootMotionBlendQueue)
+	{
+		const float RootMotionSlotWeight = GetSlotRootMotionWeight(RootMotionBlend.SlotName);
+		const float RootMotionInstanceWeight = RootMotionBlend.Weight * RootMotionSlotWeight;
+		ExtractedRootMotion.AccumulateWithBlend(RootMotionBlend.Transform, RootMotionInstanceWeight);
+	}
+
 	// We may have just partially blended root motion, so make it up to 1 by
 	// blending in identity too
-	FRootMotionMovementParams& ExtractedRootMotion = Proxy.GetExtractedRootMotion();
 	if (ExtractedRootMotion.bHasRootMotion)
 	{
 		ExtractedRootMotion.MakeUpToFullWeight();
@@ -495,7 +505,7 @@ bool UAnimInstance::ParallelCanEvaluate(const USkeletalMesh* InSkeletalMesh) con
 	return Proxy.GetRequiredBones().IsValid() && (Proxy.GetRequiredBones().GetAsset() == InSkeletalMesh);
 }
 
-void UAnimInstance::ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, TArray<FTransform>& OutLocalAtoms, TArray<FActiveVertexAnim>& OutVertexAnims, FBlendedCurve& OutCurve)
+void UAnimInstance::ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, TArray<FTransform>& OutLocalAtoms, FBlendedCurve& OutCurve)
 {
 	FAnimInstanceProxy& Proxy = GetProxyOnAnyThread<FAnimInstanceProxy>();
 
@@ -530,8 +540,6 @@ void UAnimInstance::ParallelEvaluateAnimation(bool bForceRefPose, const USkeleta
 	{
 		FAnimationRuntime::FillWithRefPose(OutLocalAtoms, Proxy.GetRequiredBones());
 	}
-
-	OutVertexAnims = FAnimationRuntime::UpdateActiveVertexAnims(InSkeletalMesh, Proxy.GetMorphTargetCurves(), Proxy.GetVertexAnims());
 }
 
 void UAnimInstance::PostEvaluateAnimation()
@@ -1070,6 +1078,12 @@ void UAnimInstance::TickSyncGroupWriteIndex()
 	GetProxyOnGameThread<FAnimInstanceProxy>().TickSyncGroupWriteIndex();
 }
 
+void UAnimInstance::RefreshCurves(USkeletalMeshComponent* Component)
+{
+	// update curves to component
+	GetProxyOnGameThread<FAnimInstanceProxy>().UpdateCurvesToComponents(Component);
+}
+
 void UAnimInstance::UpdateCurves(const FBlendedCurve& InCurve)
 {
 	SCOPE_CYCLE_COUNTER(STAT_UpdateCurves);
@@ -1107,6 +1121,9 @@ void UAnimInstance::UpdateCurves(const FBlendedCurve& InCurve)
 	{
 		AddCurveValue(ParamsToClearCopy[i], 0.0f, ACF_DrivesMaterial);
 	}
+
+	// update curves to component
+	Proxy.UpdateCurvesToComponents();
 }
 
 bool UAnimInstance::HasMorphTargetCurves() const
@@ -2548,25 +2565,14 @@ void UAnimInstance::DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy)
 	delete InProxy;
 }
 
-void UAnimInstance::UpdateMorphTargetCurves(const TMap<FName, float>& InMorphTargetCurves)
-{
-	GetProxyOnGameThread<FAnimInstanceProxy>().UpdateMorphTargetCurves(InMorphTargetCurves);
-}
-
-void UAnimInstance::UpdateComponentsMaterialParameters(UPrimitiveComponent* Component)
-{
-	GetProxyOnGameThread<FAnimInstanceProxy>().UpdateComponentsMaterialParameters(Component);
-}
-
-TArray<FActiveVertexAnim> UAnimInstance::UpdateActiveVertexAnims(const USkeletalMesh* SkeletalMesh)
-{
-	FAnimInstanceProxy& Proxy = GetProxyOnAnyThread<FAnimInstanceProxy>();	// this can be called from CreateRenderState_Concurrent
-	return FAnimationRuntime::UpdateActiveVertexAnims(SkeletalMesh, Proxy.GetMorphTargetCurves(), Proxy.GetVertexAnims());
-}
-
 FBoneContainer& UAnimInstance::GetRequiredBones()
 {
 	return GetProxyOnGameThread<FAnimInstanceProxy>().GetRequiredBones();
+}
+
+void UAnimInstance::QueueRootMotionBlend(const FTransform& RootTransform, const FName& SlotName, float Weight)
+{
+	RootMotionBlendQueue.Add(FQueuedRootMotionBlend(RootTransform, SlotName, Weight));
 }
 
 #undef LOCTEXT_NAMESPACE 

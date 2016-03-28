@@ -877,7 +877,7 @@ void FViewInfo::CreateUniformBuffer(
 		GMaxRHIFeatureLevel > ERHIFeatureLevel::ES3_1) ? 1.0f : 0.0f;
 
 	// Padding between the left and right eye may be introduced by an HMD, which instanced stereo needs to account for.
-	if (Family != nullptr && StereoPass == eSSP_LEFT_EYE)
+	if ((Family != nullptr) && (StereoPass == eSSP_LEFT_EYE) && (Family->Views.Num() > 1))
 	{
 		check(Family->Views.Num() == 2);
 		const float FamilySizeX = static_cast<float>(Family->FamilySizeX);
@@ -1911,33 +1911,4 @@ void FRendererModule::RenderOverlayExtensions(const FSceneView& View, FRHIComman
 
 	RenderParameters.Uid=(void*)(&View);
 	OverlayRenderDelegate.ExecuteIfBound(RenderParameters);
-}
-
-bool IsMobileHDR()
-{
-	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
-	return MobileHDRCvar->GetValueOnAnyThread() == 1;
-}
-
-bool IsMobileHDR32bpp()
-{
-	static auto* MobileHDR32bppModeCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR32bppMode"));
-	return IsMobileHDR() && (GSupportsRenderTargetFormat_PF_FloatRGBA == false || MobileHDR32bppModeCvar->GetValueOnRenderThread() != 0);
-}
-
-bool IsMobileHDRMosaic()
-{
-	if (!IsMobileHDR32bpp())
-		return false;
-
-	static auto* MobileHDR32bppMode = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR32bppMode"));
-	switch (MobileHDR32bppMode->GetValueOnRenderThread())
-	{
-		case 1:
-			return true;
-		case 2:
-			return false;
-		default:
-			return !(GSupportsHDR32bppEncodeModeIntrinsic && GSupportsShaderFramebufferFetch);
-	}
 }

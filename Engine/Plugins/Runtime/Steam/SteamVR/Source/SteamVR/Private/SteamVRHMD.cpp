@@ -303,28 +303,28 @@ TArray<FVector> FSteamVRHMD::GetBounds() const
 	return ConvertBoundsToUnrealSpace(ChaperoneBounds.Bounds, WorldToMetersScale);
 }
 
-void FSteamVRHMD::SetTrackingSpace(TEnumAsByte<ESteamVRTrackingSpace> NewSpace)
+void FSteamVRHMD::SetTrackingOrigin(EHMDTrackingOrigin::Type NewOrigin)
 {
 	if(VRCompositor)
 	{
-		vr::TrackingUniverseOrigin NewOrigin;
+		vr::TrackingUniverseOrigin NewSteamOrigin;
 
-		switch(NewSpace)
+		switch (NewOrigin)
 		{
-			case ESteamVRTrackingSpace::Seated:
-				NewOrigin = vr::TrackingUniverseOrigin::TrackingUniverseSeated;
+			case EHMDTrackingOrigin::Eye:
+				NewSteamOrigin = vr::TrackingUniverseOrigin::TrackingUniverseSeated;
 				break;
-			case ESteamVRTrackingSpace::Standing:
+			case EHMDTrackingOrigin::Floor:
 			default:
-				NewOrigin = vr::TrackingUniverseOrigin::TrackingUniverseStanding;
+				NewSteamOrigin = vr::TrackingUniverseOrigin::TrackingUniverseStanding;
 				break;
 		}
 
-		VRCompositor->SetTrackingSpace(NewOrigin);
+		VRCompositor->SetTrackingSpace(NewSteamOrigin);
 	}
 }
 
-ESteamVRTrackingSpace FSteamVRHMD::GetTrackingSpace() const
+EHMDTrackingOrigin::Type FSteamVRHMD::GetTrackingOrigin()
 {
 	if(VRCompositor)
 	{
@@ -333,15 +333,15 @@ ESteamVRTrackingSpace FSteamVRHMD::GetTrackingSpace() const
 		switch(CurrentOrigin)
 		{
 		case vr::TrackingUniverseOrigin::TrackingUniverseSeated:
-			return ESteamVRTrackingSpace::Seated;
+			return EHMDTrackingOrigin::Eye;
 		case vr::TrackingUniverseOrigin::TrackingUniverseStanding:
 		default:
-			return ESteamVRTrackingSpace::Standing;
+			return EHMDTrackingOrigin::Floor;
 		}
 	}
 
 	// By default, assume standing
-	return ESteamVRTrackingSpace::Standing;
+	return EHMDTrackingOrigin::Floor;
 }
 
 void FSteamVRHMD::SetUnrealControllerIdAndHandToDeviceIdMap(int32 InUnrealControllerIdAndHandToDeviceIdMap[ MAX_STEAMVR_CONTROLLER_PAIRS ][ 2 ] )
@@ -717,9 +717,22 @@ bool FSteamVRHMD::EnableStereo(bool bStereo)
 	if (VRSystem && SceneVP)
 	{
 		int32 PosX, PosY;
-		uint32 Width, Height;
-		GetWindowBounds(&PosX, &PosY, &Width, &Height);
-		SceneVP->SetViewportSize(Width, Height);
+		if( bStereo )
+		{
+			uint32 Width, Height;
+			GetWindowBounds( &PosX, &PosY, &Width, &Height );
+			SceneVP->SetViewportSize( Width, Height );
+		}
+		else
+		{
+			TSharedPtr<SWindow> Window = SceneVP->FindWindow();
+			if( Window.IsValid() )
+			{
+				FVector2D size = SceneVP->FindWindow()->GetSizeInScreen();
+				SceneVP->SetViewportSize( size.X, size.Y );
+				Window->SetViewportSizeDrivenByWindow( true );
+			}
+		}
 	}
 
 	// Uncap fps to enable FPS higher than 62
@@ -841,13 +854,13 @@ void FSteamVRHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
 
 void FSteamVRHMD::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& View)
 {
-	//check(IsInRenderingThread());
+	check(IsInRenderingThread());
 
-	//// The last view location used to set the view will be in BaseHmdOrientation.  We need to calculate the delta from that, so that
-	//// cameras that rely on game objects (e.g. other components) for their positions don't need to be updated on the render thread.
-	//const FQuat DeltaOrient = View.BaseHmdOrientation.Inverse() * TrackingFrame.DeviceOrientation[vr::k_unTrackedDeviceIndex_Hmd];
-	//View.ViewRotation = FRotator(View.ViewRotation.Quaternion() * DeltaOrient);
- //	View.UpdateViewMatrix();
+	// The last view location used to set the view will be in BaseHmdOrientation.  We need to calculate the delta from that, so that
+	// cameras that rely on game objects (e.g. other components) for their positions don't need to be updated on the render thread.
+	const FQuat DeltaOrient = View.BaseHmdOrientation.Inverse() * TrackingFrame.DeviceOrientation[vr::k_unTrackedDeviceIndex_Hmd];
+	View.ViewRotation = FRotator(View.ViewRotation.Quaternion() * DeltaOrient);
+ 	View.UpdateViewMatrix();
 }
 
 void FSteamVRHMD::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& ViewFamily)

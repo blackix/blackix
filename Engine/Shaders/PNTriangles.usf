@@ -52,6 +52,12 @@ float4 ComputeControlPoint(float4 PositionA, float4 PositionB, float4 NormalA)
 	FHullShaderConstantOutput PNSharedConstantHull( const OutputPatch<FPNTessellationHSToDS, OUT_CONTROL_POINTS> I )
 	{
 		FHullShaderConstantOutput O = (FHullShaderConstantOutput)0;
+
+		#if INSTANCED_STEREO
+			ResolvedView = ResolveView(GetEyeIndex(I[0].PassSpecificData.FactoryInterpolants.InterpolantsVSToPS.PackedEyeIndex));
+		#else
+			ResolvedView = ResolveView();
+		#endif
 		
 #if DISABLE_TESSELLATION_OVERRIDE
 		O.TessFactor[0] = 1.0f; // 1->2 edge
@@ -274,7 +280,7 @@ float4 ComputeControlPoint(float4 PositionA, float4 PositionB, float4 NormalA)
 			Result.Position.x *= 0.5 * Frame.HMDEyePaddingOffset;
 
 			// Shift to the eye viewport
-			Result.Position.x += (EyeOffsetScale[EyeIndex] * Result.Position.w) / Frame.HMDEyePaddingOffset;
+			Result.Position.x += (EyeOffsetScale[EyeIndex] * Result.Position.w) * (1.0f - 0.5 * Frame.HMDEyePaddingOffset);
 		}
 		#endif
 

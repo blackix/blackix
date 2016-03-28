@@ -240,14 +240,29 @@ namespace UnrealBuildTool
 			// By default VS2015 doesn't install the C++ toolchain. Help developers out with a special message.
 			if (ProjectFileFormat == VCProjectFileFormat.VisualStudio2015)
 			{
-				string CompilerExe = Path.Combine(WindowsPlatform.GetVSComnToolsPath(WindowsCompiler.VisualStudio2015), "../../VC/bin/cl.exe");
-				if (!File.Exists(CompilerExe))
+				string ToolsPath = WindowsPlatform.GetVSComnToolsPath(WindowsCompiler.VisualStudio2015);
+				if(String.IsNullOrEmpty(ToolsPath) || !File.Exists(Path.Combine(ToolsPath, "../../VC/bin/cl.exe")))
 				{
 					Log.TraceInformation("Visual C++ 2015 toolchain does not appear to be correctly installed. Please verify that \"Common Tools for Visual C++ 2015\" was selected when installing Visual Studio 2015.");
 				}
 			}
 		}
 
+		/// <summary>
+		/// Adds Extra files that are specific to Visual Studio projects
+		/// </summary>
+		/// <param name="EngineProject">Project to add files to</param>
+		protected override void AddEngineExtrasFiles(ProjectFile EngineProject)
+		{
+			base.AddEngineExtrasFiles(EngineProject);
+
+			// Add our UE4.natvis file
+			var NatvisFilePath = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Extras", "VisualStudioDebugging", "UE4.natvis");
+			if (NatvisFilePath.Exists())
+			{
+				EngineProject.AddFileToProject(NatvisFilePath, UnrealBuildTool.EngineDirectory);
+			}
+		}
 
 		/// <summary>
 		/// Selects which platforms and build configurations we want in the project file

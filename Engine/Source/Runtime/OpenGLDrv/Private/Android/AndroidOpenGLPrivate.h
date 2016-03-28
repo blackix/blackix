@@ -7,9 +7,10 @@
 
 #include "AndroidApplication.h"
 
-extern bool AndroidThunkCpp_HasMetaDataKey(const FString& Key);
-
 bool GAndroidGPUInfoReady = false;
+
+// call out to JNI to see if the application was packaged for GearVR
+extern bool AndroidThunkCpp_IsGearVRApplication();
 
 class FAndroidGPUInfo
 {
@@ -46,13 +47,14 @@ private:
 		{
 			FAndroidAppEntry::PlatformInit();
 #if PLATFORM_ANDROIDES31
-			EGL->InitSurface(true);
+			EGL->InitSurface(false, true);
 #endif
 		}
 #if !PLATFORM_ANDROIDES31
-		// Do not create a window surface if the app is for GearVR
-		const bool bIsGearVRApp = AndroidThunkCpp_HasMetaDataKey(TEXT("com.samsung.android.vr.application.mode"));
-		EGL->InitSurface(!bIsGearVRApp);
+		// Do not create a window surface if the app is for GearVR (use small buffer)
+		bool bCreateSurface = !AndroidThunkCpp_IsGearVRApplication();
+		FPlatformMisc::LowLevelOutputDebugString(TEXT("FAndroidGPUInfo"));
+		EGL->InitSurface(bCreateSurface, bCreateSurface);
 #endif
 		EGL->SetCurrentSharedContext();
 

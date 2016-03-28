@@ -814,7 +814,7 @@ static void InitRHICapabilitiesForGL()
 		GLuint RGBA8 = FOpenGL::SupportsRGBA8() ? GL_RGBA8_OES : GL_RGBA;
 
 	#if PLATFORM_ANDROID
-		SetupTextureFormat(PF_B8G8R8A8, FOpenGLTextureFormat(GL_BGRA, FOpenGL::SupportsSRGB() ? GL_SRGB_ALPHA_EXT : GL_BGRA, BGRA8888, GL_UNSIGNED_BYTE, false, false));
+		SetupTextureFormat(PF_B8G8R8A8, FOpenGLTextureFormat(BGRA8888, FOpenGL::SupportsSRGB() ? GL_SRGB_ALPHA_EXT : BGRA8888, BGRA8888, GL_UNSIGNED_BYTE, false, false));
 	#else
 		SetupTextureFormat(PF_B8G8R8A8, FOpenGLTextureFormat(GL_RGBA, FOpenGL::SupportsSRGB() ? GL_SRGB_ALPHA_EXT : GL_RGBA, GL_BGRA8_EXT, FOpenGL::SupportsSRGB() ? GL_SRGB8_ALPHA8_EXT : GL_BGRA8_EXT, BGRA8888, GL_UNSIGNED_BYTE, false, false));
 	#endif
@@ -1120,6 +1120,11 @@ static void CheckVaryingLimit()
 
 		UE_LOG(LogRHI, Warning, TEXT("gl_FragCoord does not need a varying"));
 	}
+#elif PLATFORM_IOS
+    if (IsES2Platform(GMaxRHIShaderPlatform))
+    {
+        FOpenGL::bIsLimitingShaderCompileCount = FPlatformMisc::GetIOSDeviceType() == FPlatformMisc::IOS_IPad4;
+    }
 #endif
 }
 

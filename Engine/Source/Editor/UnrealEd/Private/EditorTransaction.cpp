@@ -19,7 +19,12 @@ inline UObject* BuildSubobjectKey(UObject* InObj, TArray<FName>& OutHierarchyNam
 		const bool bIsCDO = Obj->HasAllFlags(RF_ClassDefaultObject);
 		const UObject* CDO = bIsCDO ? Obj : nullptr;
 		const bool bIsClassCDO = (CDO != nullptr) ? (CDO->GetClass()->ClassDefaultObject == CDO) : false;
-		check(bIsCDO && bIsClassCDO || (!bIsCDO && !bIsClassCDO));
+		if(!bIsClassCDO && CDO)
+		{
+			// Likely a trashed CDO, try to recover. Only known cause of this is
+			// ambiguous use of DSOs:
+			CDO = CDO->GetClass()->ClassDefaultObject;
+		}
 		const UActorComponent* AsComponent = Cast<UActorComponent>(Obj);
 		const bool bIsDSO = Obj->HasAnyFlags(RF_DefaultSubObject);
 		const bool bIsSCSComponent = AsComponent && AsComponent->IsCreatedByConstructionScript();
@@ -670,6 +675,20 @@ bool UTransBuffer::CanUndo( FText* Text )
 		}
 		return false;
 	}
+	
+	if (UndoBarrierStack.Num())
+	{
+		const int32 UndoBarrier = UndoBarrierStack.Last();
+		if (UndoBuffer.Num() - UndoCount <= UndoBarrier)
+		{
+			if (Text)
+			{
+				*Text = NSLOCTEXT("TransactionSystem", "HitUndoBarrier", "(Hit Undo barrier; can't undo any further)");
+			}
+			return false;
+		}
+	}
+
 	if( UndoBuffer.Num()==UndoCount )
 	{
 		if( Text )
@@ -707,7 +726,7 @@ bool UTransBuffer::CanRedo( FText* Text )
 
 const FTransaction* UTransBuffer::GetTransaction( int32 QueueIndex ) const
 {
-	if (UndoBuffer.Num() > QueueIndex)
+	if (UndoBuffer.Num() > QueueIndex && QueueIndex != INDEX_NONE)
 	{
 		return &UndoBuffer[QueueIndex];
 	}
@@ -743,6 +762,27 @@ FUndoSessionContext UTransBuffer::GetRedoContext()
 
 	const FTransaction* Transaction = &UndoBuffer[ UndoBuffer.Num() - UndoCount ];
 	return Transaction->GetContext();
+}
+
+
+void UTransBuffer::SetUndoBarrier()
+{
+	UndoBarrierStack.Push(UndoBuffer.Num() - UndoCount);
+}
+
+
+void UTransBuffer::RemoveUndoBarrier()
+{
+	if (UndoBarrierStack.Num() > 0)
+	{
+		UndoBarrierStack.Pop();
+	}
+}
+
+
+void UTransBuffer::ClearUndoBarriers()
+{
+	UndoBarrierStack.Empty();
 }
 
 

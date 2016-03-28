@@ -1011,7 +1011,7 @@ public:
 	bool ParallelCanEvaluate(const USkeletalMesh* InSkeletalMesh) const;
 
 	/** Perform evaluation. Can be called from worker threads. */
-	void ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, TArray<FTransform>& OutLocalAtoms, TArray<FActiveVertexAnim>& OutVertexAnims, FBlendedCurve& OutCurve);
+	void ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, TArray<FTransform>& OutLocalAtoms, FBlendedCurve& OutCurve);
 
 	void PostEvaluateAnimation();
 	void UninitializeAnimation();
@@ -1100,6 +1100,9 @@ public:
 	/** Update all internal curves from Blended Curve */
 	void UpdateCurves(const FBlendedCurve& InCurves);
 
+	/** Refresh currently existing curves */
+	void RefreshCurves(USkeletalMeshComponent* Component);
+
 	/** Check whether we have active morph target curves */
 	bool HasMorphTargetCurves() const;
 
@@ -1177,12 +1180,6 @@ public:
 	/** Add curve float data using a curve Uid, the name of the curve will be resolved from the skeleton **/
 	void AddCurveValue(const USkeleton::AnimCurveUID Uid, float Value, int32 CurveTypeFlags);
 
-	/** Pass-thru function to proxy - only call on the game thread */
-	void UpdateMorphTargetCurves(const TMap<FName, float>& InMorphTargetCurves);
-
-	/** Pass-thru function to proxy - only call on the game thread */
-	void UpdateComponentsMaterialParameters(UPrimitiveComponent* Component);
-
 protected:
 	/** 
 	 * Add curve float data, using a curve name. External values should all be added using
@@ -1203,11 +1200,36 @@ public:
 	/** Get current accumulated root motion, removing it from the AnimInstance in the process */
 	FRootMotionMovementParams ConsumeExtractedRootMotion(float Alpha);
 
-	/** Wrapper around UpdateActiveVertexAnims that can use vertex anims internal to the proxy */
-	TArray<FActiveVertexAnim> UpdateActiveVertexAnims(const USkeletalMesh* SkeletalMesh);
+	/**  
+	 * Queue blended root motion. This is used to blend in root motion transforms according to 
+	 * the correctly-updated slot weight (after the animation graph has been updated).
+	 */
+	void QueueRootMotionBlend(const FTransform& RootTransform, const FName& SlotName, float Weight);
+
 private:
 	/** Active Root Motion Montage Instance, if any. */
 	struct FAnimMontageInstance * RootMotionMontageInstance;
+
+	/** Temporarily queued root motion blend */
+	struct FQueuedRootMotionBlend
+	{
+		FQueuedRootMotionBlend(const FTransform& InTransform, const FName& InSlotName, float InWeight)
+			: Transform(InTransform)
+			, SlotName(InSlotName)
+			, Weight(InWeight)
+		{}
+
+		FTransform Transform;
+		FName SlotName;
+		float Weight;
+	};
+
+	/** 
+	 * Blend queue for blended root motion. This is used to blend in root motion transforms according to 
+	 * the correctly-updated slot weight (after the animation graph has been updated).
+	 */
+	TArray<FQueuedRootMotionBlend> RootMotionBlendQueue;
+
 private:
 	// update montage
 	void UpdateMontage(float DeltaSeconds);

@@ -33,17 +33,6 @@ FSlateRHIRenderingPolicy::FSlateRHIRenderingPolicy(TSharedRef<FSlateFontServices
 	SetDefaultBlendMode(FBlendStateInitializerRHI::FRenderTarget(BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_One, BF_InverseSourceAlpha, CW_RGBA));
 }
 
-FSlateRHIRenderingPolicy::~FSlateRHIRenderingPolicy()
-{
-	// Delete released resources.  Note this MUST NOT be called before the rendering resources have been released
-	ReleaseResources();
-
-	if ( IsInGameThread() )
-	{
-		FlushRenderingCommands();
-	}
-}
-
 void FSlateRHIRenderingPolicy::InitResources()
 {
 	int32 NumVertices = 100;
@@ -134,9 +123,9 @@ void FSlateRHIRenderingPolicy::UpdateVertexAndIndexBuffers(FRHICommandListImmedi
 	UpdateVertexAndIndexBuffers(RHICmdList, InBatchData, Buffers->VertexBuffer, Buffers->IndexBuffer);
 }
 
-void FSlateRHIRenderingPolicy::ReleaseCachingResourcesFor(const ILayoutCache* Cacher)
+void FSlateRHIRenderingPolicy::ReleaseCachingResourcesFor(FRHICommandListImmediate& RHICmdList, const ILayoutCache* Cacher)
 {
-	ResourceManager->ReleaseCachingResourcesFor(Cacher);
+	ResourceManager->ReleaseCachingResourcesFor(RHICmdList, Cacher);
 }
 
 void FSlateRHIRenderingPolicy::UpdateVertexAndIndexBuffers(FRHICommandListImmediate& RHICmdList, FSlateBatchData& InBatchData, TSlateElementVertexBuffer<FSlateVertex>& VertexBuffer, FSlateElementIndexBuffer& IndexBuffer)
@@ -325,9 +314,6 @@ void FSlateRHIRenderingPolicy::DrawElements(FRHICommandListImmediate& RHICmdList
 
 	TShaderMapRef<FSlateElementVS> GlobalVertexShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
-	// Disabled stencil test state
-	FDepthStencilStateRHIRef DSOff = TStaticDepthStencilState<false,CF_Always>::GetRHI();
-
 	FSamplerStateRHIRef BilinearClamp = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 
 	TSlateElementVertexBuffer<FSlateVertex>* VertexBuffer = &VertexBuffers;
@@ -337,6 +323,9 @@ void FSlateRHIRenderingPolicy::DrawElements(FRHICommandListImmediate& RHICmdList
 	{
 		RHICmdList.SetStreamSource(0, VertexBuffer->VertexBufferRHI, sizeof(FSlateVertex), 0);
 	}
+
+	// Disable depth/stencil testing by default
+	RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false,CF_Always>::GetRHI());
 
 	const FSlateRenderDataHandle* LastHandle = nullptr;
 
@@ -420,7 +409,7 @@ void FSlateRHIRenderingPolicy::DrawElements(FRHICommandListImmediate& RHICmdList
 					( RenderBatch.DrawFlags & ESlateBatchDrawFlag::NoBlending )
 					? TStaticBlendState<>::GetRHI()
 #if SLATE_PRE_MULTIPLY
-					: ( ( RenderBatch.DrawFlags & ESlateBatchDrawFlag::AlphaCompositing )
+					: ( ( RenderBatch.DrawFlags & ESlateBatchDrawFlag::PreMultipliedAlpha )
 						? TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_One, BF_InverseSourceAlpha>::GetRHI()
 						: BlendMode.GetReference() )
 #else
@@ -430,9 +419,6 @@ void FSlateRHIRenderingPolicy::DrawElements(FRHICommandListImmediate& RHICmdList
 #else
 				RHICmdList.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_InverseSourceAlpha>::GetRHI());
 #endif
-
-				// Disable stencil testing by default
-				RHICmdList.SetDepthStencilState(DSOff);
 
 				if (DrawFlags & ESlateBatchDrawFlag::Wireframe)
 				{
@@ -542,7 +528,7 @@ void FSlateRHIRenderingPolicy::DrawElements(FRHICommandListImmediate& RHICmdList
 					}
 
 #if SLATE_PRE_MULTIPLY
-					if ( RenderBatch.DrawFlags & ESlateBatchDrawFlag::AlphaCompositing )
+					if (RenderBatch.DrawFlags & ESlateBatchDrawFlag::PreMultipliedAlpha)
 					{
 						RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_InverseSourceAlpha, BO_Add, BF_One, BF_InverseSourceAlpha>::GetRHI());
 					}
