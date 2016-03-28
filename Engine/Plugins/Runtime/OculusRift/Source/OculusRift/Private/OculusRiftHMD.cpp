@@ -513,8 +513,8 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 			else
 #endif//WITH_EDITOR
 			{
-				FCoreDelegates::ApplicationWillTerminateDelegate.Broadcast();
 				const bool bForcedExit = CGracefulExitVar.GetValueOnAnyThread() == 0;
+				// ApplicationWillTerminateDelegate will fire from inside of the RequestExit
 				FPlatformMisc::RequestExit(bForcedExit);
 			}
 			OCFlags.EnforceExit = false;
@@ -1067,12 +1067,12 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 	{
 		if (FParse::Command(&Cmd, TEXT("FLOOR")))
 		{
-			SetTrackingOrigin(IHeadMountedDisplay::Floor);
+			SetTrackingOrigin(EHMDTrackingOrigin::Floor);
 			return true;
 		}
 		else if (FParse::Command(&Cmd, TEXT("EYE")))
 		{
-			SetTrackingOrigin(IHeadMountedDisplay::Eye);
+			SetTrackingOrigin(EHMDTrackingOrigin::Eye);
 			return true;
 		}
 	}
@@ -2427,14 +2427,14 @@ void FOculusRiftHMD::ApplySystemOverridesOnStereo(bool force)
  	CFinishFrameVar->Set(0);
 }
 
-void FOculusRiftHMD::SetTrackingOrigin(ETrackingOrigin InOrigin)
+void FOculusRiftHMD::SetTrackingOrigin(EHMDTrackingOrigin::Type InOrigin)
 {
 	switch (InOrigin)
 	{
-	case IHeadMountedDisplay::Eye:
+	case EHMDTrackingOrigin::Eye:
 		OvrOrigin = ovrTrackingOrigin_EyeLevel;
 		break;
-	case IHeadMountedDisplay::Floor:
+	case EHMDTrackingOrigin::Floor:
 		OvrOrigin = ovrTrackingOrigin_FloorLevel;
 		break;
 	default:
@@ -2453,21 +2453,21 @@ void FOculusRiftHMD::SetTrackingOrigin(ETrackingOrigin InOrigin)
 	}
 }
 
-IHeadMountedDisplay::ETrackingOrigin FOculusRiftHMD::GetTrackingOrigin()
+EHMDTrackingOrigin::Type FOculusRiftHMD::GetTrackingOrigin()
 {
 	FOvrSessionShared::AutoSession OvrSession(Session);
 	if (Session->IsActive())
 	{
 		OvrOrigin = ovr_GetTrackingOriginType(OvrSession);
 	}
-	ETrackingOrigin rv = IHeadMountedDisplay::Eye;
+	EHMDTrackingOrigin::Type rv = EHMDTrackingOrigin::Eye;
 	switch (OvrOrigin)
 	{
 	case ovrTrackingOrigin_EyeLevel:
-		rv = IHeadMountedDisplay::Eye;
+		rv = EHMDTrackingOrigin::Eye;
 		break;
 	case ovrTrackingOrigin_FloorLevel:
-		rv = IHeadMountedDisplay::Floor;
+		rv = EHMDTrackingOrigin::Floor;
 		break;
 	default:
 		UE_LOG(LogHMD, Error, TEXT("Unsupported ovr tracking origin type %d"), int(OvrOrigin));

@@ -469,13 +469,11 @@ void FGearVR::GetRawSensorData(SensorData& OutData)
 	{
 		return;
 	}
-#if 0 // TBD, once OculusFunctionLibrary is updated
 	OutData.AngularAcceleration = ToFVector(frame->HeadPose.AngularAcceleration);
 	OutData.LinearAcceleration = ToFVector(frame->HeadPose.LinearAcceleration);
 	OutData.AngularVelocity = ToFVector(frame->HeadPose.AngularVelocity);
 	OutData.LinearVelocity = ToFVector(frame->HeadPose.LinearVelocity);
 	OutData.TimeInSeconds = frame->HeadPose.TimeInSeconds;
-#endif
 }
 
 void FGearVR::OnScreenModeChange(EWindowMode::Type WindowMode)

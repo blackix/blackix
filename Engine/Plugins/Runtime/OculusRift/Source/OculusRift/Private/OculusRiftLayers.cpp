@@ -1,4 +1,4 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 #include "HMDPrivatePCH.h"
 #include "OculusRiftHMD.h"
@@ -368,5 +368,4 @@ ovrResult FLayerManager::SubmitFrame_RenderThread(ovrSession OvrSession, const F
 	return res;
 }
 
-#endif // #if OCULUS_RIFT_SUPPORTED_PLATFORMS
-
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS

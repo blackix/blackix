@@ -1071,23 +1071,6 @@ void UEngine::PreExit()
 	delete ScreenSaverInhibitorRunnable;
 
 	ShutdownHMD();
-// 	// we can't just nulify these pointers here since RenderThread still might use them.
-// 	{
-// 		auto SavedStereo = StereoRenderingDevice;
-// 		auto SavedHMD = HMDDevice;
-// 		auto SavedViewExtentions = ViewExtensions;
-// 		{
-// 			FSuspendRenderingThread Suspend(false);
-// 			StereoRenderingDevice.Reset();
-// 			HMDDevice.Reset();
-// 			for (auto& ViewExt : ViewExtensions)
-// 			{
-// 				ViewExt.Reset();
-// 			}
-// 			ViewExtensions.Empty();
-// 		}
-// 		// shutdown will occur here.
-// 	}
 }
 
 void UEngine::ShutdownHMD()

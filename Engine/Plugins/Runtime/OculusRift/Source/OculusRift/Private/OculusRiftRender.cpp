@@ -285,35 +285,15 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_SingleEye)
 		{
 			auto FrameSettings = RenderContext->GetFrameSettings();
-			FIntRect srcRect(FrameSettings->EyeRenderViewport[0]);
+			FIntRect SrcViewRect(FrameSettings->EyeRenderViewport[0]);
 
 			// avoid vignetting caused by HiddenAreaMesh masking
-			srcRect.Min.X = 150;
-			srcRect.Min.Y = 150;
-			srcRect.Max.X -= 150;
-			srcRect.Max.Y -= 150;
+			SrcViewRect.Min.X = 150;
+			SrcViewRect.Min.Y = 150;
+			SrcViewRect.Max.X -= 150;
+			SrcViewRect.Max.Y -= 150;
 
-			// maintain aspect ratio
-			FIntPoint srcSize = srcRect.Max - srcRect.Min;
-			FIntPoint destSize((int32) BackBuffer->GetSizeX(), (int32) BackBuffer->GetSizeY());
-
-			if(srcSize.X > srcSize.Y * destSize.X / destSize.Y)
-			{
-				// Crop width to fit
-				srcSize.X = srcSize.Y * destSize.X / destSize.Y;
-			}
-			else
-			{
-				// Crop height to fit
-				srcSize.Y = srcSize.X * destSize.Y / destSize.X;
-			}
-
-			srcRect.Min.X = (srcRect.Min.X + srcRect.Max.X - srcSize.X) / 2;
-			srcRect.Min.Y = (srcRect.Min.Y + srcRect.Max.Y - srcSize.Y) / 2;
-			srcRect.Max.X = srcRect.Min.X + srcSize.X;
-			srcRect.Max.Y = srcRect.Min.Y + srcSize.Y;
-
-			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), srcRect);
+			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), SrcViewRect);
 		}
 	}
 }

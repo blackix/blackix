@@ -5,7 +5,8 @@
 #include "AsyncLoadingSplash.h"
 
 #include "IOculusRiftPlugin.h"
-#include "IGearVRPlugin.h"
+
+#define GEARVR_SUPPORTED_PLATFORMS (PLATFORM_ANDROID && PLATFORM_ANDROID_ARM)
 
 #define OCULUS_SUPPORTED_PLATFORMS (OCULUS_RIFT_SUPPORTED_PLATFORMS || GEARVR_SUPPORTED_PLATFORMS)
 
@@ -392,6 +393,6 @@ class IStereoLayers* UOculusFunctionLibrary::GetStereoLayers()
 	{
 		return OculusHMD;
 	}
-	return nullptr;
 #endif // OCULUS_SUPPORTED_PLATFORMS
+	return nullptr;
 }

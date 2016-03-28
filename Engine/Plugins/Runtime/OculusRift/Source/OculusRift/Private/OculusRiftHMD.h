@@ -501,8 +501,8 @@ public:
 
 	virtual FHMDLayerManager* GetLayerManager() override { return pCustomPresent->GetLayerMgr(); }
 
-	virtual void			SetTrackingOrigin(ETrackingOrigin) override;
-	virtual ETrackingOrigin GetTrackingOrigin() override;
+	virtual void					 SetTrackingOrigin(EHMDTrackingOrigin::Type) override;
+	virtual EHMDTrackingOrigin::Type GetTrackingOrigin() override;
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const override;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const override;
