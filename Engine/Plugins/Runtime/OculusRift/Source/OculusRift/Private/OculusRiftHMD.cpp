@@ -1362,6 +1362,11 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo, bool bApplyToHmd)
 						// a special case when 'stereo on' or 'stereo hmd' is used in Direct mode. We must set proper window mode, otherwise
 						// it will be lost once window loses and regains the focus.
 						FVector2D size = Window->GetSizeInScreen();
+						if (stereoToBeEnabled)
+						{
+							size.X = Settings->MirrorWindowSize.X;
+							size.Y = Settings->MirrorWindowSize.Y;
+						}
 						FSystemResolution::RequestResolutionChange(size.X, size.Y, (stereoToBeEnabled) ? EWindowMode::WindowedMirror : EWindowMode::Windowed);
 					}
 				}

@@ -224,7 +224,7 @@ bool FHeadMountedDisplay::OnStartGameFrame(FWorldContext& WorldContext)
 
 	if(Flags.bNeedEnableStereo)
 	{
-		bStereoDesired = true;
+		Settings->Flags.bStereoDesired = bStereoDesired = true;
 	}
 
 	if(bStereoDesired && (Flags.bNeedDisableStereo || !Settings->Flags.bHMDEnabled || !(bStereoEnabled ? IsHMDActive() : IsHMDConnected())))
