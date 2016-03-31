@@ -3,6 +3,9 @@ setlocal
 pushd %~dp0
 
 rem Sync the dependencies...
+rem Preserve ThirdParty NVidia libs
+@copy .\Engine\Source\ThirdParty\NVIDIA\nvapi\amd64\nvapi64.lib .\Engine\Source\ThirdParty\NVIDIA\nvapi\amd64\nvapi64.lib_saved
+@copy .\Engine\Source\ThirdParty\NVIDIA\nvapi\x86\nvapi.lib .\Engine\Source\ThirdParty\NVIDIA\nvapi\x86\nvapi.lib_saved
 .\Engine\Binaries\DotNET\GitDependencies.exe --prompt %*
 if ERRORLEVEL 1 goto error
 
@@ -25,6 +28,11 @@ if not exist .\Engine\Binaries\Win64\UnrealVersionSelector-Win64-Shipping.exe go
 :no_unreal_version_selector
 
 rem Done!
+rem Restore ThirdParty NVidia libs
+@copy .\Engine\Source\ThirdParty\NVIDIA\nvapi\amd64\nvapi64.lib_saved .\Engine\Source\ThirdParty\NVIDIA\nvapi\amd64\nvapi64.lib
+@copy .\Engine\Source\ThirdParty\NVIDIA\nvapi\x86\nvapi.lib_saved .\Engine\Source\ThirdParty\NVIDIA\nvapi\x86\nvapi.lib
+@del .\Engine\Source\ThirdParty\NVIDIA\nvapi\amd64\nvapi64.lib_saved
+@del .\Engine\Source\ThirdParty\NVIDIA\nvapi\x86\nvapi.lib_saved
 goto :EOF
 
 rem Error happened. Wait for a keypress before quitting.
