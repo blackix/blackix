@@ -513,8 +513,8 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 			else
 #endif//WITH_EDITOR
 			{
-				FCoreDelegates::ApplicationWillTerminateDelegate.Broadcast();
 				const bool bForcedExit = CGracefulExitVar.GetValueOnAnyThread() == 0;
+				// ApplicationWillTerminateDelegate will fire from inside of the RequestExit
 				FPlatformMisc::RequestExit(bForcedExit);
 			}
 			OCFlags.EnforceExit = false;
