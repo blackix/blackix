@@ -84,6 +84,7 @@ bool FOculusRiftPlugin::Initialize()
 	return bInitialized;
 }
 
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 ovrResult FOculusRiftPlugin::CreateSession(ovrSession* session, ovrGraphicsLuid* luid)
 {
 	ovrResult result;
@@ -135,6 +136,13 @@ void FOculusRiftPlugin::DestroySession(ovrSession session)
 {
 	ovr_Destroy(session);
 }
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
+
+void FOculusRiftPlugin::StartupModule()
+{
+	IHeadMountedDisplayModule::StartupModule();
+	FHeadMountedDisplayModuleExt::RegisterModule((IHeadMountedDisplayModule*)this, (FHeadMountedDisplayModuleExt*)this);
+}
 
 void FOculusRiftPlugin::ShutdownModule()
 {
@@ -155,7 +163,7 @@ FString FOculusRiftPlugin::GetModulePriorityKeyName() const
 	return FString(TEXT("OculusRift"));
 }
 
-bool FOculusRiftPlugin::PreInit()
+bool FOculusRiftPlugin::PreInitEx()
 {
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	if (Initialize())
@@ -227,12 +235,12 @@ TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > FOculusRiftPlugin::
 	return NULL;
 }
 
+#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 bool FOculusRiftPlugin::PoseToOrientationAndPosition(const ovrPosef& Pose, FQuat& OutOrientation, FVector& OutPosition) const
 {
 	check(IsInGameThread());
 	bool bRetVal = false;
 
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 	if (HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 	{
@@ -245,7 +253,7 @@ bool FOculusRiftPlugin::PoseToOrientationAndPosition(const ovrPosef& Pose, FQuat
 			bRetVal = true;
 		}
 	}
-#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
+
 	return bRetVal;
 }
 
@@ -253,14 +261,13 @@ class FOvrSessionShared* FOculusRiftPlugin::GetSession()
 {
 	check(IsInGameThread());
 
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 	if (HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 	{
 		FOculusRiftHMD* OculusHMD = static_cast<FOculusRiftHMD*>(HMD);
 		return OculusHMD->Session.Get();
 	}
-#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
+
 	return nullptr;
 }
 
@@ -269,7 +276,6 @@ bool FOculusRiftPlugin::GetCurrentTrackingState(ovrTrackingState* TrackingState)
 	check(IsInGameThread());
 	bool bRetVal = false;
 
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	IHeadMountedDisplay* HMD = HeadMountedDisplay.Pin().Get();
 	if (TrackingState && HMD && HMD->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift)
 	{
@@ -281,9 +287,10 @@ bool FOculusRiftPlugin::GetCurrentTrackingState(ovrTrackingState* TrackingState)
 			bRetVal = true;
 		}
 	}
-#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
+
 	return bRetVal;
 }
+#endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 IMPLEMENT_MODULE( FOculusRiftPlugin, OculusRift )
 
@@ -644,7 +651,7 @@ bool FOculusRiftHMD::GetHMDMonitorInfo(MonitorInfo& MonitorDesc)
 
 bool FOculusRiftHMD::IsFullscreenAllowed()
 {
-	return Settings->Flags.bFullscreenAllowed;
+	return false;
 }
 
 bool FOculusRiftHMD::DoesSupportPositionalTracking() const
@@ -940,27 +947,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			}
 			return true;
 		}
-		else if (FParse::Command(&Cmd, TEXT("FULLSCREEN"))) // fullscreen allowed for mirror window?
-		{
-			FString CmdName = FParse::Token(Cmd, 0);
-			if (!CmdName.IsEmpty())
-			{
-				if (!FCString::Stricmp(*CmdName, TEXT("ON")))
-				{
-					Settings->Flags.bFullscreenAllowed = true;
-				}
-				else if (!FCString::Stricmp(*CmdName, TEXT("OFF")))
-				{
-					Settings->Flags.bFullscreenAllowed = false;
-				}
-			}
-			else
-			{
-				Settings->Flags.bFullscreenAllowed = !Settings->Flags.bFullscreenAllowed;
-			}
-			Ar.Logf(TEXT("Fullscreen mirror is currently %s"), (Settings->Flags.bFullscreenAllowed) ? TEXT("ON") : TEXT("OFF"));
-			return true;
-		}
 #if !UE_BUILD_SHIPPING
 		else if (FParse::Command(&Cmd, TEXT("STATS"))) // status / statistics
 		{
@@ -1227,7 +1213,6 @@ void FOculusRiftHMD::RecordAnalytics()
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("HQDistortion"), Settings->Flags.bHQDistortion));
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("UpdateOnRT"), Settings->Flags.bUpdateOnRT));
 		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("MirrorToWindow"), Settings->Flags.bMirrorToWindow));
-		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("FullscreenAllowed"), Settings->Flags.bFullscreenAllowed));
 
 		FString OutStr(TEXT("Editor.VR.DeviceInitialised"));
 		FEngineAnalytics::GetProvider().RecordEvent(OutStr, EventAttributes);
@@ -2216,10 +2201,6 @@ void FOculusRiftHMD::LoadFromIni()
 			GetSettings()->Flags.bMirrorToWindow = true;
 		}
 	}
-	if (GConfig->GetBool(OculusSettings, TEXT("bFullscreenAllowed"), v, GEngineIni))
-	{
-		Settings->Flags.bFullscreenAllowed = v;
-	}
 #if !UE_BUILD_SHIPPING
 	FString s;
 	if (GConfig->GetString(OculusSettings, TEXT("CubeMeshName"), s, GEngineIni))
@@ -2301,7 +2282,6 @@ void FOculusRiftHMD::SaveToIni()
 	{
 		GConfig->SetInt(OculusSettings, TEXT("MirrorWindowMode"), -GetSettings()->MirrorWindowMode, GEngineIni);
 	}
-	GConfig->SetBool(OculusSettings, TEXT("bFullscreenAllowed"), Settings->Flags.bFullscreenAllowed, GEngineIni);
 	GConfig->SetVector(OculusSettings, TEXT("MirrorWindowSize"), FVector(Settings->MirrorWindowSize.X, Settings->MirrorWindowSize.Y, 0), GEngineIni);
 #endif // #if !UE_BUILD_SHIPPING
 }

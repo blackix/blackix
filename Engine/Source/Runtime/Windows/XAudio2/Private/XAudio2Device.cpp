@@ -133,7 +133,8 @@ bool FXAudio2Device::InitializeHardware()
 	// Allow HMD to specify audio device, if one was not specified in settings
 	if (WindowsAudioDeviceName.IsEmpty() && IHeadMountedDisplayModule::IsAvailable())
 	{
-		WindowsAudioDeviceName = IHeadMountedDisplayModule::Get().GetAudioOutputDevice();
+		FHeadMountedDisplayModuleExt* const HmdEx = FHeadMountedDisplayModuleExt::GetExtendedInterface(&IHeadMountedDisplayModule::Get());
+		WindowsAudioDeviceName = HmdEx ? HmdEx->GetAudioOutputDevice() : FString();
 	}
 	
 	// If an audio device was specified, try to find it
@@ -207,7 +208,7 @@ bool FXAudio2Device::InitializeHardware()
 #else	//XAUDIO_SUPPORTS_DEVICE_DETAILS
 	// Create the final output voice
 	if (!ValidateAPICall(TEXT("CreateMasteringVoice"),
-		DeviceProperties->XAudio2->CreateMasteringVoice(&DeviceProperties->MasteringVoice, UE4_XAUDIO2_NUMCHANNELS, UE4_XAUDIO2_SAMPLERATE, 0, DeviceIndex, nullptr )))
+		DeviceProperties->XAudio2->CreateMasteringVoice(&DeviceProperties->MasteringVoice, UE4_XAUDIO2_NUMCHANNELS, UE4_XAUDIO2_SAMPLERATE, 0, 0, nullptr )))
 	{
 		UE_LOG(LogInit, Warning, TEXT( "Failed to create the mastering voice for XAudio2" ) );
 		DeviceProperties->XAudio2 = nullptr;

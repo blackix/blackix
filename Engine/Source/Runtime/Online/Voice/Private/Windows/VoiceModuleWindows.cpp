@@ -5,6 +5,7 @@
 #include "VoiceCaptureWindows.h"
 #include "VoiceCodecOpus.h"
 #include "Voice.h"
+#include "Engine.h"
 #include "Runtime/HeadMountedDisplay/Public/IHeadMountedDisplayModule.h"
 
 static TAutoConsoleVariable<int32> CVarHmdDirectSoundVoiceCaptureDeviceIndex(
@@ -43,11 +44,13 @@ BOOL CALLBACK CaptureDeviceCallback(
 	UE_LOG(LogVoiceCapture, Display, TEXT("Device: %s Desc: %s GUID: %s Context:0x%08x"), lpcstrDescription, lpcstrModule, *PrintMSGUID(lpGuid), lpContext);
 
 	// Allow HMD to override the voice capture device
-	if(!VCPtr->HMDAudioInputDevice.IsEmpty() && !VCPtr->HMDAudioInputDevice.Compare((LPCWSTR) lpcstrModule))
+	if (VCPtr->VoiceCaptureDeviceCount == VCPtr->HmdVoiceCaptureDeviceIndex)
 	{
 		UE_LOG(LogVoice, Display, TEXT("VoiceCapture device overridden by HMD to use '%s' %s"), lpcstrDescription, *PrintMSGUID(lpGuid));
 		VCPtr->VoiceCaptureDeviceGuid = *lpGuid;
 	}
+
+	VCPtr->VoiceCaptureDeviceCount++;
 
 	return true;
 }
@@ -261,10 +264,12 @@ bool FVoiceCaptureDeviceWindows::Init()
 		return false;
 	}
 
-	if(IHeadMountedDisplayModule::IsAvailable())
-	{
-		HMDAudioInputDevice = IHeadMountedDisplayModule::Get().GetAudioInputDevice();
-	}
+	//TODO:  Removed for 4.11.1 binary compat.   Please remove this, and use the Oculus integration if you need voice support!
+// 	if (IHeadMountedDisplayModule::IsAvailable())
+// 	{
+// 		FHeadMountedDisplayModuleExt* const HmdEx = FHeadMountedDisplayModuleExt::GetExtendedInterface(&IHeadMountedDisplayModule::Get());
+// 		HMDAudioInputDevice = HmdEx ? HmdEx->GetAudioInputDevice() : FString();
+// 	}
 
 	VoiceCaptureDeviceGuid = DSDEVID_DefaultVoiceCapture;
 

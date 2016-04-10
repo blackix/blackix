@@ -27,7 +27,6 @@ static TAutoConsoleVariable<int32> CVarGraphicsAdapter(
 	TEXT("  1: Adpater #1, ..."),
 	ECVF_RenderThreadSafe);
 
-
 namespace D3D12RHI
 {
 
@@ -249,7 +248,13 @@ void FD3D12DynamicRHIModule::FindAdapter()
 #endif
 
 	// Allow HMD to override which graphics adapter is chosen, so we pick the adapter where the HMD is connected
-	int32 HmdGraphicsAdapter  = IHeadMountedDisplayModule::IsAvailable() ? IHeadMountedDisplayModule::Get().GetGraphicsAdapter() : -1;
+	int32 HmdGraphicsAdapter = -1;
+	if (IHeadMountedDisplayModule::IsAvailable())
+	{
+		FHeadMountedDisplayModuleExt* const HmdEx = FHeadMountedDisplayModuleExt::GetExtendedInterface(&IHeadMountedDisplayModule::Get());
+		HmdGraphicsAdapter = HmdEx ? HmdEx->GetGraphicsAdapter() : -1;
+	}
+
 	bool bUseHmdGraphicsAdapter = HmdGraphicsAdapter >= 0;
 	int32 CVarValue = bUseHmdGraphicsAdapter ? HmdGraphicsAdapter : CVarGraphicsAdapter.GetValueOnGameThread();
 
@@ -309,6 +314,7 @@ void FD3D12DynamicRHIModule::FindAdapter()
 				const bool bIsPerfHUD = !FCString::Stricmp(AdapterDesc.Description, TEXT("NVIDIA PerfHUD"));
 
 				FD3D12Adapter CurrentAdapter(AdapterIndex, ActualFeatureLevel);
+
 				if (bRequestedWARP && !bIsWARP)
 				{
 					// Requested WARP, reject all other adapters.
