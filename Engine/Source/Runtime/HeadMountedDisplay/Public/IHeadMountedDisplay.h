@@ -146,23 +146,6 @@ public:
 	 */
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar) = 0;
 
-	/**
-	 * Returns true, if HMD allows fullscreen mode.
-	 */
-	virtual bool IsFullscreenAllowed() { return true; }
-
-	/**
-	 * Saves / loads pre-fullscreen rectangle. Could be used to store saved original window position
-	 * before switching to fullscreen mode.
-	 */
-	virtual void PushPreFullScreenRect(const FSlateRect& InPreFullScreenRect);
-	virtual void PopPreFullScreenRect(FSlateRect& OutPreFullScreenRect);
-
-	/**
-	 * A callback that is called when screen mode is changed (fullscreen <-> window).
-	 */
-	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) = 0;
-
 	/** Returns true if positional tracking enabled and working. */
 	virtual bool IsPositionalTrackingEnabled() const = 0;
 
@@ -387,9 +370,6 @@ private:
 
 	void GatherLateUpdatePrimitives(USceneComponent* Component, TArray<LateUpdatePrimitiveInfo>& Primitives);
 
-	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */
-	FSlateRect PreFullScreenRect;
-	
 	/** Primitives that need late update before rendering */
 	TArray<LateUpdatePrimitiveInfo> LateUpdatePrimitives;
 

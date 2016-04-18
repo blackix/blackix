@@ -14,7 +14,6 @@ FHMDSettings::FHMDSettings() :
 	, VFOVInRadians(FMath::DegreesToRadians(90.f))
 	, NearClippingPlane(0)
 	, FarClippingPlane(0)
-	, MirrorWindowSize(0, 0)
 	, BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
 	, PositionOffset(FVector::ZeroVector)
@@ -30,7 +29,6 @@ FHMDSettings::FHMDSettings() :
 	Flags.bLowPersistenceMode = true;
 	Flags.bUpdateOnRT = true;
 	Flags.bMirrorToWindow = true;
-	Flags.bFullscreenAllowed = false;
 	Flags.bTimeWarp = true;
 	Flags.bHmdPosTracking = true;
 	Flags.bPlayerControllerFollowsHmd = true;
@@ -220,24 +218,31 @@ bool FHeadMountedDisplay::OnStartGameFrame(FWorldContext& WorldContext)
 	Flags.bFrameStarted = true;
 
 	bool bStereoEnabled = Settings->Flags.bStereoEnabled;
-	bool bStereoDesired = Settings->Flags.bStereoEnforced ? bStereoEnabled : Settings->Flags.bStereoDesired;
+	bool bStereoDesired = bStereoEnabled;
 
 	if(Flags.bNeedEnableStereo)
 	{
-		Settings->Flags.bStereoDesired = bStereoDesired = true;
+		bStereoDesired = true;
 	}
 
-	if(bStereoDesired && (Flags.bNeedDisableStereo || !Settings->Flags.bHMDEnabled || !(bStereoEnabled ? IsHMDActive() : IsHMDConnected())))
+	if(bStereoDesired && (Flags.bNeedDisableStereo || !Settings->Flags.bHMDEnabled))
 	{
 		bStereoDesired = false;
+	}
+
+	bool bStereoDesiredAndIsConnected = bStereoDesired;
+
+	if(bStereoDesired && !(bStereoEnabled ? IsHMDActive() : IsHMDConnected()))
+	{
+		bStereoDesiredAndIsConnected = false;
 	}
 
 	Flags.bNeedEnableStereo = false;
 	Flags.bNeedDisableStereo = false;
 
-	if(bStereoEnabled != bStereoDesired)
+	if(bStereoEnabled != bStereoDesiredAndIsConnected)
 	{
-		bStereoEnabled = DoEnableStereo(bStereoDesired, Flags.bEnableStereoToHmd);
+		bStereoEnabled = DoEnableStereo(bStereoDesiredAndIsConnected);
 	}
 
 	// Keep trying to enable stereo until we succeed
@@ -408,12 +413,6 @@ bool FHeadMountedDisplay::IsChromaAbCorrectionEnabled() const
 	return (frame && frame->Settings->Flags.bChromaAbCorrectionEnabled);
 }
 
-void FHeadMountedDisplay::OnScreenModeChange(EWindowMode::Type WindowMode)
-{
-	EnableStereo(WindowMode != EWindowMode::Windowed);
-	UpdateStereoRenderingParams();
-}
-
 bool FHeadMountedDisplay::IsPositionalTrackingEnabled() const
 {
 	const auto frame = GetCurrentFrame();
@@ -428,9 +427,8 @@ bool FHeadMountedDisplay::EnablePositionalTracking(bool enable)
 
 bool FHeadMountedDisplay::EnableStereo(bool bStereo)
 {
-	Settings->Flags.bStereoDesired = bStereo;
 	Settings->Flags.bStereoEnforced = false;
-	return DoEnableStereo(bStereo, true);
+	return DoEnableStereo(bStereo);
 }
 
 bool FHeadMountedDisplay::IsStereoEnabled() const
@@ -572,7 +570,6 @@ bool FHeadMountedDisplay::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice&
 				{
 					Ar.Logf(TEXT("HMD is disabled. Use 'hmd enable' to re-enable it."));
 				}
-				Flags.bEnableStereoToHmd = hmd;
 				EnableStereo(true);
 				Settings->Flags.bStereoEnforced = true;
 				return true;
@@ -1290,7 +1287,7 @@ void FHeadMountedDisplay::DrawSeaOfCubes(UWorld* World, FVector ViewLocation)
 }
 #endif // #if !UE_BUILD_SHIPPING
 
-uint32 FHeadMountedDisplay::CreateLayerEx(UTexture2D* InTexture, int32 InPrioirity, FHMDLayerManager::LayerOriginType InLayerOriginType)
+uint32 FHeadMountedDisplay::CreateLayerEx(UTexture* InTexture, int32 InPrioirity, FHMDLayerManager::LayerOriginType InLayerOriginType)
 {
 	FHMDLayerManager* pLayerMgr = GetLayerManager();
 	if (pLayerMgr)
@@ -1311,7 +1308,7 @@ uint32 FHeadMountedDisplay::CreateLayerEx(UTexture2D* InTexture, int32 InPrioiri
 	return 0;
 }
 
-uint32 FHeadMountedDisplay::CreateLayer(UTexture2D* InTexture, int32 InPrioirity, bool bInHeadLocked)
+uint32 FHeadMountedDisplay::CreateLayer(UTexture* InTexture, int32 InPrioirity, bool bInHeadLocked)
 {
 	return CreateLayerEx(InTexture, InPrioirity, (bInHeadLocked) ? FHMDLayerManager::Layer_HeadLocked : FHMDLayerManager::Layer_WorldLocked);
 }
@@ -1432,7 +1429,7 @@ void FHMDLayerDesc::SetTexture(UTexture* InTexture)
 	LayerManager.SetDirty();
 }
 
-void FHMDLayerDesc::SetTextureSet(FTextureSetProxyParamRef InTextureSet)
+void FHMDLayerDesc::SetTextureSet(const FTextureSetProxyPtr& InTextureSet)
 {
 	TextureSet = InTextureSet;
 	bTextureHasChanged = true;
@@ -1714,7 +1711,7 @@ void FHMDLayerManager::ReleaseTextureSetsInArray_RenderThread_NoLock(TArray<TSha
 	{
 		if (Layers[i].IsValid())
 		{
-			FTextureSetProxyRef TexSet = Layers[i]->GetTextureSet();
+			const FTextureSetProxyPtr& TexSet = Layers[i]->GetTextureSet();
 			if (TexSet.IsValid())
 			{
 				TexSet->ReleaseResources();

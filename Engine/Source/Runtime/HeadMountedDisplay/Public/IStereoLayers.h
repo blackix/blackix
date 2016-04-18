@@ -19,7 +19,7 @@ public:
 	 * @param	bInFixedToFace	Whether or not the quad should be stationary in the world, or follow the head rotation
 	 * @return	A unique identifier for the layer created
 	 */
-	virtual uint32 CreateLayer(UTexture2D* InTexture, int32 InPrioirity, bool bInFixedToFace = false) = 0;
+	virtual uint32 CreateLayer(UTexture* InTexture, int32 InPrioirity, bool bInFixedToFace = false) = 0;
 	
 	/**
 	 * Destroys the specified layer, stopping it from rendering over the world

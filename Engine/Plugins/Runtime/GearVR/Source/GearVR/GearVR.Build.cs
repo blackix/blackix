@@ -29,8 +29,9 @@ namespace UnrealBuildTool.Rules
 					"RenderCore",
 					"Renderer",
 					"ShaderCore",
-					"HeadMountedDisplay"
-				}
+					"HeadMountedDisplay",
+                    "MediaAssets"
+                }
 				);
 
             PublicIncludePathModuleNames.Add("Launch");

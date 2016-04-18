@@ -673,10 +673,11 @@ void FOculusRiftHMD::UpdateViewport(bool bUseSeparateRenderTarget, const FViewpo
 			ViewportRHI->SetCustomPresent(nullptr);
 		}
 		// Restore AutoResizeViewport mode for the window
-		if (ViewportWidget && !IsFullscreenAllowed() && Settings->MirrorWindowSize.X != 0 && Settings->MirrorWindowSize.Y != 0)
+		if (ViewportWidget)
 		{
 			if (Window.IsValid())
 			{
+				Window->SetMirrorWindow(false);
 				Window->SetViewportSizeDrivenByWindow(true);
 			}
 		}
@@ -711,7 +712,7 @@ void FOculusRiftHMD::ShutdownRendering()
 // FCustomPresent
 //-------------------------------------------------------------------------------------------------
 
-FCustomPresent::FCustomPresent(FOvrSessionSharedParamRef InOvrSession)
+FCustomPresent::FCustomPresent(const FOvrSessionSharedPtr& InOvrSession)
 	: FRHICustomPresent(nullptr)
 	, Session(InOvrSession)
 	, LayerMgr(MakeShareable(new FLayerManager(this)))
@@ -891,7 +892,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 			LayerMgr->InvalidateTextureSets();
 		}
 
-		FTexture2DSetProxyRef ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
+		FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
 		if (ColorTextureSet.IsValid())
 		{
 			// update the eye layer textureset. at the moment only one eye layer is supported

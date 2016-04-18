@@ -143,57 +143,6 @@ protected:
 
 
 //-------------------------------------------------------------------------------------------------
-// FOculusRiftPlugin
-//-------------------------------------------------------------------------------------------------
-
-class FOculusRiftPlugin : public IOculusRiftPlugin
-{
-public:
-	FOculusRiftPlugin();
-
-protected:
-	bool Initialize();
-
-#ifdef OVR_D3D
-	void DisableSLI();
-	void SetGraphicsAdapter(const ovrGraphicsLuid& luid);
-#endif
-
-public:
-	static inline FOculusRiftPlugin& Get()
-	{
-		return FModuleManager::LoadModuleChecked< FOculusRiftPlugin >( "OculusRift" );
-	}
-
-	ovrResult CreateSession(ovrSession* session, ovrGraphicsLuid* luid);
-	static void DestroySession(ovrSession session);
-
-public:
-	/** IModuleInterface */
-	virtual void ShutdownModule() override;
-
-	/** IHeadMountedDisplayModule */
-	virtual FString GetModulePriorityKeyName() const override;
-	virtual bool PreInit() override;
-	virtual bool IsHMDConnected() override;
-	virtual int GetGraphicsAdapter() override;
-	virtual FString GetAudioInputDevice() override;
-	virtual FString GetAudioOutputDevice() override;
-	virtual TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > CreateHeadMountedDisplay() override;
-
-	/** IOculusRiftPlugin */
-	virtual bool PoseToOrientationAndPosition(const ovrPosef& Pose, FQuat& OutOrientation, FVector& OutPosition) const override;
-	virtual class FOvrSessionShared* GetSession() override;
-	virtual bool GetCurrentTrackingState(ovrTrackingState* TrackingState) override;
-
-protected:
-	bool bInitialized;
-	bool bInitializeCalled;
-	TWeakPtr< IHeadMountedDisplay, ESPMode::ThreadSafe > HeadMountedDisplay;
-};
-
-
-//-------------------------------------------------------------------------------------------------
 // FSettings
 //-------------------------------------------------------------------------------------------------
 
@@ -301,7 +250,7 @@ public:
 
 public:
 	class FCustomPresent* pPresentBridge;
-	FOvrSessionSharedRef Session;
+	FOvrSessionSharedPtr Session;
 
 	FEngineShowFlags	ShowFlags; // a copy of showflags
 	bool				bFrameBegun : 1;
@@ -315,7 +264,7 @@ class FCustomPresent : public FRHICustomPresent
 {
 	friend class FLayerManager;
 public:
-	FCustomPresent(FOvrSessionSharedParamRef InOvrSession);
+	FCustomPresent(const FOvrSessionSharedPtr& InOvrSession);
 
 	// Returns true if it is initialized and used.
 	bool IsInitialized() const { return Session->IsActive(); }
@@ -339,7 +288,7 @@ public:
 	FViewExtension* GetRenderContext() const { return static_cast<FViewExtension*>(RenderContext.Get()); }
 	FSettings* GetFrameSetting() const { check(IsInRenderingThread()); return static_cast<FSettings*>(RenderContext->RenderFrame->GetSettings()); }
 
-	FOvrSessionSharedRef GetSession() const { return Session; }
+	const FOvrSessionSharedPtr& GetSession() const { return Session; }
 
 	// marking textures invalid, that will force re-allocation of ones
 	void MarkTexturesInvalid();
@@ -390,7 +339,7 @@ public:
 		DefaultEyeBuffer	= EyeBuffer | Default,
 	};
 	// Create and destroy textureset from a texture.
-	virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
+	virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
 
 	// Copies one texture to another
 	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false) const;
@@ -408,7 +357,7 @@ protected:
 	void Reset_RenderThread();
 
 protected: // data
-	FOvrSessionSharedRef Session;
+	FOvrSessionSharedPtr Session;
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
 	IRendererModule*	RendererModule;
 
@@ -482,7 +431,6 @@ public:
 	virtual TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 
-	virtual bool IsFullscreenAllowed() override;
 	virtual void RecordAnalytics() override;
 
 	virtual bool HasHiddenAreaMesh() const override { return HiddenAreaMeshes[0].IsValid() && HiddenAreaMeshes[1].IsValid(); }
@@ -563,7 +511,7 @@ protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const override;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const override;
 	
-	virtual bool DoEnableStereo(bool bStereo, bool bApplyToHmd) override;
+	virtual bool DoEnableStereo(bool bStereo) override;
 	virtual void ResetStereoRenderingParams() override;
 
 	virtual void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
@@ -577,27 +525,27 @@ public:
 	class D3D11Bridge : public FCustomPresent
 	{
 	public:
-		D3D11Bridge(FOvrSessionSharedParamRef InOvrSession);
+		D3D11Bridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 
 	class D3D12Bridge : public FCustomPresent
 	{
 	public:
-		D3D12Bridge(FOvrSessionSharedParamRef InOvrSession);
+		D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 #endif
 
@@ -605,7 +553,7 @@ public:
 	class OGLBridge : public FCustomPresent
 	{
 	public:
-		OGLBridge(FOvrSessionSharedParamRef InOvrSession);
+		OGLBridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
@@ -613,7 +561,7 @@ public:
 		virtual void Shutdown() override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 #endif // OVR_GL
 
@@ -678,7 +626,7 @@ private: // data
 	TRefCountPtr<FCustomPresent>pCustomPresent;
 	TSharedPtr<FLayerManager>	LayerMgr;
 	IRendererModule*			RendererModule;
-	FOvrSessionSharedRef		Session;
+	FOvrSessionSharedPtr		Session;
 	ovrHmdDesc					HmdDesc;
 	ovrTrackingOrigin			OvrOrigin;
 
