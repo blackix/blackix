@@ -452,9 +452,7 @@ void FAppEventManager::WaitForEmptyQueue()
 {
 	if (EmptyQueueHandlerEvent && GEventHandlerInitialized && !GIsRequestingExit)
 	{
-		//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ Waiting, tid = %d"), gettid());
 		EmptyQueueHandlerEvent->Wait();
-		//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("$$$$ Waiting is over, tid = %d"), gettid());
 	}
 }
 

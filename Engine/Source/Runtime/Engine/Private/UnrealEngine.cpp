@@ -982,6 +982,23 @@ void UEngine::PreExit()
 	delete ScreenSaverInhibitorRunnable;
 
 	ShutdownHMD();
+// 	// we can't just nulify these pointers here since RenderThread still might use them.
+// 	{
+// 		auto SavedStereo = StereoRenderingDevice;
+// 		auto SavedHMD = HMDDevice;
+// 		auto SavedViewExtentions = ViewExtensions;
+// 		{
+// 			FSuspendRenderingThread Suspend(false);
+// 			StereoRenderingDevice.Reset();
+// 			HMDDevice.Reset();
+// 			for (auto& ViewExt : ViewExtensions)
+// 			{
+// 				ViewExt.Reset();
+// 			}
+// 			ViewExtensions.Empty();
+// 		}
+// 		// shutdown will occur here.
+// 	}
 }
 
 void UEngine::ShutdownHMD()
@@ -6754,15 +6771,13 @@ void UEngine::PerformanceCapture(const FString& CaptureName)
 		PathName = ( PathName + TEXT( "_" ) ) + DeviceTypeString;
 	}
 
-	PathName += TEXT("/");
-
 	//mapname/CaptureName/platform/version.png
 
 	//Make path relative to the root.
 	PathName = FPaths::AutomationDir() + PathName;
 	FPaths::MakePathRelativeTo(PathName,*FPaths::RootDir());
 	
-	FString ScreenshotName = FString::Printf(TEXT("%s%d.png"), *PathName, GEngineVersion.GetChangelist());
+	FString ScreenshotName = FString::Printf(TEXT("%s/%d.png"), *PathName, GEngineVersion.GetChangelist());
 	
 	const bool bShowUI = false;
 	const bool bAddFilenameSuffix = false;
@@ -10988,10 +11003,6 @@ void FSystemResolution::RequestResolutionChange(int32 InResX, int32 InResY, EWin
 		case EWindowMode::Windowed:
 		{
 			WindowModeSuffix = TEXT("w");
-		} break;
-		case EWindowMode::WindowedMirror:
-		{
-			WindowModeSuffix = TEXT("wm");
 		} break;
 		case EWindowMode::WindowedFullscreen:
 		{

@@ -594,6 +594,17 @@ public:
 		return bIsModalWindow;
 	}
 
+	/** Set mirror window flag */
+	void SetMirrorWindow(bool bSetMirrorWindow)
+	{
+		bIsMirrorWindow = bSetMirrorWindow;
+	}
+
+	bool IsMirrorWindow()
+	{
+		return bIsMirrorWindow;
+	}
+
 	void SetTitleBar( const TSharedPtr<IWindowTitleBar> InTitleBar )
 	{
 		TitleBar = InTitleBar;
@@ -819,6 +830,9 @@ protected:
 	
 	/** True if the window is modal */
 	bool bIsModalWindow : 1;
+
+	/** True if the window is a mirror window for HMD content */
+	bool bIsMirrorWindow : 1;
 
 	/** Initial desired position of the window's content in screen space */
 	FVector2D InitialDesiredScreenPosition;

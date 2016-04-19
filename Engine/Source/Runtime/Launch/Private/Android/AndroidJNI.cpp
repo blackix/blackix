@@ -365,6 +365,21 @@ void AndroidThunkCpp_ShowVirtualKeyboardInput(TSharedPtr<IVirtualKeyboardEntry> 
 	}
 }
 
+// call out to JNI to see if the application was packaged for GearVR
+bool AndroidThunkCpp_IsGearVRApplication()
+{
+	bool bIsGearVRApplication = false;
+	if (JNIEnv* Env = FAndroidApplication::GetJavaEnv())
+	{
+		static jmethodID Method = FJavaWrapper::FindMethod(Env, FJavaWrapper::GameActivityClassID, "AndroidThunkJava_IsGearVRApplication", "()Z", true);
+		if (Method)
+		{
+			bIsGearVRApplication = FJavaWrapper::CallBooleanMethod(Env, FJavaWrapper::GameActivityThis, Method);
+		}
+	}
+	return bIsGearVRApplication;
+}
+
 //This function is declared in the Java-defined class, GameActivity.java: "public native void nativeVirtualKeyboardResult(bool update, String contents);"
 extern "C" void Java_com_epicgames_ue4_GameActivity_nativeVirtualKeyboardResult(JNIEnv* jenv, jobject thiz, jboolean update, jstring contents)
 {

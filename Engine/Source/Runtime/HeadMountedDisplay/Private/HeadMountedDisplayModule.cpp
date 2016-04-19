@@ -59,18 +59,6 @@ IMPLEMENT_MODULE( FHeadMountedDisplayModule, HeadMountedDisplay );
 
 IHeadMountedDisplay::IHeadMountedDisplay()
 {
-	PreFullScreenRect = FSlateRect(-1.f, -1.f, -1.f, -1.f);
-}
-
-void IHeadMountedDisplay::PushPreFullScreenRect(const FSlateRect& InPreFullScreenRect)
-{
-	PreFullScreenRect = InPreFullScreenRect;
-}
-
-void IHeadMountedDisplay::PopPreFullScreenRect(FSlateRect& OutPreFullScreenRect)
-{
-	OutPreFullScreenRect = PreFullScreenRect;
-	PreFullScreenRect = FSlateRect(-1.f, -1.f, -1.f, -1.f);
 }
 
 void IHeadMountedDisplay::SetTrackingOrigin(ETrackingOrigin InOrigin)

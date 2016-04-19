@@ -2721,12 +2721,7 @@ bool UGameViewportClient::HandleToggleFullscreenCommand()
 		static const bool bD3D12 = FParse::Param(FCommandLine::Get(), TEXT("d3d12")) || FParse::Param(FCommandLine::Get(), TEXT("dx12"));
 #endif
 
-		if(GEngine->HMDDevice.IsValid() && GEngine->HMDDevice->IsHMDEnabled() && !GEngine->HMDDevice->IsFullscreenAllowed())
-		{
-			// HMD does not support fullscreen modes
-			FullScreenMode = EWindowMode::WindowedMirror;
-		}
-		else if (CVarFullScreenMode->GetValueOnGameThread() != 0)
+		if (CVarFullScreenMode->GetValueOnGameThread() != 0)
 		{
 			// User has requested WindowedFullscreen mode 
 			FullScreenMode = EWindowMode::WindowedFullscreen;
@@ -2767,10 +2762,6 @@ bool UGameViewportClient::HandleSetResCommand( const TCHAR* Cmd, FOutputDevice& 
 			if(FCString::Strchr(Cmd, 'f') || FCString::Strchr(Cmd, 'F'))
 			{
 				WindowMode = EWindowMode::WindowedFullscreen;
-			}
-			else if (FCString::Strchr(Cmd, 'm') || FCString::Strchr(Cmd, 'M'))
-			{
-				WindowMode = EWindowMode::WindowedMirror;
 			}
 			else
 			{

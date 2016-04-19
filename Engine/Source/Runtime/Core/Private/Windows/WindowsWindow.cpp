@@ -516,12 +516,6 @@ void FWindowsWindow::SetWindowMode( EWindowMode::Type NewWindowMode )
 {
 	EWindowMode::Type InNewWindowMode = NewWindowMode;
 
-	if (InNewWindowMode == EWindowMode::WindowedMirror)
-	{
-		// treat WindowedMirror as a regular Windowed mode here
-		InNewWindowMode = EWindowMode::Windowed;
-	}
-
 	if( InNewWindowMode != WindowMode )
 	{
 		bool bTrueFullscreen = NewWindowMode == EWindowMode::Fullscreen;

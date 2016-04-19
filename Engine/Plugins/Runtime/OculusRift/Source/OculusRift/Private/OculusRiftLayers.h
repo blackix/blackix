@@ -29,7 +29,7 @@ namespace OculusRift {
 class FTexture2DSetProxy : public FTextureSetProxy
 {
 public:
-	FTexture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIParamRef InTexture, uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat, uint32 InSrcNumMips) 
+	FTexture2DSetProxy(const FOvrSessionSharedPtr& InOvrSession, FTextureRHIParamRef InTexture, uint32 InSrcSizeX, uint32 InSrcSizeY, EPixelFormat InSrcFormat, uint32 InSrcNumMips) 
 		: FTextureSetProxy(InSrcSizeX, InSrcSizeY, InSrcFormat, InSrcNumMips)
 		, Session(InOvrSession), RHITexture(InTexture) 
 	{
@@ -73,12 +73,11 @@ protected:
 	}
 
 protected:
-	FOvrSessionSharedRef Session;
+	FOvrSessionSharedPtr Session;
 	FTextureRHIRef		 RHITexture;
 	FDelegateHandle		 DestroyDelegateHandle;
 };
-typedef TSharedPtr<FTexture2DSetProxy, ESPMode::ThreadSafe>	FTexture2DSetProxyParamRef;
-typedef TSharedPtr<FTexture2DSetProxy, ESPMode::ThreadSafe>	FTexture2DSetProxyRef;
+typedef TSharedPtr<FTexture2DSetProxy, ESPMode::ThreadSafe>	FTexture2DSetProxyPtr;
 
 // Implementation of FHMDRenderLayer for OculusRift.
 class FRenderLayer : public FHMDRenderLayer

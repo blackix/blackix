@@ -228,10 +228,15 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				quadSize.x *= LayerDesc.GetTransform().GetScale3D().Y;
 				quadSize.y *= LayerDesc.GetTransform().GetScale3D().Z;
 
+				FQuat PlayerOrientation = CurrentFrame->PlayerOrientation;
+
 				if (LayerDesc.IsWorldLocked())
 				{
+					// apply BaseOrientation
+					PlayerOrientation = FrameSettings->BaseOrientation.Inverse() * CurrentFrame->PlayerOrientation;
+
 					// calculate the location of the quad considering the player's location/orientation
-					OVR::Posef PlayerTorso(ToOVRQuat<OVR::Quatf>(CurrentFrame->PlayerOrientation), 
+					OVR::Posef PlayerTorso(ToOVRQuat<OVR::Quatf>(PlayerOrientation), 
 										   ToOVRVector_U2M<OVR::Vector3f>(CurrentFrame->PlayerLocation, WorldToMetersScale));
 					pose = PlayerTorso.Inverted() * pose;
 				}
