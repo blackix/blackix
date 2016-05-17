@@ -23,6 +23,9 @@ static TAutoConsoleVariable<int32> CVarGearVREnableMSAA(TEXT("gearvr.EnableMSAA"
 static TAutoConsoleVariable<int32> CVarGearVREnableQueueAhead(TEXT("gearvr.EnableQueueAhead"), 1, TEXT("Enable full-frame queue ahead for rendering on GearVR"));
 
 static TAutoConsoleVariable<int32> CVarGearVRBackButton(TEXT("gearvr.HandleBackButton"), 1, TEXT("GearVR plugin will handle the 'back' button"));
+
+static const ovrQuatf QuatIdentity = {0,0,0,1};
+
 #endif
 
 class FGearVRPlugin : public IGearVRPlugin
@@ -128,6 +131,9 @@ FGameFrame::FGameFrame()
 	FMemory::Memzero(EyeRenderPose);
 	FMemory::Memzero(HeadPose);
 	FMemory::Memzero(TanAngleMatrix);
+	HeadPose.Pose.Orientation = QuatIdentity;
+	EyeRenderPose[0].Orientation = EyeRenderPose[1].Orientation = QuatIdentity;
+	CurEyeRenderPose[0].Orientation = CurEyeRenderPose[1].Orientation = QuatIdentity;
 	GameThreadId = 0;
 }
 
@@ -256,10 +262,7 @@ bool FGearVR::GetEyePoses(const FGameFrame& InFrame, ovrPosef outEyePoses[2], ov
 	if (!OvrMobile.IsValid())
 	{
 		FMemory::Memzero(outTracking);
-		ovrQuatf identityQ;
-		FMemory::Memzero(identityQ);
-		identityQ.w = 1;
-		outTracking.HeadPose.Pose.Orientation = identityQ;
+		outTracking.HeadPose.Pose.Orientation = QuatIdentity;
 		const OVR::Vector3f HmdToEyeViewOffset0 = OVR::Vector3f(-InFrame.GetSettings()->HeadModelParms.InterpupillaryDistance * 0.5f, 0, 0); // -X <=, +X => (OVR coord sys)
 		const OVR::Vector3f HmdToEyeViewOffset1 = OVR::Vector3f(InFrame.GetSettings()->HeadModelParms.InterpupillaryDistance * 0.5f, 0, 0);  // -X <=, +X => (OVR coord sys)
 		const OVR::Vector3f transl0 = HmdToEyeViewOffset0;
@@ -861,6 +864,7 @@ FGearVR::~FGearVR()
 
 void FGearVR::Startup()
 {
+	CurrentFrameNumber.Set(1);
 //	Flags.bNeedEnableStereo = true;
 
 	// grab the clock settings out of the ini
@@ -939,8 +943,6 @@ void FGearVR::Startup()
 		}
 	}
 	pGearVRBridge->bExtraLatencyMode = CVarGearVREnableQueueAhead.GetValueOnAnyThread() != 0;
-
-
 
 	UE_LOG(LogHMD, Log, TEXT("GearVR has started"));
 }
@@ -1250,7 +1252,7 @@ void FGearVR::PushBlackFinal()
 
 	ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(OVRPushBlackFinal,
 	FGearVRCustomPresent*, pGearVRBridge, pGearVRBridge,
-	FGameFrame, Frame, *GetGameFrame(),
+	FGameFrame*, Frame, GetGameFrame(),
 	{
 		pGearVRBridge->PushBlackFinal(Frame);
 	});
@@ -1526,6 +1528,7 @@ bool FGearVRPlugin::IsInLoadingIconMode() const
 #if GEARVR_SUPPORTED_PLATFORMS
 
 #include <HeadMountedDisplayCommon.cpp>
+#include <AsyncLoadingSplash.cpp>
 
 #endif //GEARVR_SUPPORTED_PLATFORMS
 

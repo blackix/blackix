@@ -33,7 +33,7 @@ Copyright   :   Copyright 2014 Oculus VR, LLC. All Rights reserved.
 // 1) Call SystemActivities_Update() to handle any internal events (for instance,
 //    returntoLauncher) and fill the app event list with the remaining events. 
 // 2) If this is a framework, pass the app event list to the application code (for 
-//    example, VrAppFramework passes these through VrFrame)
+//    example, VrAppFramework passes these through ovrFrameInput)
 // 2a)The application can modify the app event list, removing any events from the
 //    that it handles itself or that it doesn't want the framework to handle.
 // 3) Call SystemActivities_PostUpdate() to handle the remaining app events
@@ -67,6 +67,8 @@ extern "C" {
 
 // System Activities event identifiers
 #define	SYSTEM_ACTIVITY_EVENT_REORIENT				"reorient"
+#define	SYSTEM_ACTIVITY_EVENT_KEYBOARD_RESULT		"keyboardResult"
+#define	SYSTEM_ACTIVITY_EVENT_FILE_DIALOG_RESULT	"fileDialogResult"
 #define SYSTEM_ACTIVITY_EVENT_RETURN_TO_LAUNCHER	"returnToLauncher"
 #define SYSTEM_ACTIVITY_EVENT_EXIT_TO_HOME			"exitToHome"
 
@@ -149,10 +151,12 @@ void SystemActivities_Shutdown( ovrJava * java );
 #define PUI_HMT_MOUNT				"HMT_mount"		// the HMT has been placed on the head
 #define PUI_WARNING					"warning"		// the HMT has been placed on the head and a warning message shows
 #define PUI_FAIL_MENU				"failMenu"		// display a FAIL() message in the System Activities
+#define PUI_KEYBOARD_MENU			"keyboardMenu"	// bring up a keyboard to edit a single string, send string back to calling app when done
+#define PUI_FILE_DIALOG				"fileDialog"	// bring up a folder browser to select the path to a file or folder.
 
 // TODO: why are both this and CreateSystemActivitiesIntent exposed?
 bool SystemActivities_CreateSystemActivitiesCommand( const char * toPackageName, const char * command, 
-		const char * jsonExtra, const char * uri, char * outBuffer, unsigned long long outBufferSize );
+		const char * jsonExtra, const char * uri, char * outBuffer, unsigned int outBufferSize );
 
 // Used by system activities to send an event back to the activity that launched it.
 void SystemActivities_BroadcastSystemActivityEvent( const ovrJava * java, const char * actionName, 
@@ -169,7 +173,7 @@ bool SystemActivities_StartSystemActivity( const ovrJava * java, const char * co
 // SystemActivities app to synthesize an intent when SA is entered without an intent (which can 
 // happen in debug runs and also if an app crashes and SA is next on the app stack).
 bool SystemActivities_CreateSystemActivityIntent( const char * command, const char * extraJsonText, 
-		char * outBuffer, unsigned long long const outBufferSize, unsigned long long * outRequiredBufferSize );
+		char * outBuffer, unsigned int const outBufferSize, unsigned int * outRequiredBufferSize );
 
 
 //-----------------------------------------------------------------

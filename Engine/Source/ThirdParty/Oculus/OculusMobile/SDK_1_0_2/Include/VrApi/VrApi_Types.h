@@ -44,6 +44,15 @@ OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrJava, 24 );
 // Basic Types
 //-----------------------------------------------------------------
 
+typedef signed int ovrResult;
+
+typedef struct ovrVector2f_
+{
+	float x, y;
+} ovrVector2f;
+
+OVR_VRAPI_ASSERT_TYPE_SIZE( ovrVector2f, 8 );
+
 typedef struct ovrVector3f_
 {
 	float x, y, z;
@@ -112,6 +121,7 @@ typedef enum
 	VRAPI_DEVICE_TYPE_NOTE4,
 	VRAPI_DEVICE_TYPE_NOTE5,
 	VRAPI_DEVICE_TYPE_S6,
+	VRAPI_DEVICE_TYPE_S7,
 	VRAPI_MAX_DEVICE_TYPES
 } ovrDeviceType;
 
@@ -148,6 +158,11 @@ typedef enum
 	// Currently symmetric 90.0 degrees.
 	VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X,		// Horizontal field of view in degrees
 	VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y,		// Vertical field of view in degrees
+	// Path to the external SD card. On Android-M, this path is dynamic and can
+	// only be determined once the SD card is mounted. Returns an empty string if
+	// device does not support an ext sdcard or if running Android-M and the SD card
+	// is not mounted.
+	VRAPI_SYS_PROP_EXT_SDCARD_PATH,
 } ovrSystemProperty;
 
 typedef enum
@@ -169,6 +184,9 @@ typedef enum
 	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED	= 128,	// True if the front buffer is allocated in TrustZone memory.
 	VRAPI_SYS_STATUS_FRONT_BUFFER_565,				// True if the front buffer is 16-bit 5:6:5
 	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB,				// True if the front buffer uses the sRGB color space.
+
+	VRAPI_SYS_STATUS_SHOULD_QUIT = 256,				// True if the app should terminate. (PC only)
+	VRAPI_SYS_STATUS_HAS_FOCUS,						// True if the app has focus and is therefore visible on the HMD. (PC only)
 } ovrSystemStatus;
 
 //-----------------------------------------------------------------
@@ -232,7 +250,9 @@ typedef enum
 	VRAPI_MODE_FLAG_NATIVE_WINDOW				= 0x00010000,
 
 	// Create the front buffer in TrustZone memory to allow protected DRM
-	// content to be rendered to the front buffer.
+	// content to be rendered to the front buffer. This functionality
+	// requires the WindowSurface to be allocated from TimeWarp, via
+	// specifying the nativeWindow via VRAPI_MODE_FLAG_NATIVE_WINDOW.
 	VRAPI_MODE_FLAG_FRONT_BUFFER_PROTECTED		= 0x00020000,
 
 	// Create a 16-bit 5:6:5 front buffer.
@@ -394,6 +414,8 @@ typedef enum
 	// Change the TimeWarp graph to display the latency (seconds from eye buffer
 	// orientation time) instead of the draw times.
 	VRAPI_FRAME_FLAG_TIMEWARP_DEBUG_GRAPH_LATENCY_MODE			= 32,
+	// Don't show the volume layer whent set.
+	VRAPI_FRAME_FLAG_INHIBIT_VOLUME_LAYER						= 64
 } ovrFrameFlags;
 
 typedef enum
@@ -488,8 +510,15 @@ typedef struct
 	// Image used for each eye.
 	ovrFrameLayerTexture	Textures[VRAPI_FRAME_LAYER_EYE_MAX];
 
-	// Program-specific tuning values.
-	float					ProgramParms[4];
+	// Speed and scale of rotation when VRAPI_FRAME_LAYER_FLAG_SPIN is set in ovrFrameLayer::Flags
+	float					SpinSpeed; // Radians/Second
+	float					SpinScale;
+
+	// Color scale for this layer (including alpha)
+	float					ColorScale;
+	
+	// padding for deprecated variable.
+	OVR_VRAPI_PADDING( 4 );
 
 	// Layer blend function.
 	ovrFrameLayerBlend		SrcBlend;
@@ -584,7 +613,7 @@ typedef struct
 OVR_VRAPI_ASSERT_TYPE_SIZE( ovrHeadModelParms, 16 );
 
 //-----------------------------------------------------------------
-// FIXME:VRAPI remove this once all simulation code uses VrFrame::PredictedDisplayTimeInSeconds and perf timing uses LOGCPUTIME
+// FIXME:VRAPI remove this once all simulation code uses ovrFrameInput::PredictedDisplayTimeInSeconds and perf timing uses LOGCPUTIME
 //-----------------------------------------------------------------
 
 #if defined( __cplusplus )

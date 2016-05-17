@@ -6,6 +6,7 @@
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #include "OculusRiftLayers.h"
+#include "MediaTexture.h"
 
 FRenderLayer::FRenderLayer(FHMDLayerDesc& InDesc) :
 	FHMDRenderLayer(InDesc)
@@ -253,11 +254,35 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				FTextureRHIRef Texture;
 				int32 SizeX = 16, SizeY = 16; // 16x16 default texture size for black rect (if the actual texture is not set)
 				EPixelFormat Format = EPixelFormat::PF_B8G8R8A8;
+				bool bTextureChanged = LayerDesc.IsTextureChanged();
+				bool isStatic = true;
+
 				if (TextureObj && TextureObj->IsValidLowLevel() && TextureObj->Resource && TextureObj->Resource->TextureRHI)
 				{
+					const bool isTexture2D = TextureObj->IsA(UTexture2D::StaticClass());
+					const bool isMediaTexture = TextureObj->IsA(UMediaTexture::StaticClass());
+
 					Texture = TextureObj->Resource->TextureRHI;
-					SizeX = Texture->GetTexture2D()->GetSizeX();
-					SizeY = Texture->GetTexture2D()->GetSizeY();
+
+					if (isTexture2D)
+					{
+						SizeX = Texture->GetTexture2D()->GetSizeX();
+						SizeY = Texture->GetTexture2D()->GetSizeY();
+					} 
+					else if (isMediaTexture)
+					{
+						UMediaTexture* mediaTexPtr = static_cast<UMediaTexture*>(TextureObj);
+						SizeX = mediaTexPtr->GetSurfaceWidth();
+						SizeY = mediaTexPtr->GetSurfaceHeight();
+						
+						bTextureChanged = true;
+						isStatic = false;
+					} 
+					else
+					{
+						UE_LOG(LogHMD, Log, TEXT("UTexture type is not supported (supported types are UTexture2D or UMediaTexture)"));
+					}
+
 					Format = Texture->GetFormat();
 
 					FHeadMountedDisplay::QuantizeBufferSize(SizeX, SizeY, 32);
@@ -273,7 +298,6 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 					}
 				}
 
-				bool bTextureChanged = LayerDesc.IsTextureChanged();
 				uint32 NumMips = (LayerDesc.IsHighQuality() ? 0 : 1);
 				if (RenderLayer->TextureSet.IsValid() && (bTextureSetsAreInvalid || 
 					RenderLayer->TextureSet->GetSourceSizeX() != SizeX ||
@@ -288,7 +312,14 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				{
 					// create texture set
 					check(pPresentBridge);
-					RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, Format, NumMips, FCustomPresent::DefaultStaticImage);
+					if (isStatic)
+					{
+						RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, Format, NumMips, FCustomPresent::DefaultStaticImage);
+					} 
+					else
+					{
+						RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, Format, NumMips, FCustomPresent::DefaultLinear);
+					}
 					bTextureChanged = true;
 				}
 				RenderLayer->Layer.Quad.ColorTexture = RenderLayer->GetSwapTextureSet();
@@ -304,12 +335,20 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				}
 #endif
 
+
 				// Copy texture if it was changed
 				if (RenderLayer->TextureSet.IsValid() && bTextureChanged)
 				{
 					if (Texture)
 					{
-						pPresentBridge->CopyTexture_RenderThread(RHICmdList, RenderLayer->TextureSet->GetRHITexture2D(), Texture->GetTexture2D(), FIntRect(), FIntRect(), true);
+						if (isStatic) 
+						{
+							pPresentBridge->CopyTexture_RenderThread(RHICmdList, RenderLayer->TextureSet->GetRHITexture2D(), Texture, SizeX, SizeY, FIntRect(), FIntRect(), FCustomPresent::PreMultiplyAlpha);
+						}
+						else
+						{
+							pPresentBridge->CopyTexture_RenderThread(RHICmdList, RenderLayer->TextureSet->GetRHITexture2D(), Texture, SizeX, SizeY, FIntRect(), FIntRect(), FCustomPresent::PreMultiplyRGB);
+						}
 					}
 					RenderLayer->CommitTextureSet(RHICmdList);
 				}

@@ -270,6 +270,7 @@ void FLayerManager::SubmitFrame_RenderThread(ovrMobile* mobilePtr, ovrFrameParms
 		currentParams->LayerCount ++;
 	}
 
+	//FPlatformMisc::LowLevelOutputDebugStringf(TEXT("FR IDX = %d! tid = %d"), int(currentParams->FrameIndex), int(gettid()));
 	vrapi_SubmitFrame(mobilePtr, currentParams);
 }
 
@@ -518,7 +519,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 
 	if (ShowFlags.Rendering)
 	{
-		check(pPresentBridge->GetRenderThreadId() == gettid());
+		checkf(pPresentBridge->GetRenderThreadId() == gettid(), TEXT("pPresentBridge->GetRenderThreadId() = %d, gettid() = %d"), pPresentBridge->GetRenderThreadId(), gettid());
 		// get latest orientation/position and cache it
 		if (!pGearVRPlugin->GetEyePoses(*CurrentFrame, NewEyeRenderPose, NewTracking))
 		{
@@ -719,55 +720,58 @@ void FGearVRCustomPresent::BeginRendering(FHMDViewExtension& InRenderContext, co
 
 void FGearVRCustomPresent::FinishRendering()
 {
-	check(IsInRenderingThread());
+ 	check(IsInRenderingThread());
 
-	if (RenderContext.IsValid() && RenderContext->bFrameBegun && TextureSet)
+	if (!IsSubmitFrameLocked())
 	{
-		FScopeLock lock(&OvrMobileLock);
- 		// Finish the frame and let OVR do buffer swap (Present) and flush/sync.
-		if (OvrMobile)
+		if (RenderContext.IsValid() && RenderContext->bFrameBegun && TextureSet)
 		{
-			check(RenderThreadId == gettid());
-
-			if (IsInLoadingIconMode())
+			FScopeLock lock(&OvrMobileLock);
+			// Finish the frame and let OVR do buffer swap (Present) and flush/sync.
+			if (OvrMobile)
 			{
-				FGameFrame* CurrentFrame = GetRenderFrame();
-				LoadingIconParms.FrameIndex = CurrentFrame->FrameNumber;
-				DoRenderLoadingIcon_RenderThread(RenderContext->GetFrameSetting()->CpuLevel, RenderContext->GetFrameSetting()->GpuLevel, RenderContext->GetRenderFrame()->GameThreadId);
+				check(RenderThreadId == gettid());
+
+				if (IsInLoadingIconMode())
+				{
+					FGameFrame* CurrentFrame = GetRenderFrame();
+					LoadingIconParms.FrameIndex = CurrentFrame->FrameNumber;
+					DoRenderLoadingIcon_RenderThread(RenderContext->GetFrameSetting()->CpuLevel, RenderContext->GetFrameSetting()->GpuLevel, RenderContext->GetRenderFrame()->GameThreadId);
+				}
+				else
+				{
+					FrameParms.PerformanceParms = DefaultPerfParms;
+					FrameParms.PerformanceParms.CpuLevel = RenderContext->GetFrameSetting()->CpuLevel;
+					FrameParms.PerformanceParms.GpuLevel = RenderContext->GetFrameSetting()->GpuLevel;
+					FrameParms.PerformanceParms.MainThreadTid = RenderContext->GetRenderFrame()->GameThreadId;
+					FrameParms.PerformanceParms.RenderThreadTid = gettid();
+					FrameParms.Java = JavaRT;
+					SystemActivities_Update_RenderThread();
+
+					LayerMgr->SubmitFrame_RenderThread(OvrMobile, &FrameParms);
+
+					TextureSet->SwitchToNextElement();
+				}
 			}
 			else
 			{
-				FrameParms.PerformanceParms = DefaultPerfParms;
-				FrameParms.PerformanceParms.CpuLevel = RenderContext->GetFrameSetting()->CpuLevel;
-				FrameParms.PerformanceParms.GpuLevel = RenderContext->GetFrameSetting()->GpuLevel;
-				FrameParms.PerformanceParms.MainThreadTid = RenderContext->GetRenderFrame()->GameThreadId;
-				FrameParms.PerformanceParms.RenderThreadTid = gettid();
-				FrameParms.Java = JavaRT;
-				SystemActivities_Update_RenderThread();
-
-				LayerMgr->SubmitFrame_RenderThread(OvrMobile, &FrameParms);
-
-				TextureSet->SwitchToNextElement();
+				UE_LOG(LogHMD, Warning, TEXT("Skipping frame: No active Ovr_Mobile object"));
 			}
 		}
 		else
 		{
-			UE_LOG(LogHMD, Warning, TEXT("Skipping frame: No active Ovr_Mobile object"));
-		}
-	}
-	else
-	{
-		if (RenderContext.IsValid() && !RenderContext->bFrameBegun)
-		{
-			UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
-		}
-		else if (!TextureSet)
-		{
-			UE_LOG(LogHMD, Warning, TEXT("Skipping frame: TextureSet is null"));
-		}
-		else
-		{
-			UE_LOG(LogHMD, Warning, TEXT("Skipping frame: No RenderContext set"));
+			if (RenderContext.IsValid() && !RenderContext->bFrameBegun)
+			{
+				UE_LOG(LogHMD, Warning, TEXT("Skipping frame: FinishRendering called with no corresponding BeginRendering (was BackBuffer re-allocated?)"));
+			}
+			else if (!TextureSet)
+			{
+				UE_LOG(LogHMD, Warning, TEXT("Skipping frame: TextureSet is null"));
+			}
+			else
+			{
+				UE_LOG(LogHMD, Warning, TEXT("Skipping frame: No RenderContext set"));
+			}
 		}
 	}
 	SetRenderContext(nullptr);
@@ -822,7 +826,7 @@ void FGearVRCustomPresent::UpdateLayers(FRHICommandListImmediate& RHICmdList)
 {
 	check(IsInRenderingThread());
 
-	if (RenderContext.IsValid())
+	if (RenderContext.IsValid() && !IsSubmitFrameLocked())
 	{
 		if (RenderContext->ShowFlags.Rendering)
 		{
@@ -853,6 +857,10 @@ void FGearVRCustomPresent::EnterVRMode_RenderThread()
 		JavaVM.Vm = GJavaVM;
 		JavaVM.ActivityObject = ActivityObject;
 		GJavaVM->AttachCurrentThread(&JavaVM.Env, nullptr);
+
+		// Make sure JavaRT is valid. Can be re-set by OnAcquireThreadOwnership
+		JavaRT = JavaVM;
+		RenderThreadId = gettid();
 
 		LoadingIconParms = vrapi_DefaultFrameParms(&JavaVM, VRAPI_FRAME_INIT_LOADING_ICON, vrapi_GetTimeInSeconds(), nullptr);
 		LoadingIconParms.MinimumVsyncs = MinimumVsyncs;
@@ -1077,23 +1085,63 @@ void FGearVRCustomPresent::DoRenderLoadingIcon_RenderThread(int CpuLevel, int Gp
 	}
 }
 
-void FGearVRCustomPresent::PushBlackFinal(const FGameFrame& frame)
+void FGearVRCustomPresent::PushBlackFinal(const FGameFrame* frame)
 {
 	check(IsInRenderingThread());
 
+	FScopeLock lock(&OvrMobileLock);
 	if (OvrMobile)
 	{
-		UE_LOG(LogHMD, Log, TEXT("PushBlackFinal()"));
-		ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_BLACK_FINAL, vrapi_GetTimeInSeconds(), NULL );
-		FrameParms.PerformanceParms = DefaultPerfParms;
-		const FSettings* Settings = frame.GetSettings();
-		FrameParms.PerformanceParms.CpuLevel = Settings->CpuLevel;
-		FrameParms.PerformanceParms.GpuLevel = Settings->GpuLevel;
-		FrameParms.PerformanceParms.MainThreadTid = frame.GameThreadId;
-		FrameParms.PerformanceParms.RenderThreadTid = gettid();
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ PushBlackFinal() ++++++, On RT! tid = %d"), gettid());
+		
+		check(JavaRT.Vm != nullptr);
+		ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_BLACK_FINAL, vrapi_GetTimeInSeconds(), nullptr);
+		frameParms.PerformanceParms = DefaultPerfParms;
+		frameParms.Java = JavaRT;
+		if (frame)
+		{
+			const FSettings* Settings = frame->GetSettings();
+			frameParms.PerformanceParms.MainThreadTid = frame->GameThreadId;
+			frameParms.FrameIndex = frame->FrameNumber;
+			frameParms.PerformanceParms.CpuLevel = Settings->CpuLevel;
+			frameParms.PerformanceParms.GpuLevel = Settings->GpuLevel;
+		}
+		frameParms.PerformanceParms.RenderThreadTid = gettid();
 
-		frameParms.FrameIndex = frame.FrameNumber;
-		vrapi_SubmitFrame(OvrMobile, &frameParms );
+		vrapi_SubmitFrame(OvrMobile, &frameParms);
+		FPlatformMisc::LowLevelOutputDebugString(TEXT("------- PushBlackFinal() ------"));
+	}
+}
+
+void FGearVRCustomPresent::PushFrame(FLayerManager* pInLayerMgr, const FGameFrame* CurrentFrame)
+{
+	check(IsInRenderingThread());
+
+	FScopeLock lock(&OvrMobileLock);
+	if (OvrMobile)
+	{
+		const FSettings* Settings = CurrentFrame->GetSettings();
+		if (IsInLoadingIconMode())
+		{
+			LoadingIconParms.FrameIndex = CurrentFrame->FrameNumber;
+			DoRenderLoadingIcon_RenderThread(Settings->CpuLevel, Settings->GpuLevel, CurrentFrame->GameThreadId);
+		}
+		else
+		{
+			check(JavaRT.Vm != nullptr);
+			ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_DEFAULT, vrapi_GetTimeInSeconds(), nullptr);
+			frameParms.MinimumVsyncs = MinimumVsyncs;
+			frameParms.ExtraLatencyMode = (bExtraLatencyMode) ? VRAPI_EXTRA_LATENCY_MODE_ON : VRAPI_EXTRA_LATENCY_MODE_OFF;
+			frameParms.FrameIndex = CurrentFrame->FrameNumber;
+			frameParms.PerformanceParms = DefaultPerfParms;
+			frameParms.PerformanceParms.CpuLevel = Settings->CpuLevel;
+			frameParms.PerformanceParms.GpuLevel = Settings->GpuLevel;
+			frameParms.PerformanceParms.MainThreadTid = CurrentFrame->GameThreadId;
+			frameParms.PerformanceParms.RenderThreadTid = gettid();
+			SystemActivities_Update_RenderThread();
+
+			pInLayerMgr->SubmitFrame_RenderThread(OvrMobile, &frameParms);
+		}
 	}
 }
 

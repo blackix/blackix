@@ -285,6 +285,10 @@ typedef unsigned char jboolean;
     
     // ***** Win32
 
+	// _DEBUG is added by default to debug projects in Visual Studio, so auto-define OVR_BUILD_DEBUG if it's set.
+#	if defined( _DEBUG ) && !defined( OVR_BUILD_DEBUG )	
+#		define OVR_BUILD_DEBUG
+#	endif
     // Byte order
     #define OVR_BYTE_ORDER    OVR_LITTLE_ENDIAN
 

@@ -186,8 +186,8 @@ bool FOculusRiftHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uin
 	return true;
 }
 
-void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, 
-	FIntRect DstRect, FIntRect SrcRect, bool bAlphaPremultiply) const
+void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, int SrcSizeX, int SrcSizeY, 
+	FIntRect DstRect, FIntRect SrcRect, uint32 InCopyTextureAlphaSettings) const
 {
 	check(IsInRenderingThread());
 
@@ -199,8 +199,8 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 	const uint32 ViewportHeight = DstRect.Height();
 	const FIntPoint TargetSize(ViewportWidth, ViewportHeight);
 
-	const float SrcTextureWidth = SrcTexture->GetSizeX();
-	const float SrcTextureHeight = SrcTexture->GetSizeY();
+	const float SrcTextureWidth = SrcSizeX;
+	const float SrcTextureHeight = SrcSizeY;
 	float U = 0.f, V = 0.f, USize = 1.f, VSize = 1.f;
 	if (!SrcRect.IsEmpty())
 	{
@@ -216,16 +216,26 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 	SetRenderTarget(RHICmdList, DstTexture, FTextureRHIRef());
 	RHICmdList.SetViewport(DstRect.Min.X, DstRect.Min.Y, 0, DstRect.Max.X, DstRect.Max.Y, 1.0f);
 
-	if (bAlphaPremultiply)
+	switch (InCopyTextureAlphaSettings) 
 	{
-		// for quads, write RGBA, RGB = src.rgb * src.a + dst.rgb * 0, A = src.a + dst.a * 0
-		RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
-	}
-	else
-	{
-		// for mirror window
+	case ECopyTextureAlphaSettings::NoPreMultiply:
 		RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+		break;
+
+	case ECopyTextureAlphaSettings::PreMultiplyAlpha:
+		RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
+		break;
+
+	case ECopyTextureAlphaSettings::PreMultiplyRGB:
+		RHICmdList.Clear(true, FLinearColor(0.0f, 0.0f, 0.0f, 1.0f), false, 0.0f, false, 0, FIntRect());
+		RHICmdList.SetBlendState(TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
+		break;
+
+	default:
+		check(0);
+		break;
 	}
+
 	RHICmdList.SetRasterizerState(TStaticRasterizerState<>::GetRHI());
 	RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
 
@@ -268,7 +278,7 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			FTexture2DRHIRef MirrorTexture = pCustomPresent->GetMirrorTexture();
 			if (MirrorTexture)
 			{
-				pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, MirrorTexture);
+				pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, MirrorTexture, MirrorTexture->GetTexture2D()->GetSizeX(), MirrorTexture->GetTexture2D()->GetSizeY());
 			}
 		}
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_Undistorted)
@@ -277,7 +287,7 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			FIntRect destRect(0, 0, BackBuffer->GetSizeX() / 2, BackBuffer->GetSizeY());
 			for (int i = 0; i < 2; ++i)
 			{
-				pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, destRect, FrameSettings->EyeRenderViewport[i]);
+				pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), destRect, FrameSettings->EyeRenderViewport[i]);
 				destRect.Min.X += BackBuffer->GetSizeX() / 2;
 				destRect.Max.X += BackBuffer->GetSizeX() / 2;
 			}
@@ -285,15 +295,35 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_SingleEye)
 		{
 			auto FrameSettings = RenderContext->GetFrameSettings();
-			FIntRect SrcViewRect(FrameSettings->EyeRenderViewport[0]);
+			FIntRect srcRect(FrameSettings->EyeRenderViewport[0]);
 
 			// avoid vignetting caused by HiddenAreaMesh masking
-			SrcViewRect.Min.X = 150;
-			SrcViewRect.Min.Y = 150;
-			SrcViewRect.Max.X -= 150;
-			SrcViewRect.Max.Y -= 150;
+			srcRect.Min.X = 150;
+			srcRect.Min.Y = 150;
+			srcRect.Max.X -= 150;
+			srcRect.Max.Y -= 150;
 
-			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), SrcViewRect);
+			// maintain aspect ratio
+			FIntPoint srcSize = srcRect.Max - srcRect.Min;
+			FIntPoint destSize((int32) BackBuffer->GetSizeX(), (int32) BackBuffer->GetSizeY());
+
+			if(srcSize.X > srcSize.Y * destSize.X / destSize.Y)
+			{
+				// Crop width to fit
+				srcSize.X = srcSize.Y * destSize.X / destSize.Y;
+			}
+			else
+			{
+				// Crop height to fit
+				srcSize.Y = srcSize.X * destSize.Y / destSize.X;
+			}
+
+			srcRect.Min.X = (srcRect.Min.X + srcRect.Max.X - srcSize.X) / 2;
+			srcRect.Min.Y = (srcRect.Min.Y + srcRect.Max.Y - srcSize.Y) / 2;
+			srcRect.Max.X = srcRect.Min.X + srcSize.X;
+			srcRect.Max.Y = srcRect.Min.Y + srcSize.Y;
+
+			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), srcRect);
 		}
 	}
 }

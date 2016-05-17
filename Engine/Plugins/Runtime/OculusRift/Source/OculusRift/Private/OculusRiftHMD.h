@@ -333,16 +333,26 @@ public:
 		RenderTargetable	= 0x2,
 		ShaderResource		= 0x4,
 		EyeBuffer			= 0x8,
+		LinearSpace         = 0x10,
 
 		Default				= RenderTargetable | ShaderResource,
+		DefaultLinear       = LinearSpace | Default,
 		DefaultStaticImage	= StaticImage | Default,
 		DefaultEyeBuffer	= EyeBuffer | Default,
 	};
+
+	enum ECopyTextureAlphaSettings
+	{
+		NoPreMultiply,
+		PreMultiplyAlpha,
+		PreMultiplyRGB
+	};
+
 	// Create and destroy textureset from a texture.
 	virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
 
 	// Copies one texture to another
-	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false) const;
+	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, int SrcSizeX, int SrcSizeY, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), uint32 InCopyTextureAlphaSettings = ECopyTextureAlphaSettings::NoPreMultiply) const;
 
 	FLayerManager* GetLayerMgr() { return static_cast<FLayerManager*>(LayerMgr.Get()); }
 	void UpdateLayers(FRHICommandListImmediate& RHICmdList);

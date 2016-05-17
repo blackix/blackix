@@ -205,7 +205,7 @@ typedef Math<double> Mathd;
 
 // Safe reciprocal square root.
 template<class T>
-T RcpSqrt( const T f ) { return ( f >= Math<T>::SmallestNonDenormal ) ? T(1) / sqrt( f ) : Math<T>::HugeNumber; }
+T RcpSqrt( const T f ) { return ( f >= Math<T>::SmallestNonDenormal ) ? static_cast<T>( 1.0 / sqrt( f ) ) : Math<T>::HugeNumber; }
 
 // Conversion functions between degrees and radians
 template<class T>
@@ -219,7 +219,7 @@ T Acos(T val)
 {
 		if (val > T(1))				return T(0);
 		else if (val < T(-1))		return Math<T>::Pi;
-		else						return acos(val); 
+		else						return static_cast<T>( acos(val) ); 
 };
 
 // Numerically stable asin function
@@ -228,7 +228,7 @@ T Asin(T val)
 {
 	if (val > T(1))				return Math<T>::PiOver2;
 	else if (val < T(-1))		return Math<T>::PiOver2 * T(3);
-	else						return asin(val); 
+	else						return static_cast<T>( asin(val) ); 
 };
 
 #ifdef OVR_CC_MSVC
@@ -331,7 +331,7 @@ public:
 	{ 
 		T div = LengthSq()*b.LengthSq();
 		OVR_ASSERT(div != T(0));
-		T result = Acos((this->Dot(b))/sqrt(div));
+		T result = static_cast<T>( Acos((this->Dot(b))/sqrt(div)) );
 		return result;
 	}
 
@@ -339,7 +339,7 @@ public:
     T       LengthSq() const                     { return (x * x + y * y); }
 
     // Return vector length.
-    T       Length() const                       { return sqrt(LengthSq()); }
+    T       Length() const                       { return static_cast<T>( sqrt(LengthSq()) ); }
 
     // Returns squared distance between two points represented by vectors.
     T       DistanceSq(Vector2& b) const         { return (*this - b).LengthSq(); }
@@ -422,7 +422,10 @@ public:
 
     static const Vector3 ZERO;
 
-    // C-interop support.
+	// PC-SDK added this function
+	static Vector3 Zero() { return Vector3(0, 0, 0); }
+
+	// C-interop support.
     typedef  typename CompatibleTypes<Vector3<T> >::Type CompatibleType;
 
     Vector3(const CompatibleType& s) : x(s.x), y(s.y), z(s.z) {  }
@@ -517,7 +520,7 @@ public:
 	{
 		T div = LengthSq()*b.LengthSq();
 		OVR_ASSERT(div != T(0));
-		T result = Acos((this->Dot(b))/sqrt(div));
+		T result = static_cast<T>( Acos((this->Dot(b))/sqrt(div)) );
 		return result;
 	}
 
@@ -525,7 +528,7 @@ public:
     T       LengthSq() const                     { return (x * x + y * y + z * z); }
 
     // Return vector length.
-    T       Length() const                       { return sqrt(LengthSq()); }
+    T       Length() const                       { return static_cast<T>( sqrt(LengthSq()) ); }
 
     // Returns squared distance between two points represented by vectors.
     T       DistanceSq(Vector3& b) const         { return (*this - b).LengthSq(); }
@@ -776,6 +779,7 @@ public:
 
 	Bounds3( const InitType init )
 	{
+		OVR_UNUSED( init );
 		Clear();
 	}
 
@@ -861,7 +865,12 @@ public:
 
 	bool Contains(const Vector3<T> &point, T expand = 0) const
 	{
-		return point.x >= b[0].x - expand && point.y >= b[0].y - expand && point.z >= b[0].z - expand && point.x <= b[1].x + expand && point.y <= b[1].y + expand && point.z <= b[1].z + expand;
+		return	point.x >= b[0].x - expand &&
+				point.y >= b[0].y - expand &&
+				point.z >= b[0].z - expand &&
+				point.x <= b[1].x + expand &&
+				point.y <= b[1].y + expand &&
+				point.z <= b[1].z + expand;
 	}
 
     // returns the axial aligned bounds of inputBounds after transformation by pose
@@ -875,6 +884,18 @@ public:
 			fabs( extents[0] * rotation.M[0][0] ) + fabs( extents[1] * rotation.M[0][1] ) + fabs( extents[2] * rotation.M[0][2] ),
 			fabs( extents[0] * rotation.M[1][0] ) + fabs( extents[1] * rotation.M[1][1] ) + fabs( extents[2] * rotation.M[1][2] ),
 			fabs( extents[0] * rotation.M[2][0] ) + fabs( extents[1] * rotation.M[2][1] ) + fabs( extents[2] * rotation.M[2][2] ) );
+		return Bounds3<T>( newCenter - newExtents, newCenter + newExtents );
+	}
+
+	static Bounds3 Transform( const Matrix4<T> & matrix, const Bounds3<T> & inBounds )
+	{
+		const Vector3<T> center = ( inBounds.b[0] + inBounds.b[1] ) * 0.5f;
+		const Vector3<T> extents = inBounds.b[1] - center;
+		const Vector3<T> newCenter = matrix.Transform( center );
+		const Vector3<T> newExtents(
+			fabs( extents[0] * matrix.M[0][0] ) + fabs( extents[1] * matrix.M[0][1] ) + fabs( extents[2] * matrix.M[0][2] ),
+			fabs( extents[0] * matrix.M[1][0] ) + fabs( extents[1] * matrix.M[1][1] ) + fabs( extents[2] * matrix.M[1][2] ),
+			fabs( extents[0] * matrix.M[2][0] ) + fabs( extents[1] * matrix.M[2][1] ) + fabs( extents[2] * matrix.M[2][2] ) );
 		return Bounds3<T>( newCenter - newExtents, newCenter + newExtents );
 	}
 
@@ -1043,9 +1064,9 @@ public:
         }
 
 		Vector3<T> unitAxis = axis.Normalized();
-		T          sinHalfAngle = sin(angle * T(0.5));
+		T          sinHalfAngle = static_cast<T>( sin(angle * T(0.5)) );
 
-		w = cos(angle * T(0.5));
+		w = static_cast<T>( cos(angle * T(0.5)) );
 		x = unitAxis.x * sinHalfAngle;
 		y = unitAxis.y * sinHalfAngle;
 		z = unitAxis.z * sinHalfAngle;
@@ -1054,12 +1075,12 @@ public:
     // Constructs quaternion for rotation around one of the coordinate axis by an angle.
     Quat(Axis A, T angle, RotateDirection d = Rotate_CCW, HandedSystem s = Handed_R)
     {
-        T sinHalfAngle = s * d * sin(angle * T(0.5));
+        T sinHalfAngle = s * d * static_cast<T>( sin(angle * T(0.5)) );
         T v[3];
         v[0] = v[1] = v[2] = T(0);
         v[A] = sinHalfAngle;
 
-        w = cos(angle * T(0.5));
+        w = static_cast<T>( cos(angle * T(0.5)) );
         x = v[0];
         y = v[1];
         z = v[2];
@@ -1157,7 +1178,7 @@ public:
 		const T cz = from.x * to.y - from.y * to.x;
 		const T dot = from.x * to.x + from.y * to.y + from.z * to.z;
 		const T crossLengthSq = cx * cx + cy * cy + cz * cz;
-		const T magnitude = sqrt( crossLengthSq + dot * dot );
+		const T magnitude = static_cast<T>( sqrt( crossLengthSq + dot * dot ) );
 		const T cw = dot + magnitude;
 		if ( cw < Math<T>::SmallestNonDenormal )
 		{
@@ -1206,7 +1227,7 @@ public:
     Vector3<T> Imag() const                 { return Vector3<T>(x,y,z); }
 
     // Get quaternion length.
-    T       Length() const                  { return sqrt(LengthSq()); }
+    T       Length() const                  { return static_cast<T>( sqrt(LengthSq()) ); }
 
     // Get quaternion length squared.
     T       LengthSq() const                { return (x * x + y * y + z * z + w * w); }
@@ -1234,7 +1255,7 @@ public:
 	// Angle between two quaternions in radians
     T       Angle(const Quat& q) const
 	{
-		return 2 * Acos(fabs(Dot(q)));
+		return 2 * static_cast<T>( Acos(fabs(Dot(q))) );
 	}
 
 	// Determine if this a unit quaternion.
@@ -1295,7 +1316,7 @@ public:
     // FIXME: This is opposite of Lerp for some reason.  It goes from 1 to 0 instead of 0 to 1.  Leaving it as a gift for future generations to deal with.
     Quat Nlerp(const Quat& other, T a) const
     {
-        T sign = (Dot(other) >= 0) ? 1 : -1;
+        T sign = (Dot(other) >= 0.0f) ? 1.0f : -1.0f;
         return (*this * sign * a + other * (1-a)).Normalized();
     }
     
@@ -1305,7 +1326,12 @@ public:
     {
         return ((*this * Quat<T>(v.x, v.y, v.z, T(0))) * Inverted()).Imag();
     }
-    
+
+    Vector3<T> InverseRotate(const Vector3<T>& v) const
+    {
+        return Inverted().Rotate(v);
+    }
+
     // Inversed quaternion rotates in the opposite direction.
     Quat        Inverted() const
     {
@@ -1368,23 +1394,23 @@ public:
         { // South pole singularity
             *a = T(0);
             *b = -S*D*Math<T>::PiOver2;
-            *c = S*D*atan2(T(2)*(psign*Q[A1]*Q[A2] + w*Q[A3]),
-		                   ww + Q22 - Q11 - Q33 );
+            *c = S*D*static_cast<T>( atan2(T(2)*(psign*Q[A1]*Q[A2] + w*Q[A3]),
+		                   ww + Q22 - Q11 - Q33 ) );
         }
         else if (s2 > T(1) - Math<T>::SingularityRadius)
         {  // North pole singularity
             *a = T(0);
             *b = S*D*Math<T>::PiOver2;
-            *c = S*D*atan2(T(2)*(psign*Q[A1]*Q[A2] + w*Q[A3]),
-		                   ww + Q22 - Q11 - Q33);
+            *c = S*D*static_cast<T>( atan2(T(2)*(psign*Q[A1]*Q[A2] + w*Q[A3]),
+		                   ww + Q22 - Q11 - Q33) );
         }
         else
         {
-            *a = -S*D*atan2(T(-2)*(w*Q[A1] - psign*Q[A2]*Q[A3]),
-		                    ww + Q33 - Q11 - Q22);
-            *b = S*D*asin(s2);
-            *c = S*D*atan2(T(2)*(w*Q[A3] - psign*Q[A1]*Q[A2]),
-		                   ww + Q11 - Q22 - Q33);
+            *a = -S*D*static_cast<T>( atan2(T(-2)*(w*Q[A1] - psign*Q[A2]*Q[A3]),
+		                    ww + Q33 - Q11 - Q22) );
+            *b = S*D*static_cast<T>( asin(s2) );
+            *c = S*D*static_cast<T>( atan2(T(2)*(w*Q[A3] - psign*Q[A1]*Q[A2]),
+		                   ww + Q11 - Q22 - Q33) );
         }      
         return;
     }
@@ -1820,7 +1846,9 @@ public:
 
     Vector3<T> Transform(const Vector3<T>& v) const
     {
-		const T rcpW = T(1) / ( M[3][0] * v.x + M[3][1] * v.y + M[3][2] * v.z + M[3][3] );
+		const T w = ( M[3][0] * v.x + M[3][1] * v.y + M[3][2] * v.z + M[3][3] );
+		OVR_ASSERT( fabs( w ) >= Math<T>::SmallestNonDenormal );
+		const T rcpW = T(1) / w;
         return Vector3<T>((M[0][0] * v.x + M[0][1] * v.y + M[0][2] * v.z + M[0][3]) * rcpW,
                           (M[1][0] * v.x + M[1][1] * v.y + M[1][2] * v.z + M[1][3]) * rcpW,
                           (M[2][0] * v.x + M[2][1] * v.y + M[2][2] * v.z + M[2][3]) * rcpW);
@@ -1926,19 +1954,19 @@ public:
         { // South pole singularity
             *a = 0;
             *b = -S*D*Math<T>::PiOver2;
-            *c = S*D*atan2( psign*M[A2][A1], M[A2][A2] );
+            *c = S*D*static_cast<T>( atan2( psign*M[A2][A1], M[A2][A2] ) );
         }
         else if (pm > 1.0f - Math<T>::SingularityRadius)
         { // North pole singularity
             *a = 0;
             *b = S*D*Math<T>::PiOver2;
-            *c = S*D*atan2( psign*M[A2][A1], M[A2][A2] );
+            *c = S*D*static_cast<T>( atan2( psign*M[A2][A1], M[A2][A2] ) );
         }
         else
         { // Normal case (nonsingular)
-            *a = S*D*atan2( -psign*M[A2][A3], M[A3][A3] );
-            *b = S*D*asin(pm);
-            *c = S*D*atan2( -psign*M[A1][A2], M[A1][A1] );
+            *a = S*D*static_cast<T>( atan2( -psign*M[A2][A3], M[A3][A3] ) );
+            *b = S*D*static_cast<T>( asin(pm) );
+            *c = S*D*static_cast<T>( atan2( -psign*M[A1][A2], M[A1][A1] ) );
         }
 
         return;
@@ -2244,7 +2272,7 @@ public:
     static Matrix4 PerspectiveRH(T yfov, T aspect, T znear, T zfar)
     {
         Matrix4 m;
-        T tanHalfFov = tan(yfov * T(0.5f));
+        T tanHalfFov = static_cast<T>( tan(yfov * T(0.5f)) );
 
         m.M[0][0] = T(1) / (aspect * tanHalfFov);
         m.M[1][1] = T(1) / tanHalfFov;

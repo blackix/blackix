@@ -1645,7 +1645,7 @@ TArray<TSharedPtr<FHMDLayerDesc> >& FHMDLayerManager::GetLayersArrayById(uint32 
 		return DebugLayers;
 		break;
 	default:
-		check(0);
+		checkf(0, TEXT("Invalid layer type %d (id = 0x%X)"), int(LayerId & FHMDLayerDesc::TypeMask), LayerId);
 	}
 	return EyeLayers;
 }

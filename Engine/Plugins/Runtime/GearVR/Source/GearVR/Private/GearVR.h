@@ -433,11 +433,16 @@ public:
 	// Forcedly renders the loading icon.
 	void RenderLoadingIcon_RenderThread(uint32 FrameIndex);
 	
+	int32 LockSubmitFrame() { return SubmitFrameLocker.Increment(); }
+	int32 UnlockSubmitFrame() { return SubmitFrameLocker.Decrement(); }
+	bool IsSubmitFrameLocked() const { return SubmitFrameLocker.GetValue() != 0; }
+
+	void PushFrame(FLayerManager* pInLayerMgr, const FGameFrame* CurrentFrame);
 protected:
 	void SetRenderContext(FHMDViewExtension* InRenderContext);
 	void DoRenderLoadingIcon_RenderThread(int CpuLevel, int GpuLevel, pid_t GameTid);
 	void SystemActivities_Update_RenderThread();
-	void PushBlackFinal(const FGameFrame& frame);
+	void PushBlackFinal(const FGameFrame* frame);
 
 protected: // data
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
@@ -464,6 +469,7 @@ protected: // data
 	FCriticalSection						OvrMobileLock;	// used to access OvrMobile_RT/HmdInfo_RT on a game thread
 	ovrJava									JavaRT;			// Rendering thread Java obj
 	jobject									ActivityObject;
+	FThreadSafeCounter						SubmitFrameLocker;
 };
 }  // namespace GearVR
 
@@ -568,6 +574,8 @@ public:
 	void SetLoadingIconMode(bool bActiveLoadingIcon);
 	void RenderLoadingIcon_RenderThread();
 	bool IsInLoadingIconMode() const;
+
+	FGearVRCustomPresent* GetCustomPresent_Internal() const { return pGearVRBridge; }
 private:
 	FGearVR* getThis() { return this; }
 
