@@ -58,9 +58,6 @@ extern "C" {
 // Optional distortion file to override built-in distortion.
 #define LOCAL_PREF_VRAPI_DISTORTION_FILE_NAME			"dev_distortionFileName"		// default = ""
 
-// Experimental feature that clips the distortion mesh to reduce GPU fill for timewarp+distortion
-#define LOCAL_PREF_VRAPI_CLIP_DISTORTION_MESH			"dev_clipDistortionMesh"		// "0" = off, "1" = clip to optics, "2" = clip to framebuffer
-
 // Debug option to draw the axis lines after warp.
 #define LOCAL_PREF_VRAPI_DRAW_CALIBRATION_LINES			"dev_drawCalibrationLines"		// "0" or "1"
 

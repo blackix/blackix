@@ -303,8 +303,8 @@ FLightMapInteraction FLightMapInteraction::Texture(
 
 float ComputeBoundsScreenSize( const FVector4& Origin, const float SphereRadius, const FSceneView& View )
 {
-	// Only need one component from a view transformation; just calculate the one we're interested in.
-	const float Divisor =  Dot3(Origin - View.ViewMatrices.ViewOrigin, View.ViewMatrices.ViewMatrix.GetColumn(2));
+	// Only need one component from a view transformation; just calculate the one we're interested in. Ignore view direction when rendering in stereo
+	const float Divisor = (View.StereoPass == eSSP_FULL) ? Dot3(Origin - View.ViewMatrices.ViewOrigin, View.ViewMatrices.ViewMatrix.GetColumn(2)) : FVector::Dist(Origin, View.ViewMatrices.ViewOrigin);
 
 	// Get projection multiple accounting for view scaling.
 	const float ScreenMultiple = FMath::Max(View.ViewRect.Width() / 2.0f * View.ViewMatrices.ProjMatrix.M[0][0],

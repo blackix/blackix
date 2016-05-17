@@ -112,7 +112,7 @@ for ( ; ; )
 	// Acquire ANativeWindow from Android Surface and create EGLSurface.
 	// Make the EGLContext context current on the surface.
 
-	// Enter VR mode once the activity is in the resumed state with a
+	// Enter VR mode once the Android Activity is in the resumed state with a
 	// valid EGLSurface and current EGLContext.
 	const ovrModeParms modeParms = vrapi_DefaultModeParms( &java );
 	ovrMobile * ovr = vrapi_EnterVrMode( &modeParms );
@@ -134,8 +134,7 @@ for ( ; ; )
 		// Advance the simulation based on the predicted display time.
 
 		// Render eye images and setup ovrFrameParms using 'ovrTracking'.
-		const double currentTime = vrapi_GetTimeInSeconds();
-		ovrFrameParms frameParms = vrapi_DefaultFrameParms( &java, VRAPI_FRAME_INIT_DEFAULT, currentTime, NULL );
+		ovrFrameParms frameParms = vrapi_DefaultFrameParms( &java, VRAPI_FRAME_INIT_DEFAULT, predictedDisplayTime, NULL );
 		frameParms.FrameIndex = frameIndex;
 
 		const ovrMatrix4f centerEyeViewMatrix = vrapi_GetCenterEyeViewMatrix( &headModelParms, &tracking, NULL );
@@ -158,8 +157,8 @@ for ( ; ; )
 		vrapi_SubmitFrame( ovr, &frameParms );
 	}
 
-	// Leave VR mode when the activity is paused, the Android Surface is
-	// destroyed, or when switching to another activity.
+	// Leave VR mode when the Android Activity is paused, the Android Surface is
+	// destroyed, or when switching to another Activity.
 	vrapi_LeaveVrMode( ovr );
 }
 
@@ -437,13 +436,19 @@ OVR_VRAPI_EXPORT ovrInitializeStatus vrapi_Initialize( const ovrInitParms * init
 OVR_VRAPI_EXPORT void vrapi_Shutdown();
 
 //-----------------------------------------------------------------
-// System properties and status
+// System Properties
 //-----------------------------------------------------------------
 
 // Returns a system property. These are constants for a particular device.
 // This function can be called any time from any thread once the VrApi is initialized.
 OVR_VRAPI_EXPORT int vrapi_GetSystemPropertyInt( const ovrJava * java, const ovrSystemProperty propType );
 OVR_VRAPI_EXPORT float vrapi_GetSystemPropertyFloat( const ovrJava * java, const ovrSystemProperty propType );
+// The return memory is guaranteed to be valid until the next call to vrapi_GetSystemPropertyString.
+OVR_VRAPI_EXPORT const char * vrapi_GetSystemPropertyString( const ovrJava * java, const ovrSystemProperty propType );
+
+//-----------------------------------------------------------------
+// System Status
+//-----------------------------------------------------------------
 
 // Returns a system status. These are variables that may change at run-time.
 // This function can be called any time from any thread once the VrApi is initialized.
@@ -459,10 +464,10 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // not referenced after the function returns.
 //
 // This should be called after vrapi_Initialize(), when the app is both
-// resumed and has a valid window surface. 
+// resumed and has a valid window surface (ANativeWindow).
 //
 // On Android, an application cannot just allocate a new window surface
-// and render to it. Android allocates and manages the window/frontbuffer and
+// and render to it. Android allocates and manages the window surface and
 // (after the fact) notifies the application of the state of affairs through
 // life cycle events (surfaceCreated / surfaceChanged / surfaceDestroyed).
 // The application (or 3rd party engine) typically handles these events.
@@ -472,7 +477,7 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // application can explicitly pass the EGLDisplay, EGLContext and EGLSurface
 // or ANativeWindow to vrapi_EnterVrMode(). The EGLDisplay and EGLContext are
 // used to create a shared context used by the background time warp thread.
-
+//
 // If, however, the application does not explicitly pass in these objects, then
 // vrapi_EnterVrMode() *must* be called from a thread with an OpenGL ES context
 // current on the Android window surface. The context of the calling thread is
@@ -482,6 +487,16 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // from the calling thread will be current on an invisible pbuffer, because the
 // time warp takes ownership of the Android window surface. Note that this requires
 // the config used by the calling thread to have an EGL_SURFACE_TYPE with EGL_PBUFFER_BIT.
+//
+// New applications should always explicitly pass in the EGLDisplay, EGLContext
+// and ANativeWindow. The other paths are still available to support old applications
+// but they will be deprecated.
+//
+// This function will return NULL when entering VR mode failed because the ANativeWindow
+// was not valid. If the ANativeWindow "BufferQueueProducer: BufferQueue has been abandoned"
+// then the app can wait for a new ANativeWindow (through SurfaceCreated). If another API
+// is "BufferQueueProducer: already connected" to the ANativeWindow, then the app has to
+// disconnect whatever is connected to the ANativeWindow (typically an EGLSurface).
 OVR_VRAPI_EXPORT ovrMobile * vrapi_EnterVrMode( const ovrModeParms * parms );
 
 // Shut everything down for window destruction.

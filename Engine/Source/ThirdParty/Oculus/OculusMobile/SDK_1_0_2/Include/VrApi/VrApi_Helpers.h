@@ -360,21 +360,22 @@ static inline ovrMatrix4f ovrMatrix4f_TanAngleMatrixFromUnitSquare( const ovrMat
 	*/
 
 	const ovrMatrix4f inv = ovrMatrix4f_Inverse( modelView );
+	const float coef = ( inv.M[2][3] > 0.0f ) ? 1.0f : -1.0f;
 
 	ovrMatrix4f m;
-	m.M[0][0] = + 0.5f * ( inv.M[0][0] * inv.M[2][3] - inv.M[0][3] * inv.M[2][0] ) - 0.5f * inv.M[2][0];
-	m.M[0][1] = + 0.5f * ( inv.M[0][1] * inv.M[2][3] - inv.M[0][3] * inv.M[2][1] ) - 0.5f * inv.M[2][1];
-	m.M[0][2] = + 0.5f * ( inv.M[0][2] * inv.M[2][3] - inv.M[0][3] * inv.M[2][2] ) - 0.5f * inv.M[2][2];
+	m.M[0][0] = ( +0.5f * ( inv.M[0][0] * inv.M[2][3] - inv.M[0][3] * inv.M[2][0] ) - 0.5f * inv.M[2][0] ) * coef;
+	m.M[0][1] = ( +0.5f * ( inv.M[0][1] * inv.M[2][3] - inv.M[0][3] * inv.M[2][1] ) - 0.5f * inv.M[2][1] ) * coef;
+	m.M[0][2] = ( +0.5f * ( inv.M[0][2] * inv.M[2][3] - inv.M[0][3] * inv.M[2][2] ) - 0.5f * inv.M[2][2] ) * coef;
 	m.M[0][3] = 0.0f;
-										 									
-	m.M[1][0] = - 0.5f * ( inv.M[1][0] * inv.M[2][3] - inv.M[1][3] * inv.M[2][0] ) - 0.5f * inv.M[2][0];
-	m.M[1][1] = - 0.5f * ( inv.M[1][1] * inv.M[2][3] - inv.M[1][3] * inv.M[2][1] ) - 0.5f * inv.M[2][1];
-	m.M[1][2] = - 0.5f * ( inv.M[1][2] * inv.M[2][3] - inv.M[1][3] * inv.M[2][2] ) - 0.5f * inv.M[2][2];
+
+	m.M[1][0] = (-0.5f * ( inv.M[1][0] * inv.M[2][3] - inv.M[1][3] * inv.M[2][0] ) - 0.5f * inv.M[2][0] ) * coef;
+	m.M[1][1] = (-0.5f * ( inv.M[1][1] * inv.M[2][3] - inv.M[1][3] * inv.M[2][1] ) - 0.5f * inv.M[2][1] ) * coef;
+	m.M[1][2] = (-0.5f * ( inv.M[1][2] * inv.M[2][3] - inv.M[1][3] * inv.M[2][2] ) - 0.5f * inv.M[2][2] ) * coef;
 	m.M[1][3] = 0.0f;
 
-	m.M[2][0] = - inv.M[2][0];
-	m.M[2][1] = - inv.M[2][1];
-	m.M[2][2] = - inv.M[2][2];
+	m.M[2][0] = ( -inv.M[2][0] ) * coef;
+	m.M[2][1] = ( -inv.M[2][1] ) * coef;
+	m.M[2][2] = ( -inv.M[2][2] ) * coef;
 	m.M[2][3] = 0.0f;
 
 	m.M[3][0] = 0.0f;
@@ -382,6 +383,19 @@ static inline ovrMatrix4f ovrMatrix4f_TanAngleMatrixFromUnitSquare( const ovrMat
 	m.M[3][2] = 0.0f;
 	m.M[3][3] = 1.0f;
 	return m;
+}
+
+// Convert a standard view matrix into a TexCoordsFromTanAngles matrix for
+// the looking into a cube map.
+static inline ovrMatrix4f ovrMatrix4f_TanAngleMatrixForCubeMap( const ovrMatrix4f * viewMatrix )
+{
+    ovrMatrix4f m = *viewMatrix;
+    // clear translation
+    for ( int i = 0; i < 3; i++ )
+    {
+        m.M[ i ][ 3 ] = 0.0f;
+    }
+    return ovrMatrix4f_Inverse( &m );
 }
 
 // Utility function to calculate external velocity for smooth stick yaw turning.
@@ -474,7 +488,7 @@ static inline ovrFrameParms vrapi_DefaultFrameParms( const ovrJava * java, const
 	parms.Type = VRAPI_STRUCTURE_TYPE_FRAME_PARMS;
 	for ( int layer = 0; layer < VRAPI_FRAME_LAYER_TYPE_MAX; layer++ )
 	{
-		parms.Layers[layer].ProgramParms[2] = 1.0f; // color scale
+		parms.Layers[layer].ColorScale = 1.0f; // color scale
 		for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 		{
 			parms.Layers[layer].Textures[eye].TexCoordsFromTanAngles = texCoordsFromTanAngles;
@@ -524,8 +538,8 @@ static inline ovrFrameParms vrapi_DefaultFrameParms( const ovrJava * java, const
 			parms.LayerCount = 2;
 			parms.Flags = VRAPI_FRAME_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
 			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].Flags = VRAPI_FRAME_LAYER_FLAG_SPIN;
-			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].ProgramParms[0] = 1.0f;		// rotation in radians per second
-			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].ProgramParms[1] = 16.0f;		// icon size factor smaller than fullscreen
+			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].SpinSpeed = 1.0f;		// rotation in radians per second
+			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].SpinScale = 16.0f;		// icon size factor smaller than fullscreen
 			for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 			{
 				parms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].ColorTextureSwapChain = (ovrTextureSwapChain *)VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_BLACK;
@@ -538,8 +552,8 @@ static inline ovrFrameParms vrapi_DefaultFrameParms( const ovrJava * java, const
 		{
 			parms.LayerCount = 2;
 			parms.Flags = VRAPI_FRAME_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
-			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].ProgramParms[0] = 0.0f;		// rotation in radians per second
-			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].ProgramParms[1] = 2.0f;		// message size factor smaller than fullscreen
+			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].SpinSpeed = 0.0f;		// rotation in radians per second
+			parms.Layers[VRAPI_FRAME_LAYER_TYPE_OVERLAY].SpinScale = 2.0f;		// message size factor smaller than fullscreen
 			for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 			{
 				parms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].ColorTextureSwapChain = (ovrTextureSwapChain *)VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_BLACK;
