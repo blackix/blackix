@@ -23,6 +23,7 @@ void FMaterialRelevance::SetPrimitiveViewRelevance(FPrimitiveViewRelevance& OutV
 	OutViewRelevance.bNormalTranslucencyRelevance = bNormalTranslucency;
 	OutViewRelevance.ShadingModelMaskRelevance = ShadingModelMask;
 	OutViewRelevance.bUsesGlobalDistanceField = bUsesGlobalDistanceField;
+    OutViewRelevance.bUsesTranslucencyDepthPrepass = bUsesTranslucencyDepthPrepass;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -68,6 +69,7 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 		MaterialRelevance.bSeparateTranslucency = bIsTranslucent && Material->bEnableSeparateTranslucency;
 		MaterialRelevance.bNormalTranslucency = bIsTranslucent && !Material->bEnableSeparateTranslucency;
 		MaterialRelevance.bDisableDepthTest = bIsTranslucent && Material->bDisableDepthTest;		
+        MaterialRelevance.bUsesTranslucencyDepthPrepass = bIsTranslucent && Material->bEnableTranslucentDepthPrepass;
 		MaterialRelevance.bOutputsVelocityInBasePass = Material->bOutputVelocityOnBasePass;	
 		MaterialRelevance.bUsesGlobalDistanceField = MaterialResource->UsesGlobalDistanceField_GameThread();
 		return MaterialRelevance;
@@ -274,6 +276,21 @@ bool UMaterialInterface::IsDitheredLODTransition(bool bIsInGameThread) const
 }
 
 bool UMaterialInterface::IsMasked(bool bIsInGameThread) const
+{
+	return false;
+}
+
+bool UMaterialInterface::IsAlphaToCoverage(bool bIsInGameThread) const
+{
+	return false;
+}
+
+bool UMaterialInterface::IsFullyRough(bool bIsInGameThread) const
+{
+	return false;
+}
+
+bool UMaterialInterface::IsCheapShading(bool bIsInGameThread) const
 {
 	return false;
 }

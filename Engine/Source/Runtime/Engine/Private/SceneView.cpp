@@ -433,6 +433,15 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 		bApplyPreViewTranslation = false;
 	}
 
+	if (InitOptions.bUseLODViewLocation)
+	{
+		ViewMatrices.LODViewOrigin = InitOptions.LODViewLocation;
+	}
+	else
+	{
+		ViewMatrices.LODViewOrigin = ViewMatrices.ViewOrigin;
+	}
+
 	/** The view transform, starting from world-space points translated by -ViewOrigin. */
 	FMatrix TranslatedViewMatrix = ViewRotationMatrix;
 	FMatrix InvTranslatedViewMatrix = TranslatedViewMatrix.GetTransposed();
@@ -546,8 +555,8 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	// OpenGL Gamma space output in GLSL flips Y when rendering directly to the back buffer (so not needed on PC, as we never render directly into the back buffer)
 	auto ShaderPlatform = GShaderPlatformForFeatureLevel[FeatureLevel];
-	bool bUsingForwardRenderer = FSceneInterface::ShouldUseDeferredRenderer(FeatureLevel) == false;
-	bool bPlatformRequiresReverseCulling = (IsOpenGLPlatform(ShaderPlatform) && bUsingForwardRenderer && !IsPCPlatform(ShaderPlatform));
+	bool bUsingMobileForwardRenderer = Family && Family->Scene && Family->Scene->GetShadingPath() == EShadingPath::Forward;
+	bool bPlatformRequiresReverseCulling = (IsOpenGLPlatform(ShaderPlatform) && bUsingMobileForwardRenderer && !IsPCPlatform(ShaderPlatform));
 	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 	check(MobileHDRCvar);
 	bReverseCulling = (bPlatformRequiresReverseCulling && MobileHDRCvar->GetValueOnAnyThread() == 0) ? !bReverseCulling : bReverseCulling;
@@ -1311,6 +1320,7 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		}
 	}
 
+	if (Family->Scene->GetShadingPath() != EShadingPath::Deferred)
 	{
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
 		if(CVar ? CVar->GetValueOnGameThread() > 1 : false)
@@ -1551,7 +1561,7 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessAAQuality")); 
 		static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 		static auto* MobileMSAACvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
-		static uint32 MSAAValue = GShaderPlatformForFeatureLevel[SceneViewFeatureLevel] == SP_OPENGL_ES2_IOS ? 1 : MobileMSAACvar->GetValueOnGameThread();
+		static uint32 MSAAValue = (GShaderPlatformForFeatureLevel[SceneViewFeatureLevel] == SP_OPENGL_ES2_IOS || Family->Scene->GetShadingPath() == EShadingPath::Deferred ? 1 : MobileMSAACvar->GetValueOnGameThread());
 
 		int32 Quality = FMath::Clamp(CVar->GetValueOnGameThread(), 0, 6);
 
@@ -1769,7 +1779,9 @@ FSceneViewFamily::FSceneViewFamily( const ConstructionValues& CVS )
 	bDeferClear(CVS.bDeferClear),
 	bResolveScene(CVS.bResolveScene),
 	bWorldIsPaused(false),
-	GammaCorrection(CVS.GammaCorrection)
+	GammaCorrection(CVS.GammaCorrection),
+	GeometricAAScale(CVS.GeometricAAScale),
+	GeometricAABias(CVS.GeometricAABias)
 {
 	// If we do not pass a valid scene pointer then SetWorldTimes must be called to initialized with valid times.
 	ensure(CVS.bTimesSet);

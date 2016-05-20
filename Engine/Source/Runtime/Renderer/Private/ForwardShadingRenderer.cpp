@@ -19,7 +19,7 @@ uint32 GetShadowQuality();
 
 
 FForwardShadingSceneRenderer::FForwardShadingSceneRenderer(const FSceneViewFamily* InViewFamily,FHitProxyConsumer* HitProxyConsumer)
-	:	FSceneRenderer(InViewFamily, HitProxyConsumer)
+	:	FSceneRenderer(InViewFamily, HitProxyConsumer, EShadingPath::Forward)
 {
 	bModulatedShadowsInUse = false;
 	bCSMShadowsInUse = false;
@@ -75,7 +75,7 @@ void FForwardShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLis
 		}
 
 		// Initialize the view's RHI resources.
-		Views[ViewIndex].InitRHIResources(DirectionalLightShadowInfo);
+		Views[ViewIndex].InitRHIResources(DirectionalLightShadowInfo, nullptr);
 	}
 
 	// Now that the indirect lighting cache is updated, we can update the primitive precomputed lighting buffers.
@@ -103,14 +103,14 @@ void FForwardShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.Allocate(RHICmdList, ViewFamily);
+	SceneContext.Allocate(RHICmdList, Views.Num(), ViewFamily, ShadingPath);
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
 
 	// Find the visible primitives.
 	InitViews(RHICmdList);
-	
+
 	// Notify the FX system that the scene is about to be rendered.
 	if (Scene->FXSystem)
 	{
@@ -266,7 +266,7 @@ void FForwardShadingSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RH
 	// Composite editor primitives if we had any to draw and compositing is enabled
 	if (bDoEditorPrimitives)
 	{
-		FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(false));
+		FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(EShadingPath::Forward));
 		EditorCompNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 		//Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.SceneDepth));
 		Context.FinalOutput = FRenderingCompositeOutputRef(EditorCompNode);

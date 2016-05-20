@@ -1,0 +1,608 @@
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	ClusteredShadingLighting.usf: stationary/movable lighting for clustered forward
+  =============================================================================*/
+
+#pragma once
+
+#include "Common.usf"
+#include "ClusteredShadingCommon.usf"
+#include "ReflectionEnvironmentShared.usf"
+#include "LightmapCommon.usf"  
+#include "BRDF.usf"
+#include "SHCommon.usf"
+#include "ShadowFilteringCommon.usf"
+#include "DeferredLightingCommon.usf"
+#include "ShadingModels.usf"
+
+
+// See ShadingModels.usf for the starting point.  We've collapsed constants, simplified, etc.
+// The resulting values must be divided by PI
+float3 FastSimpleShading( float3 DiffuseColor, float3 SpecularColor, float Roughness, float3 L, float3 V, half3 N )
+{
+	float3 H = normalize(V + L);
+	float NoH = saturate( dot(N, H) );
+
+	float a = Roughness * Roughness;
+	float a2 = a * a;
+	float d = ( NoH * a2 - NoH ) * NoH + 1;	// 2 mad
+	
+	// Generalized microfacet specular
+	//float D = D_GGX( Roughness, NoH );    == a2/(PI*d*d)
+	//float Vis = Vis_Implicit();           == .25
+
+	//float DVis = D * Vis;
+	//float DVis = (a2 / (PI*d*d)) * .25;
+	float DVis = a2 / (4*d*d);
+
+	float3 F = F_None( SpecularColor );
+
+	return DiffuseColor + DVis * F;
+}
+
+
+//
+// Gets contribution of a single movable/stationary light.
+//
+void
+AddOneDynamicLight(
+	float3 WorldPosition, 
+	float3 V, 
+	FScreenSpaceData ScreenSpaceData, 
+	FDeferredLightData LightData, 
+	float4 ShadowMasks,
+
+	inout float3 lightSum)
+{
+	FLightAccumulator LightAccumulator = (FLightAccumulator)0;
+
+	float3 N = ScreenSpaceData.GBuffer.WorldNormal;
+	float3 ToLight = LightData.LightDirection;
+	float3 L = ToLight;	// no need to normalize
+	float NoL = saturate( dot(N, L) );
+	float DistanceAttenuation = 1;
+	float LightRadiusMask = 1;
+	float SpotFalloff = 1;
+
+	if (LightData.bRadialLight)
+	{
+		ToLight = LightData.LightPositionAndInvRadius.xyz - WorldPosition;
+		
+		float DistanceSqr = dot( ToLight, ToLight );
+		L = ToLight * rsqrt( DistanceSqr );
+		NoL = saturate( dot( N, L ) );
+
+		if (LightData.bInverseSquared)
+		{
+			// Sphere irradiance (technically just 1/d^2 but this avoids inf)
+			DistanceAttenuation = 1 / ( DistanceSqr + 1 );
+
+			// TODO optimize
+			LightRadiusMask = Square( saturate( 1 - Square( DistanceSqr * Square(LightData.LightPositionAndInvRadius.w) ) ) );
+		}
+		else
+		{
+			DistanceAttenuation = 1;
+			LightRadiusMask = RadialAttenuation(ToLight * LightData.LightPositionAndInvRadius.w, LightData.LightColorAndFalloffExponent.w);	
+		}
+
+		if (LightData.bSpotLight)
+		{
+			SpotFalloff = SpotAttenuation(L, -LightData.LightDirection, LightData.SpotAnglesAndSourceRadius.xy);
+		}
+	}
+
+	BRANCH
+	if (LightRadiusMask > 0 && SpotFalloff > 0)
+	{
+		float SurfaceShadow = LightData.bShadowed ? dot(LightData.ShadowMapChannelMask, ShadowMasks) : ScreenSpaceData.AmbientOcclusion;
+		float SurfaceAttenuation = (DistanceAttenuation * LightRadiusMask * SpotFalloff) * SurfaceShadow;
+		float Roughness = max(LightData.MinRoughness, saturate(ScreenSpaceData.GBuffer.Roughness * LightData.RoughnessMAD.x + LightData.RoughnessMAD.y));
+		float3 LightColor = LightData.LightColorAndFalloffExponent.rgb;
+
+		lightSum += LightColor * (NoL * SurfaceAttenuation) * FastSimpleShading(ScreenSpaceData.GBuffer.DiffuseColor, ScreenSpaceData.GBuffer.SpecularColor, Roughness, L, V, N);
+	}
+}
+
+//
+// Retrieves dynamic lighting using the view-space froxel grid
+//
+float3
+GetClusteredLighting(
+	FMaterialPixelParameters Params, 
+	float3 DiffuseColor, 
+	float3 SpecularColor, 
+	float Roughness, 
+	float AmbientOcclusion, 
+	float4 ShadowMasks)
+{
+    float Opacity = 1;
+	FScreenSpaceData ScreenSpaceData = (FScreenSpaceData)0;
+	ScreenSpaceData.GBuffer.WorldNormal = Params.WorldNormal;
+	ScreenSpaceData.GBuffer.Roughness = Roughness;
+	ScreenSpaceData.GBuffer.SpecularColor = SpecularColor;
+	ScreenSpaceData.GBuffer.DiffuseColor = DiffuseColor;
+	ScreenSpaceData.GBuffer.BaseColor = 1;
+	ScreenSpaceData.GBuffer.Specular = 1;
+	ScreenSpaceData.GBuffer.PrecomputedShadowFactors = 1;
+	ScreenSpaceData.GBuffer.CustomData = float4(DiffuseColor, Opacity);
+	ScreenSpaceData.AmbientOcclusion = AmbientOcclusion;
+	#if MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+		ScreenSpaceData.GBuffer.ShadingModelID = SHADINGMODELID_TWOSIDED_FOLIAGE;
+	#else
+		ScreenSpaceData.GBuffer.ShadingModelID = SHADINGMODELID_DEFAULT_LIT;
+	#endif
+
+	const float3 V = Params.CameraVector;
+
+	// Retrieve the bitmask of overlapping lights.
+    // We make the assumption (checked in c++) that the origin is (0,0) for our view, instanced stereo included
+	const uint2 PixelCoord = uint2(Params.SvPosition.xy);
+	const uint2 TileCoord = uint2(PixelCoord.x / LIGHT_GRID_TILE_SIZE_X, PixelCoord.y / LIGHT_GRID_TILE_SIZE_Y);
+	const float SliceCoord = max(0, log2(Params.ScreenPosition.w * Frame.LightGridZParams.x + Frame.LightGridZParams.y) * Frame.LightGridZParams.z);
+
+	uint lightMask = Frame.ClusteredLightGridTexture.Load(uint4(TileCoord, uint(SliceCoord), 0));
+	float3 lightSum = 0;
+
+	LOOP
+	while (lightMask != 0)
+	{
+		uint lightIndex = firstbitlow(lightMask);
+		lightMask &= (lightMask - 1);
+
+		// Currently using just the simple lighting model instead of full model.
+
+		FDeferredLightData LightData = (FDeferredLightData)0;
+		LightData.LightPositionAndInvRadius = Frame.LightPositionAndInvRadius[lightIndex];
+		LightData.LightColorAndFalloffExponent = Frame.LightColorAndFalloffExponent[lightIndex];
+		LightData.LightDirection = Frame.LightDirectionAndSpotlightMask[lightIndex].xyz;
+		LightData.MinRoughness = Frame.LightMinRoughnessMAD[lightIndex].x;
+		LightData.RoughnessMAD = Frame.LightMinRoughnessMAD[lightIndex].yz;
+		LightData.SpotAnglesAndSourceRadius = float4(Frame.LightSpotAnglesAndSourceRadiusAndRadial[lightIndex].xyz, 0);
+		LightData.ShadowMapChannelMask = Frame.LightShadowMapChannelMask[lightIndex];
+		LightData.bShadowed = dot(LightData.ShadowMapChannelMask, float4(1, 1, 1, 1));
+
+		#if CLUSTERED_SUPPORT_LEGACY_ATTENUATION
+			LightData.bInverseSquared = Frame.LightColorAndFalloffExponent[lightIndex].w == 0;
+		#else
+			LightData.bInverseSquared = true;
+		#endif
+
+		#if CLUSTERED_SUPPORT_DIRECTIONAL_LIGHTS
+			LightData.bRadialLight = Frame.LightSpotAnglesAndSourceRadiusAndRadial[lightIndex].w != 0;
+		#else
+			LightData.bRadialLight = true;
+		#endif
+
+		#if CLUSTERED_SUPPORT_SPOT_LIGHTS
+			LightData.bSpotLight = Frame.LightDirectionAndSpotlightMask[lightIndex].w != 0;
+		#else
+			LightData.bSpotLight = false;
+		#endif
+
+		AddOneDynamicLight(Params.AbsoluteWorldPosition, V, ScreenSpaceData, LightData, ShadowMasks, lightSum);
+	}
+
+	// See FastSimpleShading, we're normalizing for all lights here.
+	return lightSum / PI;
+}
+
+
+//
+// Evaluates the shading model used for the "primary" directional light.
+// Based off the full model used in deferred.
+// Returns a value that should be divided by PI
+//
+// TODO: Investigate using beckmann (or an approximation) so we can use Kaplanyan's work to reduce 
+// specular aliasing.  (See "Stable Specular Highlights", presented at GDC 2016)
+//
+float3 DirectionalShadingModel( float3 DiffuseColor, float3 SpecularColor, float Roughness, float3 L, float3 V, half3 N)
+{
+	float3 H = normalize(V + L);
+	float NoL = saturate( dot(N, L) );
+	//float NoV = saturate( dot(N, V) );
+	float NoV = abs( dot(N, V) ) + 1e-5;
+	float NoH = saturate( dot(N, H) );
+	float VoH = saturate( dot(V, H) );
+	
+	// Generalized microfacet specular
+	//float D = D_GGX( Roughness, NoH );
+	float a = Roughness * Roughness;
+	float a2 = a * a;
+	float d = ( NoH * a2 - NoH ) * NoH + 1;	// 2 mad
+	float DPI = a2 / ( d*d );               // 3 mul, 1 rcp
+
+	float Vis = Vis_SmithJointApprox( Roughness, NoV, NoL );
+	float3 F = F_Schlick( SpecularColor, VoH );
+
+	//float3 Diffuse = Diffuse_Lambert( DiffuseColor );
+	float3 DiffusePI = DiffuseColor;
+
+	return DiffusePI + (DPI * Vis) * F;
+}
+
+
+//
+// Gets IBL specular.
+// We currently only use a single global reflection for everything, which must be a spherical env capture.
+//
+// TODO: getting rid/simplifying the fadeout removes a whole ton of instructions, perhaps we can do something similar.
+// TODO: support multiple probes (use froxel grid like lights).
+//
+half4 GetImageBasedReflectionLighting(FMaterialPixelParameters MaterialParameters, half Roughness)
+{
+	half3 ProjectedCaptureVector = MaterialParameters.ReflectionVector;
+	float DistanceAlpha = 1;
+
+	if (CLUSTERED_USE_PARALLAX_CORRECTION)
+	{
+        DistanceAlpha = 0;
+
+		float3 WorldPosition = MaterialParameters.AbsoluteWorldPosition;
+		float3 ReflectionVector = MaterialParameters.ReflectionVector;
+
+		float3 CapturePosition = Frame.GlobalReflectionCapturePosition;
+		float InvCaptureRadius = Frame.GlobalReflectionCaptureBrightnessRadii.w;
+
+        #if CLUSTERED_USE_BOX_REFLECTION_CAPTURE
+
+            float CaptureRadius2x = Frame.GlobalReflectionCaptureBrightnessRadii.y;
+			float3 RayDirection = ReflectionVector * CaptureRadius2x;
+
+			// Transform the ray into the local space of the box, where it is an AABB with mins at -1 and maxs at 1
+			float3 LocalRayStart = mul(float4(WorldPosition, 1), Frame.GlobalReflectionCaptureBoxTransform).xyz;
+			float3 LocalRayDirection = mul(RayDirection, (float3x3)Frame.GlobalReflectionCaptureBoxTransform);
+
+			// Intersections.y is the intersection with the far side of the box
+			float2 Intersections = LineBoxIntersect(LocalRayStart, LocalRayStart + LocalRayDirection, -1, 1);
+
+			{
+				// Compute the reprojected vector
+				float3 IntersectPosition = WorldPosition + Intersections.y * RayDirection;
+				ProjectedCaptureVector = IntersectPosition - CapturePosition.xyz;
+
+				// Compute the distance from the receiving pixel to the box for masking
+				// Apply local to world scale to take scale into account without transforming back to world space
+				// Shrink the box by the transition distance (BoxScales.w) so that the fade happens inside the box influence area
+				float4 BoxScales = Frame.GlobalReflectionCaptureBoxScales;
+				float BoxDistance = ComputeDistanceFromBoxToPoint(-(BoxScales.xyz - .5f * BoxScales.w), BoxScales.xyz - .5f * BoxScales.w, LocalRayStart * BoxScales.xyz);
+
+				// Setup a fade based on receiver distance to the box, hides the box influence shape
+				float BoxDistanceAlpha = 1.0 - smoothstep(0, .7f * BoxScales.w, BoxDistance);
+				// Setup a fade based on reflection ray intersection distance, hides the discontinuity between rays that just barely 
+				float RayDistanceAlpha = smoothstep(0, BoxScales.w, Intersections.y * CaptureRadius2x);
+				DistanceAlpha = BoxDistanceAlpha * RayDistanceAlpha;
+			}
+
+        #else // Sphere Capture
+
+		    float ScaledSquaredCaptureRadius = Frame.GlobalReflectionCaptureBrightnessRadii.z;
+
+		    //float ProjectionSphereRadius = CapturePositionAndRadius.w * 1.2f;
+		    //float SphereRadiusSquared = ProjectionSphereRadius * ProjectionSphereRadius;
+		    float SphereRadiusSquared = ScaledSquaredCaptureRadius;
+
+		    float3 ReceiverToSphereCenter = WorldPosition - CapturePosition;
+		    float ReceiverToSphereCenterSq = dot(ReceiverToSphereCenter, ReceiverToSphereCenter);
+
+		    float3 CaptureVector = ReceiverToSphereCenter;
+		    float CaptureVectorLength = sqrt(ReceiverToSphereCenterSq);
+		    float NormalizedDistanceToCapture = saturate(CaptureVectorLength * InvCaptureRadius);
+
+		    // Find the intersection between the ray along the reflection vector and the capture's sphere
+		    float3 QuadraticCoef;
+		    QuadraticCoef.x = 1;
+		    QuadraticCoef.y = 2 * dot(ReflectionVector, ReceiverToSphereCenter);
+		    QuadraticCoef.z = ReceiverToSphereCenterSq - SphereRadiusSquared;
+
+		    float Determinant = QuadraticCoef.y * QuadraticCoef.y - 4 * QuadraticCoef.z;
+
+		    BRANCH
+		    // Only continue if the ray intersects the sphere
+		    if (Determinant >= 0)
+		    { 
+			    float FarIntersection = (sqrt(Determinant) - QuadraticCoef.y) * 0.5;
+
+			    float3 IntersectPosition = WorldPosition + FarIntersection * ReflectionVector;
+			    ProjectedCaptureVector = IntersectPosition - CapturePosition;
+			    // Fade out based on distance to capture
+			    DistanceAlpha = 1.0 - smoothstep(.6, 1, NormalizedDistanceToCapture);
+		    }
+        #endif /* Reflection probe type */
+	}
+
+	// Compute fractional mip from roughness
+	half AbsoluteSpecularMip = ComputeReflectionCaptureMipFromRoughness(Roughness);
+
+	// Fetch from cubemap and convert to linear HDR
+#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
+	half4 SpecularIBL = TextureCubeArraySampleLevel(
+        Frame.GlobalReflectionCaptureTextureArray, 
+        Frame.GlobalReflectionCaptureSampler, 
+        ProjectedCaptureVector,
+        Frame.GlobalReflectionCaptureIndex,
+        AbsoluteSpecularMip);
+#else
+	half4 SpecularIBL = 0;
+#endif
+
+	// For encoded textures.
+	//half3 SpecularIBL = RGBMDecode(Encoded, 16.0f);
+	//SpecularIBL *= SpecularIBL;
+
+    // Alpha is if the reflection is valid, in case people want to enable both reflection captures + sky light reflections
+    SpecularIBL.rgb *= DistanceAlpha * Frame.GlobalReflectionCaptureBrightnessRadii.x;
+    SpecularIBL.a *= DistanceAlpha;
+
+	return SpecularIBL;
+}
+
+
+/** Computes sky diffuse lighting, including precomputed shadowing. */
+void GetSkyLighting(
+	float3 WorldNormal, 
+	float2 LightmapUV, 
+	out float3 OutDiffuseLighting, 
+	out float3 OutSubsurfaceLighting,
+	out float OutSkyVisibility)
+{
+	OutDiffuseLighting = 0;
+	OutSubsurfaceLighting = 0;
+	OutSkyVisibility = 1;
+
+#if ENABLE_SKY_LIGHT
+
+	float GeometryTerm = 1;
+	float3 SkyLightingNormal = WorldNormal;
+	
+	#if HQ_TEXTURE_LIGHTMAP || CACHED_POINT_INDIRECT_LIGHTING || CACHED_VOLUME_INDIRECT_LIGHTING
+		// Oculus forward: TODO test if this is mostly always true (in our content?) and flatten if so.
+		BRANCH
+		if (Frame.SkyLightParameters.x > 0)
+		{
+			#if HQ_TEXTURE_LIGHTMAP
+
+				// Bent normal from precomputed texture
+				float4 WorldSkyBentNormalAndOcclusion = GetSkyBentNormalAndOcclusion(LightmapUV * float2(1, 2));
+				// Renormalize as vector was quantized and compressed
+				float3 NormalizedBentNormal = normalize(WorldSkyBentNormalAndOcclusion.xyz);
+				OutSkyVisibility = WorldSkyBentNormalAndOcclusion.w;
+
+			#elif CACHED_POINT_INDIRECT_LIGHTING || CACHED_VOLUME_INDIRECT_LIGHTING
+
+				// Bent normal from the indirect lighting cache - one value for the whole object
+				float3 NormalizedBentNormal = PrecomputedLightingBuffer.PointSkyBentNormal.xyz;
+				OutSkyVisibility = PrecomputedLightingBuffer.PointSkyBentNormal.w;
+
+			#endif
+
+			#if (MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ADDITIVE) && TRANSLUCENCY_LIGHTING_VOLUMETRIC_NONDIRECTIONAL
+				// NonDirectional lighting can't depend on the normal
+				SkyLightingNormal = NormalizedBentNormal;
+			#else
+
+				// Weight toward the material normal to increase directionality
+				float InvBentNormalWeightFactor = (1 - OutSkyVisibility) * (1 - OutSkyVisibility);
+
+				// We are lerping between the inputs of two lighting scenarios based on occlusion
+				// In the mostly unoccluded case, evaluate sky lighting with the material normal, because it has higher detail
+				// In the mostly occluded case, evaluate sky lighting with the bent normal, because it is a better representation of the incoming lighting
+				// Then treat the lighting evaluated along the bent normal as an area light, so we must apply the lambert term
+				SkyLightingNormal = lerp(WorldNormal, NormalizedBentNormal, InvBentNormalWeightFactor);
+
+				float DotProductFactor = lerp(1, saturate(dot(NormalizedBentNormal, WorldNormal)), InvBentNormalWeightFactor);
+				// Account for darkening due to the geometry term
+				GeometryTerm = DotProductFactor;
+			#endif
+		}
+	#endif
+			
+	// Compute the preconvolved incoming lighting with the bent normal direction
+	float3 DiffuseLookup = GetSkySHDiffuse(SkyLightingNormal) * Frame.SkyLightColor.rgb;
+
+	// Apply AO to the sky diffuse
+	OutDiffuseLighting += DiffuseLookup * (OutSkyVisibility * GeometryTerm);
+
+	#if MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+		float3 BackfaceDiffuseLookup = GetSkySHDiffuse(-WorldNormal) * Frame.SkyLightColor.rgb;
+		OutSubsurfaceLighting += BackfaceDiffuseLookup * OutSkyVisibility;
+	#endif
+
+#endif
+}
+
+/** Calculates indirect lighting contribution on this object from precomputed data. */
+void GetPrecomputedIndirectLightingAndSkyLight(
+	FMaterialPixelParameters MaterialParameters, 
+	FVertexFactoryInterpolantsVSToPS Interpolants,
+	out float3 OutDiffuseLighting,
+	out float3 OutSubsurfaceLighting,
+	out float OutIndirectIrradiance,
+    out float OutSkyVisibility)
+{
+	float3 DiffuseDir = MaterialParameters.WorldNormal;
+
+	OutIndirectIrradiance = 0;
+	OutDiffuseLighting = 0;
+	OutSubsurfaceLighting = 0;
+	float2 SkyOcclusionUV = 0;
+
+	// Method for movable components which want to use a volume texture of interpolated SH samples
+	#if CACHED_VOLUME_INDIRECT_LIGHTING
+
+		// Compute volume teture UVs from world position
+		float3 VolumeUVs = MaterialParameters.AbsoluteWorldPosition * PrecomputedLightingBuffer.IndirectLightingCachePrimitiveScale + PrecomputedLightingBuffer.IndirectLightingCachePrimitiveAdd;
+		// Clamp UV to be within the valid region
+		// Pixels outside of the object's bounding box would read garbage otherwise
+		VolumeUVs = clamp(VolumeUVs, PrecomputedLightingBuffer.IndirectLightingCacheMinUV, PrecomputedLightingBuffer.IndirectLightingCacheMaxUV);
+		float4 Vector0 = Texture3DSample(PrecomputedLightingBuffer.IndirectLightingCacheTexture0, PrecomputedLightingBuffer.IndirectLightingCacheTextureSampler0, VolumeUVs);
+
+		// For debugging
+		#define AMBIENTONLY 0
+		#if AMBIENTONLY
+
+			OutDiffuseLighting = Vector0.rgb / SHAmbientFunction() / PI;
+
+		#else
+
+			float4 Vector1 = Texture3DSample(PrecomputedLightingBuffer.IndirectLightingCacheTexture1, PrecomputedLightingBuffer.IndirectLightingCacheTextureSampler1, VolumeUVs);
+			float4 Vector2 = Texture3DSample(PrecomputedLightingBuffer.IndirectLightingCacheTexture2, PrecomputedLightingBuffer.IndirectLightingCacheTextureSampler2, VolumeUVs);
+
+			// Construct the SH environment
+			FTwoBandSHVectorRGB CachedSH;
+			CachedSH.R.V = float4(Vector0.x, Vector1.x, Vector2.x, Vector0.w);
+			CachedSH.G.V = float4(Vector0.y, Vector1.y, Vector2.y, Vector1.w);
+			CachedSH.B.V = float4(Vector0.z, Vector1.z, Vector2.z, Vector2.w);
+
+			// Diffuse convolution
+			FTwoBandSHVector DiffuseTransferSH = CalcDiffuseTransferSH(DiffuseDir, 1);
+			OutDiffuseLighting = max(half3(0,0,0), DotSH(CachedSH, DiffuseTransferSH)) / PI;
+
+			#if MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+				FTwoBandSHVector SubsurfaceTransferSH = CalcDiffuseTransferSH(-DiffuseDir, 1);
+				OutSubsurfaceLighting += max(half3(0,0,0), DotSH(CachedSH, SubsurfaceTransferSH)) / PI;
+			#endif
+
+		#endif
+
+	// Method for movable components which want to use a single interpolated SH sample
+	#elif CACHED_POINT_INDIRECT_LIGHTING 
+		
+		#if TRANSLUCENCY_LIGHTING_VOLUMETRIC_NONDIRECTIONAL
+
+			// Non-directional for translucency
+			// Ambient terms packed in xyz
+			// Already divided by PI and SH ambient on CPU
+			half3 PointIndirectLighting = PrecomputedLightingBuffer.IndirectLightingSHCoefficients[0];
+			half3 DiffuseGI = PointIndirectLighting;
+			OutDiffuseLighting = DiffuseGI;
+
+		#else
+
+			FTwoBandSHVectorRGB PointIndirectLighting;
+			PointIndirectLighting.R.V = PrecomputedLightingBuffer.IndirectLightingSHCoefficients[0];
+			PointIndirectLighting.G.V = PrecomputedLightingBuffer.IndirectLightingSHCoefficients[1];
+			PointIndirectLighting.B.V = PrecomputedLightingBuffer.IndirectLightingSHCoefficients[2];
+
+			FTwoBandSHVector DiffuseTransferSH = CalcDiffuseTransferSH(DiffuseDir, 1);
+			// Compute diffuse lighting which takes the normal into account
+			OutDiffuseLighting = max(half3(0,0,0), DotSH(PointIndirectLighting, DiffuseTransferSH));
+
+			#if MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+				FTwoBandSHVector SubsurfaceTransferSH = CalcDiffuseTransferSH(-DiffuseDir, 1);
+				OutSubsurfaceLighting += max(half3(0,0,0), DotSH(PointIndirectLighting, SubsurfaceTransferSH));
+			#endif
+
+		#endif
+
+	// High quality texture lightmaps
+	#elif HQ_TEXTURE_LIGHTMAP
+
+		float2 LightmapUV0, LightmapUV1;
+		GetLightMapCoordinates(Interpolants, LightmapUV0, LightmapUV1);
+		SkyOcclusionUV = LightmapUV0;
+		GetLightMapColorHQ(LightmapUV0, LightmapUV1, DiffuseDir, OutDiffuseLighting, OutSubsurfaceLighting);
+
+	// Low quality texture lightmaps
+	#elif LQ_TEXTURE_LIGHTMAP
+
+		float2 LightmapUV0, LightmapUV1;
+		GetLightMapCoordinates(Interpolants, LightmapUV0, LightmapUV1);
+		OutDiffuseLighting = GetLightMapColorLQ(LightmapUV0, LightmapUV1, DiffuseDir).rgb;
+
+	#endif
+
+	// Apply indirect lighting scale while we have only accumulated lightmaps
+	OutDiffuseLighting *= Frame.IndirectLightingColorScale;
+
+	float3 SkyDiffuseLighting;
+	float3 SkySubsurfaceLighting;
+	GetSkyLighting(DiffuseDir, SkyOcclusionUV, SkyDiffuseLighting, SkySubsurfaceLighting, OutSkyVisibility);
+
+	OutSubsurfaceLighting += SkySubsurfaceLighting;
+
+	FLATTEN
+	if( Frame.UseLightmaps > 0 || !ALLOW_STATIC_LIGHTING)
+	{
+		// Sky lighting must contribute to IndirectIrradiance for ReflectionEnvironment lightmap mixing
+		OutDiffuseLighting += SkyDiffuseLighting;
+	}
+	else
+	{
+    // Disabled
+	#if 0 && (TRANSLUCENCY_LIGHTING_SURFACE || TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL) && FEATURE_LEVEL >= FEATURE_LEVEL_SM5
+		float DiffuseMip = ComputeReflectionCaptureMipFromRoughness(1);
+		float4 DiffuseIBL = TextureCubeArraySampleLevel(ReflectionCubemap, ReflectionCubemapSampler, DiffuseDir, CubemapArrayIndex, DiffuseMip);
+		
+		OutDiffuseLighting += DiffuseIBL.rgb + (1 - DiffuseIBL.a) * SkyDiffuseLighting;
+	#endif
+	}
+
+	#if HQ_TEXTURE_LIGHTMAP || LQ_TEXTURE_LIGHTMAP || CACHED_VOLUME_INDIRECT_LIGHTING || CACHED_POINT_INDIRECT_LIGHTING
+		OutIndirectIrradiance = Luminance(OutDiffuseLighting);
+	#endif
+}
+
+float GetDirectionalCSMShadowMin(FMaterialPixelParameters MaterialParameters, float Opacity, float NoL, float InShadow)
+{
+#if MOVABLE_DIRECTIONAL_LIGHT_CSM
+	// Cascaded Shadow Map
+	FPCFSamplerSettings Settings;
+	Settings.ShadowDepthTexture = Frame.DirectionalLightShadowTexture;
+	Settings.ShadowDepthTextureSampler = Frame.DirectionalLightShadowSampler;
+	Settings.TransitionScale = Frame.DirectionalLightShadowTransition;
+	Settings.ShadowBufferSize = Frame.DirectionalLightShadowSize;
+
+	// Oculus forward TODO need to provide ProjectionDepthBiasParameters and support subsurface (going to be a little costly)
+	#if 0 && (MATERIAL_SHADINGMODEL_SUBSURFACE || MATERIAL_SHADINGMODEL_PREINTEGRATED_SKIN || MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE)
+		// See ShadowProjectionPixelShader for the original source of this.
+		float Density = -.05f * log(1 - min(Opacity, .999f));
+		Settings.bSubsurface = true;
+		Settings.DensityMulConstant = Density * ProjectionDepthBiasParameters.y;
+		Settings.ProjectionDepthBiasParameters = ProjectionDepthBiasParameters;
+	#else
+		Settings.bSubsurface = false;
+		Settings.DensityMulConstant = 0;
+		Settings.ProjectionDepthBiasParameters = 0;
+	#endif
+
+	if (MaterialParameters.ScreenPosition.w < Frame.DirectionalLightShadowDistances[MAX_FORWARD_SHADOWCASCADES-1])
+	{
+		int Cascade = MAX_FORWARD_SHADOWCASCADES-1;
+		UNROLL
+		for (int i = MAX_FORWARD_SHADOWCASCADES-2; i >= 0; i--)
+		{
+			if (MaterialParameters.ScreenPosition.w < Frame.DirectionalLightShadowDistances[i]) Cascade = i;
+		}
+
+        #if INSTANCED_STEREO
+        // Oculus forward: this is not ideal as we're using the absolute world position, but the alternative is adding the 
+        // matrices into the per-view constants, but using the current instancing impl that will use a lot of gprs.
+		float4 ShadowPosition = mul(float4(MaterialParameters.AbsoluteWorldPosition.xyz, 1), Frame.DirectionalLightWorldToShadow[Cascade]);
+        #else
+		float4 ShadowPosition = mul(float4(MaterialParameters.ScreenPosition.xyw, 1), Frame.DirectionalLightScreenToShadow[Cascade]);
+        #endif
+
+		// Clamp pixel depth in light space for shadowing opaque, because areas of the shadow depth buffer that weren't rendered to will have been cleared to 1
+		// We want to force the shadow comparison to result in 'unshadowed' in that case, regardless of whether the pixel being shaded is in front or behind that plane
+		float LightSpacePixelDepthForOpaque = min(ShadowPosition.z, 0.99999f);
+		Settings.SceneDepth = LightSpacePixelDepthForOpaque;
+
+		//half ShadowMap = Manual1x1PCF(ShadowPosition.xy, Settings);
+		//half ShadowMap = Manual2x2PCF(ShadowPosition.xy, Settings);
+		// Wider, cheaper than 2x2 (uses gather4)
+		half ShadowMap = Manual3x3PCF(ShadowPosition.xy, Settings);
+
+		// "greatly reduces shadow mapping artifacts"
+		//ShadowMap *= saturate(NoL * 6 - 0.2);
+
+		// Fade to static shadowing over distance.
+		float Fade = saturate(MaterialParameters.ScreenPosition.w * Frame.DirectionalLightDistanceFadeMAD.x + Frame.DirectionalLightDistanceFadeMAD.y);
+		InShadow = min(InShadow, lerp(ShadowMap, 1.0, Fade));
+	}
+
+#endif /* MOVABLE_DIRECTIONAL_LIGHT_CSM */
+
+	return InShadow;
+}

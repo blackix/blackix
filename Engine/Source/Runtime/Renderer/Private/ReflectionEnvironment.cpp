@@ -85,9 +85,14 @@ bool IsReflectionCaptureAvailable()
 	return (!AllowStaticLightingVar || AllowStaticLightingVar->GetInt() != 0);
 }
 
+bool UseReflectionCaptureCubemapArray(ERHIFeatureLevel::Type InFeatureLevel)
+{
+	return (InFeatureLevel >= ERHIFeatureLevel::SM5);
+}
+
 void FReflectionEnvironmentCubemapArray::InitDynamicRHI()
 {
-	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+	if (UseReflectionCaptureCubemapArray(GetFeatureLevel()))
 	{
 
 		const int32 NumReflectionCaptureMips = FMath::CeilLogTwo(GReflectionCaptureSize) + 1;
@@ -589,7 +594,7 @@ public:
 		const FPixelShaderRHIParamRef ShaderRHI = GetPixelShader();
 		FGlobalShader::SetParameters(RHICmdList, ShaderRHI, View);
 
-		if (View.GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (UseReflectionCaptureCubemapArray(View.GetFeatureLevel()))
 		{
 			FScene* Scene = (FScene*)View.Family->Scene;
 
@@ -692,7 +697,9 @@ bool FDeferredShadingSceneRenderer::ShouldDoReflectionEnvironment() const
 	return IsReflectionEnvironmentAvailable(FeatureLevel)
 		&& Scene->ReflectionSceneData.RegisteredReflectionCaptures.Num()
 		&& ViewFamily.EngineShowFlags.ReflectionEnvironment
-		&& (FeatureLevel == ERHIFeatureLevel::SM4 || Scene->ReflectionSceneData.CubemapArray.IsValid());
+		&& (FeatureLevel == ERHIFeatureLevel::SM4 || 
+			(Scene->ReflectionSceneData.CubemapArray.IsValid() ||
+			 !UseReflectionCaptureCubemapArray(FeatureLevel)));
 }
 
 void GatherAndSortReflectionCaptures(const FScene* Scene, TArray<FReflectionCaptureSortData>& OutSortData, int32& OutNumBoxCaptures, int32& OutNumSphereCaptures)
@@ -967,14 +974,16 @@ void FDeferredShadingSceneRenderer::RenderStandardDeferredImageBasedReflections(
 			FReflectionCaptureProxy* CurrentCapture = Scene->ReflectionSceneData.RegisteredReflectionCaptures[ReflectionProxyIndex];
 			FReflectionCaptureSortData NewSortEntry;
 
-			NewSortEntry.CaptureIndex = -1;
-
-			if (FeatureLevel >= ERHIFeatureLevel::SM5)
+			if (UseReflectionCaptureCubemapArray(Scene->GetFeatureLevel()))
 			{
 				const FCaptureComponentSceneState* ComponentStatePtr = Scene->ReflectionSceneData.AllocatedReflectionCaptureState.Find(CurrentCapture->Component);
 				NewSortEntry.CaptureIndex = ComponentStatePtr ? ComponentStatePtr->CaptureIndex : -1;
 			}
-			
+			else
+			{
+				NewSortEntry.CaptureIndex = -1;
+			}
+
 			NewSortEntry.SM4FullHDRCubemap = CurrentCapture->SM4FullHDRCubemap;
 			NewSortEntry.Guid = CurrentCapture->Guid;
 			NewSortEntry.PositionAndRadius = FVector4(CurrentCapture->Position, CurrentCapture->InfluenceRadius);
@@ -1074,7 +1083,7 @@ void FDeferredShadingSceneRenderer::RenderStandardDeferredImageBasedReflections(
 			{
 				const FReflectionCaptureSortData& ReflectionCapture = SortData[ReflectionCaptureIndex];
 
-				if (FeatureLevel >= ERHIFeatureLevel::SM5 || ReflectionCapture.SM4FullHDRCubemap)
+				if (ReflectionCapture.CaptureIndex != -1 || ReflectionCapture.SM4FullHDRCubemap)
 				{
 					const FSphere LightBounds(ReflectionCapture.PositionAndRadius, ReflectionCapture.PositionAndRadius.W);
 

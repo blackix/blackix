@@ -146,6 +146,19 @@ struct FMeshBatch
 		return MaterialRenderProxy->GetMaterial(InFeatureLevel)->IsMasked();
 	}
 
+	FORCEINLINE bool IsAlphaToCoverage(ERHIFeatureLevel::Type InFeatureLevel) const
+	{
+		// Note: blend mode does not depend on the feature level we are actually rendering in.
+		return MaterialRenderProxy->GetMaterial(InFeatureLevel)->IsAlphaToCoverage();
+	}
+
+	FORCEINLINE bool IsMaskedOrAlphaToCoverage(ERHIFeatureLevel::Type InFeatureLevel) const
+	{
+		const auto* Material = MaterialRenderProxy->GetMaterial(InFeatureLevel);
+		return Material->IsMasked() || Material->IsAlphaToCoverage();
+	}
+
+
 	/** Converts from an int32 index into a int8 */
 	static int8 QuantizeLODIndex(int32 NewLODIndex)
 	{

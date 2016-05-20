@@ -6,7 +6,10 @@
 
 #include "RendererPrivate.h"
 #include "ScenePrivate.h"
+#include "SceneUtils.h"
 #include "RenderResource.h"
+#include "PostProcess/SceneRenderTargets.h"
+#include "Clustered/ClusteredShadingRenderer.h"
 
 /**
  * A vertex shader for rendering the depth of a mesh.
@@ -323,8 +326,10 @@ bool FHitProxyDrawingPolicyFactory::DrawDynamicMesh(
 
 #if WITH_EDITOR
 
-TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& RHICmdList, const FSceneRenderer* SceneRenderer)
+static TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& RHICmdList, const FSceneRenderer* SceneRenderer)
 {
+	SCOPED_DRAW_EVENT(RHICmdList, InitHitProxyRender);
+
 	auto& ViewFamily = SceneRenderer->ViewFamily;
 	auto FeatureLevel = ViewFamily.Scene->GetFeatureLevel();
 
@@ -332,8 +337,10 @@ TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& R
 	GSystemTextures.InitializeTextures(RHICmdList, FeatureLevel);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	auto& Views = SceneRenderer->Views;
+
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.Allocate(RHICmdList, ViewFamily);
+	SceneContext.Allocate(RHICmdList, Views.Num(), ViewFamily, SceneRenderer->ShadingPath);
 
 	TRefCountPtr<IPooledRenderTarget> HitProxyRT;
 
@@ -341,6 +348,7 @@ TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& R
 	{
 		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(SceneContext.GetBufferSizeXY(), PF_B8G8R8A8, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
 		Desc.Flags |= TexCreate_FastVRAM;
+		Desc.NumSamples = SceneContext.GetSceneDepthSurface()->GetNumSamples();
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, HitProxyRT, TEXT("HitProxy"));
 	}
 
@@ -353,7 +361,6 @@ TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& R
 	SetRenderTarget(RHICmdList, HitProxyRT->GetRenderTargetItem().TargetableTexture, SceneContext.GetSceneDepthSurface(), ESimpleRenderTargetMode::EExistingColorAndDepth, FExclusiveDepthStencil::DepthWrite_StencilWrite, true);
 
 	// Clear color for each view.
-	auto& Views = SceneRenderer->Views;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		const FViewInfo& View = Views[ViewIndex];
@@ -363,8 +370,10 @@ TRefCountPtr<IPooledRenderTarget> InitHitProxyRender(FRHICommandListImmediate& R
 	return HitProxyRT;
 }
 
-void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer* SceneRenderer, TRefCountPtr<IPooledRenderTarget> HitProxyRT)
+static void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer* SceneRenderer, TRefCountPtr<IPooledRenderTarget> HitProxyRT)
 {
+	SCOPED_DRAW_EVENT(RHICmdList, RenderHitProxies);
+
 	auto & ViewFamily = SceneRenderer->ViewFamily;
 	auto & Views = SceneRenderer->Views;
 
@@ -391,16 +400,21 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 		// Clear the depth buffer for each DPG.
 		RHICmdList.Clear(false, FLinearColor::Black, true, (float)ERHIZBuffer::FarPlane, true, 0, FIntRect());
 
-		// Adjust the visibility map for this view
-		if (!View.bAllowTranslucentPrimitivesInHitProxy)
+		for (uint32 i = 0; i < SDPG_MAX; ++i)
 		{
-			// Draw the scene's hit proxy draw lists. (opaque primitives only)
-			SceneRenderer->Scene->HitProxyDrawList_OpaqueOnly.DrawVisible(RHICmdList, View, View.StaticMeshVisibilityMap, View.StaticMeshBatchVisibility);
-		}
-		else
-		{
-			// Draw the scene's hit proxy draw lists.
-			SceneRenderer->Scene->HitProxyDrawList.DrawVisible(RHICmdList, View, View.StaticMeshVisibilityMap, View.StaticMeshBatchVisibility);
+			ESceneDepthPriorityGroup DepthPriorityGroup = ESceneDepthPriorityGroup(i);
+
+			// Adjust the visibility map for this view
+			if (!View.bAllowTranslucentPrimitivesInHitProxy)
+			{
+				// Draw the scene's hit proxy draw lists. (opaque primitives only)
+				SceneRenderer->Scene->HitProxyDrawList_OpaqueOnly.DrawVisible(RHICmdList, DepthPriorityGroup, View, View.StaticMeshVisibilityMap, View.StaticMeshBatchVisibility);
+			}
+			else
+			{
+				// Draw the scene's hit proxy draw lists.
+				SceneRenderer->Scene->HitProxyDrawList.DrawVisible(RHICmdList, DepthPriorityGroup, View, View.StaticMeshVisibilityMap, View.StaticMeshBatchVisibility);
+			}
 		}
 
 		const bool bPreFog = true;
@@ -408,6 +422,7 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 
 		FHitProxyDrawingPolicyFactory::ContextType DrawingContext;
 
+		// Dynamic meshes
 		for (int32 MeshBatchIndex = 0; MeshBatchIndex < View.DynamicMeshElements.Num(); MeshBatchIndex++)
 		{
 			const FMeshBatchAndRelevance& MeshBatchAndRelevance = View.DynamicMeshElements[MeshBatchIndex];
@@ -420,8 +435,7 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 			}
 		}
 
-		View.SimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::All);
-
+		// Editor dynamic meshes
 		for (int32 MeshBatchIndex = 0; MeshBatchIndex < View.DynamicEditorMeshElements.Num(); MeshBatchIndex++)
 		{
 			const FMeshBatchAndRelevance& MeshBatchAndRelevance = View.DynamicEditorMeshElements[MeshBatchIndex];
@@ -434,13 +448,20 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 			}
 		}
 
-		View.EditorSimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::All);
-		
-		// Draw the view's elements.
-		DrawViewElements<FHitProxyDrawingPolicyFactory>(RHICmdList, View, FHitProxyDrawingPolicyFactory::ContextType(), SDPG_World, bPreFog);
+		// For all layers except the foreground, which gets done specially.
+		for (uint32 i = 0; i < SDPG_Foreground; ++i)
+		{
+			ESceneDepthPriorityGroup DepthPriorityGroup = ESceneDepthPriorityGroup(i);
 
-		// Draw the view's batched simple elements(lines, sprites, etc).
-		View.BatchedViewElements.Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
+			View.SimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::All, DepthPriorityGroup);
+			View.EditorSimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::All, DepthPriorityGroup);
+
+			// Draw the view's elements.
+			DrawViewElements<FHitProxyDrawingPolicyFactory>(RHICmdList, View, FHitProxyDrawingPolicyFactory::ContextType(), DepthPriorityGroup, bPreFog);
+
+			// Draw the view's batched simple elements(lines, sprites, etc).
+			View.BatchedViewElements[DepthPriorityGroup].Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
+		}
 
 		// Some elements should never be occluded (e.g. gizmos).
 		// So we render those twice, first to overwrite potentially nearer objects,
@@ -449,13 +470,13 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 		// Draw the view's foreground elements last.
 		DrawViewElements<FHitProxyDrawingPolicyFactory>(RHICmdList, View, FHitProxyDrawingPolicyFactory::ContextType(), SDPG_Foreground, bPreFog);
 
-		View.TopBatchedViewElements.Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
+		View.BatchedViewElements[SDPG_Foreground].Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
 
 		RHICmdList.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
 		// Draw the view's foreground elements last.
 		DrawViewElements<FHitProxyDrawingPolicyFactory>(RHICmdList, View, FHitProxyDrawingPolicyFactory::ContextType(), SDPG_Foreground, bPreFog);
 
-		View.TopBatchedViewElements.Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
+		View.BatchedViewElements[SDPG_Foreground].Draw(RHICmdList, FeatureLevel, bNeedToSwitchVerticalAxis, View.ViewProjectionMatrix, View.ViewRect.Width(), View.ViewRect.Height(), true);
 	}
 
 	// Finish drawing to the hit proxy render target.
@@ -530,21 +551,7 @@ void RenderHitProxies(FRHICommandListImmediate& RHICmdList, const FSceneRenderer
 }
 #endif
 
-void FForwardShadingSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList)
-{
-#if WITH_EDITOR
-	TRefCountPtr<IPooledRenderTarget> HitProxyRT = ::InitHitProxyRender(RHICmdList, this);
-	// HitProxyRT==0 should never happen but better we don't crash
-	if (HitProxyRT)
-	{
-		// Find the visible primitives.
-		InitViews(RHICmdList);
-		::RenderHitProxies(RHICmdList, this, HitProxyRT);
-	}
-#endif
-}
-
-void FDeferredShadingSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList)
+void FSceneRenderer::RenderHitProxies(FRHICommandListImmediate& RHICmdList)
 {
 #if WITH_EDITOR
 	TRefCountPtr<IPooledRenderTarget> HitProxyRT = ::InitHitProxyRender(RHICmdList, this);

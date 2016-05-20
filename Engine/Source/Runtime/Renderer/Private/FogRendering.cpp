@@ -31,8 +31,8 @@ static TAutoConsoleVariable<float> CVarFogDensity(
 /** Binds the parameters. */
 void FExponentialHeightFogShaderParameters::Bind(const FShaderParameterMap& ParameterMap)
 {
-	ExponentialFogParameters.Bind(ParameterMap,TEXT("SharedFogParameter0"));
-	ExponentialFogColorParameter.Bind(ParameterMap,TEXT("SharedFogParameter1"));
+	ExponentialFogParameters.Bind(ParameterMap,TEXT("ExponentialFogParameters0"));
+	ExponentialFogColorParameter.Bind(ParameterMap,TEXT("ExponentialFogParameters1"));
 	InscatteringLightDirection.Bind(ParameterMap,TEXT("InscatteringLightDirection"));
 	DirectionalInscatteringColor.Bind(ParameterMap,TEXT("DirectionalInscatteringColor"));
 	DirectionalInscatteringStartDistance.Bind(ParameterMap,TEXT("DirectionalInscatteringStartDistance"));
@@ -139,7 +139,6 @@ public:
 	FExponentialHeightFogPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
 	{
-		ExponentialParameters.Bind(Initializer.ParameterMap);
 		OcclusionTexture.Bind(Initializer.ParameterMap, TEXT("OcclusionTexture"));
 		OcclusionSampler.Bind(Initializer.ParameterMap, TEXT("OcclusionSampler"));
 		SceneTextureParameters.Bind(Initializer.ParameterMap);
@@ -149,7 +148,6 @@ public:
 	{
 		FGlobalShader::SetParameters(RHICmdList, GetPixelShader(), View);
 		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View);
-		ExponentialParameters.Set(RHICmdList, GetPixelShader(), &View);
 
 		FTextureRHIRef TextureRHI = LightShaftsOutput.LightShaftOcclusion ?
 			LightShaftsOutput.LightShaftOcclusion->GetRenderTargetItem().ShaderResourceTexture :
@@ -170,7 +168,6 @@ public:
 		Ar << SceneTextureParameters;
 		Ar << OcclusionTexture;
 		Ar << OcclusionSampler;
-		Ar << ExponentialParameters;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -178,7 +175,6 @@ private:
 	FSceneTextureShaderParameters SceneTextureParameters;
 	FShaderResourceParameter OcclusionTexture;
 	FShaderResourceParameter OcclusionSampler;
-	FExponentialHeightFogShaderParameters ExponentialParameters;
 };
 
 IMPLEMENT_SHADER_TYPE(,FExponentialHeightFogPS,TEXT("HeightFogPixelShader"), TEXT("ExponentialPixelMain"),SF_Pixel)
@@ -242,7 +238,8 @@ void FSceneRenderer::InitFogConstants()
 				View.ExponentialFogColor = FVector(FogInfo.FogColor.R, FogInfo.FogColor.G, FogInfo.FogColor.B);
 				View.FogMaxOpacity = FogInfo.FogMaxOpacity;
 
-				View.DirectionalInscatteringExponent = FogInfo.DirectionalInscatteringExponent;
+				// Clamp to avoid issues with pow() on some platforms
+				View.DirectionalInscatteringExponent = FMath::Clamp(FogInfo.DirectionalInscatteringExponent, 0.000001f, 1000.f);
 				View.DirectionalInscatteringStartDistance = FogInfo.DirectionalInscatteringStartDistance;
 				View.bUseDirectionalInscattering = false;
 				View.InscatteringLightDirection = FVector(0);

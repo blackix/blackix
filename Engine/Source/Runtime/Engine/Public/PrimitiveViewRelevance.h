@@ -42,6 +42,7 @@ struct FPrimitiveViewRelevance
 	// The primitive has one or more elements that have World Position Offset.
 	uint32 bHasWorldPositionOffset : 1;
 	uint32 bUsesGlobalDistanceField : 1;
+    uint32 bUsesTranslucencyDepthPrepass : 1;
 	uint32 bUsesLightingChannels : 1;
 
 	/** 

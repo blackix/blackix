@@ -2798,7 +2798,7 @@ void FRCPassPostProcessAaES2::Process(FRenderingCompositePassContext& Context)
 		View.ViewMatrices.TranslatedViewProjectionMatrix = TranslatedViewMatrix * View.ViewMatrices.ProjMatrix;
 		View.ViewMatrices.InvTranslatedViewProjectionMatrix = View.ViewMatrices.TranslatedViewProjectionMatrix.Inverse();
 
-		View.InitRHIResources(nullptr);
+		View.InitRHIResources(nullptr, nullptr);
 	}
 }
 

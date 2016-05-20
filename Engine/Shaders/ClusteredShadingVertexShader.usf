@@ -1,0 +1,117 @@
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	ClusteredShadingVertexShader.usf: Base pass vertex shader used with clustered forward shading
+=============================================================================*/
+
+#include "ClusteredShadingVertexCommon.usf"
+#include "HeightFogCommon.usf"
+
+/** Entry point for the base pass vertex shader. */
+void Main(
+	FVertexFactoryInput Input,
+	out FClusteredShadingBasePassVSOutput Output
+#if INSTANCED_STEREO
+	, uint InstanceId : SV_InstanceID
+	, out float4 OutClipDistance : SV_ClipDistance
+	, out float4 OutCullDistance : SV_CullDistance
+#endif
+	)
+{
+#if INSTANCED_STEREO
+	OutCullDistance = OutClipDistance = 0.0;
+	const uint EyeIndex = VertexFactoryGetEyeIndex(InstanceId);
+	ResolvedView = ResolveView(EyeIndex);
+#else
+	ResolvedView = ResolveView();
+#endif
+
+	FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+	float4 WorldPositionExcludingWPO = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+	float4 WorldPosition = WorldPositionExcludingWPO;
+
+	half3x3 TangentToLocal = VertexFactoryGetTangentToLocal(Input, VFIntermediates);	
+	FMaterialVertexParameters VertexParameters = GetMaterialVertexParameters(Input, VFIntermediates, WorldPosition.xyz, TangentToLocal);
+
+	// Prevent z-fighting when we have a prepass
+	ISOLATE
+	{
+		WorldPosition.xyz += GetMaterialWorldPositionOffset(VertexParameters);
+	}
+
+	#if USING_TESSELLATION
+	    // We let the Domain Shader convert to post projection when tessellating
+	    Output.Position = WorldPosition;	
+
+	    #if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
+		    Output.BasePassInterpolants.WorldPositionExcludingWPO = WorldPositionExcludingWPO.xyz;
+	    #endif
+	#else
+
+		ISOLATE
+		{
+			float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPosition);
+			Output.Position = mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip);
+
+		    #if INSTANCED_STEREO
+		    BRANCH
+		    if (bIsInstancedStereo)
+		    {
+			    // Clip at the center of the screen
+			    OutCullDistance.x = OutClipDistance.x = dot(Output.Position.xw, EyeClipEdge[EyeIndex].xw);
+
+			    // Scale to the width of a single eye viewport
+			    Output.Position.x *= Frame.HMDViewportWidth;
+
+			    // Shift to the eye viewport
+			    Output.Position.x += Output.Position.w * Frame.HMDViewportOffset[EyeIndex];
+		    }
+		    #endif // INSTANCED_STEREO
+		}
+
+		#if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
+			Output.BasePassInterpolants.PixelPositionExcludingWPO = WorldPositionExcludingWPO;
+		#endif
+	#endif // USING_TESSELLATION
+
+#if USE_VERTEX_FOG
+	Output.BasePassInterpolants.VertexFog = CalculateVertexHeightFog(WorldPosition.xyz - ResolvedView.TranslatedWorldCameraOrigin);
+#endif
+
+	Output.FactoryInterpolants = VertexFactoryGetInterpolants(Input, VFIntermediates, VertexParameters);
+	Output.BasePassInterpolants.PixelPosition.w = Output.Position.w;
+
+#if INSTANCED_STEREO
+	#if USING_TESSELLATION	
+		Output.FactoryInterpolants.InterpolantsVSToPS.PackedEyeIndex = PackEyeIndex(EyeIndex, bIsInstancedStereo);
+	#else
+		Output.FactoryInterpolants.PackedEyeIndex = PackEyeIndex(EyeIndex, bIsInstancedStereo);
+	#endif
+#endif
+
+#if TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_DIRECTIONAL || TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_NONDIRECTIONAL
+	float4 VolumeLighting;
+	float3 InterpolatedLighting = 0;
+
+	float3 InnerVolumeUVs;
+	float3 OuterVolumeUVs;
+	float FinalLerpFactor;
+
+	//@todo - get from VF
+	float3 LightingPositionOffset = 0;
+	ComputeVolumeUVs(WorldPosition.xyz - ResolvedView.PreViewTranslation.xyz, LightingPositionOffset, InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+
+	#if TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_DIRECTIONAL
+	
+		Output.BasePassInterpolants.AmbientLightingVector = GetAmbientLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor).xyz;
+		Output.BasePassInterpolants.DirectionalLightingVector = GetDirectionalLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+
+	#elif TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_NONDIRECTIONAL
+
+		Output.BasePassInterpolants.AmbientLightingVector = GetAmbientLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor).xyz;
+
+	#endif
+#endif
+
+	OutputVertexID( Output );
+}

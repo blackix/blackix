@@ -152,7 +152,7 @@ void FNavigationPath::DebugDraw(const ANavigationData* NavData, FColor PathColor
 		// draw line to next loc
 		FVector const NextVertLoc = PathPoints[VertIdx+1].Location + NavigationDebugDrawing::PathOffset;
 		DrawDebugLine(World, VertLoc, NextVertLoc, VertIdx < int32(NextPathPointIndex)-1 ? Grey : PathColor, bPersistent
-			, /*LifeTime*/-1.f, /*DepthPriority*/0
+			, /*LifeTime*/-1.f, /*DepthPriority*/SDPG_World
 			, /*Thickness*/NavigationDebugDrawing::PathLineThickness);
 	}
 
@@ -855,7 +855,7 @@ void FNavMeshPath::DebugDraw(const ANavigationData* NavData, FColor PathColor, U
 	for (int32 EdgeIndex = 0; EdgeIndex < CorridorEdgesCount; ++EdgeIndex)
 	{
 		DrawDebugLine(NavData->GetWorld(), Edges[EdgeIndex].Left + NavigationDebugDrawing::PathOffset, Edges[EdgeIndex].Right + NavigationDebugDrawing::PathOffset
-			, FColor::Blue, bPersistent, /*LifeTime*/-1.f, /*DepthPriority*/0
+			, FColor::Blue, bPersistent, /*LifeTime*/-1.f, /*DepthPriority*/SDPG_World
 			, /*Thickness*/NavigationDebugDrawing::PathLineThickness);
 	}
 

@@ -8,6 +8,29 @@
 
 
 #if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
+# if defined(MSAA_SAMPLE_COUNT)
+
+Texture2DMS<float4, MSAA_SAMPLE_COUNT> UnresolvedSurface;
+
+void MainDepthMSAA(
+	float2 InUV : TEXCOORD0,
+	out float OutDepth : SV_DEPTH
+	)
+{
+	int2 IntUV = trunc(InUV);
+
+	float MinDepth = 1000000;
+    UNROLL
+	for (int SampleIndex = 0; SampleIndex < MSAA_SAMPLE_COUNT; ++SampleIndex)
+	{
+		float Sample = UnresolvedSurface.Load(IntUV,SampleIndex).r;
+		MinDepth = min(MinDepth,Sample);
+	}
+
+	OutDepth = MinDepth;
+}
+
+# else
 
 Texture2DMS<float4> UnresolvedSurface;
 
@@ -50,6 +73,7 @@ void MainSingleSample(
 	OutColor = UnresolvedSurface.Load(IntUV,SingleSampleIndex);
 }
 
+# endif /* !MSAA_SAMPLE_COUNT */
 #else
 
 Texture2D UnresolvedSurfaceNonMS;

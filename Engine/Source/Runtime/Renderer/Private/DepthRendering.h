@@ -149,9 +149,11 @@ public:
 	struct ContextType
 	{
 		EDepthDrawingMode DepthDrawingMode;
+		bool bDrawTranslucentToDepth;		// For translucent depth prepass
 
-		ContextType(EDepthDrawingMode InDepthDrawingMode) :
-			DepthDrawingMode(InDepthDrawingMode)
+		ContextType(EDepthDrawingMode InDepthDrawingMode, bool InDrawTranslucentToDepth = false) :
+			DepthDrawingMode(InDepthDrawingMode),
+			bDrawTranslucentToDepth(InDrawTranslucentToDepth)
 		{}
 	};
 

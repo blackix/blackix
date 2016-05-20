@@ -208,14 +208,14 @@ struct FFlatTessellationHSToDS
 			const uint EyeIndex = GetEyeIndex(I[0].PassSpecificData.FactoryInterpolants.InterpolantsVSToPS.PackedEyeIndex);
 
 			// Clip at the center of the screen
-			OutCullDistance.x = OutClipDistance.x = dot(Result.Position, EyeClipEdge[EyeIndex]);
-			
+			OutCullDistance.x = OutClipDistance.x = dot(Output.Position.xw, EyeClipEdge[EyeIndex].xw);
+
 			// Scale to the width of a single eye viewport
-			Result.Position.x *= 0.5 * Frame.HMDEyePaddingOffset;
+			Result.Position.x *= Frame.HMDViewportWidth;
 
 			// Shift to the eye viewport
-			Result.Position.x += (EyeOffsetScale[EyeIndex] * Result.Position.w) * (1.0f - 0.5 * Frame.HMDEyePaddingOffset);
-		}
+			Result.Position.x += Output.Position.w * Frame.HMDViewportOffset[EyeIndex];
+        }
 		#endif
 
 		return Result;

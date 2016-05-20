@@ -294,6 +294,9 @@ extern CORE_API int32 GScreenshotBitmapIndex;
 /** Whether stats should emit named events for e.g. PIX. */
 extern CORE_API int32 GCycleStatsShouldEmitNamedEvents;
 
+/** Whether we should compile shaders for development (see r.CompileShadersForDevelopment) */
+extern CORE_API int32 GCompileShadersForDevelopment;
+
 /** Disables some warnings and minor features that would interrupt a demo presentation*/
 extern CORE_API bool GIsDemoMode;
 

@@ -413,9 +413,10 @@ struct FMovableDirectionalLightCSMLightingPolicy
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
 };
 
-struct FMovableDirectionalLightWithLightmapLightingPolicy : public TLightMapPolicy<LQ_LIGHTMAP>
+template< ELightmapQuality LightmapQuality >
+struct FMovableDirectionalLightWithLightmapLightingPolicy : public TLightMapPolicy<LightmapQuality>
 {
-	typedef TLightMapPolicy<LQ_LIGHTMAP> Super;
+	typedef TLightMapPolicy<LightmapQuality> Super;
 
 	static bool ShouldCache(EShaderPlatform Platform, const FMaterial* Material, const FVertexFactoryType* VertexFactoryType)
 	{
@@ -431,13 +432,14 @@ struct FMovableDirectionalLightWithLightmapLightingPolicy : public TLightMapPoli
 	}
 };
 
-struct FMovableDirectionalLightCSMWithLightmapLightingPolicy : public FMovableDirectionalLightWithLightmapLightingPolicy
+template< ELightmapQuality LightmapQuality >
+struct FMovableDirectionalLightCSMWithLightmapLightingPolicy : public FMovableDirectionalLightWithLightmapLightingPolicy<LightmapQuality>
 {
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		OutEnvironment.SetDefine(TEXT("MOVABLE_DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
 
-		FMovableDirectionalLightWithLightmapLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+		FMovableDirectionalLightWithLightmapLightingPolicy<LightmapQuality>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
 	}
 };
 
@@ -460,7 +462,25 @@ enum ELightMapPolicyType
 	LMP_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP,
 	LMP_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP,
 	// LightMapDensity
-	LMP_DUMMY
+	LMP_DUMMY,
+
+	// Oculus forward shading specific
+	//   "MDL" = "Movable Directional Light"
+	//   "DFS" = "Distance Field Shadows"
+	//   "HQLM" = "HQ LightMap"
+	//   "SHINDPT" = "SH Indirect Point (cached indirect lighting)"
+	//   "SHINDVL" = "SH Indirect Volume (cached indirect lighting)"
+	LMP_MDL_CSM_DFS_HQLM,
+	LMP_MDL_DFS_HQLM,
+	LMP_MDL_CSM_SHINDPT,
+	LMP_MDL_SHINDPT,
+	LMP_SHINDPT,
+	LMP_MDL_HQLM,
+	LMP_MDL_CSM_HQLM,
+	LMP_DFS_HQLM,
+	LMP_HQLM,
+	LMP_MDL_CSM,
+	LMP_MDL,
 };
 
 class FUniformLightMapPolicyShaderParametersType
@@ -581,14 +601,45 @@ public:
 		case LMP_MOVABLE_DIRECTIONAL_LIGHT_CSM:
 			return FMovableDirectionalLightCSMLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
 		case LMP_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
-			return FMovableDirectionalLightWithLightmapLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+			return FMovableDirectionalLightWithLightmapLightingPolicy<LQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
 		case LMP_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP:
-			return FMovableDirectionalLightCSMWithLightmapLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+			return FMovableDirectionalLightCSMWithLightmapLightingPolicy<LQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
 
 		// LightMapDensity
 	
 		case LMP_DUMMY:
 			return FDummyLightMapPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+
+		// Oculus forward renderer
+
+		case LMP_MDL_CSM_DFS_HQLM:
+			return FMovableDirectionalLightCSMLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_DFS_HQLM:
+			return FMovableDirectionalLightLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_CSM_SHINDPT:
+			return FMovableDirectionalLightCSMLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& FCachedPointIndirectLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_SHINDPT:
+			return FMovableDirectionalLightLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& FCachedPointIndirectLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_SHINDPT:
+			return FCachedPointIndirectLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_HQLM:
+			return FMovableDirectionalLightLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& TLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_CSM_HQLM:
+			return FMovableDirectionalLightCSMLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType)
+				&& TLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_DFS_HQLM:
+			return TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_HQLM:
+			return TLightMapPolicy<HQ_LIGHTMAP>::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL_CSM:
+			return FMovableDirectionalLightCSMLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
+		case LMP_MDL:
+			return FMovableDirectionalLightLightingPolicy::ShouldCache(Platform, Material, VertexFactoryType);
 
 		default:
 			check(false);
@@ -644,16 +695,58 @@ public:
 			FMovableDirectionalLightCSMLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
 			break;
 		case LMP_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
-			FMovableDirectionalLightWithLightmapLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			FMovableDirectionalLightWithLightmapLightingPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
 			break;
 		case LMP_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP:
-			FMovableDirectionalLightCSMWithLightmapLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			FMovableDirectionalLightCSMWithLightmapLightingPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
 			break;
 
 		// LightMapDensity
 	
 		case LMP_DUMMY:
 			FDummyLightMapPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+
+		// Oculus forward renderer
+
+		case LMP_MDL_CSM_DFS_HQLM:
+			FMovableDirectionalLightCSMLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_DFS_HQLM:
+			FMovableDirectionalLightLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_CSM_SHINDPT:
+			FMovableDirectionalLightCSMLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			FCachedPointIndirectLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_SHINDPT:
+			FMovableDirectionalLightLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			FCachedPointIndirectLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_SHINDPT:
+			FCachedPointIndirectLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_HQLM:
+			FMovableDirectionalLightLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			TLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_CSM_HQLM:
+			FMovableDirectionalLightCSMLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			TLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_DFS_HQLM:
+			TDistanceFieldShadowsAndLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_HQLM:
+			TLightMapPolicy<HQ_LIGHTMAP>::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL_CSM:
+			FMovableDirectionalLightCSMLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+			break;
+		case LMP_MDL:
+			FMovableDirectionalLightLightingPolicy::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
 			break;
 
 		default:

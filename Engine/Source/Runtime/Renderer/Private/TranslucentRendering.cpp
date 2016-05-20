@@ -673,13 +673,16 @@ void FTranslucentPrimSet::DrawPrimitives(
 		const FPrimitiveViewRelevance& ViewRelevance = View.PrimitiveViewRelevanceMap[PrimitiveId];
 
 		checkSlow(ViewRelevance.HasTranslucency());
-			
+
 		const FProjectedShadowInfo* TranslucentSelfShadow = Renderer.PrepareTranslucentShadowMap(RHICmdList, View, PrimitiveSceneInfo, TranslucenyPassType);
 
 		RenderPrimitive(RHICmdList, View, PrimitiveSceneInfo, ViewRelevance, TranslucentSelfShadow, TranslucenyPassType);
 	}
 
-	View.SimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::Translucent);
+	for (int DPG = 0; DPG < SDPG_MAX; DPG++)
+	{
+		View.SimpleElementCollector.DrawBatchedElements(RHICmdList, View, FTexture2DRHIRef(), EBlendModeFilter::Translucent, ESceneDepthPriorityGroup(DPG));
+	}
 }
 
 void FTranslucentPrimSet::RenderPrimitive(
@@ -802,6 +805,12 @@ void FTranslucentPrimSet::AppendScenePrimitives(FSortedPrim* Normal, int32 NumNo
 {
 	SortedPrims.Append(Normal, NumNormal);
 	SortedSeparateTranslucencyPrims.Append(Separate, NumSeparate);
+}
+
+void FTranslucentPrimSet::MoveSeparateTranslucencyToSorted()
+{
+    SortedPrims.Append(SortedSeparateTranslucencyPrims);
+    SortedSeparateTranslucencyPrims.Empty();
 }
 
 void FTranslucentPrimSet::PlaceScenePrimitive(FPrimitiveSceneInfo* PrimitiveSceneInfo, const FViewInfo& ViewInfo, bool bUseNormalTranslucency, bool bUseSeparateTranslucency, void *NormalPlace, int32& NormalNum, void* SeparatePlace, int32& SeparateNum)
@@ -1094,9 +1103,11 @@ void FDeferredShadingSceneRenderer::DrawAllTranslucencyPasses(FRHICommandListImm
 
 	FTranslucencyDrawingPolicyFactory::ContextType Context(0, TranslucenyPassType);
 
-	// editor and debug rendering
-	DrawViewElements<FTranslucencyDrawingPolicyFactory>(RHICmdList, View, Context, SDPG_World, false);
-	DrawViewElements<FTranslucencyDrawingPolicyFactory>(RHICmdList, View, Context, SDPG_Foreground, false);
+	// editor and debug rendering (todo: sort the normal prims and debug prims into passes instead of doing them separately?)
+	for (int DPG = 0; DPG < SDPG_MAX; DPG++)
+	{
+		DrawViewElements<FTranslucencyDrawingPolicyFactory>(RHICmdList, View, Context, ESceneDepthPriorityGroup(DPG), false);
+	}
 }
 
 void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate& RHICmdList)
@@ -1158,10 +1169,11 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 					bool bFirstTimeThisFrame = (ViewIndex == 0);
 					bool bSetupTranslucency = SceneContext.BeginRenderingSeparateTranslucency(RHICmdList, View, bFirstTimeThisFrame);
 
-					const TIndirectArray<FMeshBatch>& WorldList = View.ViewMeshElements;
-					const TIndirectArray<FMeshBatch>& ForegroundList = View.TopViewMeshElements;
-
-					bool bRenderSeparateTranslucency = View.TranslucentPrimSet.NumSeparateTranslucencyPrims() > 0 || WorldList.Num() || ForegroundList.Num();
+                    bool bRenderSeparateTranslucency = View.TranslucentPrimSet.NumSeparateTranslucencyPrims() > 0;
+                    for (int32 DPG = 0; DPG < SDPG_MAX && !bRenderSeparateTranslucency; ++DPG)
+                    {
+                        bRenderSeparateTranslucency |= View.ViewMeshElements[DPG].Num() != 0;
+                    }
 
 					// Draw only translucent prims that are in the SeparateTranslucency pass
 					if (bRenderSeparateTranslucency)

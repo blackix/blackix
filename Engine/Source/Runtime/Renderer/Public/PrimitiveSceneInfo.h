@@ -29,6 +29,7 @@ public:
 		CurrentSkyBentNormal(FVector4(0, 0, 1, 1)),
 		bHasEverUpdatedSingleSample(false),
 		bPointSample(true),
+		bAveragePointOverVolume(false),
 		bIsDirty(false),
 		bUnbuiltPreview(false)
 	{
@@ -56,6 +57,9 @@ public:
 
 	/** Size in texels of the allocation into the volume texture atlas. */
 	int32 AllocationTexelSize;
+
+	/** Mesh bounding sphere, used when averaging over volume */
+	FSphere MeshSphere;
 
 	/** Position at the new single lighting sample. Used for interpolation over time. */
 	FVector TargetPosition;
@@ -87,6 +91,9 @@ public:
 	/** Whether this allocation is a point sample and therefore was not put into the volume texture atlas. */
 	bool bPointSample;
 
+	/** If point sampling, compute the sample by averaging over the volume */
+	bool bAveragePointOverVolume;
+
 	/** Whether the primitive allocation is dirty and should be updated regardless of having moved. */
 	bool bIsDirty;
 
@@ -102,7 +109,7 @@ public:
 		return MinTexel.X >= 0 && MinTexel.Y >= 0 && MinTexel.Z >= 0 && AllocationTexelSize > 0;
 	}
 
-	void SetParameters(FIntVector InMinTexel, int32 InAllocationTexelSize, FVector InScale, FVector InAdd, FVector InMinUV, FVector InMaxUV, bool bInPointSample, bool bInUnbuiltPreview)
+	void SetParameters(FIntVector InMinTexel, int32 InAllocationTexelSize, FVector InScale, FVector InAdd, FVector InMinUV, FVector InMaxUV, bool bInPointSample, bool bInAverageOverVolume, bool bInUnbuiltPreview)
 	{
 		Add = InAdd;
 		Scale = InScale;
@@ -112,6 +119,7 @@ public:
 		AllocationTexelSize = InAllocationTexelSize;
 		bIsDirty = false;
 		bPointSample = bInPointSample;
+		bAveragePointOverVolume = bInAverageOverVolume;
 		bUnbuiltPreview = bInUnbuiltPreview;
 	}
 };
@@ -391,18 +399,18 @@ private:
 	/** Let FScene have direct access to the Id. */
 	friend class FScene;
 
-	/**
-	 * The index of the primitive in the scene's packed arrays. This value may
-	 * change as primitives are added and removed from the scene.
-	 */
-	int32 PackedIndex;
-
 	/** 
 	 * The UPrimitiveComponent this scene info is for, useful for quickly inspecting properties on the corresponding component while debugging.
 	 * This should not be dereferenced on the rendering thread.  The game thread can be modifying UObject members at any time.
 	 * Use PrimitiveComponentId instead when a component identifier is needed.
 	 */
 	const UPrimitiveComponent* ComponentForDebuggingOnly;
+
+	/**
+	 * The index of the primitive in the scene's packed arrays. This value may
+	 * change as primitives are added and removed from the scene.
+	 */
+	int32 PackedIndex;
 
 	/** If this is TRUE, this primitive's static meshes needs to be updated before it can be rendered. */
 	bool bNeedsStaticMeshUpdate;

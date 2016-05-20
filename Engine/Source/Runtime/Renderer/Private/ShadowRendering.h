@@ -361,7 +361,7 @@ public:
 			&& bPreShadow == Other.bPreShadow
 			&& FeatureLevel == Other.FeatureLevel;
 	}
-	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType PolicyContext) const;
+	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType& PolicyContext) const;
 
 	/** 
 	 * Create bound shader state using the vertex decl from the mesh draw policy

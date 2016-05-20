@@ -1,0 +1,332 @@
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	ClusteredShadingPixelShader.usf: Base pass pixel shader used with clustered forward shading
+=============================================================================*/
+
+#include "Common.usf"
+#include "ClusteredShadingCommon.usf"
+#include "Material.usf"
+#include "VertexFactory.usf"
+#include "ClusteredShadingLighting.usf"
+#include "ClusteredShadingTranslucentLighting.usf"
+#include "EditorCompositing.usf"
+#include "AlphaToCoverageCommon.usf"
+
+#define TRANSLUCENCY_LIGHTING ((MATERIAL_SHADINGMODEL_DEFAULT_LIT || MATERIAL_SHADINGMODEL_SUBSURFACE) && (MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ADDITIVE))
+
+
+float CalcGeometricAA(float3 WorldNormal)
+{
+    float3 dNdx = ddx(WorldNormal);
+    float3 dNdy = ddy(WorldNormal);
+    float x = dot(dNdx, dNdx);
+    float y = dot(dNdy, dNdy);
+    return max(x,y);
+}
+
+void Main( 
+	FVertexFactoryInterpolantsVSToPS Interpolants,
+	FClusteredShadingBasePassInterpolantsVSToPS BasePassInterpolants,
+	in float4 SvPosition : SV_Position
+	OPTIONAL_IsFrontFace,
+	out half4 OutColor	: SV_Target0
+
+#if EDITOR_ALPHA2COVERAGE != 0
+   ,in uint InCoverage : SV_Coverage
+   ,out uint OutCoverage : SV_Coverage
+#endif
+	)
+{
+#if INSTANCED_STEREO
+	ResolvedView = ResolveView(GetEyeIndex(Interpolants.PackedEyeIndex));
+#else
+	ResolvedView = ResolveView();
+#endif
+
+#if EDITOR_ALPHA2COVERAGE != 0
+	OutCoverage = InCoverage;
+#endif
+
+#if USE_EDITOR_COMPOSITING && (FEATURE_LEVEL >= FEATURE_LEVEL_SM4 || MOBILE_EMULATION)
+	const bool bEditorWeightedZBuffering = true;
+#else
+	const bool bEditorWeightedZBuffering = false;
+#endif
+
+	FMaterialPixelParameters MaterialParameters = GetMaterialPixelParameters(Interpolants, SvPosition);
+	FPixelMaterialInputs PixelMaterialInputs;
+	
+	#if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
+		{
+			float4 ScreenPosition = SvPositionToScreenPosition(SvPosition);
+			CalcMaterialParametersEx(MaterialParameters, PixelMaterialInputs, SvPosition, ScreenPosition, bIsFrontFace, SvPositionToResolvedTranslatedWorld(SvPosition), BasePassInterpolants.PixelPositionExcludingWPO);
+		}
+	#else
+		CalcMaterialParameters(MaterialParameters, PixelMaterialInputs, SvPosition, bIsFrontFace);
+	#endif
+
+	// Clip or get coverage if the blend mode requires it.
+    float CoverageAlpha = 0;
+	if(!bEditorWeightedZBuffering)
+	{
+        CoverageAlpha = ClipAndGetAlphaToCoverage(MaterialParameters, PixelMaterialInputs);
+	}	
+
+#if HQ_TEXTURE_LIGHTMAP && USES_AO_MATERIAL_MASK && !MATERIAL_SHADINGMODEL_UNLIT
+	float2 LightmapUV0, LightmapUV1;
+	GetLightMapCoordinates(Interpolants, LightmapUV0, LightmapUV1);
+	// Must be computed before GetMaterialBaseColor
+	// WW-PBD: could we just try re-using the sky visibility here, instead of using a new texture?
+	MaterialParameters.AOMaterialMask = GetAOMaterialMask(LightmapUV0 * float2(1, 2));
+#endif
+
+	// Store the results in local variables and reuse instead of calling the functions multiple times.
+	half3 BaseColor = GetMaterialBaseColor( PixelMaterialInputs );
+	half  Metallic = GetMaterialMetallic( PixelMaterialInputs );
+	half  Specular = GetMaterialSpecular( PixelMaterialInputs );
+
+#if MATERIAL_NONMETAL
+	half3 DiffuseColor = BaseColor;
+	half SpecularColor = 0.04;
+#else
+	half DielectricSpecular = 0.08 * Specular;
+	half3 DiffuseColor = BaseColor - BaseColor * Metallic;	// 1 mad
+	half3 SpecularColor = (DielectricSpecular - DielectricSpecular * Metallic) + BaseColor * Metallic;	// 2 mad
+#endif
+
+	// If we don't use this shading model the color should be black (don't generate shader code for unused data, don't do indirectlighting cache lighting with this color).
+	float3 SubsurfaceColor = 0;
+#if MATERIAL_SHADINGMODEL_SUBSURFACE || MATERIAL_SHADINGMODEL_PREINTEGRATED_SKIN || MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+	SubsurfaceColor = GetMaterialSubsurfaceData(MaterialParameters).rgb;
+#endif
+
+#if USE_DEVELOPMENT_SHADERS
+	{
+		// this feature is only needed for development/editor - we can compile it out for a shipping build (see r.CompileShadersForDevelopment cvar help)
+		DiffuseColor = DiffuseColor * Frame.DiffuseOverrideParameter.w + Frame.DiffuseOverrideParameter.xyz;
+		SubsurfaceColor = SubsurfaceColor * Frame.DiffuseOverrideParameter.w + Frame.DiffuseOverrideParameter.xyz;
+		SpecularColor = SpecularColor * Frame.SpecularOverrideParameter.w + Frame.SpecularOverrideParameter.xyz;
+	}
+#endif
+
+	half MaterialAO = GetMaterialAmbientOcclusion(PixelMaterialInputs);
+	half Roughness = GetMaterialRoughness(PixelMaterialInputs);
+	half Opacity = GetMaterialOpacity(PixelMaterialInputs);
+
+    #if MATERIAL_GEOMETRIC_AA
+    float GeometricAARoughness = saturate(CalcGeometricAA(MaterialParameters.WorldNormal) * Frame.GeometricAAScaleBias.x + Frame.GeometricAAScaleBias.y);
+    Roughness = max(Roughness, GeometricAARoughness);
+    #endif
+
+	// TODO: extra AO from analytic?
+	half AO = MaterialAO;
+
+#if MATERIAL_FULLY_ROUGH
+	// Factors derived from EnvBRDFApprox( SpecularColor, 1, 1 ) == SpecularColor * 0.4524 - 0.0024
+	DiffuseColor += SpecularColor * 0.45;
+	SpecularColor = 0;
+#endif
+
+	half3 Color = 0;
+	float IndirectIrradiance = 0;
+
+	#if !MATERIAL_SHADINGMODEL_UNLIT
+
+		half3 IndirectDiffuse = 0;
+		half3 IndirectSubsurface = 0;
+		half SkyVisibility = 1;
+		GetPrecomputedIndirectLightingAndSkyLight(
+			MaterialParameters, 
+			Interpolants,
+			IndirectDiffuse,
+			IndirectSubsurface,
+			IndirectIrradiance,
+			SkyVisibility);
+
+		half3 EffectiveDiffuseColor = DiffuseColor;
+		#if MATERIAL_SHADINGMODEL_SUBSURFACE || MATERIAL_SHADINGMODEL_PREINTEGRATED_SKIN
+			// Add subsurface energy to diffuse
+			//@todo - better subsurface handling for these shading models with skylight and precomputed GI
+			EffectiveDiffuseColor += SubsurfaceColor;
+		#endif
+
+		Color = (IndirectDiffuse * EffectiveDiffuseColor + IndirectSubsurface * SubsurfaceColor) * AO;
+
+		// Add sky visibility to AO (aka, baked AO from lightmaps) after we add indirect diffuse, 
+		// the baked AO it's already factored in to IndirectDiffuse.
+        // Deferred lacks the channels in gbuffer to do this (iirc), this works nicely for our titles 
+        // but may not be great fit for everyone (or try min() instead of multiplying)
+		AO *= SkyVisibility;
+
+		half NoL = max(0, dot(MaterialParameters.WorldNormal, Frame.DirectionalLightDirection));
+		half4 ShadowMasks = GetPrecomputedShadowMasks(Interpolants);
+
+		half DirectionalShadow = 1;
+		if (dot(Frame.DirectionalLightShadowMapChannelMask, float4(1, 1, 1, 1)))
+		{
+			DirectionalShadow = dot(ShadowMasks, Frame.DirectionalLightShadowMapChannelMask);
+		}
+
+		#if (CACHED_POINT_INDIRECT_LIGHTING || CACHED_VOLUME_INDIRECT_LIGHTING)
+			// For dynamic objects, we have precomputed static directional shadowing
+			// right now we're not rendering the large static objects into the shadowmaps, so
+			// we're going to combine the static shadowing instead of fade to it in the distance
+            // WBN if this was a volume texture lookup
+			DirectionalShadow = min(DirectionalShadow, PrecomputedLightingBuffer.DirectionalLightShadowing);
+		#endif
+
+		#if MOVABLE_DIRECTIONAL_LIGHT_CSM && !MATERIAL_CHEAP_SHADING
+			// Combine the CSM with the baked shadow from the lightmaps
+			// TODO: when out of shadow range, use the AO as a terrible approximation of directional light shadowing?
+			// (mostly to prevent objects from glowing in the distance)
+			DirectionalShadow = GetDirectionalCSMShadowMin(MaterialParameters, Opacity, NoL, DirectionalShadow);
+		#endif
+
+		{
+			const float3 N = MaterialParameters.WorldNormal;
+			const float3 V = MaterialParameters.CameraVector;
+			const float3 L = Frame.DirectionalLightDirection;
+			const float3 LightColor = Frame.DirectionalLightColor.rgb;
+
+            // First check if we have a directional light at all, then only include the directional light for 
+            // a translucent surface if we either have it on, or are doing per-pixel translucent lighting.
+            #if (MOVABLE_DIRECTIONAL_LIGHT || SIMPLE_DYNAMIC_LIGHTING) && (!TRANSLUCENCY_LIGHTING || TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL || TRANSLUCENCY_LIGHTING_DIRECTIONAL_LIGHT)
+
+			    // See note in DirectionalShadingModel: the result is scaled by PI.
+                // but because our light color is scaled by 1/PI, we're all good.
+			    float LightRoughness = max(Frame.DirectionalLightMinRoughnessMAD.x, saturate(Roughness*Frame.DirectionalLightMinRoughnessMAD.y + Frame.DirectionalLightMinRoughnessMAD.z));
+                float3 SurfaceLighting;
+                #if MATERIAL_CHEAP_SHADING
+			    SurfaceLighting = FastSimpleShading(DiffuseColor, SpecularColor, LightRoughness, L, V, N);
+                #else
+			    SurfaceLighting = DirectionalShadingModel(DiffuseColor, SpecularColor, LightRoughness, L, V, N);
+                #endif
+			    Color += (DirectionalShadow * NoL) * LightColor * SurfaceLighting;
+
+			    // TODO right now we don't have separate subsurface shadowing
+			    half SubsurfaceShadow = DirectionalShadow;
+			    #if MATERIAL_SHADINGMODEL_SUBSURFACE 
+				    Color += SubsurfaceShadingSubsurface(SubsurfaceColor, Opacity, AO, L, V, N) * LightColor * (SubsurfaceShadow * PI);
+			    #elif MATERIAL_SHADINGMODEL_TWOSIDED_FOLIAGE
+				    Color += SubsurfaceShadingTwoSided(SubsurfaceColor, L, V, N) * LightColor * (SubsurfaceShadow * PI);
+			    #endif
+
+            #endif
+
+			// Add in stationary/movable lighting.
+			#if TRANSLUCENCY_LIGHTING && !TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL
+				// Volume lighting for lit translucency
+				Color += GetTranslucencyLighting(MaterialParameters, DiffuseColor, SpecularColor, Roughness, AO, ShadowMasks);
+			#else
+				// Add in movable lights.
+				Color += GetClusteredLighting(MaterialParameters, DiffuseColor, SpecularColor, Roughness, AO, ShadowMasks);
+			#endif
+		}
+
+		#if !MATERIAL_FULLY_ROUGH && (!TRANSLUCENCY_LIGHTING || TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL)
+		{
+			half4 SpecularIBL = 0; 
+			
+			#if ENABLE_REFLECTION_PROBE
+            // Result has validity scalar in .a
+			SpecularIBL = GetImageBasedReflectionLighting(MaterialParameters, Roughness);
+			#endif
+
+			#if ENABLE_SKY_LIGHT && ENABLE_SKY_LIGHT_REFLECTIONS
+            // We don't normalize: we essentially get the art team to normalize by adjusting the color.
+			bool bNormalize = false;
+			half3 SkyReflection = GetSkyLightReflection(MaterialParameters.ReflectionVector, Roughness, bNormalize) * PI;
+
+            // Allow simultaneous use of a reflection environment and sky light.
+            // The user should know what they are doing, parallax correction should be enabled.
+            SpecularIBL.rgb += SkyReflection * (1.0 - SpecularIBL.a);
+			#endif
+
+			half NoV = max( dot( MaterialParameters.WorldNormal, MaterialParameters.CameraVector ), 0 );
+
+			#if MATERIAL_NONMETAL
+			// If nothing is hooked up to Metalic and Specular,
+			// then defaults are the same as a non-metal,
+			// so this define is safe.
+			SpecularIBL.rgb *= EnvBRDFApproxNonmetal( Roughness, NoV );
+			#else
+			SpecularIBL.rgb *= EnvBRDFApprox( SpecularColor, Roughness, NoV );
+			#endif
+
+			// Oculus forward: Apply specular occlusion!
+			float SpecularOcclusion = saturate( Square( NoV + AO ) - 1 + AO );
+
+			// Environment map has been prenormalized, scale by lightmap luminance.
+            // And see above about the sky reflection, we are being a little hacky.
+			Color += SpecularIBL.rgb * (SpecularOcclusion * IndirectIrradiance);
+		}
+		#endif
+
+	#else
+		Color = DiffuseColor;
+	#endif /* MATERIAL_SHADINGMODEL_UNLIT */
+			 
+	half3 Emissive = GetMaterialEmissive(PixelMaterialInputs);
+
+	Color += Emissive;
+
+	half4 VertexFog = half4(0, 0, 0, 1);
+	#if USE_VERTEX_FOG
+		VertexFog = BasePassInterpolants.VertexFog;
+	#endif
+
+	#if !MATERIAL_SHADINGMODEL_UNLIT && ES2_EMULATION
+		Color = lerp(Color, DiffuseColor + SpecularColor, Frame.UnlitViewmodeMask);
+	#endif
+
+    #if MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ALPHATOCOVERAGE
+		OutColor = half4(Color * VertexFog.a + VertexFog.rgb, Opacity);
+	#elif MATERIALBLENDING_MASKED
+        // Coverage defaults to 0 when a2c is disabled.
+        OutColor.a = CoverageAlpha;
+		OutColor.rgb = Color * VertexFog.a + VertexFog.rgb;
+	#elif MATERIALBLENDING_ADDITIVE
+		OutColor = half4(Color * (VertexFog.a * Opacity), 0.0f);
+	#elif MATERIALBLENDING_MODULATE
+		half3 FoggedColor = lerp(half3(1, 1, 1), Color, VertexFog.aaa * VertexFog.aaa);
+		OutColor = half4(FoggedColor, Opacity);
+	#else
+		OutColor.rgb = Color * VertexFog.a + VertexFog.rgb;
+		OutColor.a = 0.0;
+	#endif
+
+	if(bEditorWeightedZBuffering)
+	{
+
+		// some material might have a opacity value
+#if MATERIALBLENDING_MASKED && !MATERIALBLENDING_ALPHATOCOVERAGE
+		OutColor.a = GetMaterialMaskInputRaw(PixelMaterialInputs);
+#elif MATERIALBLENDING_MASKED_ALPHATOCOVERAGE
+		OutColor.a = CoverageAlpha;
+#elif MATERIALBLENDING_ALPHATOCOVERAGE
+        OutColor.a = Opacity;
+#else
+		OutColor.a = 1;
+#endif
+
+		// we output premultiplied alpha to we have to darken all 4 channels
+		OutColor *= ClipForEditorPrimitives(MaterialParameters);
+
+		#if EDITOR_ALPHA2COVERAGE != 0
+			// per MSAA sample
+			if(MSAASampleCount > 1)
+			{
+				OutCoverage = InCoverage & CustomAlpha2Coverage(OutColor);
+			}
+			else
+			{
+				// no MSAA is handle like per pixel
+				clip(OutColor.a - GetMaterialOpacityMaskClipValue());
+			}
+		#else
+			// per pixel
+			clip(OutColor.a - GetMaterialOpacityMaskClipValue());
+		#endif
+	}
+}

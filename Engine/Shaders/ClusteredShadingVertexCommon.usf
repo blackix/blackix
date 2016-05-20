@@ -1,0 +1,39 @@
+
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	ClusteredShadingVertexCommon.usf: Vertex-related base pass definitions, used by vertex,
+	hull and domain shader
+=============================================================================*/
+
+#include "Common.usf"
+#include "ClusteredShadingCommon.usf"
+#include "Material.usf"
+#include "VertexFactory.usf"
+
+struct FClusteredShadingBasePassVSToPS
+{
+	FVertexFactoryInterpolantsVSToPS FactoryInterpolants;
+	FClusteredShadingBasePassInterpolantsVSToPS BasePassInterpolants;
+	float4 Position : SV_POSITION;
+};
+
+#if USING_TESSELLATION	
+	struct FClusteredShadingBasePassVSToDS
+	{
+		FVertexFactoryInterpolantsVSToDS FactoryInterpolants;
+        FClusteredShadingBasePassInterpolantsVSToPS BasePassInterpolants;
+		float4 Position : VS_To_DS_Position;
+		OPTIONAL_VertexID_VS_To_DS
+	};
+	
+	#define FClusteredShadingBasePassVSOutput FClusteredShadingBasePassVSToDS
+	#define VertexFactoryGetInterpolants VertexFactoryGetInterpolantsVSToDS
+	#define FPassSpecificVSToDS FClusteredShadingBasePassVSToDS
+	#define FPassSpecificVSToPS FClusteredShadingBasePassVSToPS
+#else
+    #define FClusteredShadingBasePassVSOutput FClusteredShadingBasePassVSToPS
+	#define VertexFactoryGetInterpolants VertexFactoryGetInterpolantsVSToPS
+#endif
+
+

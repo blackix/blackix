@@ -969,7 +969,7 @@ void UCrowdManager::DrawDebugPath(const dtCrowdAgent* CrowdAgent) const
 			const FVector Pt1 = Verts[(VertIdx + 1) % Verts.Num()];
 
 			DrawDebugLine(GetWorld(), Pt0 + CrowdDebugDrawing::Offset * 0.5f, Pt1 + CrowdDebugDrawing::Offset * 0.5f, PolyColor, false
-				, /*LifeTime*/-1.f, /*DepthPriority*/0
+				, /*LifeTime*/-1.f, /*DepthPriority*/SDPG_World
 				, /*Thickness*/CrowdDebugDrawing::LineThickness);
 		}
 	}

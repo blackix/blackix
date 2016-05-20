@@ -20,6 +20,7 @@ BEGIN_UNIFORM_BUFFER_STRUCT(FDeferredLightUniformStruct,)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float,SourceRadius)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float,SourceLength)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float,MinRoughness)
+    DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector2D,RoughnessMAD)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector2D,DistanceFadeMAD)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4,ShadowMapChannelMask)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(uint32,bShadowed)
@@ -50,7 +51,8 @@ void SetDeferredLightParameters(
 		DeferredLightUniformsValue.SourceRadius,
 		DeferredLightUniformsValue.SourceLength,
 		DeferredLightUniformsValue.MinRoughness);
-	
+
+    DeferredLightUniformsValue.RoughnessMAD = FVector2D(LightSceneInfo->Proxy->GetRoughnessScale(), LightSceneInfo->Proxy->GetRoughnessBias());
 	DeferredLightUniformsValue.LightPosition = LightPositionAndInvRadius;
 	DeferredLightUniformsValue.LightInvRadius = LightPositionAndInvRadius.W;
 	DeferredLightUniformsValue.LightColor = LightColorAndFalloffExponent;
@@ -123,6 +125,7 @@ void SetSimpleDeferredLightParameters(
 	DeferredLightUniformsValue.LightFalloffExponent = SimpleLight.Exponent;
 	DeferredLightUniformsValue.NormalizedLightDirection = FVector(1, 0, 0);
 	DeferredLightUniformsValue.MinRoughness = 0.08f;
+	DeferredLightUniformsValue.RoughnessMAD = FVector2D(1, 0);
 	DeferredLightUniformsValue.SpotAngles = FVector2D(-2, 1);
 	DeferredLightUniformsValue.DistanceFadeMAD = FVector2D(0, 0);
 	DeferredLightUniformsValue.ShadowMapChannelMask = FVector4(0, 0, 0, 0);

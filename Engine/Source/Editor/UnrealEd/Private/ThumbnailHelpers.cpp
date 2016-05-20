@@ -268,6 +268,20 @@ void FMaterialThumbnailScene::SetMaterialInterface(UMaterialInterface* InMateria
 			ThumbnailInfo = USceneThumbnailInfoWithPrimitive::StaticClass()->GetDefaultObject<USceneThumbnailInfoWithPrimitive>();
 		}
 
+		// We can't render objects that use the gbuffer in forward
+		{
+			const FMaterialResource* MaterialResource = InMaterial->GetMaterialResource(GetScene()->GetFeatureLevel());
+			if (MaterialResource != nullptr)
+			{
+				const auto* ShaderMap = MaterialResource->GetGameThreadShaderMap();
+				if (ShaderMap != nullptr && ShaderMap->NeedsGBuffer()
+					&& GetScene()->GetShadingPath() != EShadingPath::Deferred)
+				{
+					InMaterial = GUnrealEd->GetThumbnailManager()->FloorPlaneMaterial;
+				}
+			}
+		}
+
 		UMaterial* BaseMaterial = InMaterial->GetBaseMaterial();
 
 		// UI material thumbnails always get a 2D plane centered at the camera which is a better representation of the

@@ -237,6 +237,10 @@ public partial class Project : CommandUtils
                     CommandletParams += " ";
                     CommandletParams += FormatedAdditionalCookerParams;
                 }
+                if (Params.NoDevelopmentShaders)
+                {
+                    CommandletParams += " -developmentshaders=0";
+                }
 
                 if (!Params.NoClient)
                 {

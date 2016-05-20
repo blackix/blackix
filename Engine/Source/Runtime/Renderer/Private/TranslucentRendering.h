@@ -130,6 +130,76 @@ public:
 		);
 };
 
+/**
+* Translucent draw policy factory.
+* Creates the policies needed for rendering a mesh based on its material
+*/
+class FTranslucencyClusteredShadingDrawingPolicyFactory
+{
+public:
+	enum { bAllowSimpleElements = true };
+	struct ContextType 
+	{
+	};
+
+	/**
+	* Render a dynamic mesh using a translucent draw policy 
+	* @return true if the mesh rendered
+	*/
+	static bool DrawDynamicMesh(
+		FRHICommandList& RHICmdList,
+		const FViewInfo& View,
+		ContextType DrawingContext,
+		const FMeshBatch& Mesh,
+		bool bBackFace,
+		bool bPreFog,
+		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
+		FHitProxyId HitProxyId
+		);
+
+	/**
+	* Render a dynamic mesh using a translucent draw policy 
+	* @return true if the mesh rendered
+	*/
+	static bool DrawStaticMesh(
+		FRHICommandList& RHICmdList, 
+		const FViewInfo& View,
+		ContextType DrawingContext,
+		const FStaticMesh& StaticMesh,
+		bool bPreFog,
+		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
+		FHitProxyId HitProxyId
+		);
+
+    static bool DrawMeshPrepass(
+		FRHICommandList& RHICmdList, 
+		const FViewInfo& View,
+		ContextType DrawingContext,
+		const FMeshBatch& StaticMesh,
+		const FPrimitiveSceneProxy* PrimitiveSceneProxy
+		);
+
+	static void CleanPolicyRenderState(FRHICommandList&, ContextType&) {}
+
+private:
+	/**
+	* Render a dynamic or static mesh using a translucent draw policy
+	* @return true if the mesh rendered
+	*/
+	static bool DrawMesh(
+		FRHICommandList& RHICmdList,
+		const FViewInfo& View,
+		ContextType DrawingContext,
+		const FMeshBatch& Mesh,
+		const uint64 BatchElementMask,
+		const FMeshDrawingRenderState& DrawRenderState,
+		bool bBackFace,
+		bool bPreFog,
+		const FPrimitiveSceneProxy* PrimitiveSceneProxy,
+		FHitProxyId HitProxyId
+		);
+};
+
 /** Represents a subregion of a volume texture. */
 struct FVolumeBounds
 {

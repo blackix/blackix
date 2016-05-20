@@ -81,6 +81,9 @@ FMaterialInstanceResource::FMaterialInstanceResource(UMaterialInstance* InOwner,
 	, ShadingModel(MSM_DefaultLit)
 	, TwoSided(false)
 	, DitheredLODTransition(false)
+	, AlphaToCoverage(false)
+	, FullyRough(false)
+	, CheapShading(false)
 {
 }
 
@@ -239,28 +242,53 @@ bool FMaterialInstanceResource::GetTextureValue(
 
 void FMaterialInstanceResource::GameThread_UpdateOverridableBaseProperties(const UMaterialInterface* MaterialInterface)
 {
-	ENQUEUE_UNIQUE_RENDER_COMMAND_FOURPARAMETER(
-		UpdateOverridableBaseProperties0,
-		float*, OpacityMaskClipValue, &OpacityMaskClipValue,
-		float, NewOpacityMaskClipValue, MaterialInterface->GetOpacityMaskClipValue(),
-		EBlendMode*, BlendMode, &BlendMode,
-		EBlendMode, NewBlendMode, MaterialInterface->GetBlendMode(),
-		{
-		*OpacityMaskClipValue = NewOpacityMaskClipValue;
-		*BlendMode = NewBlendMode;
-	});
+	struct Vals
+	{
+		float NewOpacityMaskClipValue;
+		EBlendMode NewBlendMode;
+		EMaterialShadingModel NewShadingModel;
+		bool NewAlphaToCoverage;
+		bool NewTwoSided;
+		bool NewDitheredLODTransition;
+		bool NewFullyRough;
+		bool NewCheapShading;
+	} vals;
+
+	vals.NewOpacityMaskClipValue = MaterialInterface->GetOpacityMaskClipValue();
+	vals.NewBlendMode = MaterialInterface->GetBlendMode();
+	vals.NewAlphaToCoverage = MaterialInterface->IsAlphaToCoverage();
+	vals.NewTwoSided = MaterialInterface->IsTwoSided();
+	vals.NewShadingModel = MaterialInterface->GetShadingModel();
+	vals.NewFullyRough = MaterialInterface->IsFullyRough();
+	vals.NewCheapShading = MaterialInterface->IsCheapShading();
+	vals.NewDitheredLODTransition = MaterialInterface->IsDitheredLODTransition();
+
+	// TODO why does this take address of members instead of using this->...?
 	ENQUEUE_UNIQUE_RENDER_COMMAND_SIXPARAMETER(
-		UpdateOverrideablBaseProperties1,
+		UpdateOverridableBaseProperties0,
+		Vals, NewVals, vals,
+		float*, OpacityMaskClipValue, &OpacityMaskClipValue,
+		EBlendMode*, BlendMode, &BlendMode,
+		bool*, AlphaToCoverage, &AlphaToCoverage,
 		EMaterialShadingModel*, ShadingModel, &ShadingModel,
-		EMaterialShadingModel, NewShadingModel, MaterialInterface->GetShadingModel(),
 		bool*, TwoSided, &TwoSided,
-		bool, NewTwoSided, MaterialInterface->IsTwoSided(),
-		bool*, DitheredLODTransition, &DitheredLODTransition,
-		bool, NewDitheredLODTransition, MaterialInterface->IsDitheredLODTransition(),
 		{
-		*ShadingModel = NewShadingModel;
-		*TwoSided = NewTwoSided;
-		*DitheredLODTransition = NewDitheredLODTransition;
+		*OpacityMaskClipValue = NewVals.NewOpacityMaskClipValue;
+		*BlendMode = NewVals.NewBlendMode;
+		*AlphaToCoverage = NewVals.NewAlphaToCoverage;
+		*ShadingModel = NewVals.NewShadingModel;
+		*TwoSided = NewVals.NewTwoSided;
+	});
+	ENQUEUE_UNIQUE_RENDER_COMMAND_FOURPARAMETER(
+		UpdateOverrideableBaseProperties1,
+		Vals, NewVals, vals,
+		bool*, DitheredLODTransition, &DitheredLODTransition,
+		bool*, CheapShading, &CheapShading,
+		bool*, FullyRough, &FullyRough,
+		{
+		*DitheredLODTransition = NewVals.NewDitheredLODTransition;
+		*CheapShading = NewVals.NewCheapShading;
+		*FullyRough = NewVals.NewFullyRough;
 	});
 }
 
@@ -2469,6 +2497,24 @@ void UMaterialInstance::GetBasePropertyOverridesHash(FSHAHash& OutHash)const
 		bHasOverrides = true;
 	}
 
+	bool bUsedIsFullyRough = IsFullyRough(true);
+	if (bUsedIsFullyRough != Mat->IsFullyRough(true))
+	{
+		const FString HashString = TEXT("bOverride_FullyRough");
+		Hash.UpdateWithString(*HashString, HashString.Len());
+		Hash.Update((uint8*)&bUsedIsFullyRough, sizeof(bUsedIsFullyRough));
+		bHasOverrides = true;
+	}
+
+	bool bUsedIsCheapShading = IsCheapShading(true);
+	if (bUsedIsCheapShading != Mat->IsCheapShading(true))
+	{
+		const FString HashString = TEXT("bOverride_CheapShading");
+		Hash.UpdateWithString(*HashString, HashString.Len());
+		Hash.Update((uint8*)&bUsedIsCheapShading, sizeof(bUsedIsCheapShading));
+		bHasOverrides = true;
+	}
+
  	if (bHasOverrides)
  	{
 		Hash.Final();
@@ -2485,7 +2531,9 @@ bool UMaterialInstance::HasOverridenBaseProperties()const
 		(GetBlendMode(true) != Parent->GetBlendMode(true)) ||
 		(GetShadingModel(true) != Parent->GetShadingModel(true)) ||
 		(IsTwoSided(true) != Parent->IsTwoSided(true)) ||
-		(IsDitheredLODTransition(true) != Parent->IsDitheredLODTransition(true))
+		(IsDitheredLODTransition(true) != Parent->IsDitheredLODTransition(true)) ||
+		(IsFullyRough(true) != Parent->IsFullyRough(true)) ||
+		(IsCheapShading(true) != Parent->IsCheapShading(true))
 		)
 		)
 	{
@@ -2605,6 +2653,50 @@ bool UMaterialInstance::RenderThread_IsDitheredLODTransition() const
 	return Proxy ? Proxy->IsDitheredLODTransition() : false;
 }
 
+bool UMaterialInstance::IsCheapShading(bool bIsInGameThread) const
+{
+	if (bIsInGameThread)
+	{
+		if (BasePropertyOverrides.bOverride_CheapShading)
+		{
+			return BasePropertyOverrides.CheapShading != 0;
+		}
+		// go up the chain if possible
+		return Parent ? Parent->IsCheapShading(true) : false;
+	}
+
+	//Get the value mirrored in the render proxy.
+	return RenderThread_IsCheapShading();
+}
+
+bool UMaterialInstance::RenderThread_IsCheapShading() const
+{
+	FMaterialInstanceResource* Proxy = ((FMaterialInstanceResource*)GetRenderProxy(0));
+	return Proxy ? Proxy->IsCheapShading() : false;
+}
+
+bool UMaterialInstance::IsFullyRough(bool bIsInGameThread) const
+{
+	if (bIsInGameThread)
+	{
+		if (BasePropertyOverrides.bOverride_FullyRough)
+		{
+			return BasePropertyOverrides.FullyRough != 0;
+		}
+		// go up the chain if possible
+		return Parent ? Parent->IsFullyRough(true) : false;
+	}
+
+	//Get the value mirrored in the render proxy.
+	return RenderThread_IsFullyRough();
+}
+
+bool UMaterialInstance::RenderThread_IsFullyRough() const
+{
+	FMaterialInstanceResource* Proxy = ((FMaterialInstanceResource*)GetRenderProxy(0));
+	return Proxy ? Proxy->IsFullyRough() : false;
+}
+
 bool UMaterialInstance::IsMasked(bool bIsInGameThread) const
 {
 	if (bIsInGameThread)
@@ -2621,10 +2713,34 @@ bool UMaterialInstance::IsMasked(bool bIsInGameThread) const
 	return RenderThread_IsMasked();
 }
 
+bool UMaterialInstance::IsAlphaToCoverage(bool bIsInGameThread) const
+{
+	if (bIsInGameThread)
+	{
+		/* TODO
+		if (BasePropertyOverrides.bOverride_AlphaToCoverage)
+		{
+			return BasePropertyOverrides.bAlphaToCoverage;
+		}
+		*/
+		// go up the chain if possible
+		return Parent ? Parent->IsAlphaToCoverage(true) : false;
+	}
+
+	//Get the value mirrored in the render proxy.
+	return RenderThread_IsAlphaToCoverage();
+}
+
 bool UMaterialInstance::RenderThread_IsMasked() const
 {
 	FMaterialInstanceResource* Proxy = ((FMaterialInstanceResource*)GetRenderProxy(0));
 	return Proxy ? Proxy->GetBlendMode() == EBlendMode::BLEND_Masked : false;
+}
+
+bool UMaterialInstance::RenderThread_IsAlphaToCoverage() const
+{
+	FMaterialInstanceResource* Proxy = ((FMaterialInstanceResource*)GetRenderProxy(0));
+	return Proxy ? Proxy->IsAlphaToCoverage() : false;
 }
 
 USubsurfaceProfile* UMaterialInstance::GetSubsurfaceProfile_Internal() const

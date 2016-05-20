@@ -23,6 +23,7 @@ FDeferredLightData SetupLightDataForStandardDeferred()
 	LightData.LightDirection = DeferredLightUniforms.NormalizedLightDirection;
 	LightData.SpotAnglesAndSourceRadius = float4(DeferredLightUniforms.SpotAngles, DeferredLightUniforms.SourceRadius, DeferredLightUniforms.SourceLength);
 	LightData.MinRoughness = DeferredLightUniforms.MinRoughness;
+	LightData.RoughnessMAD = DeferredLightUniforms.RoughnessMAD;
 	LightData.DistanceFadeMAD = DeferredLightUniforms.DistanceFadeMAD;
 	LightData.ShadowMapChannelMask = DeferredLightUniforms.ShadowMapChannelMask;
 

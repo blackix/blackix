@@ -29,6 +29,11 @@
  */
 ENGINE_API int32 GReflectionCaptureSize = 128;
 
+// Oculus Forward TODO: using just the single cubemap instead of the array
+// TODO: must fix this.
+static bool bForceAllocateIndividualCubemaps = true;
+
+
 void UWorld::UpdateAllReflectionCaptures()
 {
 	if ( FeatureLevel < ERHIFeatureLevel::SM4)
@@ -1026,7 +1031,7 @@ void UReflectionCaptureComponent::PostLoad()
 		// Don't need encoded HDR data for rendering on this feature level
 		INC_MEMORY_STAT_BY(STAT_ReflectionCaptureMemory, FullHDRDerivedData->CompressedCapturedData.GetAllocatedSize());
 
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::SM4)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::SM4 || bForceAllocateIndividualCubemaps)
 		{
 			SM4FullHDRCubemapTexture = new FReflectionTextureCubeResource();
 			SM4FullHDRCubemapTexture->SetupParameters(GReflectionCaptureSize, FMath::CeilLogTwo(GReflectionCaptureSize) + 1, PF_FloatRGBA, &FullHDRDerivedData->GetCapturedDataForSM4Load());
@@ -1262,12 +1267,9 @@ void UReflectionCaptureComponent::ReadbackFromGPUAndSaveDerivedData(UWorld* Worl
 	{
 		FReflectionCaptureFullHDRDerivedData* NewDerivedData = new FReflectionCaptureFullHDRDerivedData();
 
-		if (WorldToUpdate->FeatureLevel == ERHIFeatureLevel::SM4)
+		if (SM4FullHDRCubemapTexture)
 		{
-			if (SM4FullHDRCubemapTexture)
-			{
-				ReadbackFromSM4Cubemap(SM4FullHDRCubemapTexture, NewDerivedData);
-			}
+			ReadbackFromSM4Cubemap(SM4FullHDRCubemapTexture, NewDerivedData);
 		}
 		else
 		{
@@ -1325,7 +1327,7 @@ void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldT
 
 		const auto FeatureLevel = WorldToUpdate->Scene->GetFeatureLevel();
 
-		if (FeatureLevel == ERHIFeatureLevel::SM4)
+		if (FeatureLevel == ERHIFeatureLevel::SM4 || bForceAllocateIndividualCubemaps)
 		{
 			for (int32 CaptureIndex = 0; CaptureIndex < WorldCombinedCaptures.Num(); CaptureIndex++)
 			{
@@ -1403,7 +1405,8 @@ void UReflectionCaptureComponent::PreFeatureLevelChange(ERHIFeatureLevel::Type P
 		SetCaptureIsDirty();
 	}
 
-	if (PendingFeatureLevel == ERHIFeatureLevel::SM4)
+	if (PendingFeatureLevel == ERHIFeatureLevel::SM4 ||
+		(PendingFeatureLevel >= ERHIFeatureLevel::SM4 && bForceAllocateIndividualCubemaps))
 	{
 		if (SM4FullHDRCubemapTexture == nullptr)
 		{

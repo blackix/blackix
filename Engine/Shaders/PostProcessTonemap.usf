@@ -110,8 +110,12 @@ void MainVS(
 	DrawRectangle(InPosition, InTexCoord, OutPosition, OutTexCoord);
 
 #if EYEADAPTATION_EXPOSURE_FIX == 1
+#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
 	// texture can be GWhiteTexture which is 1x1. It's important we don't read outside bounds.
-	OutExposureScaleVignette.x = EyeAdaptation.Load(int3(0, 0, 0)).r;
+	OutExposureScaleVignette.x = EyeAdaptationLookup();
+#else
+	OutExposureScaleVignette.x = 1;
+#endif
 #else
 	// Eye adaptation is not yet supported, use the default value.
 	OutExposureScaleVignette.x = DefaultEyeExposure;

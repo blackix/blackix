@@ -31,6 +31,14 @@ struct ENGINE_API FMaterialInstanceBasePropertyOverrides
 	UPROPERTY(EditAnywhere, Category = Material)
 	bool bOverride_TwoSided;
 
+	/** Enables override of the fully rough property. */
+	UPROPERTY(EditAnywhere, Category = Material)
+	bool bOverride_FullyRough;
+
+	/** Enables override of the cheap shading property. */
+	UPROPERTY(EditAnywhere, Category = Material)
+	bool bOverride_CheapShading;
+
 	/** If BlendMode is BLEND_Masked, the surface is not rendered where OpacityMask < OpacityMaskClipValue. */
 	UPROPERTY(EditAnywhere, Category = Material, meta = (editcondition = "bOverride_OpacityMaskClipValue", NoSpinbox = true))
 	float OpacityMaskClipValue;
@@ -50,6 +58,14 @@ struct ENGINE_API FMaterialInstanceBasePropertyOverrides
 	/** Whether the material should support a dithered LOD transition when used with the foliage system. */
 	UPROPERTY(EditAnywhere, Category = Material, meta = (editcondition = "bOverride_DitheredLODTransition"))
 	uint32 DitheredLODTransition : 1;
+
+	/** Whether fully rough should be enabled for this material. */
+	UPROPERTY(EditAnywhere, Category = Material, meta = (editcondition = "bOverride_FullyRough"))
+	uint32 FullyRough : 1;
+
+	/** Whether cheap shading should be enabled for this material. */
+	UPROPERTY(EditAnywhere, Category = Material, meta = (editcondition = "bOverride_CheapShading"))
+	uint32 CheapShading : 1;
 
 	FMaterialInstanceBasePropertyOverrides();
 

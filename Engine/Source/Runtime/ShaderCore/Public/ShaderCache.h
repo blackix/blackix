@@ -349,6 +349,7 @@ class SHADERCORE_API FShaderCache : public FTickableObjectRenderThread
 			if(!Key.Hash)
 			{
 				Key.Hash ^= (Key.BlendState.bUseIndependentRenderTargetBlendStates ? (1 << 31) : 0);
+				Key.Hash ^= (Key.BlendState.bUseAlphaToCoverage ? (1 << 30) : 0);
 				for( uint32 i = 0; i < MaxSimultaneousRenderTargets; i++ )
 				{
 					Key.Hash ^= (Key.BlendState.RenderTargets[i].ColorBlendOp << 24);

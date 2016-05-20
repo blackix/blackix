@@ -610,9 +610,9 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 					{
 						bUseUnifiedMeshForShadow = bAllSectionsCastShadow;
 
-						// Depth pass is only used for deferred renderer. The other conditions are meant to match the logic in FStaticMesh::AddToDrawLists.
+						// Depth pass is not used in the mobile forward renderer. The other conditions are meant to match the logic in FStaticMesh::AddToDrawLists.
 						// Could not link to "GEarlyZPassMovable" so moveable are ignored.
-						bUseUnifiedMeshForDepth = ShouldUseAsOccluder() && GetScene().ShouldUseDeferredRenderer() && !IsMovable();
+						bUseUnifiedMeshForDepth = ShouldUseAsOccluder() && !IsMovable() && GetScene().GetCurrentShadingPath_RenderThread() != EShadingPath::Forward;
 
 						if (bUseUnifiedMeshForShadow || bUseUnifiedMeshForDepth)
 						{
@@ -755,7 +755,8 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 			if (VisibilityMap & (1 << ViewIndex))
 			{
 				const FSceneView* View = Views[ViewIndex];
-				FLODMask LODMask = GetLODMask(View);
+				FLODMask const LODMask = GetLODMask(View);
+				uint8 const DepthPriorityGroup = GetDepthPriorityGroup(View);
 
 				for (int32 LODIndex = 0; LODIndex < RenderData->LODResources.Num(); LODIndex++)
 				{
@@ -787,7 +788,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 							{
 								FMeshBatch& Mesh = Collector.AllocateMesh();
 
-								if (GetWireframeMeshElement(LODIndex, BatchIndex, WireframeMaterialInstance, SDPG_World, true, Mesh))
+								if (GetWireframeMeshElement(LODIndex, BatchIndex, WireframeMaterialInstance, DepthPriorityGroup, true, Mesh))
 								{
 									// We implemented our own wireframe
 									Mesh.bCanApplyViewModeOverrides = false;
@@ -820,7 +821,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 									}
 	#endif // WITH_EDITOR
 								
-									if (GetMeshElement(LODIndex, BatchIndex, SectionIndex, SDPG_World, bSectionIsSelected, IsHovered(), true, MeshElement))
+								    if (GetMeshElement(LODIndex, BatchIndex, SectionIndex, DepthPriorityGroup, bSectionIsSelected, IsHovered(), true, MeshElement))
 									{
 										bool bAddMesh = true;
 
@@ -881,7 +882,7 @@ void FStaticMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 													if (bDrawComplexWireframeCollision)
 													{
 														FMeshBatch& CollisionElement = Collector.AllocateMesh();
-														GetMeshElement(LODIndex, BatchIndex, SectionIndex, SDPG_World, bSectionIsSelected, IsHovered(), true, CollisionElement);
+														GetMeshElement(LODIndex, BatchIndex, SectionIndex, DepthPriorityGroup, bSectionIsSelected, IsHovered(), true, CollisionElement);
 														CollisionElement.MaterialRenderProxy = CollisionMaterialInstance;
 														Collector.AddMesh(ViewIndex, CollisionElement);
 														INC_DWORD_STAT_BY(STAT_StaticMeshTriangles, CollisionElement.GetNumPrimitives());

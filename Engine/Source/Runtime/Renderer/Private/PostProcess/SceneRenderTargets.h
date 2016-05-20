@@ -10,6 +10,7 @@
 #include "RenderTargetPool.h"
 #include "../SystemTextures.h"
 #include "RHIStaticStates.h"
+#include "SceneInterface.h"
 
 struct IPooledRenderTarget;
 
@@ -185,6 +186,7 @@ protected:
 		bCurrentLightPropagationVolume(false),
 		CurrentFeatureLevel(ERHIFeatureLevel::Num),
 		CurrentShadingPath(EShadingPath::Num),
+		CurrentLightGridSize(0),
 		bAllocateVelocityGBuffer(false),
 		bSnapshot(false),
 		QuadOverdrawIndex(INDEX_NONE)
@@ -194,19 +196,11 @@ protected:
 	FSceneRenderTargets(const FViewInfo& InView, const FSceneRenderTargets& SnapshotSource);
 public:
 
-	enum class EShadingPath
-	{
-		Forward,
-		Deferred,
-
-		Num,
-	};
-
 	/**
 	 * Checks that scene render targets are ready for rendering a view family of the given dimensions.
 	 * If the allocated render targets are too small, they are reallocated.
 	 */
-	void Allocate(FRHICommandList& RHICmdList, const FSceneViewFamily& ViewFamily);
+	void Allocate(FRHICommandList& RHICmdList, uint32 ViewCount, const FSceneViewFamily& ViewFamily, EShadingPath NewShadingPath);
 
 	/**
 	 * Forward shading can't know how big the optimal atlased shadow buffer will be, so provide a set it up per frame.
@@ -290,7 +284,8 @@ public:
 	void BeginRenderingLightAttenuation(FRHICommandList& RHICmdList, bool bClearToWhite = false);
 	void FinishRenderingLightAttenuation(FRHICommandList& RHICmdList);
 
-
+	void BeginRenderingBackgroundPass(FRHICommandList& RHICmdList, ESimpleRenderTargetMode RenderTargetMode, FExclusiveDepthStencil DepthStencilAccess);
+	void FinishRenderingBackgroundPass(FRHICommandList& RHICmdList);
 
 	TRefCountPtr<IPooledRenderTarget>& GetSeparateTranslucency(FRHICommandList& RHICmdList, FIntPoint Size)
 	{
@@ -448,6 +443,11 @@ public:
 	{	
 		return (const FTexture2DRHIRef&)DirectionalOcclusion->GetRenderTargetItem().TargetableTexture; 
 	}
+
+	const FTexture2DRHIRef& GetBackgroundSceneColorSurface() const { return (const FTexture2DRHIRef&)BackgroundSceneColor->GetRenderTargetItem().TargetableTexture; }
+	const FTexture2DRHIRef& GetBackgroundSceneColorTexture() const { return (const FTexture2DRHIRef&)BackgroundSceneColor->GetRenderTargetItem().ShaderResourceTexture; }
+	const FTexture2DRHIRef& GetBackgroundSceneDepthSurface() const { return (const FTexture2DRHIRef&)BackgroundSceneDepth->GetRenderTargetItem().TargetableTexture; }
+	const FTexture3DRHIRef& GetClusteredLightGrid() const { return ClusteredLightGridSRV; }
 
 	IPooledRenderTarget* GetGBufferVelocityRT();
 
@@ -652,6 +652,13 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SeparateTranslucencyRT;
 	TRefCountPtr<IPooledRenderTarget> SeparateTranslucencyDepthRT;
 
+	/** Clustered shading light grid, shared for both eyes when rendering in stereo (like the scene RT) */
+	FTexture3DRHIRef ClusteredLightGridSRV;
+	FUnorderedAccessViewRHIRef ClusteredLightGridUAV;
+
+	TRefCountPtr<IPooledRenderTarget> BackgroundSceneColor;
+	TRefCountPtr<IPooledRenderTarget> BackgroundSceneDepth;
+
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bScreenSpaceAOIsValid;
 
@@ -688,6 +695,9 @@ private:
 	/** Allocates render targets for use with the forward shading path. */
 	void AllocateForwardShadingPathRenderTargets(FRHICommandList& RHICmdList);
 
+	/** Allocates render targets for use with the clustered shading path. */
+	void AllocateClusteredForwardShadingPathRenderTargets(FRHICommandList& RHICmdList);	
+
 	/** Allocates render targets for use with the deferred shading path. */
 	void AllocateDeferredShadingPathRenderTargets(FRHICommandList& RHICmdList);
 
@@ -696,6 +706,9 @@ private:
 
 	/** Allocates common depth render targets that are used by both forward and deferred rendering paths */
 	void AllocateCommonDepthTargets(FRHICommandList& RHICmdList);
+
+	/** Allocates all the translucency lighting volume textures */
+	void AllocateTranslucencyLightingVolumes(FRHICommandList& RHICmdList);
 
 	/** Determine the appropriate render target dimensions. */
 	FIntPoint ComputeDesiredSize(const FSceneViewFamily& ViewFamily);
@@ -723,11 +736,15 @@ private:
 	/** Gets all GBuffers to use.  Returns the number actually used. */
 	int32 GetGBufferRenderTargets(ERenderTargetLoadAction ColorLoadAction, FRHIRenderTargetView OutRenderTargets[MaxSimultaneousRenderTargets], int32& OutVelocityRTIndex);
 
+	void ResolveSceneColorInternal(FRHICommandList& RHICmdList, const FIntPoint& SrcOrigin, const FResolveRect& DstRect, const FTextureRHIRef& SrcSurface, const FTextureRHIRef& DstTarget, int WideFilterWidth);
+
 private:
 	/** Uniform buffer containing GBuffer resources. */
 	FUniformBufferRHIRef GBufferResourcesUniformBuffer;
 	/** size of the back buffer, in editor this has to be >= than the biggest view port */
 	FIntPoint BufferSize;
+	/** size of the background back buffers */
+	FIntPoint BackgroundBufferSize;
 	/** e.g. 2 */
 	uint32 SmallColorDepthDownsampleFactor;
 	/** if true we use the light attenuation buffer otherwise the 1x1 white texture is used */
@@ -758,6 +775,8 @@ private:
 	ERHIFeatureLevel::Type CurrentFeatureLevel;
 	/** Shading path that we are currently drawing through. Set when calling Allocate at the start of a scene render. */
 	EShadingPath CurrentShadingPath;
+	/** Light grid for clustered shading renderer */
+	FIntVector CurrentLightGridSize;
 
 	// Set this per frame since there might be cases where we don't need an extra GBuffer
 	bool bAllocateVelocityGBuffer;

@@ -923,7 +923,7 @@ static bool HasPostProcessMaterial(FPostprocessContext& Context, EBlendableLocat
 	return false;
 }
 
-static void AddPostProcessMaterial(FPostprocessContext& Context, EBlendableLocation InLocation, FRenderingCompositeOutputRef SeparateTranslucency, FRenderingCompositeOutputRef HDRColor = FRenderingCompositeOutputRef())
+static void AddPostProcessMaterial(FPostprocessContext& Context, EBlendableLocation InLocation, FRenderingCompositeOutputRef SeparateTranslucency, EShadingPath ShadingPath, FRenderingCompositeOutputRef HDRColor = FRenderingCompositeOutputRef())
 {
 	if(!Context.View.Family->EngineShowFlags.PostProcessing || !Context.View.Family->EngineShowFlags.PostProcessMaterial)
 	{
@@ -941,12 +941,16 @@ static void AddPostProcessMaterial(FPostprocessContext& Context, EBlendableLocat
 	{	
 		// Apply requested material to the full screen
 		UMaterial* Material = GetBufferVisualizationData().GetMaterial(Context.View.CurrentBufferVisualizationMode);
-		
-		if(Material && Material->BlendableLocation == InLocation)
+		if (Material != nullptr && Material->BlendableLocation == InLocation)
 		{
-			PPNodes[0] = FPostProcessMaterialNode(Material, InLocation, Material->BlendablePriority);
-			++PPNodeCount;
-			bVisualizingBuffer = true;
+			// We can only apply postprocess materials that need a gbuffer if we have a gbuffer.
+			FMaterialResource* Resource = Material->GetMaterialResource(Context.View.GetFeatureLevel());
+			if (Resource != nullptr && (!Resource->NeedsGBuffer() || ShadingPath == EShadingPath::Deferred))
+			{
+				PPNodes[0] = FPostProcessMaterialNode(Material, InLocation, Material->BlendablePriority);
+				++PPNodeCount;
+			    bVisualizingBuffer = true;
+			}
 		}
 	}
 	for(;PPNodeCount < MAX_PPMATERIALNODES; ++PPNodeCount)
@@ -981,6 +985,12 @@ static void AddPostProcessMaterial(FPostprocessContext& Context, EBlendableLocat
 
 		if(Material->NeedsGBuffer())
 		{
+			// Cannot apply if we need a gbuffer and we don't have one.
+			if (ShadingPath != EShadingPath::Deferred)
+			{
+				continue;
+			}
+
 			// AdjustGBufferRefCount(-1) call is done when the pass gets executed
 			FSceneRenderTargets::Get_Todo_PassContext().AdjustGBufferRefCount(Context.RHICmdList, 1);
 		}
@@ -1172,7 +1182,7 @@ bool FPostProcessing::AllowFullPostProcessing(const FViewInfo& View, ERHIFeature
 		&& !View.Family->EngineShowFlags.VisualizeMeshDistanceFields;
 }
 
-void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& VelocityRT)
+void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& View, TRefCountPtr<IPooledRenderTarget>& VelocityRT, EShadingPath ShadingPath)
 {
 	QUICK_SCOPE_CYCLE_COUNTER( STAT_PostProcessing_Process );
 
@@ -1280,7 +1290,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 				}
 			}
 
-			AddPostProcessMaterial(Context, BL_BeforeTranslucency, SeparateTranslucency);
+			AddPostProcessMaterial(Context, BL_BeforeTranslucency, SeparateTranslucency, ShadingPath);
 
 			static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DepthOfFieldQuality"));
 			check(CVar)
@@ -1360,7 +1370,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 				Context.FinalOutput = FRenderingCompositeOutputRef(NodeRecombined);
 			}
 
-			AddPostProcessMaterial(Context, BL_BeforeTonemapping, SeparateTranslucency);
+			AddPostProcessMaterial(Context, BL_BeforeTonemapping, SeparateTranslucency, ShadingPath);
 
 			EAntiAliasingMethod AntiAliasingMethod = Context.View.FinalPostProcessSettings.AntiAliasingMethod;
 
@@ -1791,12 +1801,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 #if WITH_EDITOR
 		// Show the selection outline if it is in the editor and we aren't in wireframe 
 		// If the engine is in demo mode and game view is on we also do not show the selection outline
-		if ( GIsEditor
-			&& View.Family->EngineShowFlags.SelectionOutline
-			&& !(View.Family->EngineShowFlags.Wireframe)
-			&& ( !GIsDemoMode || ( GIsDemoMode && !View.Family->EngineShowFlags.Game ) ) 
-			&& !bVisualizeBloom
-			&& !View.Family->EngineShowFlags.VisualizeHDR)
+		if ( FSceneRenderer::ShouldCompositeEditorSelectionOutline(View) && !bVisualizeBloom)
 		{
 			// Selection outline is after bloom, but before AA
 			AddSelectionOutline(Context);
@@ -1805,13 +1810,13 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 		// Composite editor primitives if we had any to draw and compositing is enabled
 		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View) && !bVisualizeBloom)
 		{
-			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(true));
+			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(ShadingPath));
 			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}
 #endif
 
-		if (View.Family->EngineShowFlags.GBufferHints && FeatureLevel >= ERHIFeatureLevel::SM4)
+		if (View.Family->EngineShowFlags.GBufferHints && FeatureLevel >= ERHIFeatureLevel::SM4 && ShadingPath == EShadingPath::Deferred)
 		{
 			FRenderingCompositePass* Node = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessGBufferHints(RHICmdList));
 			Node->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
@@ -1820,7 +1825,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 			Context.FinalOutput = FRenderingCompositeOutputRef(Node);
 		}
 		
-		AddPostProcessMaterial(Context, BL_AfterTonemapping, SeparateTranslucency, HDRColor);
+		AddPostProcessMaterial(Context, BL_AfterTonemapping, SeparateTranslucency, ShadingPath, HDRColor);
 
 		if(bVisualizeBloom)
 		{
@@ -1835,7 +1840,10 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 			Context.FinalOutput = FRenderingCompositeOutputRef(PassVisualize);
 		}
 
-		AddGBufferVisualizationOverview(Context, SeparateTranslucency, HDRColor);
+		if (ShadingPath == EShadingPath::Deferred)
+		{
+            AddGBufferVisualizationOverview(Context, SeparateTranslucency, HDRColor);
+		}
 
 		bool bStereoRenderingAndHMD = View.Family->EngineShowFlags.StereoRendering && View.Family->EngineShowFlags.HMDDistortion;
 		bool bHMDWantsUpscale = false;
@@ -1919,7 +1927,7 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 		// If a postprocess material is using a GBuffer it adds the refcount int FRCPassPostProcessMaterial::Process()
 		// and when it gets processed it removes the refcount
 		// We only release the GBuffers after the last view was processed (SplitScreen)
-		if(View.Family->Views[View.Family->Views.Num() - 1] == &View)
+		if(ShadingPath == EShadingPath::Deferred && View.Family->Views[View.Family->Views.Num() - 1] == &View)
 		{
 			// Generally we no longer need the GBuffers, anyone that wants to keep the GBuffers for longer should have called AdjustGBufferRefCount(1) to keep it for longer
 			// and call AdjustGBufferRefCount(-1) once it's consumed. This needs to happen each frame. PostProcessMaterial do that automatically
@@ -1967,6 +1975,8 @@ void FPostProcessing::Process(FRHICommandListImmediate& RHICmdList, FViewInfo& V
 void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FViewInfo& View, bool bUsedFramebufferFetch)
 {
 	check(IsInRenderingThread());
+
+    bool const bVisualizeBloom = false;
 
 	// This page: https://udn.epicgames.com/Three/RenderingOverview#Rendering%20state%20defaults 
 	// describes what state a pass can expect and to what state it need to be set back.
@@ -2293,7 +2303,7 @@ void FPostProcessing::ProcessES2(FRHICommandListImmediate& RHICmdList, FViewInfo
 #if WITH_EDITOR
 		if (FSceneRenderer::ShouldCompositeEditorPrimitives(View) )
 		{
-			FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(false));
+			FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(EShadingPath::Forward));
 			EditorCompNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 			Context.FinalOutput = FRenderingCompositeOutputRef(EditorCompNode);
 		}

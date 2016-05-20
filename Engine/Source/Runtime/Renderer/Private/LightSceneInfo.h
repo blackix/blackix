@@ -143,6 +143,9 @@ public:
 	 */
 	uint32 bEnableLightShaftBloom : 1;
 
+	/** Cached value from the light proxy's virtual function, since it is checked many times during shadow setup. */
+	uint32 bCreatePerObjectShadowsForDynamicObjects : 1;
+
 	/** Scales the additive color. */
 	float BloomScale;
 
@@ -154,9 +157,6 @@ public:
 
 	/** Number of dynamic interactions with statically lit primitives. */
 	int32 NumUnbuiltInteractions;
-
-	/** Cached value from the light proxy's virtual function, since it is checked many times during shadow setup. */
-	bool bCreatePerObjectShadowsForDynamicObjects;
 
 	/** The scene the light is in. */
 	FScene* Scene;
@@ -258,6 +258,19 @@ struct FLightOctreeSemantics
 		VectorRegister OffsetReg = VectorLoadFloat3_W0(&Offset);
 		Element.BoundingSphereVector = VectorAdd(Element.BoundingSphereVector, OffsetReg);
 	}
+};
+
+/** Stores lighting information for the clustered forward shading path */
+struct FClusteredLightsSceneInfo
+{
+	FIntPoint TileSize;			// In pixels
+	FVector4 LightGridZParams;
+
+	// Index of the light in this array corresponds to the bit set in the grid.
+	TArray<FLightSceneInfoCompact> ClusteredLights;
+
+	// The light grid.  Size is >= GridSize.
+	FTexture3DRHIRef LightGridTex;
 };
 
 #endif

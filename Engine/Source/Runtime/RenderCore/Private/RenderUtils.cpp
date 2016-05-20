@@ -109,6 +109,8 @@ FPixelFormatInfo	GPixelFormats[PF_MAX] =
 
 	{ TEXT("BC6H"),				4,			4,			1,			16,			3,				0,				1,				PF_BC6H				},
 	{ TEXT("BC7"),				4,			4,			1,			16,			4,				0,				1,				PF_BC7				},
+
+	{ TEXT("R8_UINT"),			1,			1,			1,			1,			1,				0,				1,				PF_R8_UINT			},
 };
 
 static struct FValidatePixelFormats
@@ -280,6 +282,48 @@ public:
 
 /** Global black volume texture resource. */
 FTexture* GBlackVolumeTexture = new TGlobalResource<FBlackVolumeTexture>();
+
+class FZeroUintVolumeTexture : public FTexture
+{
+public:
+	
+	/**
+	 * Initialize RHI resources.
+	 */
+	virtual void InitRHI() override
+	{
+		if (GetFeatureLevel() >= ERHIFeatureLevel::ES3_1)
+		{
+			// Create the texture.
+			FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData;
+			FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
+			FTexture3DRHIRef Texture3D = RHICreateTexture3D(1,1,1,PF_R8_UINT,1,TexCreate_ShaderResource,CreateInfo);
+			TextureRHI = Texture3D;	
+
+			// Create the sampler state.
+			FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
+			SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+		}
+	}
+
+	/**
+	 * Return the size of the texture in the X dimension.
+	 */
+	virtual uint32 GetSizeX() const override
+	{
+		return 1;
+	}
+
+	/**
+	 * Return the size of the texture in the Y dimension.
+	 */
+	virtual uint32 GetSizeY() const override
+	{
+		return 1;
+	}
+};
+
+FTexture* GZeroUintVolumeTexture = new TGlobalResource<FZeroUintVolumeTexture>();
 
 class FBlackArrayTexture : public FTexture
 {

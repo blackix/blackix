@@ -307,40 +307,48 @@ void FStaticMesh::AddToDrawLists(FRHICommandListImmediate& RHICmdList, FScene* S
 		return;
 	}
 
-	if (Scene->ShouldUseDeferredRenderer())
+	const EShadingPath ShadingPath = Scene->CurrentShadingPath;
+	if (bUseAsOccluder)
 	{
-		if (bUseAsOccluder)
+		// Both (clustered) forward and deferred have zprepass now
+		if (ShadingPath == EShadingPath::Deferred ||
+			ShadingPath == EShadingPath::ClusteredForward)
 		{
 			// Render non-masked materials in the depth only pass
 			extern TAutoConsoleVariable<int32> CVarEarlyZPass;
 			int32 EarlyZPass = CVarEarlyZPass.GetValueOnRenderThread();
 
 			extern int32 GEarlyZPassMovable;
-
 			// WARNING : If you change this condition, also change the logic in FStaticMeshSceneProxy::DrawStaticElements.
-			if (PrimitiveSceneInfo->Proxy->ShouldUseAsOccluder() 
+			if (PrimitiveSceneInfo->Proxy->ShouldUseAsOccluder()
 				&& (!IsMasked(FeatureLevel) || EarlyZPass == 2)
 				&& (!PrimitiveSceneInfo->Proxy->IsMovable() || GEarlyZPassMovable))
 			{
-				FDepthDrawingPolicyFactory::AddStaticMesh(Scene,this);
+				FDepthDrawingPolicyFactory::AddStaticMesh(Scene, this);
 			}
 		}
+    }
 
-		if (bUseForMaterial)
-		{
-			// Add the static mesh to the DPG's base pass draw list.
-			FBasePassOpaqueDrawingPolicyFactory::AddStaticMesh(RHICmdList, Scene, this);
-			FVelocityDrawingPolicyFactory::AddStaticMesh(Scene, this);
-		}
-	}
-	else
-	{
-		if (bUseForMaterial)
-		{
-			// Add the static mesh to the DPG's base pass draw list.
-			FBasePassForwardOpaqueDrawingPolicyFactory::AddStaticMesh(RHICmdList, Scene, this);
-		}
-	}
+    if (bUseForMaterial)
+    {
+        switch(ShadingPath)
+        {
+            case EShadingPath::Deferred:
+                // Add the static mesh to the DPG's base pass draw list.
+                FBasePassOpaqueDrawingPolicyFactory::AddStaticMesh(RHICmdList, Scene, this);
+                FVelocityDrawingPolicyFactory::AddStaticMesh(Scene, this);
+                break;
+
+            case EShadingPath::ClusteredForward:
+                FBasePassClusteredOpaqueDrawingPolicyFactory::AddStaticMesh(RHICmdList, Scene, this);
+                break;
+
+            case EShadingPath::Forward:
+                // Add the static mesh to the DPG's base pass draw list.
+                FBasePassForwardOpaqueDrawingPolicyFactory::AddStaticMesh(RHICmdList, Scene, this);
+                break;
+        }
+    }
 }
 
 void FStaticMesh::RemoveFromDrawLists()

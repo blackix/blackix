@@ -63,7 +63,8 @@ enum EPixelFormat
 	PF_ASTC_12x12           =54,	// 0.89 bpp
 	PF_BC6H					=55,
 	PF_BC7					=56,
-	PF_MAX                  =57,
+	PF_R8_UINT				=57,
+	PF_MAX                  =58,
 };
 #define FOREACH_ENUM_EPIXELFORMAT(op) \
 	op(PF_Unknown) \

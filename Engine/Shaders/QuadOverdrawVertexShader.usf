@@ -9,6 +9,9 @@
 #include "VertexFactory.usf"
 
 
+#define WORKS_WITH_INSTANCED_STEREO 0
+
+
 struct FQuadComplexityVSToPS
 {
 	float4 Position : SV_POSITION;
@@ -62,14 +65,14 @@ void Main(
 	FVertexFactoryInput Input,
 	OPTIONAL_VertexID
 	out FQuadComplexityVSOutput Output
-#if INSTANCED_STEREO
+#if INSTANCED_STEREO && WORKS_WITH_INSTANCED_STEREO
 	, uint InstanceId : SV_InstanceID
 	, out float4 OutClipDistance : SV_ClipDistance
 	, out float4 OutCullDistance : SV_CullDistance
 #endif
 	)
 {
-#if INSTANCED_STEREO
+#if INSTANCED_STEREO && WORKS_WITH_INSTANCED_STEREO
 	OutCullDistance = OutClipDistance = 0.0;
 	const uint EyeIndex = VertexFactoryGetEyeIndex(InstanceId);
 	ResolvedView = ResolveView(EyeIndex);
@@ -96,7 +99,7 @@ void Main(
 	Output.Position = WorldPos;
 	Output.FactoryInterpolants = VertexFactoryGetInterpolantsVSToDS(Input, VFIntermediates, VertexParameters);
 
-#if INSTANCED_STEREO
+#if INSTANCED_STEREO && WORKS_WITH_INSTANCED_STEREO
 	Output.FactoryInterpolants.InterpolantsVSToPS.PackedEyeIndex = PackEyeIndex(EyeIndex, bIsInstancedStereo);
 #endif
 
@@ -106,19 +109,19 @@ void Main(
 		float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPos);
 		Output.Position = mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip);
 
-		#if INSTANCED_STEREO
+		#if INSTANCED_STEREO && WORKS_WITH_INSTANCED_STEREO
 		BRANCH
 		if (bIsInstancedStereo)
 		{
 			// Clip at the center of the screen
-			OutCullDistance.x = OutClipDistance.x = dot(Output.Position, EyeClipEdge[EyeIndex]);
+			OutCullDistance.x = OutClipDistance.x = dot(Output.Position.xw, EyeClipEdge[EyeIndex].xw);
 
 			// Scale to the width of a single eye viewport
-			Output.Position.x *= 0.5 * Frame.HMDEyePaddingOffset;
+			Output.Position.x *= Frame.HMDViewportWidth;
 
 			// Shift to the eye viewport
-			Output.Position.x += (EyeOffsetScale[EyeIndex] * Output.Position.w) * (1.0f - 0.5 * Frame.HMDEyePaddingOffset);
-		}
+			Output.Position.x += Output.Position.w * Frame.HMDViewportOffset[EyeIndex];
+   		}
 		#endif
 	}
 #endif

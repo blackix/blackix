@@ -280,6 +280,9 @@ public:
 	ENGINE_API virtual bool IsTwoSided(bool bIsGameThread = IsInGameThread()) const override;
 	ENGINE_API virtual bool IsDitheredLODTransition(bool bIsGameThread = IsInGameThread()) const override;
 	ENGINE_API virtual bool IsMasked(bool bIsGameThread = IsInGameThread()) const override;
+	ENGINE_API virtual bool IsAlphaToCoverage(bool bIsGameThread = IsInGameThread()) const override;
+	ENGINE_API virtual bool IsFullyRough(bool bIsGameThread = IsInGameThread()) const override;
+	ENGINE_API virtual bool IsCheapShading(bool bIsGameThread = IsInGameThread()) const override;
 
 	ENGINE_API float RenderThread_GetOpacityMaskClipValue() const;
 	ENGINE_API EBlendMode RenderThread_GetBlendMode() const;
@@ -287,6 +290,9 @@ public:
 	ENGINE_API bool RenderThread_IsTwoSided() const;
 	ENGINE_API bool RenderThread_IsDitheredLODTransition() const;
 	ENGINE_API bool RenderThread_IsMasked() const;
+	ENGINE_API bool RenderThread_IsAlphaToCoverage() const;
+	ENGINE_API bool RenderThread_IsFullyRough() const;
+	ENGINE_API bool RenderThread_IsCheapShading() const;
 	
 	ENGINE_API virtual USubsurfaceProfile* GetSubsurfaceProfile_Internal() const override;
 

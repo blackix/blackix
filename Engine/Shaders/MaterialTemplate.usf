@@ -1640,7 +1640,13 @@ void ClipLODTransition(float2 SvPosition)
 void GetMaterialClippingShadowDepth(FMaterialPixelParameters Parameters, FPixelMaterialInputs PixelMaterialInputs)
 {
 	ClipLODTransition(Parameters);
-	#if MATERIALBLENDING_MASKED && MATERIAL_DITHER_OPACITY_MASK
+	#if MATERIALBLENDING_ALPHATOCOVERAGE
+	    #if MATERIALBLENDING_MASKED_ALPHATOCOVERAGE
+		    clip(GetMaterialMask(PixelMaterialInputs) - 1.0f / 255.0f); 
+        #else
+		    clip(GetMaterialOpacity(PixelMaterialInputs) - 1.0f / 255.0f);
+        #endif
+	#elif MATERIALBLENDING_MASKED && MATERIAL_DITHER_OPACITY_MASK
 		clip(GetMaterialMaskInputRaw(PixelMaterialInputs) - 1.0f / 255.0f);
 	#elif MATERIALBLENDING_MASKED
 		clip(GetMaterialMask(PixelMaterialInputs)); 

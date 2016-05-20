@@ -339,7 +339,7 @@ void UAIModuleBasicGameplayDebuggerObject::DrawPath()
 		// draw line to next loc
 		FVector const NextVertLoc = PathPoints[VertIdx + 1] + NavigationDebugDrawing::PathOffset;
 		DrawDebugLine(GetWorld(), VertLoc, NextVertLoc, VertIdx < int32(NextPathPointIndex) ? Grey : PathColor, false
-			, -1.f, 0
+			, -1.f, SDPG_World
 			, NavigationDebugDrawing::PathLineThickness);
 	}
 

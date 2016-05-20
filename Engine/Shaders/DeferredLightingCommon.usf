@@ -26,6 +26,7 @@ struct FDeferredLightData
 	float3 LightDirection;
 	float4 SpotAnglesAndSourceRadius;
 	float MinRoughness;
+	float2 RoughnessMAD;
 	float2 DistanceFadeMAD;
 	float4 ShadowMapChannelMask;
 	/** Whether to use inverse squared falloff. */
@@ -139,7 +140,7 @@ float3 AreaLightSpecular( FDeferredLightData LightData, inout float3 LobeRoughne
 {
 	float3 LobeEnergy = 1;
 
-	LobeRoughness = max( LobeRoughness, LightData.MinRoughness );
+	LobeRoughness = max( saturate(LobeRoughness*LightData.RoughnessMAD.x + LightData.RoughnessMAD.y), LightData.MinRoughness );
 	float3 m = LobeRoughness * LobeRoughness;
 	
 	const float SourceRadius = LightData.SpotAnglesAndSourceRadius.z;

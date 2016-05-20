@@ -116,12 +116,10 @@ void FSkyLightReflectionParameters::GetSkyParametersFromScene(
 
 void FTranslucentLightingParameters::Set(FRHICommandList& RHICmdList, FShader* Shader, const FViewInfo* View)
 {
-	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	auto PixelShader = Shader->GetPixelShader();
 
 	TranslucentLightingVolumeParameters.Set(RHICmdList, PixelShader);
-
-	SkyLightReflectionParameters.SetParameters(RHICmdList, Shader->GetPixelShader(), (const FScene*)(View->Family->Scene), true);
+	SkyLightReflectionParameters.SetParameters(RHICmdList, PixelShader, (const FScene*)(View->Family->Scene), true);
 
 	if (View->HZB)
 	{

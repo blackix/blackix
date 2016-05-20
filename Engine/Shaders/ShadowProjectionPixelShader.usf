@@ -18,14 +18,6 @@
 	#define SHADOW_QUALITY 6
 #endif
 
-#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
-	// Gather() is supported
-	#define FEATURE_GATHER4 1
-#else
-	// Gather() is not supported
-	#define FEATURE_GATHER4 0
-#endif
-
 #include "ShadowProjectionCommon.usf"
 #include "ShadowFilteringCommon.usf"
 #include "DeferredShadingCommon.usf"

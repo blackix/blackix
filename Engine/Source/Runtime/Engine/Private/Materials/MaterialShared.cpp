@@ -691,6 +691,7 @@ bool FMaterialResource::IsTangentSpaceNormal() const { return Material->bTangent
 bool FMaterialResource::ShouldInjectEmissiveIntoLPV() const { return Material->bUseEmissiveForDynamicAreaLighting; }
 bool FMaterialResource::ShouldBlockGI() const { return Material->bBlockGI; }
 bool FMaterialResource::ShouldGenerateSphericalParticleNormals() const { return Material->bGenerateSphericalParticleNormals; }
+bool FMaterialResource::ShouldPerformTranslucentDepthPrepass() const { return Material->bEnableTranslucentDepthPrepass; }
 bool FMaterialResource::ShouldDisableDepthTest() const { return Material->bDisableDepthTest; }
 bool FMaterialResource::ShouldEnableResponsiveAA() const { return Material->bEnableResponsiveAA; }
 bool FMaterialResource::ShouldDoSSR() const { return Material->bScreenSpaceReflections; }
@@ -787,7 +788,17 @@ bool FMaterialResource::IsAdaptiveTessellationEnabled() const
 
 bool FMaterialResource::IsFullyRough() const
 {
-	return Material->bFullyRough;
+	return MaterialInstance ? MaterialInstance->IsFullyRough() : Material->IsFullyRough();
+}
+
+bool FMaterialResource::UseCheapShading() const
+{
+	return MaterialInstance ? MaterialInstance->IsCheapShading() : Material->IsCheapShading();
+}
+
+bool FMaterialResource::UseGeometricAA() const
+{
+	return Material->bGeometricAA;
 }
 
 bool FMaterialResource::IsUsingHQForwardReflections() const
@@ -852,6 +863,11 @@ bool FMaterialResource::IsDitheredLODTransition() const
 bool FMaterialResource::IsMasked() const 
 {
 	return MaterialInstance ? MaterialInstance->IsMasked() : Material->IsMasked();
+}
+
+bool FMaterialResource::IsAlphaToCoverage() const 
+{
+	return MaterialInstance ? MaterialInstance->IsAlphaToCoverage() : Material->IsAlphaToCoverage();
 }
 
 bool FMaterialResource::IsDitherMasked() const 
@@ -1213,13 +1229,26 @@ void FMaterial::SetupMaterialEnvironment(
 			// Only set MATERIALBLENDING_MASKED if the material is truly masked
 			//@todo - this may cause mismatches with what the shader compiles and what the renderer thinks the shader needs
 			// For example IsTranslucentBlendMode doesn't check IsMasked
-			if(!WritesEveryPixel())
+			if (WritesEveryPixel())
 			{
-				OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_MASKED"),TEXT("1"));
+				OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_SOLID"),TEXT("1"));
 			}
 			else
 			{
-				OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_SOLID"),TEXT("1"));
+				OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_MASKED"),TEXT("1"));
+			}
+
+			if (IsAlphaToCoverage())
+			{
+				if (IsMasked())
+				{
+					// Need to be able to disambiguate
+					OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_MASKED_ALPHATOCOVERAGE"), TEXT("1"));
+				}
+				else
+				{
+					OutEnvironment.SetDefine(TEXT("MATERIALBLENDING_ALPHATOCOVERAGE"), TEXT("1"));
+				}
 			}
 			break;
 		}
@@ -1267,6 +1296,8 @@ void FMaterial::SetupMaterialEnvironment(
 	OutEnvironment.SetDefine(TEXT("MATERIAL_SSR"), ShouldDoSSR() ? TEXT("1") : TEXT("0"));
 	OutEnvironment.SetDefine(TEXT("MATERIAL_BLOCK_GI"), ShouldBlockGI() ? TEXT("1") : TEXT("0"));
 	OutEnvironment.SetDefine(TEXT("MATERIAL_DITHER_OPACITY_MASK"), IsDitherMasked() ? TEXT("1") : TEXT("0"));
+	OutEnvironment.SetDefine(TEXT("MATERIAL_GEOMETRIC_AA"), UseGeometricAA() ? TEXT("1") : TEXT("0"));
+	OutEnvironment.SetDefine(TEXT("MATERIAL_CHEAP_SHADING"), UseCheapShading() ? TEXT("1") : TEXT("0"));
 
 	{
 		auto DecalBlendMode = (EDecalBlendMode)GetDecalBlendMode();
@@ -2567,11 +2598,15 @@ FMaterialInstanceBasePropertyOverrides::FMaterialInstanceBasePropertyOverrides()
 	,bOverride_ShadingModel(false)
 	,bOverride_DitheredLODTransition(false)
 	,bOverride_TwoSided(false)
+	,bOverride_CheapShading(false)
+	,bOverride_FullyRough(false)
 	,OpacityMaskClipValue(.333333f)
 	,BlendMode(BLEND_Opaque)
 	,ShadingModel(MSM_DefaultLit)
 	,TwoSided(0)
 	,DitheredLODTransition(0)
+	,CheapShading(0)
+	,FullyRough(0)
 {
 
 }
@@ -2583,11 +2618,15 @@ bool FMaterialInstanceBasePropertyOverrides::operator==(const FMaterialInstanceB
 			bOverride_ShadingModel == Other.bOverride_ShadingModel &&
 			bOverride_TwoSided == Other.bOverride_TwoSided &&
 			bOverride_DitheredLODTransition == Other.bOverride_DitheredLODTransition &&
+			bOverride_FullyRough == Other.bOverride_FullyRough &&
+			bOverride_CheapShading == Other.bOverride_CheapShading &&
 			OpacityMaskClipValue == Other.OpacityMaskClipValue &&
 			BlendMode == Other.BlendMode &&
 			ShadingModel == Other.ShadingModel &&
 			TwoSided == Other.TwoSided &&
-			DitheredLODTransition == Other.DitheredLODTransition;
+			DitheredLODTransition == Other.DitheredLODTransition &&
+			CheapShading == Other.CheapShading &&
+			FullyRough == Other.FullyRough;
 }
 
 bool FMaterialInstanceBasePropertyOverrides::operator!=(const FMaterialInstanceBasePropertyOverrides& Other)const

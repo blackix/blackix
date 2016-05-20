@@ -42,11 +42,11 @@ FLightSceneInfo::FLightSceneInfo(FLightSceneProxy* InProxy, bool InbVisible)
 	, bPrecomputedLightingIsValid(InProxy->GetLightComponent()->bPrecomputedLightingIsValid)
 	, bVisible(InbVisible)
 	, bEnableLightShaftBloom(InProxy->GetLightComponent()->bEnableLightShaftBloom)
+	, bCreatePerObjectShadowsForDynamicObjects(InProxy->ShouldCreatePerObjectShadowsForDynamicObjects())
 	, BloomScale(InProxy->GetLightComponent()->BloomScale)
 	, BloomThreshold(InProxy->GetLightComponent()->BloomThreshold)
 	, BloomTint(InProxy->GetLightComponent()->BloomTint)
 	, NumUnbuiltInteractions(0)
-	, bCreatePerObjectShadowsForDynamicObjects(Proxy->ShouldCreatePerObjectShadowsForDynamicObjects())
 	, Scene(InProxy->GetLightComponent()->GetScene()->GetRenderScene())
 {
 	// Only visible lights can be added in game

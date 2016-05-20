@@ -182,6 +182,15 @@ class ENGINE_API APlayerController : public AController
 	// ******************************************************************************
 	// Camera/view related variables
 
+	/** If the player should use a fixed location to determine mesh LOD */
+	UPROPERTY(BlueprintReadWrite, Category=PlayerController)
+	bool bLocalPlayerUseLODViewPosition;
+	FVector LocalPlayerLODViewPosition;
+
+	/** Resets the position used to determine mesh LOD */
+	UFUNCTION(BlueprintCallable, Category=PlayerController)
+	void ResetPlayerLODViewPosition();
+
 	/** Camera manager associated with this Player Controller. */
 	UPROPERTY(BlueprintReadOnly, Category=PlayerController)
 	class APlayerCameraManager* PlayerCameraManager;

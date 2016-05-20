@@ -932,7 +932,7 @@ void UCharacterMovementComponent::PerformAirControlForPathFollowing(FVector Dire
 }
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-static void DrawCircle( const UWorld* InWorld, const FVector& Base, const FVector& X, const FVector& Y, const FColor& Color, float Radius, int32 NumSides, bool bPersistentLines, float LifeTime, uint8 DepthPriority=0, float Thickness=0.0f )
+static void DrawCircle( const UWorld* InWorld, const FVector& Base, const FVector& X, const FVector& Y, const FColor& Color, float Radius, int32 NumSides, bool bPersistentLines, float LifeTime, ESceneDepthPriorityGroup DepthPriority=SDPG_World, float Thickness=0.0f )
 {
 	const float	AngleDelta = 2.0f * PI / NumSides;
 	FVector	LastVertex = Base + X * Radius;
@@ -5935,7 +5935,7 @@ void UCharacterMovementComponent::VisualizeMovement() const
 		HeightOffset += 15.f;
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
 		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, DebugLocation + Velocity, 
-			100.f, DebugColor, false, -1.f, (uint8)'\000', 10.f);
+			100.f, DebugColor, false, -1.f, SDPG_World, 10.f);
 
 		FString DebugText = FString::Printf(TEXT("Velocity: %s (Speed: %.2f)"), *Velocity.ToCompactString(), Velocity.Size());
 		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f,0.f,5.f), DebugText, nullptr, DebugColor, 0.f, true);
@@ -5951,7 +5951,7 @@ void UCharacterMovementComponent::VisualizeMovement() const
 		const FVector DebugLocation = TopOfCapsule + FVector(0.f,0.f,HeightOffset);
 		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, 
 			DebugLocation + Acceleration.GetSafeNormal(SMALL_NUMBER) * CurrentAccelAsPercentOfMaxAccel * MaxAccelerationLineLength, 
-			25.f, DebugColor, false, -1.f, (uint8)'\000', 8.f);
+			25.f, DebugColor, false, -1.f, SDPG_World, 8.f);
 
 		FString DebugText = FString::Printf(TEXT("Acceleration: %s"), *Acceleration.ToCompactString());
 		DrawDebugString(GetWorld(), DebugLocation + FVector(0.f,0.f,5.f), DebugText, nullptr, DebugColor, 0.f, true);
@@ -5977,7 +5977,7 @@ void UCharacterMovementComponent::VisualizeMovement() const
 		CurrentRootMotion.AccumulateAdditiveRootMotionVelocity(0.f, *CharacterOwner, *this, CurrentAdditiveVelocity);
 
 		DrawDebugDirectionalArrow(GetWorld(), DebugLocation, DebugLocation + CurrentAdditiveVelocity, 
-			100.f, DebugColor, false, -1.f, (uint8)'\000', 10.f);
+			100.f, DebugColor, false, -1.f, SDPG_World, 10.f);
 
 		FString DebugText = FString::Printf(TEXT("RootMotionAdditiveVelocity: %s (Speed: %.2f)"), 
 			*CurrentAdditiveVelocity.ToCompactString(), CurrentAdditiveVelocity.Size());

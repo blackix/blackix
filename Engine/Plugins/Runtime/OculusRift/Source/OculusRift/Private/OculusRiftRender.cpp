@@ -45,7 +45,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	FMemory::Memcpy(CurrentFrame->CurHeadPose, CurrentFrame->HeadPose);
 
 
-	if (FrameSettings->TexturePaddingPerEye != 0)
+	if (FrameSettings->MinTexturePaddingPerEye != 0)
 	{
 		// clear the padding between two eyes
 		const int32 GapMinX = ViewFamily.Views[0]->ViewRect.Max.X;
@@ -117,6 +117,9 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 		return;
 	}
 
+	FSettings* FrameSettings = CurrentFrame->GetSettings();
+	check(FrameSettings);
+
 	const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
 	if (RenderContext.ShowFlags.Rendering && CurrentFrame->Settings->Flags.bUpdateOnRT)
 	{
@@ -151,6 +154,20 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 			// use the current head pose for this calculation instead of the one that was saved on a game thread.
 			FQuat HeadOrientation;
 			CurrentFrame->PoseToOrientationAndPosition(CurrentFrame->CurHeadPose, HeadOrientation, View.BaseHmdLocation);
+		}
+
+		// Update the union eye
+		{
+			OVR::Pose<float> UnionEyePose = CurrentFrame->CurHeadPose;
+			UnionEyePose.Translation = UnionEyePose.Transform(FrameSettings->UnionEyeOffset);
+
+			FQuat UnionEyeOrientation;
+			FVector UnionEyePosition;
+
+			CurrentFrame->PoseToOrientationAndPosition(UnionEyePose, UnionEyeOrientation, UnionEyePosition);
+
+			const FVector DeltaPosition = UnionEyePosition - View.BaseHmdLocation;
+			View.UnionEyeViewLocation = View.ViewLocation + DeltaControlOrientation.RotateVector(DeltaPosition) + CurrentFrame->Settings->PositionOffset;
 		}
 
 		// The HMDPosition already has HMD orientation applied.

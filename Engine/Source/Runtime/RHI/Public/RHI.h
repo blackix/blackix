@@ -675,15 +675,17 @@ public:
 
 	FBlendStateInitializerRHI() {}
 
-	FBlendStateInitializerRHI(const FRenderTarget& InRenderTargetBlendState)
+	FBlendStateInitializerRHI(const FRenderTarget& InRenderTargetBlendState, bool bInUseAlphaToCoverage = false)
 	:	bUseIndependentRenderTargetBlendStates(false)
+	,	bUseAlphaToCoverage(bInUseAlphaToCoverage)
 	{
 		RenderTargets[0] = InRenderTargetBlendState;
 	}
 
 	template<uint32 NumRenderTargets>
-	FBlendStateInitializerRHI(const TStaticArray<FRenderTarget,NumRenderTargets>& InRenderTargetBlendStates)
+	FBlendStateInitializerRHI(const TStaticArray<FRenderTarget,NumRenderTargets>& InRenderTargetBlendStates, bool bInUseAlphaToCoverage = false)
 	:	bUseIndependentRenderTargetBlendStates(NumRenderTargets > 1)
+	,	bUseAlphaToCoverage(bInUseAlphaToCoverage)
 	{
 		static_assert(NumRenderTargets <= MaxSimultaneousRenderTargets, "Too many render target blend states.");
 
@@ -695,11 +697,13 @@ public:
 
 	TStaticArray<FRenderTarget,MaxSimultaneousRenderTargets> RenderTargets;
 	bool bUseIndependentRenderTargetBlendStates;
+	bool bUseAlphaToCoverage;
 	
 	friend FArchive& operator<<(FArchive& Ar,FBlendStateInitializerRHI& BlendStateInitializer)
 	{
 		Ar << BlendStateInitializer.RenderTargets;
 		Ar << BlendStateInitializer.bUseIndependentRenderTargetBlendStates;
+		Ar << BlendStateInitializer.bUseAlphaToCoverage;
 		return Ar;
 	}
 };

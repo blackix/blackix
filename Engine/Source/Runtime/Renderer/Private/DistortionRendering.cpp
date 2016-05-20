@@ -12,6 +12,7 @@
 #include "RenderingCompositionGraph.h"
 #include "SceneFilterRendering.h"
 #include "SceneUtils.h"
+#include "Clustered/ClusteredShadingRenderer.h"
 
 /**
 * A pixel shader for rendering the full screen refraction pass
@@ -814,6 +815,63 @@ int32 FSceneRenderer::GetRefractionQuality(const FSceneViewFamily& ViewFamily)
 	return Value;
 }
 
+
+// Use stencil mask to optimize cases with lower screen coverage.
+// Note: This adds an extra pass which is actually slower as distortion tends towards full-screen.
+//       It could be worth testing object screen bounds then reverting to a target flip and single pass.
+static const uint8 DistortionStencilMaskBit = 0x80;
+
+bool FSceneRenderer::RenderDistortionAccumulation(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget> DistortionRT, FTexture2DRHIRef SceneDepth, bool bClearStencil)
+{
+	bool bDirty = false;
+	// DistortionRT==0 should never happen but better we don't crash
+	if (DistortionRT)
+	{
+		SCOPED_DRAW_EVENT(RHICmdList, DistortionAccum);
+
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+		if (!SceneDepth)
+		{
+			SceneDepth = SceneContext.GetSceneDepthSurface();
+		}
+
+		SetRenderTarget(RHICmdList, DistortionRT->GetRenderTargetItem().TargetableTexture, SceneDepth, ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
+
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+		{
+			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+
+			FViewInfo& View = Views[ViewIndex];
+			// viewport to match view size
+			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+
+			// clear offsets to 0
+			// OCULUS-FORWARD: swapping to clear stencil
+			RHICmdList.Clear(true, FLinearColor(0, 0, 0, 0), false, (float)ERHIZBuffer::FarPlane, bClearStencil, 0, FIntRect());
+
+			// test against depth and write stencil mask
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual, true, CF_Always, SO_Keep, SO_Keep, SO_Replace, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, DistortionStencilMaskBit, DistortionStencilMaskBit>::GetRHI(), DistortionStencilMaskBit);
+
+			// additive blending of offsets (or complexity if the shader complexity viewmode is enabled)
+			RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI());
+
+			// draw only distortion meshes to accumulate their offsets
+			bDirty |= View.DistortionPrimSet.DrawAccumulatedOffsets(RHICmdList, View, false);
+		}
+
+		if (bDirty)
+		{
+			// resolve using the current ResolveParams 
+			RHICmdList.CopyToResolveTarget(DistortionRT->GetRenderTargetItem().TargetableTexture, DistortionRT->GetRenderTargetItem().ShaderResourceTexture, false, FResolveParams());
+			// to be able to observe results with VisualizeTexture
+			GRenderTargetPool.VisualizeTexture.SetCheckPoint(RHICmdList, DistortionRT);
+		}
+	}
+
+	return bDirty;
+}
+
 /** 
  * Renders the scene's distortion 
  */
@@ -833,21 +891,18 @@ void FSceneRenderer::RenderDistortion(FRHICommandListImmediate& RHICmdList)
 		}
 	}
 
+	if (!bRender)
+	{
+		return;
+	}
+
 	bool bDirty = false;
 
 	TRefCountPtr<IPooledRenderTarget> DistortionRT;
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	
-	// Use stencil mask to optimize cases with lower screen coverage.
-	// Note: This adds an extra pass which is actually slower as distortion tends towards full-screen.
-	//       It could be worth testing object screen bounds then reverting to a target flip and single pass.
-	const uint8 StencilMaskBit = 0x80;
-
 	// Render accumulated distortion offsets
-	if( bRender)
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, DistortionAccum);
-
 		// Create a texture to store the resolved light attenuation values, and a render-targetable surface to hold the unresolved light attenuation values.
 		{
 			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(SceneContext.GetBufferSizeXY(), PF_B8G8R8A8, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
@@ -861,40 +916,7 @@ void FSceneRenderer::RenderDistortion(FRHICommandListImmediate& RHICmdList)
 			// A = negative Y offset
 		}
 
-		// DistortionRT==0 should never happen but better we don't crash
-		if(DistortionRT)
-		{
-			SetRenderTarget(RHICmdList, DistortionRT->GetRenderTargetItem().TargetableTexture, SceneContext.GetSceneDepthSurface(), ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
-
-			for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
-			{
-				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
-
-				FViewInfo& View = Views[ViewIndex];
-				// viewport to match view size
-				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-
-				// clear offsets to 0
-				RHICmdList.Clear(true, FLinearColor(0, 0, 0, 0), false, (float)ERHIZBuffer::FarPlane, false, 0, FIntRect());
-
-				// test against depth and write stencil mask
-				RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual, true, CF_Always, SO_Keep, SO_Keep, SO_Replace, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, StencilMaskBit, StencilMaskBit>::GetRHI(), StencilMaskBit);
-
-				// additive blending of offsets (or complexity if the shader complexity viewmode is enabled)
-				RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_One, BF_One>::GetRHI());
-
-				// draw only distortion meshes to accumulate their offsets
-				bDirty |= View.DistortionPrimSet.DrawAccumulatedOffsets(RHICmdList, View, false);
-			}
-
-			if (bDirty)
-			{
-				// resolve using the current ResolveParams 
-				RHICmdList.CopyToResolveTarget(DistortionRT->GetRenderTargetItem().TargetableTexture, DistortionRT->GetRenderTargetItem().ShaderResourceTexture, false, FResolveParams());
-				// to be able to observe results with VisualizeTexture
-				GRenderTargetPool.VisualizeTexture.SetCheckPoint(RHICmdList, DistortionRT);
-			}
-		}
+		bDirty = RenderDistortionAccumulation(RHICmdList, DistortionRT);
 	}
 
 	if(bDirty)
@@ -928,7 +950,7 @@ void FSceneRenderer::RenderDistortion(FRHICommandListImmediate& RHICmdList)
 			// test against stencil mask
 			RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
 			RHICmdList.SetRasterizerState(TStaticRasterizerState<>::GetRHI());
-			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Keep, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, StencilMaskBit, StencilMaskBit>::GetRHI(), StencilMaskBit);
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Keep, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, DistortionStencilMaskBit, DistortionStencilMaskBit>::GetRHI(), DistortionStencilMaskBit);
 
 			TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
 			TShaderMapRef<FDistortionApplyScreenPS> PixelShader(View.ShaderMap);
@@ -970,7 +992,7 @@ void FSceneRenderer::RenderDistortion(FRHICommandListImmediate& RHICmdList)
 			Context.SetViewportAndCallRHI(View.ViewRect);				
 
 			// test against stencil mask and clear it
-			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Zero, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, StencilMaskBit, StencilMaskBit>::GetRHI(), StencilMaskBit);
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Zero, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, DistortionStencilMaskBit, DistortionStencilMaskBit>::GetRHI(), DistortionStencilMaskBit);
 					
 			static FGlobalBoundShaderState BoundShaderState;
 				
@@ -1098,5 +1120,158 @@ void FSceneRenderer::RenderDistortionES2(FRHICommandListImmediate& RHICmdList)
 	
 		// Set distorted scene color as main
 		SceneContext.SetSceneColor(SceneColorDistorted);
+	}
+}
+
+void FClusteredForwardShadingSceneRenderer::RenderForwardDistortion(FRHICommandListImmediate& RHICmdList)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, Distortion);
+
+	// do we need to render the distortion pass?
+	bool bRender=false;
+	for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+		if( View.DistortionPrimSet.NumPrims() > 0)
+		{
+			bRender=true;
+			break;
+		}
+	}
+
+	if (!bRender)
+	{
+		return;
+	}
+
+	TRefCountPtr<IPooledRenderTarget> DistortionRT;
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	FTexture2DRHIRef SceneDepthResolved = SceneContext.GetSceneDepthTexture();
+	FTextureRHIRef SceneColorResolved = SceneContext.GetSceneColorTexture();
+
+	// Render accumulated distortion offsets
+	bool bDirty = false;
+	{
+		// Create a texture to store the resolved light attenuation values, and a render-targetable surface to hold the unresolved light attenuation values.
+		{
+			FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(SceneContext.GetBufferSizeXY(), PF_B8G8R8A8, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
+			Desc.Flags |= TexCreate_FastVRAM;
+			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, DistortionRT, TEXT("Distortion"));
+
+			// use RGBA8 light target for accumulating distortion offsets	
+			// R = positive X offset
+			// G = positive Y offset
+			// B = negative X offset
+			// A = negative Y offset
+		}
+
+		// We want to use the resolved depth buffer, not the MSAA depth buffer.
+		// We're probably not going to get Hi-Z, but at least we'll clear stencil so we get good scull
+		bDirty = RenderDistortionAccumulation(RHICmdList, DistortionRT, SceneDepthResolved, true /* clear stencil */);
+	}
+
+	if(bDirty)
+	{
+		SCOPED_DRAW_EVENT(RHICmdList, DistortionApply);
+
+		//SceneContext.ResolveSceneColor(RHICmdList, FResolveRect(0, 0, ViewFamily.FamilySizeX, ViewFamily.FamilySizeY));
+
+// OCULUS BEGIN: select ONE render target for all views (eyes)
+		TRefCountPtr<IPooledRenderTarget> NewSceneColor;
+		// we don't create a new name to make it easier to use "vis SceneColor" and get the last HDRSceneColor
+		FPooledRenderTargetDesc ColorDesc = SceneContext.GetSceneColor()->GetDesc();
+		ColorDesc.NumSamples = 1; // no MSAA, this all happens after resolve.
+		GRenderTargetPool.FindFreeElement(RHICmdList, ColorDesc, NewSceneColor, TEXT("SceneColor"));
+		const FSceneRenderTargetItem& DestRenderTarget = NewSceneColor->GetRenderTargetItem();
+// OCULUS END
+
+		// Apply distortion and store off-screen
+		SetRenderTarget(RHICmdList, DestRenderTarget.TargetableTexture, SceneDepthResolved);
+
+		for(int32 ViewIndex = 0, Num = Views.Num(); ViewIndex < Num; ++ViewIndex)
+		{
+			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+
+			FViewInfo& View = Views[ViewIndex];
+
+			// useful when we move this into the compositing graph
+			FRenderingCompositePassContext Context(RHICmdList, View);
+
+			// Set the view family's render target/viewport.
+			Context.SetViewportAndCallRHI(View.ViewRect);
+
+			// test against stencil mask
+			RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());
+			RHICmdList.SetRasterizerState(TStaticRasterizerState<>::GetRHI());
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Keep, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, DistortionStencilMaskBit, DistortionStencilMaskBit>::GetRHI(), DistortionStencilMaskBit);
+
+			TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
+			TShaderMapRef<FDistortionApplyScreenPS> PixelShader(View.ShaderMap);
+
+			static FGlobalBoundShaderState BoundShaderState;
+				
+			SetGlobalBoundShaderState(RHICmdList, View.GetFeatureLevel(), BoundShaderState, GFilterVertexDeclaration.VertexDeclarationRHI, *VertexShader, *PixelShader);
+
+			VertexShader->SetParameters(Context);
+			PixelShader->SetParameters(Context, *DistortionRT);
+
+			// Draw a quad mapping scene color to the view's render target
+			DrawRectangle(
+				RHICmdList,
+				0, 0,
+				View.ViewRect.Width(), View.ViewRect.Height(),
+				View.ViewRect.Min.X, View.ViewRect.Min.Y, 
+				View.ViewRect.Width(), View.ViewRect.Height(),
+				View.ViewRect.Size(),
+				SceneContext.GetBufferSizeXY(),
+				*VertexShader,
+				EDRF_UseTriangleOptimization);
+		}
+
+		// Resolve and merge distortion to main scene
+		RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, false, FResolveParams());
+		SetRenderTarget(RHICmdList, SceneColorResolved, SceneDepthResolved);
+
+		for(int32 ViewIndex = 0, Num = Views.Num(); ViewIndex < Num; ++ViewIndex)
+		{
+			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+
+			FViewInfo& View = Views[ViewIndex];
+
+			// useful when we move this into the compositing graph
+			FRenderingCompositePassContext Context(RHICmdList, View);
+
+			// Set the view family's render target/viewport.
+			Context.SetViewportAndCallRHI(View.ViewRect);				
+
+			// test against stencil mask and clear it
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always, true, CF_Equal, SO_Keep, SO_Keep, SO_Zero, false, CF_Always, SO_Keep, SO_Keep, SO_Keep, DistortionStencilMaskBit, DistortionStencilMaskBit>::GetRHI(), DistortionStencilMaskBit);
+					
+			static FGlobalBoundShaderState BoundShaderState;
+				
+			TShaderMapRef<FPostProcessVS> VertexShader(View.ShaderMap);
+			TShaderMapRef<FDistortionMergePS> PixelShader(View.ShaderMap);
+			SetGlobalBoundShaderState(RHICmdList, View.GetFeatureLevel(), BoundShaderState, GFilterVertexDeclaration.VertexDeclarationRHI, *VertexShader, *PixelShader);
+
+			VertexShader->SetParameters(Context);
+			PixelShader->SetParameters(Context, DestRenderTarget.ShaderResourceTexture);
+
+			DrawRectangle(
+				RHICmdList,
+				0, 0,
+				View.ViewRect.Width(), View.ViewRect.Height(),
+				View.ViewRect.Min.X, View.ViewRect.Min.Y, 
+				View.ViewRect.Width(), View.ViewRect.Height(),
+				View.ViewRect.Size(),
+				SceneContext.GetBufferSizeXY(),
+				*VertexShader,
+				EDRF_UseTriangleOptimization);
+		}
+
+		// restore state
+		RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());		
+			
+		// Distortions RT is no longer needed, buffer can be reused by the pool, see BeginRenderingDistortionAccumulation() call above
+		SceneContext.FinishRenderingSceneColor(RHICmdList, false);
 	}
 }

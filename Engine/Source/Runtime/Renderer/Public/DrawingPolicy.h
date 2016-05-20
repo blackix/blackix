@@ -150,7 +150,7 @@ public:
 	 * @param CI - The command interface to execute the draw commands on.
 	 * @param View - The view of the scene being drawn.
 	 */
-	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType PolicyContext) const;
+	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType& PolicyContext) const;
 
 	/**
 	* Get the decl for this mesh policy type and vertexfactory
@@ -188,6 +188,12 @@ public:
 	const FMaterialRenderProxy* GetMaterialRenderProxy() const { return MaterialRenderProxy; }
 
 	FORCEINLINE EQuadOverdrawMode GetQuadOverdrawMode() const { return (EQuadOverdrawMode)QuadOverdrawMode; }
+
+	/** Called after rendering some number of meshes, should clean any state necessary before
+	 * other meshes are rendered with other policies
+	 */
+	static void CleanPolicyRenderState(FRHICommandList&, ContextDataType&) {}
+
 protected:
 	const FVertexFactory* VertexFactory;
 	const FMaterialRenderProxy* MaterialRenderProxy;

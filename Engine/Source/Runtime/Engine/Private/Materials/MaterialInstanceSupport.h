@@ -156,6 +156,9 @@ public:
 	EMaterialShadingModel GetShadingModel()const{ return ShadingModel; }
 	bool IsTwoSided()const{ return TwoSided; }
 	bool IsDitheredLODTransition()const{ return DitheredLODTransition; }
+	bool IsAlphaToCoverage()const { return AlphaToCoverage; }
+	bool IsCheapShading()const { return CheapShading; }
+	bool IsFullyRough()const { return FullyRough; }
 
 private:
 	/**
@@ -189,6 +192,9 @@ private:
 	EMaterialShadingModel ShadingModel;
 	bool TwoSided;
 	bool DitheredLODTransition;
+	bool AlphaToCoverage;
+	bool CheapShading;
+	bool FullyRough;
 };
 
 template <> FORCEINLINE TArray<FMaterialInstanceResource::TNamedParameter<float> >& FMaterialInstanceResource::GetValueArray() { return ScalarParameterArray; }

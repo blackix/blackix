@@ -518,7 +518,7 @@ bool FDepthDrawingPolicyFactory::DrawMesh(
 		// then we can't assume the object is opaque as it may be forcibly masked.
 		const FSceneViewState* SceneViewState = static_cast<const FSceneViewState*>( View.State );
 
-		if ( BlendMode == BLEND_Opaque 
+		if ( (BlendMode == BLEND_Opaque || (BlendMode != BLEND_Masked && DrawingContext.bDrawTranslucentToDepth))
 			&& Mesh.VertexFactory->SupportsPositionOnlyStream() 
 			&& !Material->MaterialModifiesMeshPosition_RenderThread()
 			&& Material->WritesEveryPixel()
@@ -548,7 +548,7 @@ bool FDepthDrawingPolicyFactory::DrawMesh(
 
 			bDirty = true;
 		}
-		else if (!IsTranslucentBlendMode(BlendMode))
+		else if (!IsTranslucentBlendMode(BlendMode) || DrawingContext.bDrawTranslucentToDepth)
 		{
 			const bool bMaterialMasked = !Material->WritesEveryPixel();
 

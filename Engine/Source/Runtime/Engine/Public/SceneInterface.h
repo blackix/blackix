@@ -11,14 +11,22 @@ class FAtmosphericFogSceneInfo;
 class FPrimitiveComponentId;
 class FPrimitiveSceneInfo;
 
+enum class EShadingPath
+{
+	Forward,
+	ClusteredForward,
+	Deferred,
+
+	Num,
+};
+
 /**
  * An interface to the private scene manager implementation of a scene.  Use GetRendererModule().AllocateScene to create.
  * The scene
  */
-class FSceneInterface
+class ENGINE_API FSceneInterface
 {
 public:
-
 	// FSceneInterface interface
 
 	/** 
@@ -323,15 +331,11 @@ public:
 	virtual ERHIFeatureLevel::Type GetFeatureLevel() const { return GMaxRHIFeatureLevel; }
 	EShaderPlatform GetShaderPlatform() const { return GShaderPlatformForFeatureLevel[GetFeatureLevel()]; }
 
-	static bool ShouldUseDeferredRenderer(ERHIFeatureLevel::Type InFeatureLevel)
-	{
-		return InFeatureLevel >= ERHIFeatureLevel::SM4;
-	}
+	/** Returns the shading path that should be used when rendering the scene */
+	virtual EShadingPath GetShadingPath() const;
 
-	bool ShouldUseDeferredRenderer() const
-	{
-		return ShouldUseDeferredRenderer(GetFeatureLevel());
-	}
+	/** Returns the current shading path being used (may be called from render thread, reflects the currently rendered frame) */
+	virtual EShadingPath GetCurrentShadingPath_RenderThread() const = 0;
 
 	/**
 	 * Returns the FPrimitiveComponentId for all primitives in the scene
@@ -339,5 +343,6 @@ public:
 	virtual TArray<FPrimitiveComponentId> GetScenePrimitiveComponentIds() const { return TArray<FPrimitiveComponentId>(); }
 
 protected:
-	virtual ~FSceneInterface() {}
+	FSceneInterface();
+	virtual ~FSceneInterface();
 };

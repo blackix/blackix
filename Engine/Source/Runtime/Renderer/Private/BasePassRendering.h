@@ -117,7 +117,6 @@ protected:
 		FMeshMaterialShader(Initializer)
 	{
 		VertexParametersType::Bind(Initializer.ParameterMap);
-		HeightFogParameters.Bind(Initializer.ParameterMap);
 		AtmosphericFogTextureParameters.Bind(Initializer.ParameterMap);
 		TranslucentLightingVolumeParameters.Bind(Initializer.ParameterMap);
 		const bool bOutputsVelocityToGBuffer = FVelocityRendering::OutputsToGBuffer();
@@ -143,7 +142,6 @@ public:
 	{
 		bool bShaderHasOutdatedParameters = FMeshMaterialShader::Serialize(Ar);
 		VertexParametersType::Serialize(Ar);
-		Ar << HeightFogParameters;
 		Ar << AtmosphericFogTextureParameters;
 		Ar << TranslucentLightingVolumeParameters;
 		Ar << PreviousLocalToWorldParameter;
@@ -168,7 +166,6 @@ public:
 
 		if (bAllowGlobalFog)
 		{
-			HeightFogParameters.Set(RHICmdList, GetVertexShader(), &View);
 			AtmosphericFogTextureParameters.Set(RHICmdList, GetVertexShader(), View);
 		}
 
@@ -187,7 +184,6 @@ public:
 private:
 	
 	/** The parameters needed to calculate the fog contribution from height fog layers. */
-	FHeightFogShaderParameters HeightFogParameters;
 	FAtmosphereShaderTextureParameters AtmosphericFogTextureParameters;
 	FTranslucentLightingVolumeParameters TranslucentLightingVolumeParameters;
 	// When outputting from base pass, the previous transform
@@ -526,7 +522,7 @@ public:
 		bool bShaderHasOutdatedParameters = FMeshMaterialShader::Serialize(Ar);
 		PixelParametersType::Serialize(Ar);
 		Ar << TranslucentLightingParameters;
- 		Ar << EditorCompositeParams;
+		Ar << EditorCompositeParams;
 		Ar << LightGrid;
 		Ar << ScreenTextureUVScale;
 		return bShaderHasOutdatedParameters;
@@ -1057,9 +1053,9 @@ public:
 	const bool bAllowFog;
 	/** Whether or not to perform depth test in the pixel shader */
 	const bool bEditorCompositeDepthTest;
+	const bool bIsInstancedStereo;
 	ESceneRenderTargetsMode::Type TextureMode;
 	ERHIFeatureLevel::Type FeatureLevel;
-	const bool bIsInstancedStereo;
 
 	/** Initialization constructor. */
 	FProcessBasePassMeshParameters(

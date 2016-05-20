@@ -76,6 +76,9 @@ APlayerController::APlayerController(const FObjectInitializer& ObjectInitializer
 	DefaultClickTraceChannel = ECollisionChannel::ECC_Visibility;
 	HitResultTraceDistance = 100000.f;
 
+	bLocalPlayerUseLODViewPosition = false;
+	LocalPlayerLODViewPosition = FVector::ZeroVector;
+
 	bCinemaDisableInputMove = false;
 	bCinemaDisableInputLook = false;
 
@@ -93,6 +96,12 @@ APlayerController::APlayerController(const FObjectInitializer& ObjectInitializer
 		// We want to drive rotation with ControlRotation regardless of attachment state.
 		RootComponent->bAbsoluteRotation = true;
 	}
+}
+
+void APlayerController::ResetPlayerLODViewPosition()
+{
+	FRotator Unused;
+	GetPlayerViewPoint(LocalPlayerLODViewPosition, Unused);
 }
 
 float APlayerController::GetNetPriority(const FVector& ViewPos, const FVector& ViewDir, AActor* Viewer, AActor* ViewTarget, UActorChannel* InChannel, float Time, bool bLowBandwidth)

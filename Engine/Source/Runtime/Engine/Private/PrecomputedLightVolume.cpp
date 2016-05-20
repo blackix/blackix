@@ -8,6 +8,10 @@
 #include "PrecomputedLightVolume.h"
 #include "TargetPlatform.h"
 
+// .. ARGH, for debug visualization only.
+#include "../../../Renderer/Private/ScenePrivate.h"
+
+
 FArchive& operator<<(FArchive& Ar, FVolumeLightingSample& Sample)
 {
 	Ar << Sample.Position;
@@ -239,7 +243,126 @@ void FPrecomputedLightVolume::RemoveFromScene(FSceneInterface* Scene)
 	}
 }
 
+void FPrecomputedLightVolume::InterpolateIncidentRadianceVolumeToPoint(
+	FViewInfo* DebugDrawingView,
+	const FBoxCenterAndExtent& BoundingBox,
+	const FSphere& MeshSphere,
+	float& AccumulatedWeight,
+	float& AccumulatedDirectionalLightShadowing,
+	FSHVectorRGB2& AccumulatedIncidentRadiance,
+	FVector& SkyBentNormal) const
+{
+	// TODO: Oculus forward this has been tuned (...hacked) for some specific titles, and needs a bit more
+	// love to make the sampling weights and logic behaved a little better.
+
+	// This could be called on a NULL volume for a newly created level. This is now checked at the call site, but this check provides extra safety
+	checkf(this, TEXT("FPrecomputedLightVolume::InterpolateIncidentRadiancePoint() is called on a null volume. Fix the call site."));
+
+	// Handle being called on a volume that hasn't been initialized yet, which can happen if lighting hasn't been built yet.
+	// We also occasionally get bounds with zero size (on the first frame), so skip an update in that case
+	if (bInitialized && MeshSphere.W > DELTA)
+	{
+		FVector const SnappedCenter = BoundingBox.Center;
+		float const InvMeshRadius = 1.f / MeshSphere.W;
+
+#if UE_EDITOR
+		FViewElementPDI DebugPDI(DebugDrawingView, NULL);
+		FLinearColor const DebugColor(0, 0, 1);
+		if (DebugDrawingView != nullptr)
+		{
+			FBox const AABB = BoundingBox.GetBox();
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Min.Y, AABB.Min.Z), FVector(AABB.Max.X, AABB.Min.Y, AABB.Min.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Max.Y, AABB.Min.Z), FVector(AABB.Max.X, AABB.Max.Y, AABB.Min.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Min.Y, AABB.Max.Z), FVector(AABB.Max.X, AABB.Min.Y, AABB.Max.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Max.Y, AABB.Max.Z), FVector(AABB.Max.X, AABB.Max.Y, AABB.Max.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Min.Y, AABB.Min.Z), FVector(AABB.Min.X, AABB.Min.Y, AABB.Max.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Max.X, AABB.Min.Y, AABB.Min.Z), FVector(AABB.Max.X, AABB.Min.Y, AABB.Max.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Min.X, AABB.Max.Y, AABB.Min.Z), FVector(AABB.Min.X, AABB.Max.Y, AABB.Max.Z), DebugColor, SDPG_World);
+			DebugPDI.DrawLine(FVector(AABB.Max.X, AABB.Max.Y, AABB.Min.Z), FVector(AABB.Max.X, AABB.Max.Y, AABB.Max.Z), DebugColor, SDPG_World);
+
+			int const ringPoints = 20;
+			int const rotations = 10;
+
+			for (int i = 0; i < rotations; ++i)
+			{
+				FMatrix rotation = FRotationTranslationMatrix(FRotator(0, 0, (360*i)/float(rotations)), MeshSphere.Center);
+
+				FVector prev = FVector(MeshSphere.W, 0, 0);
+				for (int j = 1; j < ringPoints; ++j)
+				{
+					float theta = 2.f * 3.14159f * float(j) / float(ringPoints-1);
+
+					FVector point(cosf(theta)*MeshSphere.W, sinf(theta)*MeshSphere.W, 0);
+
+					DebugPDI.DrawLine(
+						rotation.TransformPosition(prev),
+						rotation.TransformPosition(point),
+						DebugColor,
+						SDPG_World
+					);
+
+					prev = point;
+				}
+			}
+		}
+#endif /* UE_EDITOR */
+
+		// Iterate over the octree nodes containing the query point.
+		for (FLightVolumeOctree::TConstElementBoxIterator<> OctreeIt(*OctreeForRendering, BoundingBox);
+			OctreeIt.HasPendingElements();
+			OctreeIt.Advance())
+		{
+			const FVolumeLightingSample& VolumeSample = OctreeIt.GetCurrentElement();
+			const float DistanceSquared = (VolumeSample.Position - SnappedCenter).SizeSquared();
+			const float RadiusSquared = FMath::Square(VolumeSample.Radius);
+
+			// Ignore this -- for large meshes we want to average over the whole mesh.
+			//if (DistanceSquared < RadiusSquared)
+			{
+				// We want things to be smooth as they interpolate over samples, so we don't want
+				// to weight samples on the edges of the bounds.
+				float InteriorWeight = 1.f - FMath::Min(1.f, FVector::Dist(MeshSphere.Center, VolumeSample.Position) * InvMeshRadius);
+
+				// Add small weight from exterior points to handle when there are no points
+				// within the bounding sphere.  Keep magnitude of these small compared to 
+				// the weights computed above (so the interior points dominate)
+				float ExteriorWeight = .01f * (1.0f - FMath::Min(1.f, DistanceSquared / RadiusSquared));
+
+				float SampleWeight = InteriorWeight + ExteriorWeight;
+				SampleWeight /= VolumeSample.Radius;
+
+				// Weight each sample with the fraction that Position is to the center of the sample, and inversely to the sample radius.
+				// The weight goes to 0 when Position is on the bounding radius of the sample, so the interpolated result is continuous.
+				// The sample's radius size is a factor so that smaller samples contribute more than larger, low detail ones.
+				//const float SampleWeight = (1.0f - DistanceSquared * InvRadiusSquared) / VolumeSample.Radius;
+				// Accumulate weighted results and the total weight for normalization later
+				AccumulatedIncidentRadiance += VolumeSample.Lighting * SampleWeight;
+				SkyBentNormal += VolumeSample.GetSkyBentNormalUnpacked() * SampleWeight;
+				AccumulatedDirectionalLightShadowing += VolumeSample.DirectionalLightShadowing * SampleWeight;
+				AccumulatedWeight += SampleWeight;
+
+#if UE_EDITOR
+				if (DebugDrawingView != nullptr)
+				{
+					const FVector WorldPosition = VolumeSample.Position;
+					if (InteriorWeight > .0001f)
+					{
+						DebugPDI.DrawPoint(WorldPosition, FLinearColor(0, 0, 1, 1), FMath::Max(3.f, InteriorWeight*14.f), SDPG_World);
+					}
+					else
+					{
+						DebugPDI.DrawPoint(WorldPosition, FLinearColor(0, 0, 0, 1), 3, SDPG_World);
+					}
+				}
+#endif /* UE_EDITOR */
+			}
+		}
+	}
+}
+
+
 void FPrecomputedLightVolume::InterpolateIncidentRadiancePoint(
+		FViewInfo* DebugDrawingView,
 		const FVector& WorldPosition, 
 		float& AccumulatedWeight,
 		float& AccumulatedDirectionalLightShadowing,
@@ -252,7 +375,12 @@ void FPrecomputedLightVolume::InterpolateIncidentRadiancePoint(
 	// Handle being called on a volume that hasn't been initialized yet, which can happen if lighting hasn't been built yet.
 	if (bInitialized)
 	{
-		FBoxCenterAndExtent BoundingBox( WorldPosition, FVector::ZeroVector );
+		FBoxCenterAndExtent const BoundingBox( WorldPosition, FVector::ZeroVector );
+
+#if UE_EDITOR
+		FViewElementPDI DebugPDI(DebugDrawingView, NULL);
+#endif
+
 		// Iterate over the octree nodes containing the query point.
 		for (FLightVolumeOctree::TConstElementBoxIterator<> OctreeIt(*OctreeForRendering, BoundingBox);
 			OctreeIt.HasPendingElements();
@@ -264,6 +392,14 @@ void FPrecomputedLightVolume::InterpolateIncidentRadiancePoint(
 
 			if (DistanceSquared < RadiusSquared)
 			{
+#if UE_EDITOR
+				if (DebugDrawingView != nullptr)
+				{
+					const FVector WorldPosition = VolumeSample.Position;
+					DebugPDI.DrawPoint(WorldPosition, FLinearColor(0, 0, 1), 10, SDPG_World);
+				}
+#endif
+
 				const float InvRadiusSquared = 1.0f / RadiusSquared;
 				// Weight each sample with the fraction that Position is to the center of the sample, and inversely to the sample radius.
 				// The weight goes to 0 when Position is on the bounding radius of the sample, so the interpolated result is continuous.

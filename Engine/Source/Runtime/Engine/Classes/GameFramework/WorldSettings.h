@@ -133,8 +133,12 @@ struct FLightmassWorldInfoSettings
 	 * Scales the distances at which volume lighting samples are placed.  Volume lighting samples are computed by Lightmass and are used for GI on movable components.
 	 * Using larger scales results in less sample memory usage and reduces Indirect Lighting Cache update times.
 	 */
-	UPROPERTY(EditAnywhere, Category=LightmassGeneral, AdvancedDisplay, meta=(UIMin = "0.1", UIMax = "100.0"))
+	UPROPERTY(EditAnywhere, Category=LightmassGeneral, AdvancedDisplay, meta=(UIMin = "0.05", UIMax = "100.0"))
 	float VolumeLightSamplePlacementScale;
+
+	/** Slows or speeds the temporal smoothing or indirect lighting samples */
+	UPROPERTY(EditAnywhere, Category=LightmassGeneral, AdvancedDisplay, meta=(UIMin = ".5", UIMax = "2.0"))
+	float VolumeLightTransitionSpeedScale;
 
 	/** 
 	 * Whether to compress lightmap textures.  Disabling lightmap texture compression will reduce artifacts but increase memory and disk size by 4x.
@@ -162,6 +166,7 @@ struct FLightmassWorldInfoSettings
 		, bVisualizeMaterialDiffuse(false)
 		, bVisualizeAmbientOcclusion(false)
 		, VolumeLightSamplePlacementScale(1)
+		, VolumeLightTransitionSpeedScale(1)
 		, bCompressLightmaps(true)
 	{
 	}
@@ -355,6 +360,14 @@ class ENGINE_API AWorldSettings : public AInfo, public IInterface_AssetUserData
 	/** Maximum size of textures for packed light and shadow maps */
 	UPROPERTY(EditAnywhere, Category=Lightmass, AdvancedDisplay)
 	int32 PackedLightAndShadowMapTextureSize;
+
+	/** Strength of geometric specular AA (Clustered Forward only) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=World, AdvancedDisplay, meta=(ClampMin = "0", ClampMax = "2", UIMin = "0", UIMax = "2"))
+	float GeometricAAScale;
+
+	/** Bias of geometric specular AA (Clustered Forward only) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=World, AdvancedDisplay, meta=(ClampMin = "-1", ClampMax = "1", UIMin = "-.5", UIMax = ".5"))
+	float GeometricAABias;
 
 	/** 
 	 * Causes the BSP build to generate as few sections as possible.

@@ -628,11 +628,8 @@ float3 HairShading( FGBufferData GBuffer, float3 L, float3 V, half3 N, float Sha
 	return S;
 }
 
-float3 SubsurfaceShadingSubsurface( FGBufferData GBuffer, float3 L, float3 V, half3 N )
+float3 SubsurfaceShadingSubsurface( float3 SubsurfaceColor, float Opacity, float AO, float3 L, float3 V, half3 N )
 {
-	float3 SubsurfaceColor = ExtractSubsurfaceColor(GBuffer);
-	float Opacity = GBuffer.CustomData.a;
-
 	float3 H = normalize(V + L);
 
 	// to get an effect when you see through the material
@@ -641,7 +638,7 @@ float3 SubsurfaceShadingSubsurface( FGBufferData GBuffer, float3 L, float3 V, ha
 	// wrap around lighting, /(PI*2) to be energy consistent (hack do get some view dependnt and light dependent effect)
 	// Opacity of 0 gives no normal dependent lighting, Opacity of 1 gives strong normal contribution
 	float NormalContribution = saturate(dot(N, H) * Opacity + 1 - Opacity);
-	float BackScatter = GBuffer.GBufferAO * NormalContribution / (PI * 2);
+	float BackScatter = AO * NormalContribution / (PI * 2);
 
 	// lerp to never exceed 1 (energy conserving)
 	return SubsurfaceColor * lerp(BackScatter, 1, InScatter);
@@ -716,11 +713,8 @@ float3 EyeSubsurfaceShading( FGBufferData GBuffer, float3 L, float3 V, half3 N )
 Texture2D		PreIntegratedBRDF;
 SamplerState	PreIntegratedBRDFSampler;
 
-float3 SubsurfaceShadingPreintegratedSkin( FGBufferData GBuffer, float3 L, float3 V, half3 N )
+float3 SubsurfaceShadingPreintegratedSkin( float3 SubsurfaceColor, float Opacity, float3 L, float3 V, half3 N )
 {
-	float3 SubsurfaceColor = ExtractSubsurfaceColor(GBuffer);
-	float Opacity = GBuffer.CustomData.a;
-
 	float3 PreintegratedBRDF = Texture2DSampleLevel(PreIntegratedBRDF, PreIntegratedBRDFSampler, float2(saturate(dot(N, L) * .5 + .5), 1 - Opacity), 0).rgb;
 	return PreintegratedBRDF * SubsurfaceColor;
 }
@@ -751,13 +745,14 @@ float3 SurfaceShading( FGBufferData GBuffer, float3 LobeRoughness, float3 LobeEn
 float3 SubsurfaceShading( FGBufferData GBuffer, float3 L, float3 V, half3 N, float Shadow, uint2 Random )
 {
 	float3 SubsurfaceColor = ExtractSubsurfaceColor(GBuffer);
+    float Opacity = GBuffer.CustomData.a;
 
 	switch( GBuffer.ShadingModelID )
 	{
 		case SHADINGMODELID_SUBSURFACE:
-			return SubsurfaceShadingSubsurface( GBuffer, L, V, N );
+			return SubsurfaceShadingSubsurface( SubsurfaceColor, Opacity, GBuffer.GBufferAO, L, V, N );
 		case SHADINGMODELID_PREINTEGRATED_SKIN:
-			return SubsurfaceShadingPreintegratedSkin( GBuffer, L, V, N );
+			return SubsurfaceShadingPreintegratedSkin( SubsurfaceColor, Opacity, L, V, N );
 		case SHADINGMODELID_TWOSIDED_FOLIAGE:
 			return SubsurfaceShadingTwoSided( SubsurfaceColor, L, V, N );
 		case SHADINGMODELID_HAIR:

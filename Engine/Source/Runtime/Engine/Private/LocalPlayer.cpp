@@ -41,6 +41,19 @@ static TAutoConsoleVariable<int32> CVarViewportTest(
 
 DECLARE_CYCLE_STAT(TEXT("CalcSceneView"), STAT_CalcSceneView, STATGROUP_Engine);
 
+// Oculus forward: allows fixing the position used to calculate LODs.  Let's you hide all LOD pops on static objects
+// while the player is roughly in the same place (fix the viewpoint after teleporting/etc)  See ResetPlayerLODViewPosition
+static TAutoConsoleVariable<int32> CVarAllowFixedLODViewpoint(
+	TEXT("r.AllowFixedLODViewpoint"),
+	true,
+	TEXT("Allows fixing the viewport used for LOD calculations"));
+
+static TAutoConsoleVariable<float> CVarFixedLODViewpointAutoRecenter(
+	TEXT("r.FixedLODViewpointAutoRecenter"),
+	100,
+	TEXT("Automatically recenters the position used to calculate LOD when the camera moves this far"));
+
+
 //////////////////////////////////////////////////////////////////////////
 // Things used by ULocalPlayer::Exec
 //@TODO: EXEC
@@ -726,6 +739,21 @@ FSceneView* ULocalPlayer::CalcSceneView( class FSceneViewFamily* ViewFamily,
 	ViewInitOptions.bOriginOffsetThisFrame = PlayerController->GetWorld()->bOriginOffsetThisFrame;
 	ViewInitOptions.bUseFieldOfViewForLOD = ViewInfo.bUseFieldOfViewForLOD;
 	PlayerController->BuildHiddenComponentList(OutViewLocation, /*out*/ ViewInitOptions.HiddenPrimitives);
+
+	if (PlayerController->bLocalPlayerUseLODViewPosition
+		&& CVarAllowFixedLODViewpoint.GetValueOnGameThread())
+	{
+		// Auto-reset if it got too far
+		float Dist = FVector::Dist(OutViewLocation, PlayerController->LocalPlayerLODViewPosition);
+		if (Dist > CVarFixedLODViewpointAutoRecenter.GetValueOnGameThread())
+		{
+			// Note this is using the unmodified view location (ignoring the per-eye offset), for what it's worth
+			PlayerController->LocalPlayerLODViewPosition = OutViewLocation;
+		}
+
+		ViewInitOptions.bUseLODViewLocation = true;
+		ViewInitOptions.LODViewLocation = PlayerController->LocalPlayerLODViewPosition;
+	}
 
 	FSceneView* const View = new FSceneView(ViewInitOptions);
 	

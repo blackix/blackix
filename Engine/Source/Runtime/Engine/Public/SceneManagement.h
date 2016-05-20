@@ -444,6 +444,16 @@ public:
 		Result.Type = SMIT_None;
 		return Result;
 	}
+
+    static FShadowMapInteraction TextureNop()
+    {
+        FShadowMapInteraction Result;
+        Result.Type = SMIT_Texture;
+        Result.CoordinateScale = FVector2D::ZeroVector;
+        Result.CoordinateBias = FVector2D::ZeroVector;
+        return Result;
+    }
+
 	static FShadowMapInteraction Texture(
 		class UShadowMapTexture2D* InTexture,
 		const FVector2D& InCoordinateScale,
@@ -833,7 +843,7 @@ public:
 	virtual bool ShouldCreatePerObjectShadowsForDynamicObjects() const;
 
 	/** Returns the number of view dependent shadows this light will create, not counting distance field shadow cascades. */
-	virtual uint32 GetNumViewDependentWholeSceneShadows(const FSceneView& View, bool bPrecomputedLightingIsValid) const { return 0; }
+	virtual uint32 GetNumViewDependentWholeSceneShadows(int32 MaxShadowCascades, bool bPrecomputedLightingIsValid) const { return 0; }
 
 	/**
 	 * Sets up a projected shadow initializer that's dependent on the current view for shadows from the entire scene.
@@ -889,6 +899,8 @@ public:
 
 	virtual bool ShouldCreateRayTracedCascade(ERHIFeatureLevel::Type Type, bool bPrecomputedLightingIsValid) const { return false; }
 
+    void UpdateRoughness_GameThread(const ULightComponent* Component);
+
 	// Accessors.
 	float GetUserShadowBias() const { return ShadowBias; }
 
@@ -942,6 +954,10 @@ public:
 	inline bool NeedsLPVInjection() const { return bAffectDynamicIndirectLighting; }
 	inline const class FStaticShadowDepthMap* GetStaticShadowDepthMap() const { return StaticShadowDepthMap; }
 
+    inline float GetMinRoughness() const { return MinRoughness; }
+    inline float GetRoughnessScale() const { return RoughnessScale; }
+    inline float GetRoughnessBias() const { return RoughnessBias; }
+
 	/**
 	 * Shifts light position and all relevant data by an arbitrary delta.
 	 * Called on world origin changes
@@ -980,8 +996,10 @@ protected:
 	/** Sharpen shadow filtering */
 	float ShadowSharpen;
 
-	/** Min roughness */
+	/** Roughness adjustments */
 	float MinRoughness;
+    float RoughnessScale;
+    float RoughnessBias;
 
 	/** The light's persistent shadowing GUID. */
 	FGuid LightGuid;
@@ -1408,10 +1426,10 @@ public:
 		return 0;
 	}
 
-	void DrawBatchedElements(FRHICommandList& RHICmdList, const FSceneView& InView, FTexture2DRHIRef DepthTexture, EBlendModeFilter::Type Filter) const;
+	void DrawBatchedElements(FRHICommandList& RHICmdList, const FSceneView& InView, FTexture2DRHIRef DepthTexture, EBlendModeFilter::Type Filter, ESceneDepthPriorityGroup DepthPriorityGroup) const;
 
 	/** The batched simple elements. */
-	FBatchedElements BatchedElements;
+	FBatchedElements BatchedElements[SDPG_MAX];
 
 private:
 
@@ -1452,8 +1470,9 @@ struct FMeshBatchAndRelevance
 	 */
 	uint32 bHasOpaqueOrMaskedMaterial : 1;
 	uint32 bRenderInMainPass : 1;
+	uint32 DepthPriorityGroup : SDPG_NumBits;
 
-	FMeshBatchAndRelevance(const FMeshBatch& InMesh, const FPrimitiveSceneProxy* InPrimitiveSceneProxy, ERHIFeatureLevel::Type FeatureLevel);
+	FMeshBatchAndRelevance(const FMeshBatch& InMesh, const FPrimitiveSceneProxy* InPrimitiveSceneProxy, const FSceneView* View, ERHIFeatureLevel::Type FeatureLevel);
 };
 
 /** 

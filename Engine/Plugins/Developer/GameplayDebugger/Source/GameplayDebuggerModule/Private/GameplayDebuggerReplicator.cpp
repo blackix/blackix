@@ -1034,7 +1034,7 @@ void AGameplayDebuggerReplicator::DrawMenu(UGameplayDebuggerBaseObject::FPrintCo
 			if (bHit && Hit.GetActor() != nullptr)
 			{
 				HitString = FString::Printf(TEXT("{white}Under cursor: {yellow}'%s'"), *Hit.GetActor()->GetName());
-				DrawDebugLine(GetWorld(), Hit.Location, Hit.Location + Hit.Normal*60.f, FColor::White, /*bPersistentLines =*/ false, /*LifeTime =*/ -1.f, /*DepthPriority =*/ 0, /*Thickness =*/ 3.f);
+				DrawDebugLine(GetWorld(), Hit.Location, Hit.Location + Hit.Normal*60.f, FColor::White, /*bPersistentLines =*/ false, /*LifeTime =*/ -1.f, /*DepthPriority =*/ SDPG_World, /*Thickness =*/ 3.f);
 			}
 			else
 			{

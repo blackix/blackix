@@ -146,8 +146,8 @@ public:
 	UPROPERTY(Category=LOD, AdvancedDisplay, VisibleAnywhere, BlueprintReadOnly, meta=(DisplayName="Current Max Draw Distance") )
 	float CachedMaxDrawDistance;
 
-	/** The scene depth priority group to draw the primitive in. */
-	UPROPERTY()
+	/** The scene depth priority group to draw the primitive in (Clustered Forward only). */
+	UPROPERTY(Category=Rendering, EditAnywhere, AdvancedDisplay, BlueprintReadOnly, meta=(DisplayName="Depth Priority Group"))
 	TEnumAsByte<enum ESceneDepthPriorityGroup> DepthPriorityGroup;
 
 	/** The scene depth priority group to draw the primitive in, if it's being viewed by its owner. */

@@ -75,11 +75,15 @@ private:
 	bool OverrideShadingModelEnabled() const;
 	bool OverrideTwoSidedEnabled() const;
 	bool OverrideDitheredLODTransitionEnabled() const;
+	bool OverrideFullyRoughEnabled() const;
+	bool OverrideCheapShadingEnabled() const;
 	void OnOverrideOpacityClipMaskValueChanged(bool NewValue);
 	void OnOverrideBlendModeChanged(bool NewValue);
 	void OnOverrideShadingModelChanged(bool NewValue);
 	void OnOverrideTwoSidedChanged(bool NewValue);
 	void OnOverrideDitheredLODTransitionChanged(bool NewValue);
+	void OnOverrideFullyRoughChanged(bool NewValue);
+	void OnOverrideCheapShadingChanged(bool NewValue);
 
 
 private:

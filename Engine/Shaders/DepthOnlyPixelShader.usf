@@ -7,6 +7,7 @@
 #include "Common.usf"
 #include "Material.usf"
 #include "VertexFactory.usf"
+#include "AlphaToCoverageCommon.usf"
 
 void Main(
 #if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
@@ -19,6 +20,8 @@ void Main(
 	out float4 OutColor : SV_Target0
 	)
 {
+	OutColor = 0;
+
 #if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
 	#if INSTANCED_STEREO
 		ResolvedView = ResolveView(GetEyeIndex(FactoryInterpolants.PackedEyeIndex));
@@ -34,8 +37,7 @@ void Main(
 	ApplyPixelDepthOffsetToMaterialParameters(MaterialParameters, PixelMaterialInputs, OutDepth);
 	#endif
 
-	GetMaterialCoverageAndClipping(MaterialParameters, PixelMaterialInputs);
+    OutColor.a = ClipAndGetAlphaToCoverage(MaterialParameters, PixelMaterialInputs);
 #endif
 
-	OutColor = 0;
 }

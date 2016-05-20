@@ -1953,9 +1953,10 @@ static TAutoConsoleVariable<int32> CVarMobileOnChipMSAA(
 	ECVF_Default);
 
 // this cvar can be removed in shipping to not compile shaders for development (faster)
-static TAutoConsoleVariable<int32> CVarCompileShadersForDevelopment(
+int32 GCompileShadersForDevelopment = true;
+static FAutoConsoleVariableRef CVarCompileShadersForDevelopment(
 	TEXT("r.CompileShadersForDevelopment"),
-	1,
+	GCompileShadersForDevelopment,
 	TEXT("Setting this to 0 allows to ship a game with more optimized shaders as some\n")
 	TEXT("editor and development features are not longer compiled into the shaders.\n")
 	TEXT(" Note: This should be done when shipping but it's not done automatically yet (feature need to mature\n")

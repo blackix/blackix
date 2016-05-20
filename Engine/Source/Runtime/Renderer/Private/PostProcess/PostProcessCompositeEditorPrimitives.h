@@ -11,7 +11,7 @@
 class FRCPassPostProcessCompositeEditorPrimitives : public TRenderingCompositePassBase<1, 1>
 {
 public:
-	FRCPassPostProcessCompositeEditorPrimitives(bool bInDeferredBasePass) : bDeferredBasePass(bInDeferredBasePass) {}
+	FRCPassPostProcessCompositeEditorPrimitives(EShadingPath InShadingPath) : ShadingPath(InShadingPath) {}
 
 	// interface FRenderingCompositePass ---------
 	virtual void Process(FRenderingCompositePassContext& Context) override;
@@ -27,7 +27,7 @@ private:
 	template <typename TBasePass>
 	void RenderPrimitivesToComposite(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);
 
-	bool bDeferredBasePass;
+	EShadingPath const ShadingPath;
 };
 
 #endif

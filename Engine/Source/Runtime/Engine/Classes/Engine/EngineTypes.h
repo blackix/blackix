@@ -79,6 +79,8 @@ namespace EAttachLocation
 UENUM()
 enum ESceneDepthPriorityGroup
 {
+	/** Background DPG, rendered monoscopically in VR */
+	SDPG_Background,
 	/** World scene DPG. */
 	SDPG_World,
 	/** Foreground scene DPG. */
@@ -95,7 +97,9 @@ enum EIndirectLightingCacheQuality
 	/** A single indirect lighting sample computed at the bounds origin will be interpolated which fades over time to newer results. */
 	ILCQ_Point,
 	/** The object will get a 5x5x5 stable volume of interpolated indirect lighting, which allows gradients of lighting intensity across the receiving object. */
-	ILCQ_Volume
+	ILCQ_Volume,
+	/** A single indirect lighting sample computed by averaging lighting samples over the bounds of the object. */
+	ILCQ_PointFromVolume,
 };
 
 

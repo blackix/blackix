@@ -216,6 +216,8 @@ FLightSceneProxy::FLightSceneProxy(const ULightComponent* InLightComponent)
 	, ShadowBias(InLightComponent->ShadowBias)
 	, ShadowSharpen(InLightComponent->ShadowSharpen)
 	, MinRoughness(InLightComponent->MinRoughness)
+	, RoughnessScale(InLightComponent->RoughnessScale)
+	, RoughnessBias(InLightComponent->RoughnessBias)
 	, LightGuid(InLightComponent->LightGuid)
 	, ShadowMapChannel(InLightComponent->ShadowMapChannel)
 	, PreviewShadowMapChannel(InLightComponent->PreviewShadowMapChannel)
@@ -303,6 +305,25 @@ void FLightSceneProxy::ApplyWorldOffset(FVector InOffset)
 	SetTransform(NewLightToWorld, NewPosition);
 }
 
+void FLightSceneProxy::UpdateRoughness_GameThread(const ULightComponent* Component)
+{
+    float const NewMinRoughness = Component->MinRoughness;
+    float const NewRoughnessScale = Component->RoughnessScale;
+    float const NewRoughnessBias = Component->RoughnessBias;
+
+    ENQUEUE_UNIQUE_RENDER_COMMAND_FOURPARAMETER(
+        FUpdateLightMinRoughnessCommand,
+        FLightSceneProxy*, Proxy, this,
+        float, NewMinRoughness, NewMinRoughness,
+        float, NewRoughnessScale, NewRoughnessScale,
+        float, NewRoughnessBias, NewRoughnessBias,
+        {
+            Proxy->MinRoughness = NewMinRoughness;
+            Proxy->RoughnessScale = NewRoughnessScale;
+            Proxy->RoughnessBias = NewRoughnessBias;
+    });
+}
+
 ULightComponentBase::ULightComponentBase(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -342,6 +363,8 @@ ULightComponent::ULightComponent(const FObjectInitializer& ObjectInitializer)
 	LightFunctionFadeDistance = 100000.0f;
 	DisabledBrightness = 0.5f;
 	MinRoughness = 0.08f;
+	RoughnessScale = 1.f;
+	RoughnessBias = 0.f;
 
 	bEnableLightShaftBloom = false;
 	BloomScale = .2f;
@@ -555,6 +578,8 @@ void ULightComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, CastDynamicShadows) &&
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, bAffectTranslucentLighting) &&
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, MinRoughness) &&
+		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, RoughnessScale) &&
+		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, RoughnessBias) &&
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, LightFunctionMaterial) &&
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, LightFunctionScale) &&
 		PropertyName != GET_MEMBER_NAME_STRING_CHECKED(ULightComponent, LightFunctionFadeDistance) &&
@@ -713,6 +738,51 @@ void ULightComponent::SetIntensity(float NewIntensity)
 		{
 			//@todo - remove from scene if brightness or color becomes 0
 			World->Scene->UpdateLightColorAndBrightness( this );
+		}
+	}
+}
+
+void ULightComponent::SetMinRoughness(float NewMinRoughness)
+{
+	// Can't set brightness on a static light
+	if (AreDynamicDataChangesAllowed()
+		&& NewMinRoughness != MinRoughness)
+	{
+		MinRoughness = NewMinRoughness;
+
+		if (SceneProxy)
+		{
+			SceneProxy->UpdateRoughness_GameThread(this);
+		}
+	}
+}
+
+void ULightComponent::SetRoughnessScale(float NewRoughnessScale)
+{
+	// Can't set brightness on a static light
+	if (AreDynamicDataChangesAllowed()
+		&& NewRoughnessScale != RoughnessScale)
+	{
+		RoughnessScale = NewRoughnessScale;
+
+		if (SceneProxy)
+		{
+			SceneProxy->UpdateRoughness_GameThread(this);
+		}
+	}
+}
+
+void ULightComponent::SetRoughnessBias(float NewRoughnessBias)
+{
+	// Can't set brightness on a static light
+	if (AreDynamicDataChangesAllowed()
+		&& NewRoughnessBias != RoughnessBias)
+	{
+		RoughnessBias = NewRoughnessBias;
+
+		if (SceneProxy)
+		{
+			SceneProxy->UpdateRoughness_GameThread(this);
 		}
 	}
 }

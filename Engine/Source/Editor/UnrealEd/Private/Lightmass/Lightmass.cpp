@@ -3036,21 +3036,14 @@ void FLightmassProcessor::ImportVolumeSamples()
 							NewHighQualitySample.SetPackedSkyBentNormal(CurrentSample.SkyBentNormal); 
 							NewHighQualitySample.DirectionalLightShadowing = CurrentSample.DirectionalLightShadowing;
 
+							FVolumeLightingSample NewLowQualitySample = NewHighQualitySample;
+
 							for (int32 CoefficientIndex = 0; CoefficientIndex < 4; CoefficientIndex++)
 							{
 								NewHighQualitySample.Lighting.R.V[CoefficientIndex] = CurrentSample.HighQualityCoefficients[CoefficientIndex][0];
 								NewHighQualitySample.Lighting.G.V[CoefficientIndex] = CurrentSample.HighQualityCoefficients[CoefficientIndex][1];
 								NewHighQualitySample.Lighting.B.V[CoefficientIndex] = CurrentSample.HighQualityCoefficients[CoefficientIndex][2];
-							}
 
-							FVolumeLightingSample NewLowQualitySample;
-							NewLowQualitySample.Position = CurrentSample.PositionAndRadius;
-							NewLowQualitySample.Radius = CurrentSample.PositionAndRadius.W;
-							NewLowQualitySample.DirectionalLightShadowing = CurrentSample.DirectionalLightShadowing;
-							NewLowQualitySample.SetPackedSkyBentNormal(CurrentSample.SkyBentNormal); 
-
-							for (int32 CoefficientIndex = 0; CoefficientIndex < 4; CoefficientIndex++)
-							{
 								NewLowQualitySample.Lighting.R.V[CoefficientIndex] = CurrentSample.LowQualityCoefficients[CoefficientIndex][0];
 								NewLowQualitySample.Lighting.G.V[CoefficientIndex] = CurrentSample.LowQualityCoefficients[CoefficientIndex][1];
 								NewLowQualitySample.Lighting.B.V[CoefficientIndex] = CurrentSample.LowQualityCoefficients[CoefficientIndex][2];

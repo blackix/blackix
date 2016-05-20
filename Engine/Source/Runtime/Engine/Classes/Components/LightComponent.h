@@ -77,6 +77,14 @@ class ENGINE_API ULightComponent : public ULightComponentBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Light, AdvancedDisplay, meta=(UIMin = "0.08", UIMax = "1.0"))
 	float MinRoughness;
 
+	/** Roughness scale for this light. Can be used to sharper or soften specular highlights. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Light, AdvancedDisplay, meta=(UIMin = "0.1", UIMax = "10.0"))
+	float RoughnessScale;
+
+	/** Roughness bias for this light. Can be used to sharpen or soften specular highlights. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Light, AdvancedDisplay, meta=(UIMin = "-1.0", UIMax = "1.0"))
+	float RoughnessBias;
+
 	/** 
 	 * Controls how accurate self shadowing of whole scene shadows from this light are.  
 	 * At 0, shadows will start at the their caster surface, but there will be many self shadowing artifacts.
@@ -195,6 +203,15 @@ public:
 	/** Set intensity of the light */
 	UFUNCTION(BlueprintCallable, Category="Rendering|Components|Light")
 	void SetIntensity(float NewIntensity);
+
+	UFUNCTION(BlueprintCallable, Category="Rendering|Components|Light")
+	void SetMinRoughness(float NewMinRoughness);
+
+	UFUNCTION(BlueprintCallable, Category="Rendering|Components|Light")
+	void SetRoughnessBias(float NewRoughnessBias);
+
+	UFUNCTION(BlueprintCallable, Category="Rendering|Components|Light")
+	void SetRoughnessScale(float NewRoughnessScale);
 
 	UFUNCTION(BlueprintCallable, Category="Rendering|Components|Light")
 	void SetIndirectLightingIntensity(float NewIntensity);

@@ -150,7 +150,9 @@ protected:
 class FSettings : public FHMDSettings
 {
 public:
-	const int TexturePaddingPerEye = 12; // padding, in pixels, per eye (total padding will be doubled)
+	const int MinTexturePaddingPerEye = 12;	// padding, in pixels, per eye (total padding will be doubled)
+	const int ViewportOriginAlignment = 32;		// requested alignment of X coordinates of viewports (todo: expose?)
+
 	enum EQueueAheadStatus
 	{
 		EQA_Default = 0,
@@ -162,6 +164,13 @@ public:
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				PerspectiveProjection[2];	// used for calc ortho projection matrices
 	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
+
+	/// Monoscopic data
+	ovrFovPort				UnionEyeFov;
+	ovrVector3f				UnionEyeOffset;
+	float					UnionEyeClipPlaneOffset;
+	ovrMatrix4f				UnionEyePerspectiveProjection;
+	// End monoscopic data
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
@@ -191,7 +200,7 @@ public:
 
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> Clone() const override;
 
-	float GetTexturePaddingPerEye() const { return TexturePaddingPerEye * GetActualScreenPercentage()/100.f; }
+	float GetTexturePaddingPerEye() const { return MinTexturePaddingPerEye * GetActualScreenPercentage()/100.f; }
 };
 
 

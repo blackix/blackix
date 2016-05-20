@@ -333,6 +333,7 @@ private:
 		SetVisualizeLightCulling(false);
 		SetPrecomputedVisibilityCells(false);
 		SetVolumeLightingSamples(false);
+		SetVolumeShadowSamples(false);
 		// we enable it manually on the editor view ports
 		SetSnap(false);
 		SetVisualizeMeshDistanceFields(false);

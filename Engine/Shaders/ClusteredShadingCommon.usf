@@ -1,0 +1,52 @@
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	ClusteredShadingCommon.usf: Base pass definitions used by both vertex and pixel shader
+=============================================================================*/
+
+#pragma once
+
+#undef NEEDS_LIGHTMAP_COORDINATE
+
+#define NEEDS_LIGHTMAP_COORDINATE		(LQ_TEXTURE_LIGHTMAP || HQ_TEXTURE_LIGHTMAP)
+#define NEEDS_LIGHTMAP					(NEEDS_LIGHTMAP_COORDINATE)
+
+#define USE_VERTEX_FOG					(1)
+
+// If we support directional lights?
+// Currently only in editor (when development shaders are enabled), so we can work with preview viewports.
+#define CLUSTERED_SUPPORT_DIRECTIONAL_LIGHTS COMPILE_SHADERS_FOR_DEVELOPMENT
+
+// If we support spot lights?
+#define CLUSTERED_SUPPORT_SPOT_LIGHTS   (1)
+
+// Whether or not we support lights which don't use inverse squared falloff.
+#define CLUSTERED_SUPPORT_LEGACY_ATTENUATION 0
+
+// If we use parallax corrected reflection capture lookups.
+// You probably want this if using cube reflection captures.
+#define CLUSTERED_USE_PARALLAX_CORRECTION 0
+
+
+struct FSharedClusteredShadingBasePassInterpolants
+{
+#if USE_VERTEX_FOG
+	float4 VertexFog        : TEXCOORD7;
+#endif
+};
+
+struct FClusteredShadingBasePassInterpolantsVSToPS : FSharedClusteredShadingBasePassInterpolants
+{
+    float4 PixelPosition    : TEXCOORD8;    // xyz = world position, w = clip z
+
+#if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
+	float4 PixelPositionExcludingWPO	: TEXCOORD9;
+#endif
+};
+
+struct FClusteredShadingBasePassInterpolantsVSToDS : FSharedClusteredShadingBasePassInterpolants
+{
+#if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
+	float4 WorldPositionExcludingWPO	: TEXCOORD9;
+#endif
+};

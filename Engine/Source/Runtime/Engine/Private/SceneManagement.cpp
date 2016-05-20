@@ -93,7 +93,7 @@ void FSimpleElementCollector::DrawSprite(
 	uint8 BlendMode
 	)
 {
-	BatchedElements.AddSprite(
+	BatchedElements[DepthPriorityGroup].AddSprite(
 		Position,
 		SizeX,
 		SizeY,
@@ -118,7 +118,7 @@ void FSimpleElementCollector::DrawLine(
 	bool bScreenSpace/* = false*/
 	)
 {
-	BatchedElements.AddLine(
+	BatchedElements[DepthPriorityGroup].AddLine(
 		Start,
 		End,
 		Color,
@@ -136,7 +136,7 @@ void FSimpleElementCollector::DrawPoint(
 	uint8 DepthPriorityGroup
 	)
 {
-	BatchedElements.AddPoint(
+	BatchedElements[DepthPriorityGroup].AddPoint(
 		Position,
 		PointSize,
 		Color,
@@ -153,13 +153,13 @@ void FSimpleElementCollector::RegisterDynamicResource(FDynamicPrimitiveResource*
 	DynamicResource->InitPrimitiveResource();
 }
 
-void FSimpleElementCollector::DrawBatchedElements(FRHICommandList& RHICmdList, const FSceneView& View, FTexture2DRHIRef DepthTexture, EBlendModeFilter::Type Filter) const
+void FSimpleElementCollector::DrawBatchedElements(FRHICommandList& RHICmdList, const FSceneView& View, FTexture2DRHIRef DepthTexture, EBlendModeFilter::Type Filter, ESceneDepthPriorityGroup DPG) const
 {
 	// Mobile HDR does not execute post process, so does not need to render flipped
 	const bool bNeedToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(View.GetShaderPlatform()) && !bIsMobileHDR;
 
 	// Draw the batched elements.
-	BatchedElements.Draw(
+	BatchedElements[DPG].Draw(
 		RHICmdList,
 		View.GetFeatureLevel(),
 		bNeedToSwitchVerticalAxis,
@@ -174,7 +174,7 @@ void FSimpleElementCollector::DrawBatchedElements(FRHICommandList& RHICmdList, c
 		);
 }
 
-FMeshBatchAndRelevance::FMeshBatchAndRelevance(const FMeshBatch& InMesh, const FPrimitiveSceneProxy* InPrimitiveSceneProxy, ERHIFeatureLevel::Type FeatureLevel) :
+FMeshBatchAndRelevance::FMeshBatchAndRelevance(const FMeshBatch& InMesh, const FPrimitiveSceneProxy* InPrimitiveSceneProxy, const FSceneView* View, ERHIFeatureLevel::Type FeatureLevel) :
 	Mesh(&InMesh),
 	PrimitiveSceneProxy(InPrimitiveSceneProxy)
 {
@@ -182,6 +182,7 @@ FMeshBatchAndRelevance::FMeshBatchAndRelevance(const FMeshBatch& InMesh, const F
 	EBlendMode BlendMode = InMesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->GetBlendMode();
 	bHasOpaqueOrMaskedMaterial = !IsTranslucentBlendMode(BlendMode);
 	bRenderInMainPass = PrimitiveSceneProxy->ShouldRenderInMainPass();
+	DepthPriorityGroup = InPrimitiveSceneProxy->GetDepthPriorityGroup(View);
 }
 
 static TAutoConsoleVariable<int32> CVarUseParallelGetDynamicMeshElementsTasks(
@@ -225,10 +226,10 @@ void FMeshElementCollector::AddMesh(int32 ViewIndex, FMeshBatch& MeshBatch)
 	checkSlow(MeshBatch.VertexFactory && MeshBatch.MaterialRenderProxy);
 	checkSlow(PrimitiveSceneProxy);
 
+	FSceneView* View = Views[ViewIndex];
+
 	if (MeshBatch.bCanApplyViewModeOverrides)
 	{
-		FSceneView* View = Views[ViewIndex];
-
 		ApplyViewModeOverrides(
 			ViewIndex,
 			View->Family->EngineShowFlags,
@@ -240,7 +241,7 @@ void FMeshElementCollector::AddMesh(int32 ViewIndex, FMeshBatch& MeshBatch)
 	}
 
 	TArray<FMeshBatchAndRelevance,SceneRenderingAllocator>& ViewMeshBatches = *MeshBatches[ViewIndex];
-	new (ViewMeshBatches) FMeshBatchAndRelevance(MeshBatch, PrimitiveSceneProxy, FeatureLevel);	
+	new (ViewMeshBatches) FMeshBatchAndRelevance(MeshBatch, PrimitiveSceneProxy, View, FeatureLevel);	
 }
 
 FLightMapInteraction FLightMapInteraction::Texture(
@@ -306,7 +307,10 @@ FLightMapInteraction FLightMapInteraction::Texture(
 float ComputeBoundsScreenSize( const FVector4& Origin, const float SphereRadius, const FSceneView& View )
 {
 	// Only need one component from a view transformation; just calculate the one we're interested in.
-	const float Divisor =  Dot3(Origin - View.ViewMatrices.ViewOrigin, View.ViewMatrices.ViewMatrix.GetColumn(2));
+	//const float Divisor =  Dot3(Origin - View.ViewMatrices.LODViewOrigin, View.ViewMatrices.ViewMatrix.GetColumn(2));
+
+	// Oculus forward: We want this to be rotation invariant for VR, so rotations of the head do not change the LOD
+	const float Divisor = FVector::Dist(Origin, View.ViewMatrices.LODViewOrigin);
 
 	// Get projection multiple accounting for view scaling.
 	const float ScreenMultiple = FMath::Max(View.ViewRect.Width() / 2.0f * View.ViewMatrices.ProjMatrix.M[0][0],
@@ -479,7 +483,6 @@ void InitializeSharedSamplerStates()
 	BeginInitResource(Wrap_WorldGroupSettings);
 	BeginInitResource(Clamp_WorldGroupSettings);
 }
-
 
 FLightMapInteraction FLightCacheInterface::GetLightMapInteraction(ERHIFeatureLevel::Type InFeatureLevel) const
 {

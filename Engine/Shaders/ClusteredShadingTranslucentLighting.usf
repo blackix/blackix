@@ -1,0 +1,57 @@
+// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	CLusteredShadingTranslucentLighting.usf: translucent shading for clustered
+=============================================================================*/
+
+#include "Common.usf"
+#include "SHCommon.usf"
+#include "ClusteredShadingCommon.usf"
+#include "LightingVolumeCommon.usf"
+
+float3
+GetTranslucencyLighting(
+    FMaterialPixelParameters MaterialParameters, 
+    float3 DiffuseColor, 
+    half3 SpecularColor, 
+    half Roughness, 
+    float AO,
+    float4 ShadowMask)
+{
+	float4 VolumeLighting;
+	float3 InterpolatedLighting = 0;
+
+    #if CLUSTERED_USE_TRANSLUCENT_VOLUMES
+
+	    float3 InnerVolumeUVs;
+	    float3 OuterVolumeUVs;
+	    float FinalLerpFactor;
+	    ComputeVolumeUVs(MaterialParameters.AbsoluteWorldPosition, MaterialParameters.LightingPositionOffset, InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+
+	    #if TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_DIRECTIONAL
+
+		    GetVolumeLightingDirectional(float4(BasePassInterpolants.AmbientLightingVector, 1), BasePassInterpolants.DirectionalLightingVector, MaterialParameters.WorldNormal, DiffuseColor, InterpolatedLighting, VolumeLighting);
+
+	    #elif TRANSLUCENCY_LIGHTING_VOLUMETRIC_PERVERTEX_NONDIRECTIONAL
+
+		    GetVolumeLightingNonDirectional(float4(BasePassInterpolants.AmbientLightingVector, 1), DiffuseColor, InterpolatedLighting, VolumeLighting);
+
+	    #elif TRANSLUCENCY_LIGHTING_VOLUMETRIC_DIRECTIONAL || TRANSLUCENCY_LIGHTING_SURFACE
+	
+		    float4 AmbientLightingVector = GetAmbientLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+		    float3 DirectionalLightingVector = GetDirectionalLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+		    GetVolumeLightingDirectional(AmbientLightingVector, DirectionalLightingVector, MaterialParameters.WorldNormal, DiffuseColor, InterpolatedLighting, VolumeLighting);
+
+	    #elif TRANSLUCENCY_LIGHTING_VOLUMETRIC_NONDIRECTIONAL
+
+		    float4 AmbientLightingVector = GetAmbientLightingVectorFromTranslucentLightingVolume(InnerVolumeUVs, OuterVolumeUVs, FinalLerpFactor);
+		    GetVolumeLightingNonDirectional(AmbientLightingVector, DiffuseColor, InterpolatedLighting, VolumeLighting);
+
+	    #elif TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL
+            // handled elsewhere
+	    #endif
+
+    #endif /* CLUSTERED_USE_TRANSLUCENT_VOLUMES */
+
+	return InterpolatedLighting;
+}

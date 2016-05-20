@@ -1136,6 +1136,13 @@ FShaderCompilingManager::FShaderCompilingManager() :
 		NumUnusedShaderCompilingThreads = 0;
 	}
 
+    int32 DevelopmentShaders;
+    if (FParse::Value(FCommandLine::Get(), TEXT("DEVELOPMENTSHADERS"), DevelopmentShaders))
+    {
+        GCompileShadersForDevelopment = DevelopmentShaders;
+        UE_LOG(LogShaderCompilers, Log, TEXT("Set CompileShadersForDevelopment=%i"), GCompileShadersForDevelopment);
+    }
+
 	verify(GConfig->GetInt( TEXT("DevOptions.Shaders"), TEXT("MaxShaderJobBatchSize"), MaxShaderJobBatchSize, GEngineIni ));
 	verify(GConfig->GetBool( TEXT("DevOptions.Shaders"), TEXT("bPromptToRetryFailedShaderCompiles"), bPromptToRetryFailedShaderCompiles, GEngineIni ));
 	verify(GConfig->GetBool( TEXT("DevOptions.Shaders"), TEXT("bLogJobCompletionTimes"), bLogJobCompletionTimes, GEngineIni ));
@@ -2276,8 +2283,7 @@ void GlobalBeginCompileShader(
 
 	if(bAllowDevelopmentShaderCompile)
 	{
-		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.CompileShadersForDevelopment"));
-		Input.Environment.SetDefine(TEXT("COMPILE_SHADERS_FOR_DEVELOPMENT"), CVar ? (CVar->GetValueOnGameThread() != 0) : 0);
+		Input.Environment.SetDefine(TEXT("COMPILE_SHADERS_FOR_DEVELOPMENT"), GCompileShadersForDevelopment);
 	}
 
 	{

@@ -266,6 +266,8 @@ SHOWFLAG_FIXED_IN_SHIPPING(0, PreviewShadowsIndicator, SFG_Visualize, LOCTEXT("P
 SHOWFLAG_FIXED_IN_SHIPPING(0, PrecomputedVisibilityCells, SFG_Visualize, LOCTEXT("PrecomputedVisibilityCellsSF", "Precomputed Visibility Cells"))
 /** Visualize volume lighting samples used for GI on dynamic objects */
 SHOWFLAG_FIXED_IN_SHIPPING(0, VolumeLightingSamples, SFG_Visualize, LOCTEXT("VolumeLightingSamplesSF", "Volume Lighting Samples"))
+/** Visualize volume shadowing samples used for directional light shadowing (Forward renderers) */
+SHOWFLAG_FIXED_IN_SHIPPING(0, VolumeShadowSamples, SFG_Visualize, LOCTEXT("VolumeShadowSamplesSF", "Volume Shadow Samples"))
 /** Render Paper2D sprites, for now SHOWFLAG_ALWAYS_ACCESSIBLE because it's exposed in SceneCapture */
 SHOWFLAG_ALWAYS_ACCESSIBLE(Paper2DSprites, SFG_Advanced, LOCTEXT("Paper2DSpritesSF", "Paper 2D Sprites"))
 /** Visualization of distance field AO */

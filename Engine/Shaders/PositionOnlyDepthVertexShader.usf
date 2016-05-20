@@ -40,14 +40,14 @@ void Main(
 		if (bIsInstancedStereo)  
 		{
 			// Clip at the center of the screen
-			OutCullDistance.x = OutClipDistance.x = dot(OutPosition, EyeClipEdge[EyeIndex]);
+			OutCullDistance.x = OutClipDistance.x = dot(OutPosition.xw, EyeClipEdge[EyeIndex].xw);
 
 			// Scale to the width of a single eye viewport
-			OutPosition.x *= 0.5 * Frame.HMDEyePaddingOffset;
+			OutPosition.x *= Frame.HMDViewportWidth;
 
 			// Shift to the eye viewport
-			OutPosition.x += (EyeOffsetScale[EyeIndex] * OutPosition.w) * (1.0f - 0.5 * Frame.HMDEyePaddingOffset);
-		}
+			OutPosition.x += OutPosition.w * Frame.HMDViewportOffset[EyeIndex];
+        }
 		
 		// Bias the depth	
 		OutPosition.z += InstancedStereoDepthBias * OutPosition.w * (float)bNeedsInstancedStereoBias;

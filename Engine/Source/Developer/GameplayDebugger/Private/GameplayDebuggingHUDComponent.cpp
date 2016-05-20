@@ -343,7 +343,7 @@ void AGameplayDebuggingHUDComponent::DrawPath(APlayerController* MyPC, class UGa
 		// draw line to next loc
 		FVector const NextVertLoc = DebugComponent->PathPoints[VertIdx+1] + NavigationDebugDrawing::PathOffset;
 		DrawDebugLine(DrawWorld, VertLoc, NextVertLoc, VertIdx < int32(DebugComponent->NextPathPointIndex) ? Grey : PathColor, false
-			, -1.f, 0
+			, -1.f, SDPG_World
 			, NavigationDebugDrawing::PathLineThickness);
 	}
 

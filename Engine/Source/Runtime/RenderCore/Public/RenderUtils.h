@@ -112,6 +112,9 @@ extern RENDERCORE_API class FTexture* GBlackArrayTexture;
 /** A global black volume texture. */
 extern RENDERCORE_API class FTexture* GBlackVolumeTexture;
 
+/** A global zero uint volume texture. */
+extern RENDERCORE_API class FTexture* GZeroUintVolumeTexture;
+
 /** A global white cube texture. */
 extern RENDERCORE_API class FTexture* GWhiteTextureCube;
 

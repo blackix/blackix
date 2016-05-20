@@ -141,10 +141,12 @@ bool CanIndirectLightingCacheUseVolumeTexture(ERHIFeatureLevel::Type InFeatureLe
 FIndirectLightingCache::FIndirectLightingCache(ERHIFeatureLevel::Type InFeatureLevel)
 	: FRenderResource(InFeatureLevel)
 	, bUpdateAllCacheEntries(true)
+	, bForcePointSample(false)
 	, BlockAllocator(0, 0, 0, GLightingCacheDimension, GLightingCacheDimension, GLightingCacheDimension, false, false)
 {
 	NextPointId = GLightingCacheDimension + 1;
 	CacheSize = GLightingCacheDimension;
+	TransitionSpeedScale = 1.f;
 }
 
 void FIndirectLightingCache::InitDynamicRHI()
@@ -222,7 +224,7 @@ bool FIndirectLightingCache::AllocateBlock(int32 Size, FIntVector& OutMin)
 	}
 }
 
-void FIndirectLightingCache::CalculateBlockPositionAndSize(const FBoxSphereBounds& Bounds, int32 TexelSize, FVector& OutMin, FVector& OutSize) const
+void FIndirectLightingCache::CalculateBlockPositionAndSize(const FBoxSphereBounds& Bounds, int32 TexelSize, bool bAveragePointOverVolume, FVector& OutMin, FVector& OutSize) const
 {	
 	FVector RoundedBoundsSize;
 
@@ -270,9 +272,31 @@ void FIndirectLightingCache::CalculateBlockPositionAndSize(const FBoxSphereBound
 		SnappedCenter.Y = CellSize.Y * FMath::FloorToFloat((Bounds.Origin.Y + .5f * CellSize.Y) / CellSize.Y);
 		SnappedCenter.Z = CellSize.Z * FMath::FloorToFloat((Bounds.Origin.Z + .5f * CellSize.Z) / CellSize.Z);
 
-		// Place the min at the snapped center of the object, which will be most representative for single sample lighting
-		OutMin = SnappedCenter;
-		OutSize = FVector(0);
+		if (bAveragePointOverVolume)
+		{
+			FVector Min = Bounds.Origin - FVector(Bounds.SphereRadius * 1.73f);
+			FVector Max = Bounds.Origin + FVector(Bounds.SphereRadius * 1.73f);
+
+			FVector SnappedMin, SnappedMax;
+			SnappedMin.X = CellSize.X * FMath::FloorToFloat(Min.X / CellSize.X);
+			SnappedMin.Y = CellSize.Y * FMath::FloorToFloat(Min.Y / CellSize.Y);
+			SnappedMin.Z = CellSize.Z * FMath::FloorToFloat(Min.Z / CellSize.Z);
+			SnappedMax.X = CellSize.X * FMath::CeilToFloat (Max.X / CellSize.X);
+			SnappedMax.Y = CellSize.Y * FMath::CeilToFloat (Max.Y / CellSize.Y);
+			SnappedMax.Z = CellSize.Z * FMath::CeilToFloat (Max.Z / CellSize.Z);
+
+			OutSize = FVector(
+				FMath::Max(SnappedCenter.X - SnappedMin.X, SnappedMax.X - SnappedCenter.X) * 2.f,
+				FMath::Max(SnappedCenter.Y - SnappedMin.Y, SnappedMax.Y - SnappedCenter.Y) * 2.f,
+				FMath::Max(SnappedCenter.Z - SnappedMin.Z, SnappedMax.Z - SnappedCenter.Z) * 2.f);
+			OutMin = SnappedCenter - OutSize * .5f;
+		}
+		else
+		{
+			// Place the min at the snapped center of the object, which will be most representative for single sample lighting
+			OutMin = SnappedCenter;
+			OutSize = FVector::ZeroVector;
+		}
 	}
 }
 
@@ -318,12 +342,14 @@ void FIndirectLightingCache::CalculateBlockScaleAndAdd(FIntVector InTexelMin, in
 
 FIndirectLightingCacheAllocation* FIndirectLightingCache::AllocatePrimitive(const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool bUnbuiltPreview)
 {
-	const bool bPointSample = PrimitiveSceneInfo->Proxy->GetIndirectLightingCacheQuality() == ILCQ_Point || bUnbuiltPreview;
+	const auto Quality = PrimitiveSceneInfo->Proxy->GetIndirectLightingCacheQuality();
+	const bool bAverageOverVolume = Quality == ILCQ_PointFromVolume;
+	const bool bPointSample = bAverageOverVolume || Quality == ILCQ_Point || bUnbuiltPreview || bForcePointSample;
 	const int32 BlockSize = bPointSample ? 1 : GLightingCacheMovableObjectAllocationSize;
-	return PrimitiveAllocations.Add(PrimitiveSceneInfo->PrimitiveComponentId, CreateAllocation(BlockSize, PrimitiveSceneInfo->Proxy->GetBounds(), bPointSample, bUnbuiltPreview));
+	return PrimitiveAllocations.Add(PrimitiveSceneInfo->PrimitiveComponentId, CreateAllocation(BlockSize, PrimitiveSceneInfo->Proxy->GetBounds(), bPointSample, bAverageOverVolume, bUnbuiltPreview));
 }
 
-FIndirectLightingCacheAllocation* FIndirectLightingCache::CreateAllocation(int32 BlockSize, const FBoxSphereBounds& Bounds, bool bPointSample, bool bUnbuiltPreview)
+FIndirectLightingCacheAllocation* FIndirectLightingCache::CreateAllocation(int32 BlockSize, const FBoxSphereBounds& Bounds, bool bPointSample, bool bAverageOverVolume, bool bUnbuiltPreview)
 {	
 	check(BlockSize > 1 || bPointSample);
 
@@ -334,7 +360,7 @@ FIndirectLightingCacheAllocation* FIndirectLightingCache::CreateAllocation(int32
 	if (AllocateBlock(BlockSize, NewBlock.MinTexel))
 	{
 		NewBlock.TexelSize = BlockSize;
-		CalculateBlockPositionAndSize(Bounds, BlockSize, NewBlock.Min, NewBlock.Size);
+		CalculateBlockPositionAndSize(Bounds, BlockSize, bAverageOverVolume, NewBlock.Min, NewBlock.Size);
 
 		FVector Scale;
 		FVector Add;
@@ -343,7 +369,7 @@ FIndirectLightingCacheAllocation* FIndirectLightingCache::CreateAllocation(int32
 		CalculateBlockScaleAndAdd(NewBlock.MinTexel, NewBlock.TexelSize, NewBlock.Min, NewBlock.Size, Scale, Add, MinUV, MaxUV);
 
 		VolumeBlocks.Add(NewBlock.MinTexel, NewBlock);
-		NewAllocation->SetParameters(NewBlock.MinTexel, NewBlock.TexelSize, Scale, Add, MinUV, MaxUV, bPointSample, bUnbuiltPreview);
+		NewAllocation->SetParameters(NewBlock.MinTexel, NewBlock.TexelSize, Scale, Add, MinUV, MaxUV, bPointSample, bAverageOverVolume, bUnbuiltPreview);
 	}
 
 	return NewAllocation;
@@ -550,7 +576,7 @@ void FIndirectLightingCache::FinalizeUpdateInternal_RenderThread(FScene* Scene, 
 		}
 	}	
 
-	if (GCacheDrawLightingSamples || Renderer.ViewFamily.EngineShowFlags.VolumeLightingSamples || GCacheDrawDirectionalShadowing)
+	if (GCacheDrawLightingSamples || Renderer.ViewFamily.EngineShowFlags.VolumeLightingSamples || Renderer.ViewFamily.EngineShowFlags.VolumeShadowSamples || GCacheDrawDirectionalShadowing)
 	{
 		FViewElementPDI DebugPDI(Renderer.Views.GetData(), NULL);
 
@@ -558,7 +584,7 @@ void FIndirectLightingCache::FinalizeUpdateInternal_RenderThread(FScene* Scene, 
 		{
 			const FPrecomputedLightVolume* PrecomputedLightVolume = Scene->PrecomputedLightVolumes[VolumeIndex];
 
-			PrecomputedLightVolume->DebugDrawSamples(&DebugPDI, GCacheDrawDirectionalShadowing != 0);
+            PrecomputedLightVolume->DebugDrawSamples(&DebugPDI, Renderer.ViewFamily.EngineShowFlags.VolumeShadowSamples || (GCacheDrawDirectionalShadowing != 0));
 		}
 	}
 }
@@ -567,6 +593,7 @@ void FIndirectLightingCache::UpdateCacheAllocation(
 	const FBoxSphereBounds& Bounds,
 	int32 BlockSize,
 	bool bPointSample,
+	bool bAverageOverVolume,
 	bool bUnbuiltPreview,
 	FIndirectLightingCacheAllocation*& Allocation,
 	TMap<FIntVector, FBlockUpdateInfo>& BlocksToUpdate,
@@ -579,7 +606,20 @@ void FIndirectLightingCache::UpdateCacheAllocation(
 		// Calculate a potentially new min and size based on the current bounds
 		FVector NewMin;
 		FVector NewSize;		
-		CalculateBlockPositionAndSize(Bounds, Block.TexelSize, NewMin, NewSize);
+		CalculateBlockPositionAndSize(Bounds, Block.TexelSize, bAverageOverVolume, NewMin, NewSize);
+
+		if (bAverageOverVolume)
+		{
+			// We need to update the bounds, and force a queued update of the interpolated value if they changed
+			FSphere const NewSphere = Bounds.GetSphere();
+			if (Allocation->bIsDirty ||
+				FMath::Abs(Allocation->MeshSphere.W - NewSphere.W) > THRESH_POINTS_ARE_NEAR ||
+				FVector::DistSquared(Allocation->MeshSphere.Center, NewSphere.Center) > THRESH_POINTS_ARE_NEAR)
+			{
+				Allocation->bIsDirty = true;
+				Allocation->MeshSphere = NewSphere;
+			}
+		}
 
 		// If the primitive has moved enough to change its block min and size, we need to interpolate it again
 		if (Allocation->bIsDirty || GCacheUpdateEveryFrame || !Block.Min.Equals(NewMin) || !Block.Size.Equals(NewSize))
@@ -594,11 +634,12 @@ void FIndirectLightingCache::UpdateCacheAllocation(
 			FVector MaxUV;
 			CalculateBlockScaleAndAdd(Allocation->MinTexel, Allocation->AllocationTexelSize, NewMin, NewSize, NewScale, NewAdd, MinUV, MaxUV);
 
-			Allocation->SetParameters(Allocation->MinTexel, Allocation->AllocationTexelSize, NewScale, NewAdd, MinUV, MaxUV, bPointSample, bUnbuiltPreview);
+			Allocation->SetParameters(Allocation->MinTexel, Allocation->AllocationTexelSize, NewScale, NewAdd, MinUV, MaxUV, bPointSample, bAverageOverVolume, bUnbuiltPreview);
 			BlocksToUpdate.Add(Block.MinTexel, FBlockUpdateInfo(Block, Allocation));
 		}
 
-		if ((Allocation->SingleSamplePosition - Allocation->TargetPosition).SizeSquared() > DELTA)
+		const FVector& SamplePosition = bAverageOverVolume ? Allocation->MeshSphere.Center : Allocation->SingleSamplePosition;
+		if (FVector::DistSquared(SamplePosition, Allocation->TargetPosition) > DELTA)
 		{
 			TransitionsOverTimeToUpdate.AddUnique(Allocation);
 		}
@@ -606,7 +647,7 @@ void FIndirectLightingCache::UpdateCacheAllocation(
 	else
 	{
 		delete Allocation;
-		Allocation = CreateAllocation(BlockSize, Bounds, bPointSample, bUnbuiltPreview);
+		Allocation = CreateAllocation(BlockSize, Bounds, bPointSample, bAverageOverVolume, bUnbuiltPreview);
 
 		if (Allocation->IsValid())
 		{
@@ -657,12 +698,14 @@ void FIndirectLightingCache::UpdateCachePrimitive(
 		else
 		{
 			FIndirectLightingCacheAllocation* OriginalAllocation = PrimitiveAllocation;
+			const auto Quality = PrimitiveSceneProxy->GetIndirectLightingCacheQuality();
 			const bool bUnbuiltPreview = bAllowUnbuiltPreview && !bIsMovable;
-			const bool bPointSample = PrimitiveSceneProxy->GetIndirectLightingCacheQuality() == ILCQ_Point || bUnbuiltPreview || !bOpaqueRelevance;
+			const bool bAverageOverVolume = Quality == ILCQ_PointFromVolume;
+			const bool bPointSample = Quality == ILCQ_Point || bAverageOverVolume || bUnbuiltPreview || !bOpaqueRelevance || bForcePointSample;
 			const int32 BlockSize = bPointSample ? 1 : GLightingCacheMovableObjectAllocationSize;
 
 			// Light with the cumulative bounds of the entire attachment group
-			UpdateCacheAllocation(PrimitiveSceneInfo->GetAttachmentGroupBounds(), BlockSize, bPointSample, bUnbuiltPreview, PrimitiveAllocation, BlocksToUpdate, TransitionsOverTimeToUpdate);
+			UpdateCacheAllocation(PrimitiveSceneInfo->GetAttachmentGroupBounds(), BlockSize, bPointSample, bAverageOverVolume, bUnbuiltPreview, PrimitiveAllocation, BlocksToUpdate, TransitionsOverTimeToUpdate);
 
 			// Cache the primitive allocation pointer on the FPrimitiveSceneInfo for base pass rendering
 			PrimitiveSceneInfo->IndirectLightingCacheAllocation = PrimitiveAllocation;
@@ -693,6 +736,10 @@ void FIndirectLightingCache::UpdateBlocks(FScene* Scene, FViewInfo* DebugDrawing
 		InitResource();
 	}
 
+	if (!GCacheDrawInterpolationPoints)
+	{
+		DebugDrawingView = nullptr;
+	}
 	INC_DWORD_STAT_BY(STAT_IndirectLightingCacheUpdates, BlocksToUpdate.Num());
 
 	for (TMap<FIntVector, FBlockUpdateInfo>::TIterator It(BlocksToUpdate); It; ++It)
@@ -706,15 +753,18 @@ void FIndirectLightingCache::UpdateTransitionsOverTime(const TArray<FIndirectLig
 	for (int32 AllocationIndex = 0; AllocationIndex < TransitionsOverTimeToUpdate.Num(); AllocationIndex++)
 	{
 		FIndirectLightingCacheAllocation* Allocation = TransitionsOverTimeToUpdate[AllocationIndex];
-		const float TransitionDistance = (Allocation->SingleSamplePosition - Allocation->TargetPosition).Size();
+		const FVector& TargetPosition = Allocation->bAveragePointOverVolume ? Allocation->MeshSphere.Center : Allocation->TargetPosition;
+		const float TransitionDistance = (Allocation->SingleSamplePosition - TargetPosition).Size();
+
+		check(Allocation->bHasEverUpdatedSingleSample);
 
 		if (TransitionDistance > DELTA)
 		{
 			// Transition faster for unbuilt meshes which is important for meshing visualization
 			const float EffectiveTransitionSpeed = GSingleSampleTransitionSpeed * (Allocation->bUnbuiltPreview ? 4 : 1);
-			const float LerpFactor = FMath::Clamp(GSingleSampleTransitionSpeed * DeltaWorldTime / TransitionDistance, 0.0f, 1.0f);
-			Allocation->SingleSamplePosition = FMath::Lerp(Allocation->SingleSamplePosition, Allocation->TargetPosition, LerpFactor);
+			const float LerpFactor = FMath::Clamp(TransitionSpeedScale * GSingleSampleTransitionSpeed * DeltaWorldTime / TransitionDistance, 0.0f, 1.0f);
 
+			Allocation->SingleSamplePosition = FMath::Lerp(Allocation->SingleSamplePosition, TargetPosition, LerpFactor);
 			for (int32 VectorIndex = 0; VectorIndex < ARRAY_COUNT(Allocation->SingleSamplePacked); VectorIndex++)
 			{
 				Allocation->SingleSamplePacked[VectorIndex] = FMath::Lerp(Allocation->SingleSamplePacked[VectorIndex], Allocation->TargetSamplePacked[VectorIndex], LerpFactor);
@@ -723,8 +773,8 @@ void FIndirectLightingCache::UpdateTransitionsOverTime(const TArray<FIndirectLig
 			Allocation->CurrentDirectionalShadowing = FMath::Lerp(Allocation->CurrentDirectionalShadowing, Allocation->TargetDirectionalShadowing, LerpFactor);
 
 			const FVector CurrentSkyBentNormal = FMath::Lerp(
-				FVector(Allocation->CurrentSkyBentNormal) * Allocation->CurrentSkyBentNormal.W, 
-				FVector(Allocation->TargetSkyBentNormal) * Allocation->TargetSkyBentNormal.W, 
+				FVector(Allocation->CurrentSkyBentNormal) * Allocation->CurrentSkyBentNormal.W,
+				FVector(Allocation->TargetSkyBentNormal) * Allocation->TargetSkyBentNormal.W,
 				LerpFactor);
 
 			const float BentNormalLength = CurrentSkyBentNormal.Size();
@@ -803,14 +853,7 @@ void FIndirectLightingCache::UpdateBlock(FScene* Scene, FViewInfo* DebugDrawingV
 	}
 	else
 	{
-		InterpolatePoint(Scene, BlockInfo.Block, DirectionalShadowing, SingleSample, SkyBentNormal);
-
-		if (GCacheDrawInterpolationPoints != 0 && DebugDrawingView)
-		{
-			FViewElementPDI DebugPDI(DebugDrawingView, NULL);
-			const FVector WorldPosition = BlockInfo.Block.Min;
-			DebugPDI.DrawPoint(WorldPosition, FLinearColor(0, 0, 1), 10, SDPG_World);
-		}
+		InterpolatePoint(Scene, DebugDrawingView, BlockInfo.Allocation, BlockInfo.Block, DirectionalShadowing, SingleSample, SkyBentNormal);
 	}
 
 	// Record the position that the sample was taken at
@@ -863,47 +906,61 @@ static void ReduceSHRinging(FSHVectorRGB2& IncidentRadiance)
 
 void FIndirectLightingCache::InterpolatePoint(
 	FScene* Scene, 
+	FViewInfo* DebugDrawingView,
+	const FIndirectLightingCacheAllocation* Allocation,
 	const FIndirectLightingCacheBlock& Block,
 	float& OutDirectionalShadowing, 
 	FSHVectorRGB2& OutIncidentRadiance,
 	FVector& OutSkyBentNormal)
 {
+	// Start with a single very small sample, so when we start loosing samples
+	// they interpolate out to this default value.  Note that a ton of sample sums
+    // end up incredibly small (1e-7)
+
+	float const InitialDefaultWeight = 1e-8;
 	FSHVectorRGB2 AccumulatedIncidentRadiance;
-	FVector AccumulatedSkyBentNormal(0, 0, 0);
-	float AccumulatedDirectionalShadowing = 0;
-	float AccumulatedWeight = 0;
+	FVector AccumulatedSkyBentNormal = FVector(0, 0, 1) * InitialDefaultWeight;
+	float AccumulatedDirectionalShadowing = 1 * InitialDefaultWeight;
+	float AccumulatedWeight = InitialDefaultWeight;
 
 	for (int32 VolumeIndex = 0; VolumeIndex < Scene->PrecomputedLightVolumes.Num(); VolumeIndex++)
 	{
 		const FPrecomputedLightVolume* PrecomputedLightVolume = Scene->PrecomputedLightVolumes[VolumeIndex];
 		if (PrecomputedLightVolume)
 		{
+			FVector const BlockExtent = Block.Size / 2;
+
+			if (Allocation->bAveragePointOverVolume)
+			{
+				PrecomputedLightVolume->InterpolateIncidentRadianceVolumeToPoint(
+					DebugDrawingView,
+					FBoxCenterAndExtent(Block.Min + BlockExtent, BlockExtent),
+					Allocation->MeshSphere,
+					AccumulatedWeight,
+					AccumulatedDirectionalShadowing,
+					AccumulatedIncidentRadiance,
+					AccumulatedSkyBentNormal);
+			}
+			else
+			{
 			PrecomputedLightVolume->InterpolateIncidentRadiancePoint(
-				Block.Min + Block.Size / 2,
+					DebugDrawingView,
+					Block.Min + BlockExtent,
 				AccumulatedWeight,
 				AccumulatedDirectionalShadowing,
 				AccumulatedIncidentRadiance,
 				AccumulatedSkyBentNormal);
 		}
 	}
-
-	if (AccumulatedWeight > 0)
-	{
-		OutDirectionalShadowing = AccumulatedDirectionalShadowing / AccumulatedWeight;
-		OutIncidentRadiance = AccumulatedIncidentRadiance / AccumulatedWeight;
-		OutSkyBentNormal = AccumulatedSkyBentNormal / AccumulatedWeight;
-
-		if (GCacheReduceSHRinging != 0)
-		{
-			ReduceSHRinging(OutIncidentRadiance);
-		}
 	}
-	else
+
+	OutDirectionalShadowing = AccumulatedDirectionalShadowing / AccumulatedWeight;
+	OutIncidentRadiance = AccumulatedIncidentRadiance / AccumulatedWeight;
+	OutSkyBentNormal = AccumulatedSkyBentNormal / AccumulatedWeight;
+
+	if (GCacheReduceSHRinging != 0 && AccumulatedWeight > InitialDefaultWeight)
 	{
-		OutIncidentRadiance = AccumulatedIncidentRadiance;
-		OutDirectionalShadowing = 1;
-		// Use an unoccluded vector if no valid samples were found for interpolation
-		OutSkyBentNormal = FVector(0, 0, 1);
+		ReduceSHRinging(OutIncidentRadiance);
 	}
 }
 

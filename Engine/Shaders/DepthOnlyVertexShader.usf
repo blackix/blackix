@@ -121,17 +121,17 @@ void Main(
 		Output.Position = mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip);
 
 		#if INSTANCED_STEREO
-		BRANCH 
-		if (bIsInstancedStereo)  
+		BRANCH
+		if (bIsInstancedStereo)
 		{
 			// Clip at the center of the screen
-			OutCullDistance.x = OutClipDistance.x = dot(Output.Position, EyeClipEdge[EyeIndex]);
+			OutCullDistance.x = OutClipDistance.x = dot(Output.Position.xw, EyeClipEdge[EyeIndex].xw);
 
 			// Scale to the width of a single eye viewport
-			Output.Position.x *= 0.5 * Frame.HMDEyePaddingOffset;
+			Output.Position.x *= Frame.HMDViewportWidth;
 
 			// Shift to the eye viewport
-			Output.Position.x += (EyeOffsetScale[EyeIndex] * Output.Position.w) * (1.0f - 0.5 * Frame.HMDEyePaddingOffset);
+			Output.Position.x += Output.Position.w * Frame.HMDViewportOffset[EyeIndex];
 		}
 		
 		// Bias the depth

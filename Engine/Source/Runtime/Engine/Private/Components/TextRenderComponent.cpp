@@ -488,7 +488,7 @@ void FTextRenderSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 				Mesh.ReverseCulling = IsLocalToWorldDeterminantNegative();
 				Mesh.bDisableBackfaceCulling = false;
 				Mesh.Type = PT_TriangleList;
-				Mesh.DepthPriorityGroup = SDPG_World;
+				Mesh.DepthPriorityGroup = GetDepthPriorityGroup(View);
 				const bool bUseSelectedMaterial = GIsEditor && (View->Family->EngineShowFlags.Selection) ? IsSelected() : false;
 				Mesh.MaterialRenderProxy = TextMaterial->GetRenderProxy(bUseSelectedMaterial);
 				Mesh.bCanApplyViewModeOverrides = !bAlwaysRenderAsText;
@@ -522,7 +522,7 @@ void FTextRenderSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 		Mesh.ReverseCulling = IsLocalToWorldDeterminantNegative();
 		Mesh.bDisableBackfaceCulling = false;
 		Mesh.Type = PT_TriangleList;
-		Mesh.DepthPriorityGroup = SDPG_World;
+		Mesh.DepthPriorityGroup = GetStaticDepthPriorityGroup();
 		PDI->DrawMesh(Mesh, 1.0f);
 	}
 }

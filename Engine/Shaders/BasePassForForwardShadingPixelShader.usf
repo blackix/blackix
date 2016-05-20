@@ -308,7 +308,7 @@ void Main(
 		Color += LightmapColor.rgb * DiffuseColor;
 		IndirectIrradiance = LightmapColor.a;
 	#elif CACHED_POINT_INDIRECT_LIGHTING
-		#if MATERIALBLENDING_MASKED || MATERIALBLENDING_SOLID
+		#if MATERIALBLENDING_MASKED || MATERIALBLENDING_ALPHATOCOVERAGE || MATERIALBLENDING_SOLID
 
 			// Take the normal into account for opaque
 			FTwoBandSHVectorRGB PointIndirectLighting;

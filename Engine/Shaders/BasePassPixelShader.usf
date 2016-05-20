@@ -10,12 +10,14 @@
 #include "Material.usf"
 #include "VertexFactory.usf"
 #include "LightmapCommon.usf"  
+#include "LightingVolumeCommon.usf"
 #include "ReflectionEnvironmentShared.usf"
 #include "BRDF.usf"
 #include "Random.usf"
 #include "LightAccumulator.usf"
 #include "DeferredShadingCommon.usf"
 #include "VelocityCommon.usf"
+#include "EditorCompositing.usf"
 
 #define PREV_FRAME_COLOR	1
 #include "ScreenSpaceRayCast.usf"
@@ -44,7 +46,7 @@ SamplerState	PrevSceneColorSampler;
 	#define COMPILER_GLSL 0
 #endif
 
-#define EDITOR_ALPHA2COVERAGE (USE_EDITOR_COMPOSITING && FEATURE_LEVEL >= FEATURE_LEVEL_SM5 && !COMPILER_GLSL)
+#define TRANSLUCENCY_LIGHTING ((MATERIAL_SHADINGMODEL_DEFAULT_LIT || MATERIAL_SHADINGMODEL_SUBSURFACE) && (MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ADDITIVE))
 
 #if TRANSLUCENCY_LIGHTING_SURFACE || TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL
 
@@ -151,44 +153,6 @@ half3 GetImageBasedReflectionLighting(FMaterialPixelParameters MaterialParameter
 #if TRANSLUCENCY_LIGHTING_SURFACE_PERPIXEL
 	#include "ForEachLight.usf"
 #endif
-
-void GetVolumeLightingNonDirectional(float4 AmbientLightingVector, float3 DiffuseColor, inout float3 InterpolatedLighting, out float4 VolumeLighting)
-{
-	// Normal is not taken into account with non directional lighting, and only the ambient term of the SH coefficients are needed
-	FOneBandSHVectorRGB TranslucentLighting;
-	TranslucentLighting.R.V.x = AmbientLightingVector.r;
-	TranslucentLighting.G.V.x = AmbientLightingVector.g;
-	TranslucentLighting.B.V.x = AmbientLightingVector.b;
-
-	FOneBandSHVector DiffuseTransferSH = CalcDiffuseTransferSH1(1);
-	VolumeLighting = float4(DotSH1(TranslucentLighting, DiffuseTransferSH), AmbientLightingVector.a);
-	InterpolatedLighting = DiffuseColor * VolumeLighting.rgb;
-}
-
-void GetVolumeLightingDirectional(float4 AmbientLightingVector, float3 DirectionalLightingVector, float3 WorldNormal, float3 DiffuseColor, inout float3 InterpolatedLighting, out float4 VolumeLighting)
-{
-	float DirectionalLightingIntensity = GetMaterialTranslucencyDirectionalLightingIntensity();
-
-	AmbientLightingVector.rgb /= DirectionalLightingIntensity;
-	DirectionalLightingVector.rgb *= DirectionalLightingIntensity;
-
-	// Reconstruct the SH coefficients based on what was encoded
-	FTwoBandSHVectorRGB TranslucentLighting;
-	TranslucentLighting.R.V.x = AmbientLightingVector.r;
-	TranslucentLighting.G.V.x = AmbientLightingVector.g;
-	TranslucentLighting.B.V.x = AmbientLightingVector.b;
-	float3 NormalizedAmbientColor = AmbientLightingVector.rgb / Luminance( AmbientLightingVector.rgb );
-
-	// Scale the monocrome directional coefficients with the normalzed ambient color as an approximation to the uncompressed values
-	TranslucentLighting.R.V.yzw = DirectionalLightingVector.rgb * NormalizedAmbientColor.r;
-	TranslucentLighting.G.V.yzw = DirectionalLightingVector.rgb * NormalizedAmbientColor.g;
-	TranslucentLighting.B.V.yzw = DirectionalLightingVector.rgb * NormalizedAmbientColor.b;
-			
-	// Compute diffuse lighting which takes the normal into account
-	FTwoBandSHVector DiffuseTransferSH = CalcDiffuseTransferSH(WorldNormal, 1);
-	VolumeLighting = float4(max(half3(0,0,0), DotSH(TranslucentLighting, DiffuseTransferSH)), AmbientLightingVector.a);
-	InterpolatedLighting += DiffuseColor * VolumeLighting.rgb;
-}
 
 /** Calculates lighting for translucency. */
 float3 GetTranslucencyLighting(
@@ -502,71 +466,6 @@ void GetPrecomputedIndirectLightingAndSkyLight(
 	#endif
 }
 
-#if USE_EDITOR_COMPOSITING
-	bool bEnableEditorPrimitiveDepthTest;
-	int MSAASampleCount;
-
-	// depth in the red channel in DeviceZ
-	Texture2D		FilteredSceneDepthTexture;
-	SamplerState	FilteredSceneDepthTextureSampler;
-#endif
-
-// @return 0:translucent..1:opaque
-float ClipForEditorPrimitives(FMaterialPixelParameters MaterialParameters)
-{
-	float Ret = 1;
-
-#if USE_EDITOR_COMPOSITING && (FEATURE_LEVEL >= FEATURE_LEVEL_SM4 || MOBILE_EMULATION)
-	// Depth test manually if compositing editor primitives since the depth buffer is different (MSAA only)
-	BRANCH
-	if (bEnableEditorPrimitiveDepthTest)
-	{
-#if HAS_INVERTED_Z_BUFFER
-		//@todo-briank
-		bool bIsPerspective = (ResolvedView.ViewToClip._m33 < 1.0f);
-#endif	// HAS_INVERTED_Z_BUFFER
- 		
-		// dejitter the sample position and make a filtered lookup - for planes this allows to reconstruct a much less jittery depth comparison function, it however doesn't fix silhuetes
-		float DeviceZ = Texture2DSampleLevel(FilteredSceneDepthTexture, FilteredSceneDepthTextureSampler, (MaterialParameters.SvPosition.xy - Frame.TemporalAAParams.zw) * Frame.BufferSizeAndInvSize.zw, 0).r;
-
-		float PixelDeviceZ = MaterialParameters.SvPosition.z;
-
-		// Soft Bias with DeviceZ for best quality
-		const float DeviceDepthFade = 0.00005f;
-
-		// 0.5f is to bias around the actual value, 1 or 0 are another option
-		Ret = saturate(0.5f - (DeviceZ - PixelDeviceZ) / DeviceDepthFade);
-	}
-#endif	// USE_EDITOR_COMPOSITING && (FEATURE_LEVEL >= FEATURE_LEVEL_SM4 || MOBILE_EMULATION)
-
-	// Note: multiple returns cause strange HLSL compiler error for CV_Coverage in later code
-	return Ret;
-}
-
-
-#if EDITOR_ALPHA2COVERAGE != 0
-uint CustomAlpha2Coverage(inout float4 InOutColor)
-{
-	uint MaskedCoverage = 0xff;
-
-	MaskedCoverage = 0;
-
-	uint EnabledSampleCount = 1;
-
-	// todo: support non 4xMSAA as well
-
-	// conservatively on but can be 0 if the opacity is too low
-	if(InOutColor.a > 0.01f) { MaskedCoverage |= 0x1; }
-	if(InOutColor.a > 0.25f) { MaskedCoverage |= 0x2; ++EnabledSampleCount; }
-	if(InOutColor.a > 0.50f) { MaskedCoverage |= 0x4; ++EnabledSampleCount; }
-	if(InOutColor.a > 0.75f) { MaskedCoverage |= 0x8; ++EnabledSampleCount; }
-
-	// renormalize to make this sample the correct weight
-	InOutColor *= (float)MSAASampleCount / EnabledSampleCount;
-
-	return MaskedCoverage;
-}
-#endif
 
 void ApplyPixelDepthOffsetForBasePass(inout FMaterialPixelParameters MaterialParameters, FPixelMaterialInputs PixelMaterialInputs, inout FBasePassInterpolantsVSToPS BasePassInterpolants, out float OutDepth)
 {
