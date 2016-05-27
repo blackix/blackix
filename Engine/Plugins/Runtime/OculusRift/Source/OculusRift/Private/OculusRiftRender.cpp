@@ -323,7 +323,7 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			srcRect.Max.X = srcRect.Min.X + srcSize.X;
 			srcRect.Max.Y = srcRect.Min.Y + srcSize.Y;
 
-			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, FIntRect(), srcRect);
+			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), FIntRect(), srcRect);
 		}
 	}
 }
