@@ -997,6 +997,11 @@ void FClusteredForwardShadingSceneRenderer::InitClusteredLightInfo(FRHICommandLi
 
 		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
 		{
+			if (Info.ClusteredLights.Num() >= MAX_CLUSTERED_FORWARD_LIGHTS)
+			{
+				break;
+			}
+
 			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
 			const FLightSceneInfo* const LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
 
@@ -1044,10 +1049,6 @@ void FClusteredForwardShadingSceneRenderer::InitClusteredLightInfo(FRHICommandLi
 
 			bHasAnyLights = true;
 			Info.ClusteredLights.Add(LightSceneInfoCompact);
-			if (Info.ClusteredLights.Num() >= MAX_CLUSTERED_FORWARD_LIGHTS)
-			{
-				break;
-			}
 
 			// Sort them by type/features, for more coherency
 			Info.ClusteredLights.Sort([](const FLightSceneInfoCompact& A, const FLightSceneInfoCompact& B) {
