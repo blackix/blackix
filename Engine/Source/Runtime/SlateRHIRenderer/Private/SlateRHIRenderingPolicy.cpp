@@ -241,6 +241,9 @@ static FSceneView& CreateSceneView( FSceneViewFamilyContext& ViewFamilyContext, 
 	FrameUniformShaderParameters.FrameNumber = View->Family->FrameNumber;
 	FrameUniformShaderParameters.DirectionalLightShadowTexture = GWhiteTexture->TextureRHI;
 	FrameUniformShaderParameters.DirectionalLightShadowSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	FrameUniformShaderParameters.ClusteredLightGridTexture = GZeroUintVolumeTexture->TextureRHI;
+	FrameUniformShaderParameters.GlobalReflectionCaptureTextureArray = GBlackTexture->TextureRHI;
+	FrameUniformShaderParameters.GlobalReflectionCaptureSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
 	{
 		// setup a matrix to transform float4(SvPosition.xyz,1) directly to TranslatedWorld (quality, performance as we don't need to convert or use interpolator)
