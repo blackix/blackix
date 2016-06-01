@@ -1,3 +1,88 @@
+This is an early drop of a single-pass forward renderer for UE 4.11
+=============
+
+There are a good number of incomplete, unsupported and untested rendering features when using this renderer.
+In particular, as it is a forward renderer, normal screen-space effects or techniques that utilize a gbuffer are not supported (SSAO, SSR, the fancy subsurface shaders, decals, etc).  Shadowing, lighting and reflections are also limited in various ways.  We expect to make some improvements, particularly around shadows, and would like to get your feedback on what you feel is necessary for your project.
+
+The current set well-supported features include:
+- (HQ) lightmaps
+- stationary sky light
+- single, stationary directional light with limited CSM (4 cascades maximum)
+- small number of stationary or movable point lights, using stationary (distance field) shadowing or no shadowing
+- exponential height fog
+- single sphere or box reflection capture
+
+There are some new features:
+- MSAA (2, 4 samples are currently supported)
+- wide resolve filters (several settings are supported)
+- Transparency can be lit identically to opaque surfaces.  This can be enabled by using the "per pixel" translucency lighting mode in the material.
+- Translucent objects will otherwise be lit via as they are in deferred using the translucent lighting volume, except for the contribution of the main directional light, which will be evaluated the same as opaque (optional, see CLUSTERED_SUPPORTS_TRANSLUCENCY_LIGHTING_DIRECTIONAL_LIGHT)
+- Alpha-to-coverage support (both for opaque and masked materials, the logic for masked tries to work around the limitations of UE shader creation, see the shader).  Enabled in the translucent settings of the material.
+- Translucent depth prepass: allows rendering only the front-most faces of transparent objects, to avoid sorting issues.  In the translucent settings of the material.
+- Geometric Antialiasing: ad-hoc method to reduce shimmering on highly reflective objects, can be enabled per-material, uses global scale/bias set in the scene settings.
+- new IndirectLightingCache mode "point from volume" which averages the lighting samples over the bounds of the object, can give less flickering than the normal "point" mode.
+- "Fully Rough" like in mobile builds, allows for additional optimizations (useful for distance geometry)
+- "Cheap Shading" is new and enables a faster lighting model as well as skips shadow sampling.  This can be useful for lit particles.
+- Some changes were made to allow setting per-object stencil ref.
+- Modifications to HierarchicalInstancedStaticMesh that make the LOD behaviors behave much more closely to the non-instanced behavior.  We have used this extensively to reduce the number of draw calls in our levels.
+
+And some particular limitations, beyond the lack of gbuffer dependent effects:
+- Maximum of 8 simultaneously visible lights in a view (this can be easily lifted to 16 or 32). the scene may have many lights total, this is just a limit on per-frame visibility
+- Currently only movable objects will render into the CSM.  movable objects will be shadowed using static shadowing.  You can preview this using a similar visualization mode to the irradiance samples (see "Visualize Volume Shadow Samples")
+
+This build also includes support for monoscopic backgrounds / layered rendering.
+Backgrounds have a (fixable, if necessary) restriction where there won't be any dynamic lighting applied, just directional lighting.  We plan to fix this.
+
+To enable the monoscopic background, find the set of renderable objects you wish to comprise the background, and switch them to the SDPG_Background DepthPriorityGroup.  All objects in those groups will render once, and then the result will be copied to the background of both eyes (adjusting for their slightly different viewing frusta).
+You will also need to enable the feature by setting r.BackgroundLayerEnabled=1
+You can modify the background's resolution and resolve width independently of the scene to save additional overhead:
+see r.BackgroundLayerSP (50-150 is 50%->150% of the main scene resolution)
+and r.BackgroundLayerWideResolve (-1 => use default, otherwise see r.WideCustomResolve)
+Beware using depth fading in the background layer, it is currently unset (and will be the depth from the previous foreground frame in most cases).
+
+There are a number of compile-time changes to supported rendering features in a few locations:
+* ClusteredBasePassRendering.h (more details are in the source)
+  - CLUSTERED_SUPPORTS_TRANSLUCENT_VOLUME
+  - CLUSTERED_SUPPORTS_TRANSLUCENCY_LIGHTING_DIRECTIONAL_LIGHT
+  - CLUSTERED_SUPPORTS_SKY_LIGHT_REFLECTIONS
+  - CLUSTERED_USE_BOX_REFLECTION_CAPTURE
+* ClusteredShadingCommon.usf
+  - CLUSTERED_SUPPORT_DIRECTIONAL_LIGHTS 
+  - CLUSTERED_SUPPORT_SPOT_LIGHTS
+  - CLUSTERED_SUPPORT_LEGACY_ATTENUATION
+  - CLUSTERED_USE_PARALLAX_CORRECTION
+
+
+A number of additional refinements and features are planned, in addition to further performance optimizations.
+We do plan to try to support Temporal Antialiasing, and/or some form of normal-map filtering to reduce shimmering, though we suggest you use the "Texture Compositing" feature to modify roughness values from a normal map, this works very well for us (see https://docs.unrealengine.com/latest/INT/Engine/Content/Types/Textures/Composite/index.html)
+
+Console variables that control the renderer.  These can be toggled at runtime.
+
+; Enable/Disable the renderer
+r.UseClusteredForward=1
+
+; Set # of MSAA samples (2,4)
+r.MobileMSAA=4
+
+; Ranges from 0 (normal HW resolve with box filter) to 1,2,3 each of which has slightly wider filtering (12,16,20 samples)
+r.WideCustomResolve=1
+
+; Z-prepass
+; 1=not masked, "only if large" (not sure if this logic is implemented)
+; 2=all opaque (including mask)
+; 3=auto select (usually ==1)
+r.EarlyZPass=3
+
+; If movable objects are in the zpass
+r.EarlyZPassMovable=0
+
+; Determines how objects are sorted
+; 0 = "auto"
+; 1 = none
+; 2 = per policy (ok with zpass, less state changing??)
+; 3 = per policy per mesh
+;r.ForwardBasePassSort=0
+
 Unreal Engine
 =============
 
