@@ -67,11 +67,6 @@ static id<MTLDevice> GetMTLDevice(uint32& DeviceIndex)
 	
 	DeviceIndex = 0;
 	
-	if(FParse::Param(FCommandLine::Get(),TEXT("metaldebug")))
-	{
-		FPlatformMisc::SetEnvironmentVar(TEXT("METAL_DEVICE_WRAPPER_TYPE"), TEXT("1"));
-	}
-	
 	NSArray* DeviceList = MTLCopyAllDevices();
 	[DeviceList autorelease];
 	
@@ -248,35 +243,27 @@ void FMetalDeviceContext::BeginFrame()
 void FMetalDeviceContext::ClearFreeList()
 {
 	uint32 Index = 0;
- 	while(DelayedFreeLists.Num())
+	while(Index < DelayedFreeLists.Num())
 	{
 		FMetalDelayedFreeList* Pair = DelayedFreeLists[Index];
-		if(dispatch_semaphore_wait(Pair->Signal, DISPATCH_TIME_NOW))
+		Pair->FrameCount--;
+		if (Pair->FrameCount == 0)
 		{
-			Pair->FrameCount--;
-            if (Pair->FrameCount == 0)
-            {
-                dispatch_release(Pair->Signal);
-                for( id Entry : Pair->FreeList )
-                {
-                    CommandEncoder.UnbindObject(Entry);
-                    [Entry release];
-                }
-                delete Pair;
-                DelayedFreeLists.RemoveAt(0, 1, false);
-            }
-			else
+			if(dispatch_semaphore_wait(Pair->Signal, DISPATCH_TIME_NOW) == 0)
 			{
-				Index++;
-				if (Index >= DelayedFreeLists.Num())
+				dispatch_release(Pair->Signal);
+				for( id Entry : Pair->FreeList )
 				{
-					break;
+					CommandEncoder.UnbindObject(Entry);
+					[Entry release];
 				}
+				delete Pair;
+				DelayedFreeLists.RemoveAt(Index, 1, false);
 			}
 		}
 		else
 		{
-			break;
+			Index++;
 		}
 	}
 }
@@ -568,9 +555,7 @@ FMetalContext::FMetalContext(FMetalCommandQueue& Queue, bool const bIsImmediate)
 	// create a semaphore for multi-buffering the command buffer
 	CommandBufferSemaphore = dispatch_semaphore_create(FParse::Param(FCommandLine::Get(),TEXT("gpulockstep")) ? 1 : 3);
 	
-	TCHAR Value[2] = {0, 0};
-	FPlatformMisc::GetEnvironmentVariable(TEXT("METAL_DEVICE_WRAPPER_TYPE"), Value, 1);
-	bValidationEnabled = (Value[0] != 0 && Value[0] != TEXT('0'));
+	bValidationEnabled = false;
 }
 
 FMetalContext::~FMetalContext()
@@ -815,7 +800,7 @@ void FMetalContext::PrepareToDraw(uint32 PrimitiveType)
 	
 	// @todo Handle the editor not setting a depth-stencil target for the material editor's tiles which render to depth even when they shouldn't.
 	bool bRestoreState = false;
-	if (IsValidRef(CurrentBoundShaderState->PixelShader) && (CurrentBoundShaderState->PixelShader->Bindings.InOutMask & 0x8000) && StateCache.GetRenderPipelineDesc().PipelineDescriptor.depthAttachmentPixelFormat == MTLPixelFormatInvalid && !FShaderCache::IsPredrawCall())
+	if (IsValidRef(CurrentBoundShaderState->PixelShader) && (CurrentBoundShaderState->PixelShader->Bindings.InOutMask & 0x8000) && !StateCache.HasValidDepthStencilSurface() && StateCache.GetRenderPipelineDesc().PipelineDescriptor.depthAttachmentPixelFormat == MTLPixelFormatInvalid && !FShaderCache::IsPredrawCall())
 	{
 #if UE_BUILD_DEBUG
 		UE_LOG(LogMetal, Warning, TEXT("Binding a temporary depth-stencil surface as the bound shader pipeline that writes to depth/stencil but no depth/stencil surface was bound!"));
@@ -825,9 +810,14 @@ void FMetalContext::PrepareToDraw(uint32 PrimitiveType)
 		
 		FRHISetRenderTargetsInfo Info = StateCache.GetRenderTargetsInfo();
 		
-		FRHIResourceCreateInfo TexInfo;
-		FTexture2DRHIRef DepthStencil = RHICreateTexture2D(FBSize.width, FBSize.height, PF_DepthStencil, 1, 1, TexCreate_DepthStencilTargetable, TexInfo);
-		Info.DepthStencilRenderTarget.Texture = DepthStencil;
+		// Cache the fallback depth-stencil surface to reduce memory bloat - only need to recreate if size changes.
+		if (!IsValidRef(FallbackDepthStencilSurface) || FallbackDepthStencilSurface->GetSizeX() != FBSize.width || FallbackDepthStencilSurface->GetSizeY() != FBSize.height)
+		{
+			FRHIResourceCreateInfo TexInfo;
+			FallbackDepthStencilSurface = RHICreateTexture2D(FBSize.width, FBSize.height, PF_DepthStencil, 1, 1, TexCreate_DepthStencilTargetable, TexInfo);
+		}
+		check(IsValidRef(FallbackDepthStencilSurface));
+		Info.DepthStencilRenderTarget.Texture = FallbackDepthStencilSurface;
 		
 		StateCache.SetRenderTargetsInfo(Info, StateCache.GetVisibilityResultsBuffer(), false);
 		
