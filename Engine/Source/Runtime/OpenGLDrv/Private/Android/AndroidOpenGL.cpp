@@ -81,6 +81,8 @@ struct FPlatformOpenGLDevice
 	void ReInit();
 };
 
+// call out to JNI to see if the application was packaged for GearVR
+extern bool AndroidThunkCpp_IsGearVRApplication();
 
 FPlatformOpenGLDevice::~FPlatformOpenGLDevice()
 {

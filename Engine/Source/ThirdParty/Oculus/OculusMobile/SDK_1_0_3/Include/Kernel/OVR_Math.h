@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <float.h>
-#include "../OVR_CAPI.h" // Currently required due to a dependence on the ovrFovPort_ declaration.
+
 
 #if defined(_MSC_VER)
     #pragma warning(push)
@@ -88,6 +88,16 @@
 #endif
 
 
+//-------------------------------------------------------------------------------------
+// ***** OVR_MATH_UNUSED
+//
+// Independent OVR_MATH_UNUSED implementation for OVR_Math.h.
+
+#if defined(__GNUC__)
+#  define   OVR_MATH_UNUSED(a)   do {__typeof__ (&a) __attribute__ ((unused)) __tmp = &a; } while(0)
+#else
+#  define   OVR_MATH_UNUSED(a)   (a)
+#endif
 
 namespace OVR {
 
@@ -306,6 +316,21 @@ public:
 
     static inline float Tolerance()         { return MATH_FLOAT_TOLERANCE; }; // a default number for value equality tolerance
     static inline float SingularityRadius() { return MATH_FLOAT_SINGULARITYRADIUS; };    // for gimbal lock numerical problems    
+#if 1 // deprecated
+    static const float Pi;
+    static const float TwoPi;
+    static const float PiOver2;
+    static const float PiOver4;
+    static const float E;
+
+    static const float MaxValue;			// Largest positive float Value
+
+    static const float RadToDegreeFactor;
+    static const float DegreeToRadFactor;
+
+    static const float SmallestNonDenormal;	// ( numerator <= 4 ) / ( denominator > SmallestNonDenormal ) < infinite
+    static const float HugeNumber;			// HugeNumber * HugeNumber < infinite
+#endif // deprecated
 };
 
 // Double-precision Math constants class
@@ -316,7 +341,22 @@ public:
     typedef float OtherFloatType;
 
     static inline double Tolerance()         { return MATH_DOUBLE_TOLERANCE; }; // a default number for value equality tolerance
-    static inline double SingularityRadius() { return MATH_DOUBLE_SINGULARITYRADIUS; };    // for gimbal lock numerical problems    
+    static inline double SingularityRadius() { return MATH_DOUBLE_SINGULARITYRADIUS; };    // for gimbal lock numerical problems   
+#if 1 // deprecated
+    static const double Pi;
+    static const double TwoPi;
+    static const double PiOver2;
+    static const double PiOver4;
+    static const double E;
+
+    static const double MaxValue;				// Largest positive double Value
+
+    static const double RadToDegreeFactor;
+    static const double DegreeToRadFactor;
+
+    static const double SmallestNonDenormal;	// ( numerator <= 4 ) / ( denominator > SmallestNonDenormal ) < infinite
+    static const double HugeNumber;				// HugeNumber * HugeNumber < infinite
+#endif
 };
 
 typedef Math<float>  Mathf;
@@ -333,6 +373,12 @@ inline double DegreeToRad(double deg)        { return deg * MATH_DOUBLE_DEGREETO
 // Square function
 template<class T>
 inline T Sqr(T x) { return x*x; }
+
+// MERGE_MOBILE_SDK
+// Safe reciprocal square root.
+template<class T>
+T RcpSqrt( const T f ) { return ( f >= Math<T>::SmallestNonDenormal ) ? static_cast<T>( 1.0 / sqrt( f ) ) : Math<T>::HugeNumber; }
+// MERGE_MOBILE_SDK
 
 // Sign: returns 0 if x == 0, -1 if x < 0, and 1 if x > 0
 template<class T>
@@ -377,7 +423,7 @@ public:
     explicit Vector2(const Vector2<typename Math<T>::OtherFloatType> &src)
         : x((T)src.x), y((T)src.y) { }
 
-    static Vector2 Zero() { return Vector2(0, 0); }
+    static const Vector2 ZERO;
 
     // C-interop support.
     typedef  typename CompatibleTypes<Vector2<T> >::Type CompatibleType;
@@ -465,7 +511,7 @@ public:
     { 
         T div = LengthSq()*b.LengthSq();
         OVR_MATH_ASSERT(div != T(0));
-        T result = Acos((this->Dot(b))/sqrt(div));
+        T result = static_cast<T>( Acos((this->Dot(b))/sqrt(div)) );
         return result;
     }
 
@@ -473,7 +519,7 @@ public:
     T       LengthSq() const                     { return (x * x + y * y); }
 
     // Return vector length.
-    T       Length() const                       { return sqrt(LengthSq()); }
+    T       Length() const                       { return static_cast<T>( sqrt(LengthSq()) ); }
 
     // Returns squared distance between two points represented by vectors.
     T       DistanceSq(const Vector2& b) const   { return (*this - b).LengthSq(); }
@@ -555,6 +601,11 @@ public:
     explicit Vector3(T s) : x(s), y(s), z(s) { }
     explicit Vector3(const Vector3<typename Math<T>::OtherFloatType> &src)
         : x((T)src.x), y((T)src.y), z((T)src.z) { }
+    // MERGE_MOBILE_SDK
+    Vector3( const Vector2<T> & xy, const T z_ ) : x( xy.x ), y( xy.y ), z( z_ ) { }
+    // MERGE_MOBILE_SDK
+
+    static const Vector3 ZERO;
 
     static Vector3 Zero() { return Vector3(0, 0, 0); }
 
@@ -666,7 +717,7 @@ public:
     {
         T div = LengthSq()*b.LengthSq();
         OVR_MATH_ASSERT(div != T(0));
-        T result = Acos((this->Dot(b))/sqrt(div));
+        T result = static_cast<T>( Acos((this->Dot(b))/sqrt(div)) );
         return result;
     }
 
@@ -717,7 +768,25 @@ public:
 
     // Projects this vector onto a plane defined by a normal vector
     Vector3 ProjectToPlane(const Vector3& normal) const { return *this - this->ProjectTo(normal); }
+
+    // MERGE_MOBILE_SDK
+    void Set( const float x, const float y, const float z )
+    {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+    // MERGE_MOBILE_SDK
 };
+
+// MERGE_MOBILE_SDK
+// allow multiplication in order scalar * vector (member operator handles vector * scalar)
+template<class T>
+Vector3<T> operator* ( T s, const Vector3<T> & v )
+{
+    return Vector3<T>( v.x * s, v.y * s, v.z * s );
+}
+// MERGE_MOBILE_SDK
 
 typedef Vector3<float>  Vector3f;
 typedef Vector3<double> Vector3d;
@@ -758,7 +827,7 @@ public:
     explicit Vector4(const Vector4<typename Math<T>::OtherFloatType> &src)
         : x((T)src.x), y((T)src.y), z((T)src.z), w((T)src.w) { }
 
-    static Vector4 Zero() { return Vector4(0, 0, 0, 0); }
+    static const Vector4 ZERO;
 
     // C-interop support.
     typedef  typename CompatibleTypes< Vector4<T> >::Type CompatibleType;
@@ -906,17 +975,55 @@ template<class T>
 class Bounds3
 {
 public:
+    // MERGE_MOBILE_SDK
+    enum InitType { Init };
+    // MERGE_MOBILE_SDK
+
     Vector3<T>    b[2];
 
     Bounds3()
     {
     }
 
+    // MERGE_MOBILE_SDK
+    Bounds3( const InitType init )
+    {
+        OVR_MATH_UNUSED( init );
+        Clear();
+    }
+    // MERGE_MOBILE_SDK
+
     Bounds3( const Vector3<T> & mins, const Vector3<T> & maxs )
-{
+    {
         b[0] = mins;
         b[1] = maxs;
     }
+
+    // MERGE_MOBILE_SDK
+    Bounds3( const T minx, const T miny, const T minz,
+			const T maxx, const T maxy, const T maxz ) 
+    {
+        b[0].x = minx;
+        b[0].y = miny;
+        b[0].z = minz;
+
+        b[1].x = maxx;
+        b[1].y = maxy;
+        b[1].z = maxz;
+    }
+
+    Bounds3 operator * ( float const s ) const
+    {
+        return Bounds3<T>(  b[0].x * s, b[0].y * s, b[0].z * s,
+							b[1].x * s, b[1].y * s, b[1].z * s );
+    }
+
+    Bounds3 operator * ( Vector3<T> const & s ) const
+    {
+        return Bounds3<T>(  b[0].x * s.x, b[0].y * s.y, b[0].z * s.z,
+							b[1].x * s.x, b[1].y * s.y, b[1].z * s.z );
+    }
+    // MERGE_MOBILE_SDK
 
     void Clear()
     {
@@ -926,19 +1033,92 @@ public:
 
     void AddPoint( const Vector3<T> & v )
     {
-        b[0].x = (b[0].x < v.x ? b[0].x : v.x);
-        b[0].y = (b[0].y < v.y ? b[0].y : v.y);
-        b[0].z = (b[0].z < v.z ? b[0].z : v.z);
-        b[1].x = (v.x < b[1].x ? b[1].x : v.x);
-        b[1].y = (v.y < b[1].y ? b[1].y : v.y);
-        b[1].z = (v.z < b[1].z ? b[1].z : v.z);
+        b[0].x = OVRMath_Min( b[0].x, v.x );
+        b[0].y = OVRMath_Min( b[0].y, v.y );
+        b[0].z = OVRMath_Min( b[0].z, v.z );
+        b[1].x = OVRMath_Max( b[1].x, v.x );
+        b[1].y = OVRMath_Max( b[1].y, v.y );
+        b[1].z = OVRMath_Max( b[1].z, v.z );
     }
+
+    // MERGE_MOBILE_SDK
+    // return a bounds representing the union of a and b
+    static Bounds3 Union( const Bounds3 & a, const Bounds3 & b )
+    {
+        return Bounds3( OVRMath_Min( a.b[0].x, b.b[0].x ), 
+						OVRMath_Min( a.b[0].y, b.b[0].y ),
+						OVRMath_Min( a.b[0].z, b.b[0].z ),
+						OVRMath_Max( a.b[1].x, b.b[1].x ),
+						OVRMath_Max( a.b[1].y, b.b[1].y ),
+						OVRMath_Max( a.b[1].z, b.b[1].z ) );
+    }
+    // MERGE_MOBILE_SDK
 
     const Vector3<T> & GetMins() const { return b[0]; }
     const Vector3<T> & GetMaxs() const { return b[1]; }
 
     Vector3<T> & GetMins() { return b[0]; }
     Vector3<T> & GetMaxs() { return b[1]; }
+
+    // MERGE_MOBILE_SDK
+    Vector3<T>	GetSize() const { return Vector3f( b[1].x - b[0].x, b[1].y - b[0].y, b[1].z - b[0].z ); }
+
+    Vector3<T>	GetCenter() const { return Vector3f( ( b[0].x + b[1].x ) * 0.5f, ( b[0].y + b[1].y ) * 0.5f, ( b[0].z + b[1].z ) * 0.5f ); }
+
+    void Translate( const Vector3<T> & t )
+    {
+        b[0] += t;
+        b[1] += t;
+    }
+
+    bool IsInverted() const 
+    {
+        return	b[0].x > b[1].x &&
+				b[0].y > b[1].y &&
+				b[0].z > b[1].z;
+    }
+
+    bool Contains(const Vector3<T> &point, T expand = 0) const
+    {
+        return	point.x >= b[0].x - expand &&
+				point.y >= b[0].y - expand &&
+				point.z >= b[0].z - expand &&
+				point.x <= b[1].x + expand &&
+				point.y <= b[1].y + expand &&
+				point.z <= b[1].z + expand;
+    }
+
+    // returns the axial aligned bounds of inputBounds after transformation by pose
+    static Bounds3 Transform( const Pose<T> & pose, const Bounds3<T> & inBounds )
+    {
+        const Matrix3<T> rotation( pose.Rotation );
+        const Vector3<T> center = ( inBounds.b[0] + inBounds.b[1] ) * 0.5f;
+        const Vector3<T> extents = inBounds.b[1] - center;
+        const Vector3<T> newCenter = pose.Translation + rotation * center;
+        const Vector3<T> newExtents(
+			fabs( extents[0] * rotation.M[0][0] ) + fabs( extents[1] * rotation.M[0][1] ) + fabs( extents[2] * rotation.M[0][2] ),
+			fabs( extents[0] * rotation.M[1][0] ) + fabs( extents[1] * rotation.M[1][1] ) + fabs( extents[2] * rotation.M[1][2] ),
+			fabs( extents[0] * rotation.M[2][0] ) + fabs( extents[1] * rotation.M[2][1] ) + fabs( extents[2] * rotation.M[2][2] ) );
+        return Bounds3<T>( newCenter - newExtents, newCenter + newExtents );
+    }
+
+    static Bounds3 Transform( const Matrix4<T> & matrix, const Bounds3<T> & inBounds )
+    {
+        const Vector3<T> center = ( inBounds.b[0] + inBounds.b[1] ) * 0.5f;
+        const Vector3<T> extents = inBounds.b[1] - center;
+        const Vector3<T> newCenter = matrix.Transform( center );
+        const Vector3<T> newExtents(
+			fabs( extents[0] * matrix.M[0][0] ) + fabs( extents[1] * matrix.M[0][1] ) + fabs( extents[2] * matrix.M[0][2] ),
+			fabs( extents[0] * matrix.M[1][0] ) + fabs( extents[1] * matrix.M[1][1] ) + fabs( extents[2] * matrix.M[1][2] ),
+			fabs( extents[0] * matrix.M[2][0] ) + fabs( extents[1] * matrix.M[2][1] ) + fabs( extents[2] * matrix.M[2][2] ) );
+        return Bounds3<T>( newCenter - newExtents, newCenter + newExtents );
+    }
+
+    static Bounds3<T> Expand( const Bounds3<T> & b, const Vector3<T> & minExpand, const Vector3<T> & maxExpand )
+    {
+        return Bounds3<T>( b.GetMins() + minExpand, b.GetMaxs() + maxExpand );
+    }
+    // MERGE_MOBILE_SDK
 };
 
 typedef Bounds3<float>    Bounds3f;
@@ -1110,9 +1290,9 @@ public:
         }
 
         Vector3<T> unitAxis = axis.Normalized();
-        T          sinHalfAngle = sin(angle * T(0.5));
+        T          sinHalfAngle = static_cast<T>( sin(angle * T(0.5)) );
 
-        w = cos(angle * T(0.5));
+        w = static_cast<T>( cos(angle * T(0.5)) );
         x = unitAxis.x * sinHalfAngle;
         y = unitAxis.y * sinHalfAngle;
         z = unitAxis.z * sinHalfAngle;
@@ -1121,12 +1301,12 @@ public:
     // Constructs quaternion for rotation around one of the coordinate axis by an angle.
     Quat(Axis A, T angle, RotateDirection d = Rotate_CCW, HandedSystem s = Handed_R)
     {
-        T sinHalfAngle = s * d *sin(angle * T(0.5));
+        T sinHalfAngle = s * d * static_cast<T>( sin(angle * T(0.5)) );
         T v[3];
         v[0] = v[1] = v[2] = T(0);
         v[A] = sinHalfAngle;
 
-        w = cos(angle * T(0.5));
+        w = static_cast<T>( cos(angle * T(0.5)) );
         x = v[0];
         y = v[1];
         z = v[2];
@@ -1150,7 +1330,7 @@ public:
         }
         else 
         {
-            *axis = Vector3<T>(1, 0, 0);
+            *axis = Vector3<T>(static_cast<T>(1), static_cast<T>(0), static_cast<T>(0));
             *angle= T(0);
         }
     }
@@ -1335,6 +1515,47 @@ public:
         OVR_MATH_ASSERT(IsNormalized());    // Ensure input matrix is orthogonal
     }
 
+    // MERGE_MOBILE_SDK
+    // Constructs a quaternion that rotates 'from' to line up with 'to'.
+    explicit Quat( const Vector3<T> & from, const Vector3<T> & to )
+    {
+        const T cx = from.y * to.z - from.z * to.y;
+        const T cy = from.z * to.x - from.x * to.z;
+        const T cz = from.x * to.y - from.y * to.x;
+        const T dot = from.x * to.x + from.y * to.y + from.z * to.z;
+        const T crossLengthSq = cx * cx + cy * cy + cz * cz;
+        const T magnitude = static_cast<T>( sqrt( crossLengthSq + dot * dot ) );
+        const T cw = dot + magnitude;
+        if ( cw < Math<T>::SmallestNonDenormal )
+        {
+            const T sx = to.y * to.y + to.z * to.z;
+            const T sz = to.x * to.x + to.y * to.y;
+            if ( sx > sz )
+            {
+                const T rcpLength = RcpSqrt( sx );
+                x = T(0);
+                y = to.z * rcpLength;
+                z = - to.y * rcpLength;
+                w = T(0);
+            }
+            else
+            {
+                const T rcpLength = RcpSqrt( sz );
+                x = to.y * rcpLength;
+                y = - to.x * rcpLength;
+                z = T(0);
+                w = T(0);
+            }
+            return;
+        }
+        const T rcpLength = RcpSqrt( crossLengthSq + cw * cw );
+        x = cx * rcpLength;
+        y = cy * rcpLength;
+        z = cz * rcpLength;
+        w = cw * rcpLength;
+    }
+    // MERGE_MOBILE_SDK
+
     bool operator== (const Quat& b) const   { return x == b.x && y == b.y && z == b.z && w == b.w; }
     bool operator!= (const Quat& b) const   { return x != b.x || y != b.y || z != b.z || w != b.w; }
 
@@ -1360,7 +1581,7 @@ public:
     Vector3<T> Imag() const                 { return Vector3<T>(x,y,z); }
 
     // Get quaternion length.
-    T       Length() const                  { return sqrt(LengthSq()); }
+    T       Length() const                  { return static_cast<T>( sqrt(LengthSq()) ); }
 
     // Get quaternion length squared.
     T       LengthSq() const                { return (x * x + y * y + z * z + w * w); }
@@ -1438,6 +1659,13 @@ public:
                                                           w * b.w - x * b.x - y * b.y - z * b.z); }
     const Quat& operator*= (const Quat& b)  { *this = *this * b;  return *this; }
 
+    // MERGE_MOBILE_SDK
+    Vector3<T> operator* (const Vector3<T> & v) const
+    {
+        return Rotate(v);
+    }
+    // MERGE_MOBILE_SDK
+
     // 
     // this^p normalized; same as rotating by this p times.
     Quat PowNormalized(T p) const
@@ -1487,25 +1715,6 @@ public:
         }
     }
 
-    // Decompose a quat into quat = swing * twist, where twist is a rotation about axis,
-    // and swing is a rotation perpendicular to axis.
-    Quat GetSwingTwist(const Vector3<T>& axis, Quat* twist) const
-    {
-        OVR_MATH_ASSERT(twist);
-        OVR_MATH_ASSERT(axis.IsNormalized());
-
-        // Create a normalized quaternion from projection of (x,y,z) onto axis
-        T d = axis.Dot(Vector3<T>(x, y, z));
-        *twist = Quat(axis.x*d, axis.y*d, axis.z*d, w);
-        T len = twist->Length();
-        if (len == 0)
-            twist->w = T(1);    // identity
-        else
-            twist /= len;       // normalize
-
-        return *this * twist.Inverted();
-    }
-
     // Normalized linear interpolation of quaternions
     // NOTE: This function is a bad approximation of Slerp()
     // when the angle between the *this and b is large.
@@ -1519,7 +1728,7 @@ public:
     Quat Slerp(const Quat& b, T s) const
     {
         Vector3<T> delta = (b * this->Inverted()).ToRotationVector();
-        return (FromRotationVector(delta * s) * *this).Normalized();    // normalize so errors don't accumulate
+        return FromRotationVector(delta * s) * *this;
     }
 
     // Spherical linear interpolation: much faster for small rotations, accurate for large rotations. See FastTo/FromRotationVector
@@ -1529,46 +1738,28 @@ public:
         return (FastFromRotationVector(delta * s, false) * *this).Normalized();
     }
 
+    // MERGE_MOBILE_SDK
+    // FIXME: This is opposite of Lerp for some reason.  It goes from 1 to 0 instead of 0 to 1.  Leaving it as a gift for future generations to deal with.
+    Quat Nlerp(const Quat& other, T a) const
+    {
+        T sign = (Dot(other) >= 0.0f) ? 1.0f : -1.0f;
+        return (*this * sign * a + other * (1-a)).Normalized();
+    }
+    // MERGE_MOBILE_SDK
+
     // Rotate transforms vector in a manner that matches Matrix rotations (counter-clockwise,
     // assuming negative direction of the axis). Standard formula: q(t) * V * q(t)^-1. 
     Vector3<T> Rotate(const Vector3<T>& v) const
     {
-        OVR_MATH_ASSERT(isnan(w) || IsNormalized());
-
-        // rv = q * (v,0) * q'
-        // Same as rv = v + real * cross(imag,v)*2 + cross(imag, cross(imag,v)*2);
-
-        // uv = 2 * Imag().Cross(v);
-        T uvx = T(2) * (y*v.z - z*v.y);
-        T uvy = T(2) * (z*v.x - x*v.z);
-        T uvz = T(2) * (x*v.y - y*v.x);
-
-        // return v + Real()*uv + Imag().Cross(uv);
-        return Vector3<T>(v.x + w*uvx + y*uvz - z*uvy,
-                          v.y + w*uvy + z*uvx - x*uvz,
-                          v.z + w*uvz + x*uvy - y*uvx);
+        return ((*this * Quat<T>(v.x, v.y, v.z, T(0))) * Inverted()).Imag();
     }
 
     // Rotation by inverse of *this
     Vector3<T> InverseRotate(const Vector3<T>& v) const
     {
-        OVR_MATH_ASSERT(IsNormalized());
-
-        // rv = q' * (v,0) * q
-        // Same as rv = v + real * cross(-imag,v)*2 + cross(-imag, cross(-imag,v)*2);
-        //      or rv = v - real * cross(imag,v)*2 + cross(imag, cross(imag,v)*2);
-
-        // uv = 2 * Imag().Cross(v);
-        T uvx = T(2) * (y*v.z - z*v.y);
-        T uvy = T(2) * (z*v.x - x*v.z);
-        T uvz = T(2) * (x*v.y - y*v.x);
-
-        // return v - Real()*uv + Imag().Cross(uv);
-        return Vector3<T>(v.x - w*uvx + y*uvz - z*uvy,
-                          v.y - w*uvy + z*uvx - x*uvz,
-                          v.z - w*uvz + x*uvy - y*uvx);
+        return Inverted().Rotate(v);
     }
-    
+
     // Inversed quaternion rotates in the opposite direction.
     Quat        Inverted() const
     {
@@ -1659,19 +1850,19 @@ public:
         { // South pole singularity
             if (a) *a = T(0);
             if (b) *b = -S*D*((T)MATH_DOUBLE_PIOVER2);
-            if (c) *c = S*D*atan2(T(2)*(psign*Q[A1] * Q[A2] + w*Q[A3]), ww + Q22 - Q11 - Q33 );
+            if (c) *c = S*D*static_cast<T>( atan2(T(2)*(psign*Q[A1] * Q[A2] + w*Q[A3]), ww + Q22 - Q11 - Q33 ) );
         }
         else if (s2 > T(1) - singularityRadius)
         {  // North pole singularity
             if (a) *a = T(0);
             if (b) *b = S*D*((T)MATH_DOUBLE_PIOVER2);
-            if (c) *c = S*D*atan2(T(2)*(psign*Q[A1] * Q[A2] + w*Q[A3]), ww + Q22 - Q11 - Q33);
+            if (c) *c = S*D*static_cast<T>( atan2(T(2)*(psign*Q[A1] * Q[A2] + w*Q[A3]), ww + Q22 - Q11 - Q33) );
         }
         else
         {
-            if (a) *a = -S*D*atan2(T(-2)*(w*Q[A1] - psign*Q[A2] * Q[A3]), ww + Q33 - Q11 - Q22);
-            if (b) *b = S*D*asin(s2);
-            if (c) *c = S*D*atan2(T(2)*(w*Q[A3] - psign*Q[A1] * Q[A2]), ww + Q11 - Q22 - Q33);
+            if (a) *a = -S*D*static_cast<T>( atan2(T(-2)*(w*Q[A1] - psign*Q[A2]*Q[A3]), ww + Q33 - Q11 - Q22) );
+            if (b) *b = S*D*static_cast<T>( asin(s2) );
+            if (c) *c = S*D*static_cast<T>( atan2(T(2)*(w*Q[A3] - psign*Q[A1]*Q[A2]), ww + Q11 - Q22 - Q33) );
         }      
     }
 
@@ -1739,6 +1930,15 @@ public:
         }
     }
 };
+
+// MERGE_MOBILE_SDK
+// allow multiplication in order vector * quat (member operator handles quat * vector)
+template<class T>
+Vector3<T> operator* ( const Vector3<T> & v, const Quat<T> & q )
+{
+    return Vector3<T>( q * v );
+}
+// MERGE_MOBILE_SDK
 
 typedef Quat<float>  Quatf;
 typedef Quat<double> Quatd;
@@ -1925,6 +2125,8 @@ OVR_MATH_STATIC_ASSERT((sizeof(Posef) == sizeof(Quatf) + sizeof(Vector3f)), "siz
 template<class T>
 class Matrix4
 {
+    static const Matrix4 IdentityValue;
+
 public:
     typedef T ElementType;
     static const size_t Dimension = 4;
@@ -2055,7 +2257,7 @@ public:
         return result;
     }
 
-    static Matrix4 Identity()  { return Matrix4(); }
+    static const Matrix4& Identity()  { return IdentityValue; }
 
     void SetIdentity()
     {
@@ -2198,7 +2400,9 @@ public:
 
     Vector3<T> Transform(const Vector3<T>& v) const
     {
-        const T rcpW = T(1) / (M[3][0] * v.x + M[3][1] * v.y + M[3][2] * v.z + M[3][3]);
+        const T w = (M[3][0] * v.x + M[3][1] * v.y + M[3][2] * v.z + M[3][3]);
+        OVR_MATH_ASSERT( fabs( w ) >= Math<T>::SmallestNonDenormal );
+        const T rcpW = T(1) / w;
         return Vector3<T>((M[0][0] * v.x + M[0][1] * v.y + M[0][2] * v.z + M[0][3]) * rcpW,
                           (M[1][0] * v.x + M[1][1] * v.y + M[1][2] * v.z + M[1][3]) * rcpW,
                           (M[2][0] * v.x + M[2][1] * v.y + M[2][2] * v.z + M[2][3]) * rcpW);
@@ -2255,7 +2459,7 @@ public:
     Matrix4 Inverted() const
     {
         T det = Determinant();
-        OVR_MATH_ASSERT(det != 0);
+        OVR_MATH_ASSERT(fabs(det) >= Math<T>::SmallestNonDenormal);
         return Adjugated() * (T(1)/det);
     }
 
@@ -2305,19 +2509,19 @@ public:
         { // South pole singularity
             *a = T(0);
             *b = -S*D*((T)MATH_DOUBLE_PIOVER2);
-            *c = S*D*atan2( psign*M[A2][A1], M[A2][A2] );
+            *c = S*D*static_cast<T>( atan2( psign*M[A2][A1], M[A2][A2] ) );
         }
         else if (pm > T(1) - singularityRadius)
         { // North pole singularity
             *a = T(0);
             *b = S*D*((T)MATH_DOUBLE_PIOVER2);
-            *c = S*D*atan2( psign*M[A2][A1], M[A2][A2] );
+            *c = S*D*static_cast<T>( atan2( psign*M[A2][A1], M[A2][A2] ) );
         }
         else
         { // Normal case (nonsingular)
-            *a = S*D*atan2( -psign*M[A2][A3], M[A3][A3] );
-            *b = S*D*asin(pm);
-            *c = S*D*atan2( -psign*M[A1][A2], M[A1][A1] );
+            *a = S*D*static_cast<T>( atan2( -psign*M[A2][A3], M[A3][A3] ) );
+            *b = S*D*static_cast<T>( asin(pm) );
+            *c = S*D*static_cast<T>( atan2( -psign*M[A1][A2], M[A1][A1] ) );
         }
     }
 
@@ -2538,12 +2742,29 @@ public:
                        0,     0,      1);
     }
 
+    // MERGE_MOBILE_SDK
+    static Matrix4 RotationAxisAngle(const Vector3<T> &axis, T angle) {
+	T x = axis.x;
+	T y = axis.y;
+	T z = axis.z;
+	T c = cos(angle);
+	T s = sin(angle);
+	T t = 1 - c;
+	Matrix4 m(
+		t*x*x+c,   t*x*y-z*s, t*x*z+y*s,
+		t*x*y+z*s, t*y*y+c,   t*y*z-x*s,
+		y*x*z-y*s, t*y*z+x*s, t*z*z+c);
+	return m;
+    }
+    // MERGE_MOBILE_SDK
+
     // LookAtRH creates a View transformation matrix for right-handed coordinate system.
     // The resulting matrix points camera from 'eye' towards 'at' direction, with 'up'
     // specifying the up vector. The resulting matrix should be used with PerspectiveRH
     // projection.
     static Matrix4 LookAtRH(const Vector3<T>& eye, const Vector3<T>& at, const Vector3<T>& up)
     {
+        // FIXME: this fails when looking straight up, should probably at least assert
         Vector3<T> z = (eye - at).Normalized();  // Forward
         Vector3<T> x = up.Cross(z).Normalized(); // Right
         Vector3<T> y = z.Cross(x);
@@ -2560,6 +2781,7 @@ public:
     // specifying the up vector. 
     static Matrix4 LookAtLH(const Vector3<T>& eye, const Vector3<T>& at, const Vector3<T>& up)
     {
+        // FIXME: this fails when looking straight up, should probably at least assert
         Vector3<T> z = (at - eye).Normalized();  // Forward
         Vector3<T> x = up.Cross(z).Normalized(); // Right
         Vector3<T> y = z.Cross(x);
@@ -2571,6 +2793,32 @@ public:
         return m;
     }
     
+    // MERGE_MOBILE_SDK
+    static Matrix4 CreateFromBasisVectors( Vector3<T> const & zBasis, Vector3<T> const & up )
+    {
+	    OVR_MATH_ASSERT( zBasis.IsNormalized() );
+	    OVR_MATH_ASSERT( up.IsNormalized() );
+	    T dot = zBasis.Dot( up );
+	    if ( dot < (T)-0.9999 || dot > (T)0.9999 )
+	    {
+		    // z basis cannot be parallel to the specified up
+		    OVR_MATH_ASSERT( dot >= (T)-0.9999 || dot <= (T)0.9999 );
+		    return Matrix4<T>();
+	    }
+	
+	    Vector3<T> xBasis = up.Cross( zBasis );
+	    xBasis.Normalize();
+
+	    Vector3<T> yBasis = zBasis.Cross( xBasis );
+        // no need to normalize yBasis because xBasis and zBasis must already be orthogonal
+
+	    return Matrix4<T>(	xBasis.x, yBasis.x, zBasis.x, (T)0,
+						    xBasis.y, yBasis.y, zBasis.y, (T)0,
+						    xBasis.z, yBasis.z, zBasis.z, (T)0,
+						        (T)0,     (T)0,     (T)0, (T)1 );
+    }
+    // MERGE_MOBILE_SDK
+
     // PerspectiveRH creates a right-handed perspective projection matrix that can be
     // used with the Oculus sample renderer. 
     //  yfov   - Specifies vertical field of view in radians.
@@ -2583,7 +2831,7 @@ public:
     static Matrix4 PerspectiveRH(T yfov, T aspect, T znear, T zfar)
     {
         Matrix4 m;
-        T tanHalfFov = tan(yfov * T(0.5));
+        T tanHalfFov = static_cast<T>( tan(yfov * T(0.5)) );
 
         m.M[0][0] = T(1) / (aspect * tanHalfFov);
         m.M[1][1] = T(1) / tanHalfFov;
@@ -2662,6 +2910,8 @@ typedef Matrix4<double> Matrix4d;
 template<class T>
 class Matrix3
 {
+    static const Matrix3 IdentityValue;
+
 public:
     typedef T ElementType;
     static const size_t Dimension = 3;
@@ -2778,7 +3028,7 @@ public:
         return result;
     }
 
-    static Matrix3 Identity()  { return Matrix3(); }
+    static const Matrix3& Identity()  { return IdentityValue; }
 
     void SetIdentity()
     {
@@ -3024,7 +3274,7 @@ public:
         const  Matrix3<T>& m = *this;
         T d = Determinant();
 
-        OVR_MATH_ASSERT(d != 0);
+        OVR_MATH_ASSERT(fabs(d) >= Math<T>::SmallestNonDenormal);
         T s = T(1)/d;
 
         a.M[0][0] = s * (m.M[1][1] * m.M[2][2] - m.M[1][2] * m.M[2][1]);   
@@ -3465,7 +3715,7 @@ public:
         const this_type& m = *this;
         T d = Determinant();
 
-        OVR_MATH_ASSERT(d != 0);
+        OVR_MATH_ASSERT(fabs(d) >= Math<T>::SmallestNonDenormal);
         T s = T(1)/d;
 
         a(0,0) = s * (m(1,1) * m(2,2) - m(1,2) * m(2,1));   
@@ -3703,6 +3953,7 @@ struct FovPort
     FovPort ( float u, float d, float l, float r ) :
         UpTan(u), DownTan(d), LeftTan(l), RightTan(r) { }
 
+#if 0
     // C-interop support: FovPort <-> ovrFovPort (implementation in OVR_CAPI.cpp).
     FovPort(const ovrFovPort &src)
         : UpTan(src.UpTan), DownTan(src.DownTan), LeftTan(src.LeftTan), RightTan(src.RightTan)
@@ -3717,6 +3968,7 @@ struct FovPort
         result.DownTan  = DownTan;
         return result;
     }
+#endif
 
     static FovPort CreateFromRadians(float horizontalFov, float verticalFov)
     {

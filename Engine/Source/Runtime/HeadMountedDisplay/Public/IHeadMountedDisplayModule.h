@@ -35,17 +35,6 @@ public:
 	{
 		bool operator()(IHeadMountedDisplayModule& A, IHeadMountedDisplayModule& B) const
 		{
-			FHeadMountedDisplayModuleExt* AExt = FHeadMountedDisplayModuleExt::GetExtendedInterface(&A);
-			FHeadMountedDisplayModuleExt* BExt = FHeadMountedDisplayModuleExt::GetExtendedInterface(&B);
-
-			bool IsHMDConnectedA = AExt ? AExt->IsHMDConnected() : false;
-			bool IsHMDConnectedB = BExt ? BExt->IsHMDConnected() : false;
-
-			if (IsHMDConnectedA && !IsHMDConnectedB)
-				return true;
-			if (!IsHMDConnectedA && IsHMDConnectedB)
-				return false;
-
 			return A.GetHMDPriority() > B.GetHMDPriority();
 		}
 	};

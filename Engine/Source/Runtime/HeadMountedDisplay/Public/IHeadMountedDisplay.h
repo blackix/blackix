@@ -79,8 +79,24 @@ public:
 
 	/**
 	 * If the HMD supports positional tracking via a sensor, this returns the frustum properties (all in game-world space) of the sensor.
+	 * Returns false, if the sensor at the specified index is not available.
 	 */
-	virtual void	GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const = 0;
+	//DEPRECATED(4.13, "Please use GetNumOfTrackingSensors / GetTrackingSensorProperties functions")
+	virtual void	GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+	{
+		GetTrackingSensorProperties(0, OutOrigin, OutOrientation, OutHFOV, OutVFOV, OutCameraDistance, OutNearPlane, OutFarPlane);
+	}
+
+	/**
+	 *  Returns total number of tracking sensors supported by the HMD. To be used along with GetP
+	 */
+	virtual uint32	GetNumOfTrackingSensors() const { return 0; }
+
+	/**
+	 * If the HMD supports positional tracking via a sensor, this returns the frustum properties (all in game-world space) of the sensor.
+	 * Returns false, if the sensor at the specified index is not available.
+	 */
+	virtual bool	GetTrackingSensorProperties(uint8 InSensorIndex, FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const { return false; }
 
 	/**
 	 * Accessors to modify the interpupillary distance (meters)
@@ -145,23 +161,6 @@ public:
 	 * Exec handler to allow console commands to be passed through to the HMD for debugging
 	 */
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar) = 0;
-
-	/**
-	 * Returns true, if HMD allows fullscreen mode.
-	 */
-	virtual bool IsFullscreenAllowed() { return true; }
-
-	/**
-	 * Saves / loads pre-fullscreen rectangle. Could be used to store saved original window position
-	 * before switching to fullscreen mode.
-	 */
-	virtual void PushPreFullScreenRect(const FSlateRect& InPreFullScreenRect);
-	virtual void PopPreFullScreenRect(FSlateRect& OutPreFullScreenRect);
-
-	/**
-	 * A callback that is called when screen mode is changed (fullscreen <-> window).
-	 */
-	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) = 0;
 
 	/** Returns true if positional tracking enabled and working. */
 	virtual bool IsPositionalTrackingEnabled() const = 0;
@@ -387,9 +386,6 @@ private:
 
 	void GatherLateUpdatePrimitives(USceneComponent* Component, TArray<LateUpdatePrimitiveInfo>& Primitives);
 
-	/** Stores the dimensions of the window before we moved into fullscreen mode, so they can be restored */
-	FSlateRect PreFullScreenRect;
-	
 	/** Primitives that need late update before rendering */
 	TArray<LateUpdatePrimitiveInfo> LateUpdatePrimitives;
 

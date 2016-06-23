@@ -1,0 +1,55 @@
+#Console Commands
+
+###Configuration
+
+    stereo on|off               Enables/Disables stereo mode
+    stereo e=0.064              Eye distance (m)
+    stereo w2m=100              Overrides default worldunits-to-meters scale
+    stereo ncp=10 fcp=10000     Overrides near clipping and/or far clipping planes for stereo rendering (in cm)
+    stereo cs=1 ps=1            Overrides camera and position scale
+    stereo show                 Shows current ipd and head model offset
+    stereo reset                Resets stereo settings
+
+    hmd enable|disable          Enables/Disables HMD
+    hmd pd [0..3.0]             Sets pixel density in the center (default is 1.0)
+    hmd sp [30..300]            Overrides screenpercentage for stereo mode. (Deprecated, use 'hmd pd xxx' instead)
+    hmd sp reset                Resets to original r.ScreenPercentage value. (Deprecated, use 'hmd pd 1' instead)
+    hmd hqdistortion on|off     Enables/Disables high-quality distortion
+    hmd mirror on|off           Enables/Disables mirroring to the desktop window
+    hmd mirror mode [0..4]      Sets mirror mode: 0=Distorted, 1=Undistorted, 2=SingleEye, 3=SingleEye Letterboxed, 4=SingleEye Cropped
+
+    hmdpos on|off|toggle        Enables/Disables/Toggles positional tracking
+    hmdpos enforce on|off       Enables/Disables head tracking even if not in stereo (for testing purposes)
+    hmdpos reset {yaw}          Resets position and rotation, applies yaw (in degrees) if provided
+    hmdpos resetrot {yaw}       Resets rotation only, applies yaw (in degrees) if provided
+    hmdpos resetpos             Resets position only
+    hmdpos show                 Outputs status of positional tracking to log
+    hmdpos floor|eye            Selects tracking origin
+
+
+###Misc
+
+    hmd stats                   Shows HMD-related stats
+    hmd grid                    Toggles lens-centered grid
+    hmd updateongt on|off       Enables/Disables updating HMD pose on game thread.  On by default.
+    hmd updateonrt on|off       Enables/Disables updating HMD pose on render thread, for lower latency.  On by default.
+
+    hmd setint PerfHUDMode [0..4]
+        Selects performance HUD mode, set to 0 to disable
+
+    hmd setint DebugHudStereoMode [0..3]    
+        Selects debug HUD stereo mode, set to 0 to disable
+
+    hmdversion                  Prints Oculus SDK version used and Oculus Plugin info
+
+
+###Debugging  (not included in shipping builds)
+
+    hmddbg showcamera [on|off]  Draws a tracking camera frustum in the game's world.
+    hmddbg cubes [on|off]       Draws a 'sea of cubes' over the existing scene.
+    hmddbg posoff {x} {y} {z}   Sets position offset
+
+
+
+**No license is granted by Oculus to any Epic Engine Code or to any Third Party Software contained in the Engine Code.
+Your use of Engine Code and any Third Party Software is governed by the Unreal Engine End User License Agreement.**
