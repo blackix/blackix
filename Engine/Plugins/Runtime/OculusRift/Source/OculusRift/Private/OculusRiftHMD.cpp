@@ -39,6 +39,15 @@ static void OVR_CDECL OvrLogCallback(uintptr_t userData, int level, const char* 
 	GLog->Logf(TEXT("OCULUS:%s %s"), levelStr, *tbuf);
 }
 #endif // !UE_BUILD_SHIPPING
+
+static FString GetVersionString()
+{
+	const char* Results = ovr_GetVersionString();
+	FString s = FString::Printf(TEXT("%s, LibOVR: %s, SDK: %s, built %s, %s"), *FEngineVersion::Current().ToString(), UTF8_TO_TCHAR(Results),
+		UTF8_TO_TCHAR(OVR_VERSION_STRING), UTF8_TO_TCHAR(__DATE__), UTF8_TO_TCHAR(__TIME__));
+	return s;
+}
+
 #endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 FOculusRiftPlugin::FOculusRiftPlugin()
@@ -69,6 +78,23 @@ bool FOculusRiftPlugin::Initialize()
 
 			if (OVR_SUCCESS(result))
 			{
+				FString identityStr;
+				static const TCHAR* AppNameKey = TEXT("ApplicationName:");
+				static const TCHAR* AppVersionKey = TEXT("ApplicationVersion:");
+				static const TCHAR* EngineNameKey = TEXT("EngineName:");
+				static const TCHAR* EngineVersionKey = TEXT("EngineVersion:");
+				static const TCHAR* EnginePluginNameKey = TEXT("EnginePluginName:");
+				static const TCHAR* EnginePluginVersionKey = TEXT("EnginePluginVersion:");
+				static const TCHAR* EngineEditorKey = TEXT("EngineEditor:");
+
+				identityStr += FString(AppNameKey) + FString(FPlatformProcess::ExecutableName()) + TEXT("\n");
+				identityStr += FString(EngineNameKey) + TEXT("UnrealEngine") + TEXT("\n");
+				identityStr += FString(EngineVersionKey) + FEngineVersion::Current().ToString() + TEXT("\n");
+				identityStr += FString(EnginePluginNameKey) + TEXT("OculusRiftHMD") + TEXT("\n");
+				identityStr += FString(EnginePluginVersionKey) + GetVersionString() + TEXT("\n");
+				identityStr += FString(EngineEditorKey) + ((GIsEditor) ? TEXT("true") : TEXT("false")) + TEXT("\n");
+
+				ovr_IdentifyClient(TCHAR_TO_ANSI(*identityStr));
 				bInitialized = true;
 			}
 			else if (ovrError_LibLoad == result)
@@ -399,13 +425,6 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 		return false;
 	}
 
-	FApp::SetUseVRFocus(Settings->IsStereoEnabled());
-	// check the current state of VR focus and propagate it to the Engine
-	if (pCustomPresent)
-	{
-		FApp::SetHasVRFocus(FApp::UseVRFocus() && pCustomPresent->GetLastVisibilityState());
-	}
-
 	FGameFrame* CurrentFrame = GetFrame();
 	FSettings*  MasterSettings = GetSettings();
 
@@ -426,6 +445,10 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 		}
 
 		ovr_GetSessionStatus(OvrSession, &CurrentFrame->SessionStatus);
+
+		FApp::SetUseVRFocus(true);
+		FApp::SetHasVRFocus(CurrentFrame->SessionStatus.IsVisible != ovrFalse);
+
 		// Do not pause if Editor is running (otherwise it will become very lagy)
 		if (!GIsEditor)
 		{
@@ -659,9 +682,19 @@ bool FOculusRiftHMD::HasValidTrackingPosition()
 	return (frame && frame->Settings->Flags.bHmdPosTracking && frame->Flags.bHaveVisionTracking);
 }
 
+uint32 FOculusRiftHMD::GetNumOfTrackingSensors() const
+{
+	if (!Session->IsActive())
+	{
+		return 0;
+	}
+	FOvrSessionShared::AutoSession OvrSession(Session);
+	return ovr_GetTrackerCount(OvrSession);
+}
+
 #define SENSOR_FOCAL_DISTANCE			1.00f // meters (focal point to origin for position)
 
-void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
+bool FOculusRiftHMD::GetTrackingSensorProperties(uint8 InSensorIndex, FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const
 {
 	OutOrigin = FVector::ZeroVector;
 	OutOrientation = FQuat::Identity;
@@ -670,12 +703,17 @@ void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, F
 	const auto frame = GetFrame();
 	if (!Session->IsActive() || !frame)
 	{
-		return;
+		return false;
 	}
 
 	FOvrSessionShared::AutoSession OvrSession(Session);
-	const ovrTrackerDesc TrackerDesc = ovr_GetTrackerDesc(OvrSession, 0);
-	const ovrTrackerPose TrackerPose = ovr_GetTrackerPose(OvrSession, 0);
+	unsigned int NumOfSensors = ovr_GetTrackerCount(OvrSession);
+	if (InSensorIndex >= NumOfSensors)
+	{
+		return false;
+	}
+	const ovrTrackerDesc TrackerDesc = ovr_GetTrackerDesc(OvrSession, InSensorIndex);
+	const ovrTrackerPose TrackerPose = ovr_GetTrackerPose(OvrSession, InSensorIndex);
 
 	const float WorldToMetersScale = frame->GetWorldToMetersScale();
 	check(WorldToMetersScale >= 0);
@@ -696,6 +734,7 @@ void FOculusRiftHMD::GetPositionalTrackingCameraProperties(FVector& OutOrigin, F
 		OutOrientation = Orient;
 		OutOrigin = Pos + frame->Settings->PositionOffset;
 	}
+	return true;
 }
 
 void FOculusRiftHMD::RebaseObjectOrientationAndPosition(FVector& OutPosition, FQuat& OutOrientation) const
@@ -717,6 +756,7 @@ void FOculusRiftHMD::EnableLowPersistenceMode(bool Enable)
 ovrTrackingState FGameFrame::GetTrackingState(ovrSession InOvrSession) const
 {
 	const FSettings* CurrentSettings = GetSettings();
+	check(CurrentSettings);
 	const double DisplayTime = ovr_GetPredictedDisplayTime(InOvrSession, FrameNumber);
 	const bool LatencyMarker = (IsInRenderingThread() || !CurrentSettings->Flags.bUpdateOnRT);
 	return ovr_GetTrackingState(InOvrSession, DisplayTime, LatencyMarker);
@@ -936,6 +976,23 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			Settings->Flags.bDrawGrid = !Settings->Flags.bDrawGrid;
 			return true;
 		}
+		else if (FParse::Command(&Cmd, TEXT("CUBEMAP")))
+		{
+			ECubemapType CMType = CM_Rift;
+			FVector off(FVector::ZeroVector);
+			float yaw = 0.f;
+			FParse::Value(Cmd, TEXT("XOFF="), off.X);
+			FParse::Value(Cmd, TEXT("YOFF="), off.Y);
+			FParse::Value(Cmd, TEXT("ZOFF="), off.Z);
+			FParse::Value(Cmd, TEXT("YAW="), yaw);
+
+			if (FCString::Strfind(Cmd+1, TEXT("GEARVR")))
+			{
+				CMType = CM_GearVR;
+			}
+			CaptureCubemap(InWorld, CMType, off, yaw);
+			return true;
+		}
 #endif //UE_BUILD_SHIPPING
 		else
 		{
@@ -1050,90 +1107,122 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 	else if (FParse::Command(&Cmd, TEXT("TESTEXIT")))
 	{
 		OCFlags.EnforceExit = true;
+		return true;
 	}
 	else if (FParse::Command(&Cmd, TEXT("TESTL")))
 	{
-		static uint32 LID1 = 0, LID2 = 0;
+		static uint32 LID1 = ~0u, LID2 = ~0u, LID3 = ~0u;
 		IStereoLayers* StereoL = this;
-		check(StereoL);
-		if (FParse::Command(&Cmd, TEXT("OFF")))
+
+		FString ValueStr = FParse::Token(Cmd, 0);
+		int t = FCString::Atoi(*ValueStr);
+		int maxt = 0;
+
+		if (!FCString::Stricmp(*ValueStr, TEXT("OFF")))
 		{
-			if (FParse::Command(&Cmd, TEXT("1")))
-			{
-				StereoL->DestroyLayer(LID1);
-				LID1 = 0;
-			}
-			else if (FParse::Command(&Cmd, TEXT("2")))
-			{
-				StereoL->DestroyLayer(LID2);
-				LID2 = 0;
-			}
-			else
-			{
-				StereoL->DestroyLayer(LID1);
-				StereoL->DestroyLayer(LID2);
-				LID1 = LID2 = 0;
-			}
-			return true;
+			t = -1;
 		}
-		else if (FParse::Command(&Cmd, TEXT("MOD")))
+		if (!FCString::Stricmp(*ValueStr, TEXT("ALL")))
 		{
-			if (LID2)
+			t = 0;
+			maxt = 3;
+		}
+
+		do
+		{
+			switch (t)
 			{
-				FTransform tr(FRotator(0, -30, 0), FVector(100, 0, 0));
-				
+			case 0:
+			{
+				if (LID1 != ~0u) break;
+				const TCHAR* iconPath = TEXT("/Game/Tuscany_LoadScreen.Tuscany_LoadScreen");
+				UE_LOG(LogHMD, Log, TEXT("LID1: Loading texture for loading icon %s..."), iconPath);
+				TAssetPtr<UTexture2D> LoadingTexture = LoadObject<UTexture2D>(NULL, iconPath, NULL, LOAD_None, NULL);
+				UE_LOG(LogHMD, Log, TEXT("...EEE"));
+
+				if (LoadingTexture != nullptr)
+				{
+					UE_LOG(LogHMD, Log, TEXT("...Success. "));
+					LoadingTexture->UpdateResource();
+					//BeginUpdateResourceRHI(LoadingTexture->Resource);
+					FlushRenderingCommands();
+
+					IStereoLayers::FLayerDesc LayerDesc;
+					LayerDesc.Texture = LoadingTexture->Resource->TextureRHI;
+					LayerDesc.Priority = 10;
+					LayerDesc.Transform = FTransform(FVector(400, 30, 130));
+					LayerDesc.QuadSize = FVector2D(200, 200);
+					LayerDesc.Type = IStereoLayers::ELayerType::WorldLocked;
+					LID1 = StereoL->CreateLayer(LayerDesc);
+				}
+			}
+			break;
+			case 1:
+			{
+				if (LID2 != ~0u) break;
+				//const TCHAR* iconPath = TEXT("/Game/alpha.alpha");
+				const TCHAR* iconPath = TEXT("/Game/Tuscany_OculusCube.Tuscany_OculusCube");
+				UE_LOG(LogHMD, Log, TEXT("LID2: Loading texture for loading icon %s..."), iconPath);
+				TAssetPtr<UTexture2D> LoadingTexture = LoadObject<UTexture2D>(NULL, iconPath, NULL, LOAD_None, NULL);
+				if (LoadingTexture != nullptr)
+				{
+					UE_LOG(LogHMD, Log, TEXT("...Success. "));
+					LoadingTexture->UpdateResource();
+					FlushRenderingCommands();
+
+					IStereoLayers::FLayerDesc LayerDesc;
+					LayerDesc.Texture = LoadingTexture->Resource->TextureRHI;
+					LayerDesc.Priority = 10;
+					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 0, 0));
+					LayerDesc.QuadSize = FVector2D(200, 200);
+					LayerDesc.Type = IStereoLayers::ELayerType::FaceLocked;
+					LID2 = StereoL->CreateLayer(LayerDesc);
+				}
+			}
+			break;
+			case 2:
+			{
+				if (LID3 != ~0u) break;
+				//const TCHAR* iconPath = TEXT("/Game/alpha.alpha");
+				const TCHAR* iconPath = TEXT("/Game/Tuscany_OculusCube.Tuscany_OculusCube");
+				UE_LOG(LogHMD, Log, TEXT("LID3: Loading texture for loading icon %s..."), iconPath);
+				TAssetPtr<UTexture2D> LoadingTexture = LoadObject<UTexture2D>(NULL, iconPath, NULL, LOAD_None, NULL);
+				if (LoadingTexture != nullptr)
+				{
+					UE_LOG(LogHMD, Log, TEXT("...Success. "));
+					LoadingTexture->UpdateResource();
+					FlushRenderingCommands();
+
+					IStereoLayers::FLayerDesc LayerDesc;
+					LayerDesc.Texture = LoadingTexture->Resource->TextureRHI;
+					LayerDesc.Priority = 10;
+					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 100, 0));
+					LayerDesc.QuadSize = FVector2D(200, 200);
+					LayerDesc.Type = IStereoLayers::ELayerType::TorsoLocked;
+					LID3 = StereoL->CreateLayer(LayerDesc);
+				}
+			}
+			break;
+			case 3:
+			{
 				IStereoLayers::FLayerDesc LayerDesc;
 				StereoL->GetLayerDesc(LID2, LayerDesc);
+				FTransform tr(FRotator(0, -30, 0), FVector(100, 0, 0));
 
 				LayerDesc.Transform = tr;
-				LayerDesc.QuadSize = FVector2D(25, 25);
+				LayerDesc.QuadSize = FVector2D(200, 200);
 				StereoL->SetLayerDesc(LID2, LayerDesc);
 			}
-			return true;
-		}
-		else if (FParse::Command(&Cmd, TEXT("VP")))
-		{
-			if (LID1)
+			break;
+			case -1:
 			{
-				IStereoLayers::FLayerDesc LayerDesc;
-				StereoL->GetLayerDesc(LID1, LayerDesc);
-
-				LayerDesc.UVRect = FBox2D(FVector2D(0.25, 0.25), FVector2D(0.75, 0.75));
-				StereoL->SetLayerDesc(LID1, LayerDesc);
-			}
-			return true;
-		}
-		const TCHAR* iconPath = TEXT("/Game/Tuscany_OculusCube.Tuscany_OculusCube");
-		UE_LOG(LogHMD, Log, TEXT("Loading texture for loading icon %s..."), iconPath);
-		UTexture2D* LoadingTexture = LoadObject<UTexture2D>(NULL, iconPath, NULL, LOAD_None, NULL);
-		UE_LOG(LogHMD, Log, TEXT("...EEE"));
-		if (LoadingTexture != nullptr)
-		{
-			LoadingTexture->AddToRoot();
-			UE_LOG(LogHMD, Log, TEXT("...Success. "));
-
-			if (LID1 == 0)
-			{
-				IStereoLayers::FLayerDesc LayerDesc;
-				LayerDesc.Texture = LoadingTexture->Resource->TextureRHI;
-				LayerDesc.Priority = 10;
-				LayerDesc.Transform = FTransform(FVector(400, 30, 130));
-				LayerDesc.QuadSize = FVector2D(200, 200);
-				LayerDesc.Type = IStereoLayers::ELayerType::WorldLocked;
-				LID1 = StereoL->CreateLayer(LayerDesc);
-			}
-
-			if (LID2 == 0)
-			{
-				IStereoLayers::FLayerDesc LayerDesc;
-				LayerDesc.Texture = LoadingTexture->Resource->TextureRHI;
-				LayerDesc.Priority = 11;
-				LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 0, 0));
-				LayerDesc.QuadSize = FVector2D(100, 100);
-				LayerDesc.Type = IStereoLayers::FaceLocked;
-				LID2 = StereoL->CreateLayer(LayerDesc);
+				UE_LOG(LogHMD, Log, TEXT("Destroy layers %d %d %d"), LID1, LID2, LID3);
+				StereoL->DestroyLayer(LID1);
+				StereoL->DestroyLayer(LID2);
+				StereoL->DestroyLayer(LID3);
 			}
 		}
+		} while (++t < maxt);
 		return true;
 	}
 #endif // !UE_BUILD_SHIPPING
@@ -1142,10 +1231,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 
 FString FOculusRiftHMD::GetVersionString() const
 {
-	const char* Results = ovr_GetVersionString();
-	FString s = FString::Printf(TEXT("%s, LibOVR: %s, SDK: %s, built %s, %s"), *FEngineVersion::Current().ToString(), UTF8_TO_TCHAR(Results),
-		UTF8_TO_TCHAR(OVR_VERSION_STRING), UTF8_TO_TCHAR(__DATE__), UTF8_TO_TCHAR(__TIME__));
-	return s;
+	return ::GetVersionString();
 }
 
 
@@ -1291,6 +1377,18 @@ bool FOculusRiftHMD::DoEnableStereo(bool bStereo)
 		if(bStereo)
 		{
 			Flags.bNeedEnableStereo = true;
+
+			// a special case when stereo is enabled while window is not available yet:
+			// most likely this is happening from BeginPlay. In this case, if frame exists (created in OnBeginPlay)
+			// then we need init device and populate the initial tracking for head/hand poses.
+			auto CurrentFrame = GetGameFrame();
+			if (CurrentFrame)
+			{
+				InitDevice();
+				FOvrSessionShared::AutoSession OvrSession(Session);
+				CurrentFrame->InitialTrackingState = CurrentFrame->GetTrackingState(OvrSession);
+				CurrentFrame->GetHeadAndEyePoses(CurrentFrame->InitialTrackingState, CurrentFrame->CurHeadPose, CurrentFrame->CurEyeRenderPose);
+			}
 		}
 		else
 		{
@@ -1631,6 +1729,7 @@ FOculusRiftHMD::FOculusRiftHMD()
 	DeltaControlRotation = FRotator::ZeroRotator;
 	HmdDesc.Type = ovrHmd_None;
 	Session = MakeShareable(new FOvrSessionShared());
+	CubemapCapturer = nullptr;
 
 	Settings = MakeShareable(new FSettings);
 
@@ -1640,6 +1739,12 @@ FOculusRiftHMD::FOculusRiftHMD()
 
 FOculusRiftHMD::~FOculusRiftHMD()
 {
+#if !UE_BUILD_SHIPPING
+	if (CubemapCapturer)
+	{
+		CubemapCapturer->RemoveFromRoot();
+	}
+#endif
 	Shutdown();
 }
 
@@ -2029,7 +2134,7 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 
 		const ovrSizei recommenedTex0Size = ovr_GetFovTextureSize(OvrSession, ovrEye_Left, CurrentSettings->EyeFov[0], CurrentSettings->PixelDensity);
 		const ovrSizei recommenedTex1Size = ovr_GetFovTextureSize(OvrSession, ovrEye_Right, CurrentSettings->EyeFov[1], CurrentSettings->PixelDensity);
-		const float texturePadding = CurrentSettings->GetTexturePaddingPerEye();
+		const int32 texturePadding = FMath::CeilToInt(CurrentSettings->GetTexturePaddingPerEye());
 		CurrentSettings->RenderTargetSize.X = recommenedTex0Size.w + recommenedTex1Size.w + texturePadding*2;
 		CurrentSettings->RenderTargetSize.Y = FMath::Max(recommenedTex0Size.h, recommenedTex1Size.h);
 		
@@ -2252,16 +2357,21 @@ bool FOculusRiftHMD::HandleInputKey(UPlayerInput* pPlayerInput,
 
 void FOculusRiftHMD::MakeSureValidFrameExists(AWorldSettings* InWorldSettings)
 {
+	CreateAndInitNewGameFrame(InWorldSettings);
+	check(Frame.IsValid());
+	Frame->Flags.bOutOfFrame = true;
+	Frame->Settings->Flags.bHeadTrackingEnforced = true; // to make sure HMD data is available
+
+	// if we need to enable stereo then populate the frame with initial tracking data.
+	// once this is done GetOrientationAndPosition will be able to return actual HMD / MC data (when requested
+	// from BeginPlay event, for example).
 	if (Flags.bNeedEnableStereo)
 	{
-//		OnStartGameFrame()
-// 		//check(InWorldSettings);
-// 		CreateAndInitNewGameFrame(InWorldSettings);
-// 		check(Frame.IsValid());
-// 		auto CurrentFrame = GetGameFrame();
-// 
-// 		CurrentFrame->InitialTrackingState = CurrentFrame->GetTrackingState(OvrSession);
-// 		CurrentFrame->GetHeadAndEyePoses(CurrentFrame->InitialTrackingState, CurrentFrame->CurHeadPose, CurrentFrame->CurEyeRenderPose);
+		auto CurrentFrame = GetGameFrame();
+		InitDevice();
+		FOvrSessionShared::AutoSession OvrSession(Session);
+		CurrentFrame->InitialTrackingState = CurrentFrame->GetTrackingState(OvrSession);
+		CurrentFrame->GetHeadAndEyePoses(CurrentFrame->InitialTrackingState, CurrentFrame->CurHeadPose, CurrentFrame->CurEyeRenderPose);
 	}
 }
 
@@ -2295,8 +2405,7 @@ void FOculusRiftHMD::OnBeginPlay(FWorldContext& InWorldContext)
 	else
 #endif
 	{
-		//MakeSureValidFrameExists(nullptr /*GEngine->GetWorld()->GetWorldSettings()*/);
-		OnStartGameFrame(InWorldContext);
+		MakeSureValidFrameExists(InWorldContext.World()->GetWorldSettings());
 	}
 }
 
@@ -2451,6 +2560,29 @@ FViewExtension::FViewExtension(FHeadMountedDisplay* InDelegate)
 
 	pPresentBridge = OculusHMD->pCustomPresent;
 }
+
+#if !UE_BUILD_SHIPPING
+const uint32 CaptureHeight = 2048;
+
+void FOculusRiftHMD::CaptureCubemap(UWorld* World, ECubemapType CubemapType, FVector InOffset, float InYaw)
+{
+	if (CubemapCapturer)
+	{
+		CubemapCapturer->RemoveFromRoot();
+	}
+	CubemapCapturer = NewObject<USceneCubemapCapturer>();
+	CubemapCapturer->AddToRoot();
+	CubemapCapturer->SetOffset(InOffset);
+	if (InYaw != 0.f)
+	{
+		FRotator Rotation(FRotator::ZeroRotator);
+		Rotation.Yaw = InYaw;
+		const FQuat Orient(Rotation);
+		CubemapCapturer->SetInitialOrientation(Orient);
+	}
+	CubemapCapturer->StartCapture(World, (CubemapType == CM_GearVR) ? CaptureHeight / 2 : CaptureHeight);
+}
+#endif
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
 #endif //#if !PLATFORM_MAC
