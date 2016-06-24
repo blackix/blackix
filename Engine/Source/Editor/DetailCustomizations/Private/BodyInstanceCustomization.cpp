@@ -26,10 +26,10 @@ UStaticMeshComponent* FBodyInstanceCustomization::GetDefaultCollisionProvider(co
 	UPrimitiveComponent* OwnerComp = BI->OwnerComponent.Get();
 	if(!OwnerComp)
 	{
-		if(UPrimitiveComponent* const* FoundComp = BodyInstanceToPrimComponent.Find(BI))
-		{
-			OwnerComp = *FoundComp;
-		}
+		TWeakObjectPtr<UPrimitiveComponent> FoundComp = BodyInstanceToPrimComponent.FindRef(BI);
+		OwnerComp = FoundComp.Get();
+
+		ensureMsgf(!FoundComp.IsStale(), TEXT("BodyInstance has no owner and the map data is stale"));
 	}
 	
 	UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(OwnerComp);
@@ -1430,14 +1430,31 @@ bool FBodyInstanceCustomizationHelper::IsBodyMassReadOnly() const
 TOptional<float> FBodyInstanceCustomizationHelper::OnGetBodyMaxAngularVelocity() const
 {
 	UPrimitiveComponent* Comp = nullptr;
-	const float MaxAngularVelocity = UPhysicsSettings::Get()->MaxAngularVelocity;
+
+	const float DefaultMaxAngularVelocity = UPhysicsSettings::Get()->MaxAngularVelocity;
+    float MaxAngularVelocity = DefaultMaxAngularVelocity;
+    float CompMaxAngularVelocity = DefaultMaxAngularVelocity;
+    bool bFoundComponent = false;
 
 	for (auto ObjectIt = ObjectsCustomized.CreateConstIterator(); ObjectIt; ++ObjectIt)
 	{
 		if (ObjectIt->IsValid() && (*ObjectIt)->IsA(UPrimitiveComponent::StaticClass()))
 		{
-			Comp = Cast<UPrimitiveComponent>(ObjectIt->Get());
-			Comp->BodyInstance.MaxAngularVelocity = MaxAngularVelocity;	//update max angular velocity so that overriding gives the same value initially
+            Comp = Cast<UPrimitiveComponent>(ObjectIt->Get());
+
+            CompMaxAngularVelocity = Comp->BodyInstance.bOverrideMaxAngularVelocity ?
+                                        Comp->BodyInstance.MaxAngularVelocity :
+                                        DefaultMaxAngularVelocity;
+
+            if (!bFoundComponent)
+            {
+                bFoundComponent = true;
+                MaxAngularVelocity = CompMaxAngularVelocity;
+            }
+            else if (MaxAngularVelocity != CompMaxAngularVelocity)
+            {
+                return TOptional<float>();
+            }
 		}
 	}
 
