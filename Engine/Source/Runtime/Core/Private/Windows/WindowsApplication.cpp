@@ -1975,6 +1975,23 @@ void FWindowsApplication::SetHapticFeedbackValues(int32 ControllerId, int32 Hand
 	}
 }
 
+void FWindowsApplication::SetHapticFeedbackBuffer(int32 ControllerId, int32 Hand, FHapticFeedbackBuffer& Buffer)
+{
+	if (FApp::UseVRFocus() && !FApp::HasVRFocus())
+	{
+		return; // do not proceed if the app uses VR focus but doesn't have it
+	}
+
+	for (auto DeviceIt = ExternalInputDevices.CreateIterator(); DeviceIt; ++DeviceIt)
+	{
+		IHapticDevice* HapticDevice = (*DeviceIt)->GetHapticDevice();
+		if (HapticDevice)
+		{
+			HapticDevice->SetHapticFeedbackBuffer(ControllerId, Hand, Buffer);
+		}
+	}
+}
+
 void FWindowsApplication::AddExternalInputDevice(TSharedPtr<IInputDevice> InputDevice)
 {
 	if (InputDevice.IsValid())

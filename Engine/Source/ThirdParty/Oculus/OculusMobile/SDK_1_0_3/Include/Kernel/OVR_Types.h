@@ -285,6 +285,10 @@ typedef unsigned char jboolean;
     
     // ***** Win32
 
+	// _DEBUG is added by default to debug projects in Visual Studio, so auto-define OVR_BUILD_DEBUG if it's set.
+#	if defined( _DEBUG ) && !defined( OVR_BUILD_DEBUG )	
+#		define OVR_BUILD_DEBUG
+#	endif
     // Byte order
     #define OVR_BYTE_ORDER    OVR_LITTLE_ENDIAN
 
@@ -420,6 +424,23 @@ typedef unsigned char jboolean;
 
 #define OVR_COMPILER_ASSERT(x)  { int zero = 0; switch(zero) {case 0: case x:;} }
 
+// ------------------------------------------------------------------------
+// ***** OVR_VERIFY_ARRAY_SIZE
+// An enumeration type must have a corresponding array of items where the 
+// number of items exactly matches the number of enums in the enumeration type.
+// This macro causes a compile-time error if the number of elements in the array 
+// does not match the value of num_elements_. Use of this macro ensures that 
+// enum types and corresponding arrays do not get out of sync.
+// Note that the array must be defined as:
+// 
+// type Array[] = { } 
+// vs.
+// type Array[Maxvalue] = { }
+// 
+// Otherwise sizeof( Array ) would always return MaxValue, independent of how
+// many entries were initialized in the array.
+#define OVR_VERIFY_ARRAY_SIZE( array_, num_elements_ )	\
+static_assert( sizeof( array_ ) / sizeof( array_[0] ) == num_elements_, "Array " #array_ " must have " #num_elements_ " elements!" )
 
 
 //-----------------------------------------------------------------------------------
