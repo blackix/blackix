@@ -33,6 +33,10 @@ ENGINE_API TAutoConsoleVariable<int32> CVarReflectionCaptureSize(
 	TEXT("Set the resolution for all reflection capture cubemaps. Should be set via project's Render Settings. Must be power of 2. Defaults to 128.\n")
 	);
 
+// Oculus Forward TODO: using just the single cubemap instead of the array
+// TODO: must fix this.
+static bool bForceAllocateIndividualCubemaps = true;
+
 static int32 SanatizeReflectionCaptureSize(int32 ReflectionCaptureSize)
 {
 	static const int32 MaxReflectionCaptureSize = 1024;
@@ -1091,7 +1095,7 @@ void UReflectionCaptureComponent::PostLoad()
 		// Don't need encoded HDR data for rendering on this feature level
 		INC_MEMORY_STAT_BY(STAT_ReflectionCaptureMemory, FullHDRData->CompressedCapturedData.GetAllocatedSize());
 
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::SM4)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::SM4 || bForceAllocateIndividualCubemaps)
 		{
 			SM4FullHDRCubemapTexture = new FReflectionTextureCubeResource();
 			SM4FullHDRCubemapTexture->SetupParameters(FullHDRData->CubemapSize, FMath::CeilLogTwo(FullHDRData->CubemapSize) + 1, PF_FloatRGBA, &FullHDRData->GetCapturedDataForSM4Load());
@@ -1370,13 +1374,10 @@ void UReflectionCaptureComponent::ReadbackFromGPU(UWorld* WorldToUpdate)
 	{
 		FReflectionCaptureFullHDR* NewDerivedData = new FReflectionCaptureFullHDR();
 
-		if (WorldToUpdate->FeatureLevel == ERHIFeatureLevel::SM4)
+		if (SM4FullHDRCubemapTexture)
 		{
-			if (SM4FullHDRCubemapTexture)
-			{
-				ensure(SM4FullHDRCubemapTexture->GetSizeX() == SM4FullHDRCubemapTexture->GetSizeY());
-				ReadbackFromSM4Cubemap(SM4FullHDRCubemapTexture, NewDerivedData, int32(SM4FullHDRCubemapTexture->GetSizeX()));
-			}
+            ensure(SM4FullHDRCubemapTexture->GetSizeX() == SM4FullHDRCubemapTexture->GetSizeY());
+            ReadbackFromSM4Cubemap(SM4FullHDRCubemapTexture, NewDerivedData, int32(SM4FullHDRCubemapTexture->GetSizeX()));
 		}
 		else
 		{
@@ -1432,7 +1433,7 @@ void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldT
 
 		const auto FeatureLevel = WorldToUpdate->Scene->GetFeatureLevel();
 
-		if (FeatureLevel == ERHIFeatureLevel::SM4)
+		if (FeatureLevel == ERHIFeatureLevel::SM4 || bForceAllocateIndividualCubemaps)
 		{
 			for (int32 CaptureIndex = 0; CaptureIndex < WorldCombinedCaptures.Num(); CaptureIndex++)
 			{
@@ -1518,7 +1519,8 @@ void UReflectionCaptureComponent::PreFeatureLevelChange(ERHIFeatureLevel::Type P
 		SetCaptureIsDirty();
 	}
 
-	if (PendingFeatureLevel == ERHIFeatureLevel::SM4)
+	if (PendingFeatureLevel == ERHIFeatureLevel::SM4 ||
+		(PendingFeatureLevel >= ERHIFeatureLevel::SM4 && bForceAllocateIndividualCubemaps))
 	{
 		if (SM4FullHDRCubemapTexture == nullptr)
 		{

@@ -4,6 +4,15 @@
 	ShadowFilteringCommon.usf: Contains functions to filter a shadowmap, shared between forward/deferred shading.
 =========================================================================*/
 
+#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
+	// Gather() is supported
+	#define FEATURE_GATHER4 1
+#else
+	// Gather() is not supported
+	#define FEATURE_GATHER4 0
+#endif
+
+
 struct FPCFSamplerSettings
 {
 	Texture2D		ShadowDepthTexture;
@@ -260,6 +269,30 @@ float Manual1x1PCF(float2 ShadowPosition, FPCFSamplerSettings Settings)
 
 	float4 Values00 = CalculateOcclusion(Samples, Settings);
 	return PCF1x1(Fraction, Values00);
+}
+
+// Broken out for oculus forward renderer, uses 4x4 samples if you have gather4 otherwise reverts to Manual2x2PCF
+float Manual3x3PCF(float2 ShadowPosition, FPCFSamplerSettings Settings)
+{
+#if FEATURE_GATHER4
+    // medium quality, 4x4 samples, using gather4
+	float2 TexelPos = ShadowPosition * Settings.ShadowBufferSize.xy - 0.5f;	// bias to be consistent with texture filtering hardware
+	float2 Fraction = frac(TexelPos);
+	float2 TexelCenter = floor(TexelPos) + 0.5f;	// bias to get reliable texel center content
+	{
+		float2 Sample00TexelCenter = TexelCenter - float2(1, 1);
+		float4 SampleValues0, SampleValues1, SampleValues2, SampleValues3;
+
+		float2 SamplePos = TexelCenter * Settings.ShadowBufferSize.zw;	// bias to get reliable texel center content
+		SampleValues0 = CalculateOcclusion(Settings.ShadowDepthTexture.Gather(Settings.ShadowDepthTextureSampler, SamplePos, int2(-1, -1)), Settings);
+		SampleValues1 = CalculateOcclusion(Settings.ShadowDepthTexture.Gather(Settings.ShadowDepthTextureSampler, SamplePos, int2(1, -1)), Settings);
+		SampleValues2 = CalculateOcclusion(Settings.ShadowDepthTexture.Gather(Settings.ShadowDepthTextureSampler, SamplePos, int2(-1, 1)), Settings);
+		SampleValues3 = CalculateOcclusion(Settings.ShadowDepthTexture.Gather(Settings.ShadowDepthTextureSampler, SamplePos, int2(1, 1)), Settings);
+		return PCF3x3gather(Fraction, SampleValues0, SampleValues1, SampleValues2, SampleValues3);
+	}
+#else // FEATURE_GATHER4 
+    return Manual2x2PCF(ShadowPosition, Settings);
+#endif
 }
 
 float ManualPCF(float2 ShadowPosition, FPCFSamplerSettings Settings)

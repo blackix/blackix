@@ -75,7 +75,7 @@ public:
 
 	static FOpenGLTexture2DSet* CreateTexture2DSet(
 		FOpenGLDynamicRHI* InGLRHI,
-		FOvrSessionSharedParamRef OvrSession,
+		const FOvrSessionSharedPtr& OvrSession,
 		ovrTextureSwapChain InTextureSet,
 		const ovrTextureSwapChainDesc& InDesc,
 		uint32 InNumSamples,
@@ -96,7 +96,7 @@ protected:
 class FOpenGLTexture2DSetProxy : public FTexture2DSetProxy
 {
 public:
-	FOpenGLTexture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips) 
+	FOpenGLTexture2DSetProxy(const FOvrSessionSharedPtr& InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips) 
 		: FTexture2DSetProxy(InOvrSession, InTexture, SrcSizeX, SrcSizeY, SrcFormat, SrcNumMips) {}
 
 	virtual ovrTextureSwapChain GetSwapTextureSet() const override
@@ -188,7 +188,7 @@ void FOpenGLTexture2DSet::ReleaseResources(ovrSession InOvrSession)
 
 FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
 	FOpenGLDynamicRHI* InGLRHI,
-	FOvrSessionSharedParamRef Session,
+	const FOvrSessionSharedPtr& Session,
 	ovrTextureSwapChain InTextureSet,
 	const ovrTextureSwapChainDesc& InDesc,
 	uint32 InNumSamples,
@@ -291,7 +291,7 @@ static FOpenGLTexture2D* OpenGLCreateTexture2DAlias(
 }
 
 //////////////////////////////////////////////////////////////////////////
-FOculusRiftHMD::OGLBridge::OGLBridge(FOvrSessionSharedRef InOvrSession) :
+FOculusRiftHMD::OGLBridge::OGLBridge(const FOvrSessionSharedPtr& InOvrSession) :
 	FCustomPresent(InOvrSession)
 {
 }
@@ -302,7 +302,7 @@ bool FOculusRiftHMD::OGLBridge::IsUsingGraphicsAdapter(const ovrGraphicsLuid& lu
 	return true;
 }
 
-FTexture2DSetProxyRef FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
+FTexture2DSetProxyPtr FOculusRiftHMD::OGLBridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
 {
 	check(InSizeX != 0 && InSizeY != 0);
 

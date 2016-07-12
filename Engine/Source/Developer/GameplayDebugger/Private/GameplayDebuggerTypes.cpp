@@ -117,7 +117,7 @@ void FGameplayDebuggerShape::Draw(UWorld* World, FGameplayDebuggerCanvasContext&
 	case EGameplayDebuggerShape::Segment:
 		if (ShapeData.Num() == 3 && ShapeData[2].X > 0)
 		{
-			DrawDebugLine(World, ShapeData[0], ShapeData[1], Color, false, -1.0f, 0, ShapeData[2].X);
+			DrawDebugLine(World, ShapeData[0], ShapeData[1], Color, false, -1.0f, SDPG_World, ShapeData[2].X);
 			DescLocation = (ShapeData[0] + ShapeData[1]) * 0.5f;
 		}
 		break;

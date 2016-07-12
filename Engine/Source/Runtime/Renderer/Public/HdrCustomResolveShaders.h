@@ -37,12 +37,14 @@ public:
 		: FGlobalShader( Initializer )
 	{
 		Tex.Bind(Initializer.ParameterMap, TEXT("Tex"), SPF_Mandatory);
+		ResolveOrigin.Bind(Initializer.ParameterMap, TEXT("ResolveOrigin"), SPF_Mandatory);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << Tex;
+		Ar << ResolveOrigin;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -51,10 +53,11 @@ public:
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) || (Platform == SP_PCD3D_ES2);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS)
+	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS, FIntPoint Origin)
 	{
 		FPixelShaderRHIParamRef PixelShaderRHI = GetPixelShader();
 		SetTextureParameter(RHICmdList, PixelShaderRHI, Tex, Texture2DMS);
+		SetShaderValue(RHICmdList, PixelShaderRHI, ResolveOrigin, FVector2D(Origin));
 	}
 
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
@@ -65,6 +68,7 @@ public:
 
 protected:
 	FShaderResourceParameter Tex;
+	FShaderParameter ResolveOrigin;
 };
 
 class FHdrCustomResolve4xPS : public FGlobalShader
@@ -76,12 +80,14 @@ public:
 		: FGlobalShader( Initializer )
 	{
 		Tex.Bind(Initializer.ParameterMap, TEXT("Tex"), SPF_Mandatory);
+		ResolveOrigin.Bind(Initializer.ParameterMap, TEXT("ResolveOrigin"), SPF_Mandatory);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << Tex;
+		Ar << ResolveOrigin;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -90,10 +96,11 @@ public:
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) || (Platform == SP_PCD3D_ES2);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS)
+	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS, FIntPoint Origin)
 	{
 		FPixelShaderRHIParamRef PixelShaderRHI = GetPixelShader();
 		SetTextureParameter(RHICmdList, PixelShaderRHI, Tex, Texture2DMS);
+		SetShaderValue(RHICmdList, PixelShaderRHI, ResolveOrigin, FVector2D(Origin));
 	}
 
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
@@ -104,6 +111,7 @@ public:
 
 protected:
 	FShaderResourceParameter Tex;
+	FShaderParameter ResolveOrigin;
 };
 
 
@@ -116,12 +124,14 @@ public:
 		: FGlobalShader( Initializer )
 	{
 		Tex.Bind(Initializer.ParameterMap, TEXT("Tex"), SPF_Mandatory);
+		ResolveOrigin.Bind(Initializer.ParameterMap, TEXT("ResolveOrigin"), SPF_Mandatory);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << Tex;
+		Ar << ResolveOrigin;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -130,10 +140,11 @@ public:
 		return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) || (Platform == SP_PCD3D_ES2);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS)
+	void SetParameters(FRHICommandList& RHICmdList, FTextureRHIParamRef Texture2DMS, FIntPoint Origin)
 	{
 		FPixelShaderRHIParamRef PixelShaderRHI = GetPixelShader();
 		SetTextureParameter(RHICmdList, PixelShaderRHI, Tex, Texture2DMS);
+		SetShaderValue(RHICmdList, PixelShaderRHI, ResolveOrigin, FVector2D(Origin));
 	}
 
 	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
@@ -144,6 +155,7 @@ public:
 
 protected:
 	FShaderResourceParameter Tex;
+	FShaderParameter ResolveOrigin;
 };
 
 

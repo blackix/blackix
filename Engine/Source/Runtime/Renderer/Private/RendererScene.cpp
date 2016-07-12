@@ -16,6 +16,7 @@
 #include "DistanceFieldLightingShared.h"
 #include "SpeedTreeWind.h"
 #include "HeightfieldLighting.h"
+#include "LightMapRendering.h"
 #include "Components/WindDirectionalSourceComponent.h"
 #include "PlanarReflectionSceneProxy.h"
 
@@ -506,6 +507,8 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	bScenesPrimitivesNeedStaticMeshElementUpdate(false)
 ,	SkyLight(NULL)
 ,	SimpleDirectionalLight(NULL)
+,	bSimpleDirectionalLightHasCSM(false)
+,	SceneReflectionCapture(NULL)
 ,	SunLight(NULL)
 ,	ReflectionSceneData(InFeatureLevel)
 ,	IndirectLightingCache(InFeatureLevel)
@@ -529,8 +532,12 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 {
 	check(World);
 	World->Scene = this;
-
 	FeatureLevel = World->FeatureLevel;
+	CurrentShadingPath = 
+	CurrentShadingPath_GameThread = GetShadingPath();
+
+	const FLightmassWorldInfoSettings& LightmassWorldSettings = World->GetWorldSettings()->LightmassSettings;
+	IndirectLightingCache.SetTransitionSpeedScale(LightmassWorldSettings.StaticLightingLevelScale * LightmassWorldSettings.VolumeLightTransitionSpeedScale);
 
 	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 	static auto* MobileHDR32bppModeCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR32bppMode"));
@@ -557,6 +564,8 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 		World->FXSystem = NULL;
 		SetFXSystem(NULL);
 	}
+
+	ShadingPathChanged_RenderThread();
 
 	World->UpdateParameterCollectionInstances(false);
 }
@@ -590,6 +599,16 @@ FScene::~FScene()
 		delete AtmosphericFog;
 		AtmosphericFog = NULL;
 	}
+}
+
+EShadingPath FScene::GetCurrentShadingPath_RenderThread() const
+{
+	return CurrentShadingPath;
+}
+
+void FScene::ShadingPathChanged_RenderThread()
+{
+	IndirectLightingCache.SetForcedPointSamples(CurrentShadingPath == EShadingPath::ClusteredForward && !CLUSTERED_SUPPORT_VOLUME_INDIRECT);
 }
 
 void FScene::AddPrimitive(UPrimitiveComponent* Primitive)
@@ -965,6 +984,47 @@ void FScene::ReleasePrimitive( UPrimitiveComponent* PrimitiveComponent )
 	});
 }
 
+static bool GetSimpleDirectionalLightHasCSM(FLightSceneInfo* Info, EShadingPath CurrentShadingPath)
+{
+	if (Info != nullptr)
+	{
+		if (CurrentShadingPath == EShadingPath::Forward)
+		{
+			// if we are forward rendered and this light is a dynamic shadowcast then we need to update the static draw lists to pick a new lightingpolicy
+			return !Info->Proxy->HasStaticShadowing();
+		}
+		else if (CurrentShadingPath == EShadingPath::ClusteredForward)
+		{
+			// We want to determine if we will render any cascades: ShouldRenderViewIndependentWholeSceneShadows
+			// will return true even if the distance == 0 (and it depends on precomputed lighting being valid)
+			return Info->ShouldRenderViewIndependentWholeSceneShadows()
+				&& Info->Proxy->GetNumViewDependentWholeSceneShadows(1, Info->IsPrecomputedLightingValid()) > 0;
+		}
+	}
+
+	return false;
+}
+
+static FLightSceneInfo* FindBestSimpleDirectionalLight(const TSparseArray<FLightSceneInfoCompact>& Lights)
+{
+	FLightSceneInfo* BestLight = nullptr;
+	for (const FLightSceneInfoCompact& CompactInfo : Lights)
+	{
+		if (CompactInfo.LightType == LightType_Directional)
+		{
+			FLightSceneInfo* Info = CompactInfo.LightSceneInfo;
+			// Only use a stationary or movable light
+			if (!Info->Proxy->HasStaticLighting() &&
+				(BestLight == nullptr || Info->Proxy->GetColor().GetLuminance() > BestLight->Proxy->GetColor().GetLuminance()))
+			{
+				BestLight = Info;
+			}
+		}
+	}
+
+	return BestLight;
+}
+
 void FScene::AddLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 {
 	SCOPE_CYCLE_COUNTER(STAT_AddSceneLightTime);
@@ -975,23 +1035,33 @@ void FScene::AddLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 	LightSceneInfo->Id = Lights.Add(FLightSceneInfoCompact(LightSceneInfo));
 	const FLightSceneInfoCompact& LightSceneInfoCompact = Lights[LightSceneInfo->Id];
 
-	if (!SimpleDirectionalLight && 
-		LightSceneInfo->Proxy->GetLightType() == LightType_Directional &&
-		// Only use a stationary or movable light
-		!LightSceneInfo->Proxy->HasStaticLighting())
+	// Add the light to the scene.
+	LightSceneInfo->AddToScene();
+
+	if (LightSceneInfo->Proxy->GetLightType() == LightType_Directional)
 	{
-		SimpleDirectionalLight = LightSceneInfo;
+		FLightSceneInfo* Light = FindBestSimpleDirectionalLight(Lights);
+		if (Light != SimpleDirectionalLight)
+		{
+			SimpleDirectionalLight = LightSceneInfo;
+			bSimpleDirectionalLightHasCSM = GetSimpleDirectionalLightHasCSM(LightSceneInfo, CurrentShadingPath);
 
-		// if we are forward rendered and this light is a dynamic shadowcast then we need to update the static draw lists to pick a new lightingpolicy:
-		bool bForwardRendererRequiresLightPolicyChange = !ShouldUseDeferredRenderer() &&
-			(
-			// this light is a dynamic shadowcast 
-			!SimpleDirectionalLight->Proxy->HasStaticShadowing() || 
-			// this light casts both static and dynamic shadows.
-			SimpleDirectionalLight->Proxy->UseCSMForDynamicObjects()
-			);
+            // if we are forward rendered and this light is a dynamic shadowcast then we need to update the static draw lists to pick a new lightingpolicy:
+            /*
+            bool bForwardRendererRequiresLightPolicyChange = !ShouldUseDeferredRenderer() &&
+                (
+                 // this light is a dynamic shadowcast 
+                 !SimpleDirectionalLight->Proxy->HasStaticShadowing() || 
+                 // this light casts both static and dynamic shadows.
+                 SimpleDirectionalLight->Proxy->UseCSMForDynamicObjects()
+                );
+            */
 
-		bScenesPrimitivesNeedStaticMeshElementUpdate = bScenesPrimitivesNeedStaticMeshElementUpdate || (bForwardRendererRequiresLightPolicyChange);
+            // Probably could be refined for clustered forward.
+			bool bForwardRendererRequiresLightPolicyChange = true;
+
+            bScenesPrimitivesNeedStaticMeshElementUpdate |= bForwardRendererRequiresLightPolicyChange;
+		}
 	}
 
 	if (LightSceneInfo->Proxy->IsUsedAsAtmosphereSunLight() &&
@@ -1000,8 +1070,6 @@ void FScene::AddLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 		SunLight = LightSceneInfo;
 	}
 
-	// Add the light to the scene.
-	LightSceneInfo->AddToScene();
 }
 
 void FScene::AddLight(ULightComponent* Light)
@@ -1086,8 +1154,8 @@ void FScene::SetSkyLight(FSkyLightSceneProxy* LightProxy)
 
 		if (!bHadSkylight)
 		{
-		// Mark the scene as needing static draw lists to be recreated if needed
-		// The base pass chooses shaders based on whether there's a skylight in the scene, and that is cached in static draw lists
+			// Mark the scene as needing static draw lists to be recreated if needed
+			// The base pass chooses shaders based on whether there's a skylight in the scene, and that is cached in static draw lists
 			Scene->bScenesPrimitivesNeedStaticMeshElementUpdate = true;
 		}
 	});
@@ -1319,6 +1387,11 @@ const FReflectionCaptureProxy* FScene::FindClosestReflectionCapture(FVector Posi
 
 const FPlanarReflectionSceneProxy* FScene::FindClosestPlanarReflection(const FPrimitiveBounds& Bounds) const
 {
+	if (PlanarReflections.Num() == 0)
+	{
+		return nullptr;
+	}
+
 	checkSlow(IsInParallelRenderingThread());
 	const FPlanarReflectionSceneProxy* ClosestPlanarReflection = NULL;
 	float ClosestDistance = FLT_MAX;
@@ -1530,13 +1603,15 @@ void FScene::UpdateLightColorAndBrightness(ULightComponent* Light)
 		{
 			 NewParameters.NewColor *= FLinearColor::MakeFromColorTemperature(Light->Temperature);
 		}
-	
+
 		ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(
 			UpdateLightColorAndBrightness,
 			FLightSceneInfo*,LightSceneInfo,Light->SceneProxy->GetLightSceneInfo(),
 			FScene*,Scene,this,
 			FUpdateLightColorParameters,Parameters,NewParameters,
 			{
+				// TODO: should update the SimpleDirectionalLight to be the brightest, same with sunlight
+
 				if( LightSceneInfo && LightSceneInfo->bVisible )
 				{
 					// Forward renderer:
@@ -1544,7 +1619,7 @@ void FScene::UpdateLightColorAndBrightness(ULightComponent* Light)
 					// thus, lights that change state in this way must update the draw lists.
 					Scene->bScenesPrimitivesNeedStaticMeshElementUpdate =
 						Scene->bScenesPrimitivesNeedStaticMeshElementUpdate ||
-						( !Scene->ShouldUseDeferredRenderer() 
+						( Scene->GetCurrentShadingPath_RenderThread() != EShadingPath::Deferred
 						&& Parameters.NewColor.IsAlmostBlack() != LightSceneInfo->Proxy->GetColor().IsAlmostBlack() );
 
 					LightSceneInfo->Proxy->SetColor(Parameters.NewColor);
@@ -1580,11 +1655,18 @@ void FScene::RemoveLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 
 	if (LightSceneInfo->bVisible)
 	{
+		// Remove the light from the scene.
+		LightSceneInfo->RemoveFromScene();
+
+		// Remove the light from the lights list.
+		Lights.RemoveAt(LightSceneInfo->Id);
+
+		// Update SimpleDierectionalLight
 		if (LightSceneInfo == SimpleDirectionalLight)
 		{
-			// if we are forward rendered and this light is a dynamic shadowcast then we need to update the static draw lists to pick a new lightingpolicy
-			bScenesPrimitivesNeedStaticMeshElementUpdate = bScenesPrimitivesNeedStaticMeshElementUpdate  || (!ShouldUseDeferredRenderer() && !SimpleDirectionalLight->Proxy->HasStaticShadowing());
-			SimpleDirectionalLight = NULL;
+			SimpleDirectionalLight = FindBestSimpleDirectionalLight(Lights);
+			bScenesPrimitivesNeedStaticMeshElementUpdate = true;
+			bSimpleDirectionalLightHasCSM = GetSimpleDirectionalLightHasCSM(SimpleDirectionalLight, CurrentShadingPath);
 		}
 
 		if (LightSceneInfo == SunLight)
@@ -1602,12 +1684,6 @@ void FScene::RemoveLightSceneInfo_RenderThread(FLightSceneInfo* LightSceneInfo)
 				}
 			}
 		}
-
-		// Remove the light from the scene.
-		LightSceneInfo->RemoveFromScene();
-
-		// Remove the light from the lights list.
-		Lights.RemoveAt(LightSceneInfo->Id);
 	}
 	else
 	{
@@ -2085,9 +2161,9 @@ void FScene::UpdateStaticDrawListsForMaterials_RenderThread(FRHICommandListImmed
 
 	// Warning: if any static draw lists are missed here, there will be a crash when trying to render with shaders that have been deleted!
 	TArray<FPrimitiveSceneInfo*> PrimitivesToUpdate;
-	auto SceneFeatureLevel = GetFeatureLevel();
+	auto const SceneFeatureLevel = GetFeatureLevel();
 
-	if (ShouldUseDeferredRenderer())
+	if (CurrentShadingPath == EShadingPath::Deferred)
 	{
 		for (int32 DrawType = 0; DrawType < EBasePass_MAX; DrawType++)
 		{
@@ -2097,12 +2173,23 @@ void FScene::UpdateStaticDrawListsForMaterials_RenderThread(FRHICommandListImmed
 			BasePassUniformLightMapPolicyDrawList[DrawType].GetUsedPrimitivesBasedOnMaterials(SceneFeatureLevel, Materials, PrimitivesToUpdate);
 		}
 	}
-	else
+	else if (CurrentShadingPath == EShadingPath::Forward)
 	{
 		for (int32 DrawType = 0; DrawType < EBasePass_MAX; DrawType++)
 		{
 			BasePassForForwardShadingUniformLightMapPolicyDrawList[DrawType].GetUsedPrimitivesBasedOnMaterials(SceneFeatureLevel, Materials, PrimitivesToUpdate);
 		}
+	}
+	else if (CurrentShadingPath == EShadingPath::ClusteredForward)
+	{
+		for (int32 DrawType = 0; DrawType < EBasePass_MAX; DrawType++)
+		{
+			BasePassForClusteredShadingUniformLightMapPolicyDrawList[DrawType].GetUsedPrimitivesBasedOnMaterials(SceneFeatureLevel, Materials, PrimitivesToUpdate);
+		}
+	}
+	else
+	{
+		check(false);
 	}
 
 	PositionOnlyDepthDrawList.GetUsedPrimitivesBasedOnMaterials(SceneFeatureLevel, Materials, PrimitivesToUpdate);
@@ -2186,11 +2273,13 @@ void FScene::ConditionalMarkStaticMeshElementsForUpdate()
 	int32 DesiredStaticDrawListsEarlyZPassMode = EarlyZPassCvar->GetValueOnRenderThread();
 	int32 DesiredStaticDrawShaderPipelines = ShaderPipelinesCvar->GetValueOnRenderThread();
 
+	bool bSDLHasCSM = GetSimpleDirectionalLightHasCSM(SimpleDirectionalLight, CurrentShadingPath);
 	if (bScenesPrimitivesNeedStaticMeshElementUpdate
 		|| bStaticDrawListsMobileHDR != bMobileHDR
 		|| bStaticDrawListsMobileHDR32bpp != bMobileHDR32bpp
 		|| StaticDrawShaderPipelines != DesiredStaticDrawShaderPipelines
-		|| StaticDrawListsEarlyZPassMode != DesiredStaticDrawListsEarlyZPassMode)
+		|| StaticDrawListsEarlyZPassMode != DesiredStaticDrawListsEarlyZPassMode
+		|| bSimpleDirectionalLightHasCSM != bSDLHasCSM)
 	{
 		// Mark all primitives as needing an update
 		// Note: Only visible primitives will actually update their static mesh elements
@@ -2199,6 +2288,7 @@ void FScene::ConditionalMarkStaticMeshElementsForUpdate()
 			Primitives[PrimitiveIndex]->BeginDeferredUpdateStaticMeshes();
 		}
 
+		bSimpleDirectionalLightHasCSM = bSDLHasCSM;
 		bScenesPrimitivesNeedStaticMeshElementUpdate = false;
 		bStaticDrawListsMobileHDR = bMobileHDR;
 		bStaticDrawListsMobileHDR32bpp = bMobileHDR32bpp;
@@ -2310,26 +2400,31 @@ static void LogDrawListStats(FDrawListStats Stats, const TCHAR* DrawListName)
 
 void FScene::DumpStaticMeshDrawListStats() const
 {
-	UE_LOG(LogRenderer,Log,TEXT("Static mesh draw lists for %s:"),
+	UE_LOG(LogRenderer, Log, TEXT("Static mesh draw lists for %s:"),
 		World ? *World->GetFullName() : TEXT("[no world]")
 		);
-#define DUMP_DRAW_LIST(Name) LogDrawListStats(Name.GetStats(), TEXT(#Name))
+#define DUMP_DRAW_LIST(Name) \
+		LogDrawListStats(Name.GetStats(), TEXT(#Name));
+#define DUMP_DRAW_LISTS(Name) \
+		DUMP_DRAW_LIST(Name [EBasePass_Default]) \
+		DUMP_DRAW_LIST(Name [EBasePass_Masked]) \
+
 	DUMP_DRAW_LIST(PositionOnlyDepthDrawList);
 	DUMP_DRAW_LIST(DepthDrawList);
 	DUMP_DRAW_LIST(MaskedDepthDrawList);
-	DUMP_DRAW_LIST(BasePassSelfShadowedTranslucencyDrawList[EBasePass_Default]);
-	DUMP_DRAW_LIST(BasePassSelfShadowedTranslucencyDrawList[EBasePass_Masked]);
-	DUMP_DRAW_LIST(BasePassSelfShadowedCachedPointIndirectTranslucencyDrawList[EBasePass_Default]);
-	DUMP_DRAW_LIST(BasePassSelfShadowedCachedPointIndirectTranslucencyDrawList[EBasePass_Masked]);
-	DUMP_DRAW_LIST(BasePassUniformLightMapPolicyDrawList[EBasePass_Default]);
-	DUMP_DRAW_LIST(BasePassUniformLightMapPolicyDrawList[EBasePass_Masked]);
-	DUMP_DRAW_LIST(BasePassForForwardShadingUniformLightMapPolicyDrawList[EBasePass_Default]);
-	DUMP_DRAW_LIST(BasePassForForwardShadingUniformLightMapPolicyDrawList[EBasePass_Masked]);
 	DUMP_DRAW_LIST(HitProxyDrawList);
 	DUMP_DRAW_LIST(HitProxyDrawList_OpaqueOnly);
 	DUMP_DRAW_LIST(VelocityDrawList);
 	DUMP_DRAW_LIST(WholeSceneShadowDepthDrawList);
+
+	DUMP_DRAW_LISTS(BasePassUniformLightMapPolicyDrawList);
+	DUMP_DRAW_LISTS(BasePassSelfShadowedTranslucencyDrawList);
+	DUMP_DRAW_LISTS(BasePassSelfShadowedCachedPointIndirectTranslucencyDrawList);
+	DUMP_DRAW_LISTS(BasePassForForwardShadingUniformLightMapPolicyDrawList);
+	DUMP_DRAW_LISTS(BasePassForClusteredShadingUniformLightMapPolicyDrawList)
+
 #undef DUMP_DRAW_LIST
+#undef DUMP_DRAW_LISTS
 }
 
 /**
@@ -2482,6 +2577,7 @@ void FScene::ApplyWorldOffset_RenderThread(FVector InOffset)
 	StaticMeshDrawListApplyWorldOffset(VelocityDrawList, InOffset);
 	StaticMeshDrawListApplyWorldOffset(WholeSceneShadowDepthDrawList, InOffset);
 	StaticMeshDrawListApplyWorldOffset(BasePassForForwardShadingUniformLightMapPolicyDrawList, InOffset);
+	StaticMeshDrawListApplyWorldOffset(BasePassForClusteredShadingUniformLightMapPolicyDrawList, InOffset);
 
 	// Motion blur 
 	MotionBlurInfoData.ApplyOffset(InOffset);
@@ -2646,6 +2742,10 @@ public:
 	}
 
 	virtual bool HasAnyLights() const override { return false; }
+
+
+	virtual EShadingPath GetCurrentShadingPath_RenderThread() const { return GetShadingPath(); }
+
 private:
 	UWorld* World;
 	class FFXSystemInterface* FXSystem;
@@ -2713,6 +2813,12 @@ template<>
 TStaticMeshDrawList<TBasePassForForwardShadingDrawingPolicy<FUniformLightMapPolicy, 0> >& FScene::GetForwardShadingBasePassDrawList<FUniformLightMapPolicy>(EBasePassDrawListType DrawType)
 {
 	return BasePassForForwardShadingUniformLightMapPolicyDrawList[DrawType];
+}
+
+template<>
+TStaticMeshDrawList<TBasePassForClusteredShadingDrawingPolicy<FUniformLightMapPolicy> >& FScene::GetClusteredShadingBasePassDrawList<FUniformLightMapPolicy>(EBasePassDrawListType DrawType)
+{
+	return BasePassForClusteredShadingUniformLightMapPolicyDrawList[DrawType];
 }
 
 /*-----------------------------------------------------------------------------

@@ -59,7 +59,6 @@ protected:
 		FMeshMaterialShader(Initializer)
 	{
 		VertexParametersType::Bind(Initializer.ParameterMap);
-		HeightFogParameters.Bind(Initializer.ParameterMap);
 	}
 
 public:
@@ -75,7 +74,6 @@ public:
 	{
 		bool bShaderHasOutdatedParameters = FMeshMaterialShader::Serialize(Ar);
 		VertexParametersType::Serialize(Ar);
-		Ar << HeightFogParameters;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -88,7 +86,6 @@ public:
 		ESceneRenderTargetsMode::Type TextureMode
 		)
 	{
-		HeightFogParameters.Set(RHICmdList, GetVertexShader(), &View);
 		FMeshMaterialShader::SetParameters(RHICmdList, GetVertexShader(),MaterialRenderProxy,InMaterialResource,View,TextureMode);
 	}
 
@@ -98,7 +95,6 @@ public:
 	}
 
 private:
-	FHeightFogShaderParameters HeightFogParameters;
 };
 
 template<typename LightMapPolicyType>

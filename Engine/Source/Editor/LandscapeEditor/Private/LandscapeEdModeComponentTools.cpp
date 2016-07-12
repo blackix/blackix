@@ -25,36 +25,13 @@ class FLandscapeToolStrokeSelect : public FLandscapeToolStrokeBase
 {
 	bool bInitializedComponentInvert;
 	bool bComponentInvert;
-	bool bNeedsSelectionUpdate;
 
 public:
 	FLandscapeToolStrokeSelect(FEdModeLandscape* InEdMode, FEditorViewportClient* InViewportClient, const FLandscapeToolTarget& InTarget)
 		: FLandscapeToolStrokeBase(InEdMode, InViewportClient, InTarget)
 		, bInitializedComponentInvert(false)
-		, bNeedsSelectionUpdate(false)
 		, Cache(InTarget)
 	{
-	}
-
-	~FLandscapeToolStrokeSelect()
-	{
-		if (bNeedsSelectionUpdate)
-		{
-			TArray<UObject*> Objects;
-			ULandscapeInfo* LandscapeInfo = EdMode->CurrentToolTarget.LandscapeInfo.Get();
-			if (LandscapeInfo)
-			{
-				TSet<ULandscapeComponent*> SelectedComponents = LandscapeInfo->GetSelectedComponents();
-
-				Objects.Reset(SelectedComponents.Num());
-				for (ULandscapeComponent* Component : SelectedComponents)
-				{
-					Objects.Add(Component);
-				}
-			}
-			FPropertyEditorModule& PropertyModule = FModuleManager::Get().LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
-			PropertyModule.UpdatePropertyViews(Objects);
-		}
 	}
 
 	void Apply(FEditorViewportClient* ViewportClient, FLandscapeBrush* Brush, const ULandscapeEditorObject* UISettings, const TArray<FLandscapeToolMousePosition>& MousePositions)
@@ -119,7 +96,14 @@ public:
 				LandscapeInfo->UpdateSelectedComponents(NewSelection);
 
 				// Update Details tab with selection
-				bNeedsSelectionUpdate = true;
+				TArray<UObject*> Objects;
+				Objects.Reset(NewSelection.Num());
+				for (auto It = NewSelection.CreateConstIterator(); It; ++It)
+				{
+					Objects.Add(*It);
+				}
+				FPropertyEditorModule& PropertyModule = FModuleManager::Get().LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
+				PropertyModule.UpdatePropertyViews(Objects);
 			}
 			else // Select various shape regions
 			{

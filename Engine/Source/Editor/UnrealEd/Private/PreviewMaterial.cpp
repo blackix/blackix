@@ -133,6 +133,10 @@ public:
 			{
 				bShaderTypeMatches = true;
 			}
+			else if (FCString::Stristr(ShaderType->GetName(), TEXT("TClusteredShadingBasePass")))
+			{
+				bShaderTypeMatches = true;
+			}
 
 			return bShaderTypeMatches;
 		}

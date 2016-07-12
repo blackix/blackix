@@ -480,6 +480,7 @@ public:
 		return false;
 	}
 	virtual bool IsMasked() const override								{ return false; }
+	virtual bool IsAlphaToCoverage() const override						{ return false; }
 	virtual enum EBlendMode GetBlendMode() const override				{ return BLEND_Opaque; }
 	virtual enum EMaterialShadingModel GetShadingModel() const override	{ return MSM_Unlit; }
 	virtual float GetOpacityMaskClipValue() const override				{ return 0.5f; }

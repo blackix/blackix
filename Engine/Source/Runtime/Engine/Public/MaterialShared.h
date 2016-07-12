@@ -45,7 +45,7 @@ struct FShaderCompilerEnvironment;
 #define ME_STD_TAB_HEIGHT		21
 
 
-#define ALLOW_DITHERED_LOD_FOR_INSTANCED_STATIC_MESHES (1)
+#define ALLOW_DITHERED_LOD_FOR_INSTANCED_STATIC_MESHES (0)
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMaterial,Log,Verbose);
 
@@ -967,6 +967,7 @@ public:
 	virtual bool ShouldBlockGI() const { return false; }
 	virtual bool ShouldGenerateSphericalParticleNormals() const { return false; }
 	virtual	bool ShouldDisableDepthTest() const { return false; }
+    virtual bool ShouldPerformTranslucentDepthPrepass() const { return false; }
 	virtual	bool ShouldEnableResponsiveAA() const { return false; }
 	virtual bool ShouldDoSSR() const { return false; }
 	virtual bool IsLightFunction() const = 0;
@@ -991,12 +992,15 @@ public:
 	virtual bool IsCrackFreeDisplacementEnabled() const { return false; }
 	virtual bool IsAdaptiveTessellationEnabled() const { return false; }
 	virtual bool IsFullyRough() const { return false; }
+	virtual bool UseCheapShading() const { return false; }
+	virtual bool UseGeometricAA() const { return false; }
 	virtual bool IsUsingHQForwardReflections() const { return false; }
 	virtual bool IsUsingPlanarForwardReflections() const { return false; }
 	virtual bool OutputsVelocityOnBasePass() const { return true; }
 	virtual bool IsNonmetal() const { return false; }
 	virtual bool UseLmDirectionality() const { return true; }
 	virtual bool IsMasked() const = 0;
+	virtual bool IsAlphaToCoverage() const = 0;
 	virtual bool IsDitherMasked() const { return false; }
 	virtual enum EBlendMode GetBlendMode() const = 0;
 	virtual enum EMaterialShadingModel GetShadingModel() const = 0;
@@ -1168,7 +1172,7 @@ public:
 	/* Helper function to look at both IsMasked and IsDitheredLODTransition to determine if it writes every pixel */
 	ENGINE_API bool WritesEveryPixel( bool bShadowPass = true ) const
 	{
-		return !IsMasked() && !( IsDitheredLODTransition() && bShadowPass ) && !IsWireframe();
+		return !IsMasked() && !( IsDitheredLODTransition() && bShadowPass ) && !IsWireframe() && !IsAlphaToCoverage();
 	}
 
 	/** 
@@ -1585,6 +1589,7 @@ public:
 	ENGINE_API virtual bool ShouldBlockGI() const override;
 	ENGINE_API virtual bool ShouldGenerateSphericalParticleNormals() const override;
 	ENGINE_API virtual bool ShouldDisableDepthTest() const override;
+	ENGINE_API virtual bool ShouldPerformTranslucentDepthPrepass() const override;
 	ENGINE_API virtual bool ShouldEnableResponsiveAA() const override;
 	ENGINE_API virtual bool ShouldDoSSR() const override;
 	ENGINE_API virtual bool IsLightFunction() const override;
@@ -1610,6 +1615,8 @@ public:
 	ENGINE_API virtual bool IsCrackFreeDisplacementEnabled() const override;
 	ENGINE_API virtual bool IsAdaptiveTessellationEnabled() const override;
 	ENGINE_API virtual bool IsFullyRough() const override;
+	ENGINE_API virtual bool UseCheapShading() const override;
+	ENGINE_API virtual bool UseGeometricAA() const override;
 	ENGINE_API virtual bool IsUsingHQForwardReflections() const override;
 	ENGINE_API virtual bool IsUsingPlanarForwardReflections() const override;
 	ENGINE_API virtual bool OutputsVelocityOnBasePass() const override;
@@ -1634,6 +1641,7 @@ public:
 	ENGINE_API virtual FLinearColor GetTranslucentMultipleScatteringExtinction() const override;
 	ENGINE_API virtual float GetTranslucentShadowStartOffset() const override;
 	ENGINE_API virtual bool IsMasked() const override;
+	ENGINE_API virtual bool IsAlphaToCoverage() const override;
 	ENGINE_API virtual bool IsDitherMasked() const override;
 	ENGINE_API virtual FString GetFriendlyName() const override;
 	ENGINE_API virtual bool RequiresSynchronousCompilation() const override;

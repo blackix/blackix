@@ -154,12 +154,14 @@ public:
 	struct ContextType
 	{
 		EDepthDrawingMode DepthDrawingMode;
+		bool bDrawTranslucentToDepth;		// For translucent depth prepass
 
 		/** Uses of FDepthDrawingPolicyFactory that are not the depth pre-pass will not want the bUseAsOccluder flag to interfere. */
 		bool bRespectUseAsOccluderFlag;
 
-		ContextType(EDepthDrawingMode InDepthDrawingMode, bool bInRespectUseAsOccluderFlag) :
+		ContextType(EDepthDrawingMode InDepthDrawingMode, bool bInRespectUseAsOccluderFlag, bool InDrawTranslucentToDepth = false) :
 			DepthDrawingMode(InDepthDrawingMode),
+			bDrawTranslucentToDepth(InDrawTranslucentToDepth),
 			bRespectUseAsOccluderFlag(bInRespectUseAsOccluderFlag)
 		{}
 	};

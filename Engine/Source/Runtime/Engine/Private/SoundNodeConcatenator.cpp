@@ -42,6 +42,9 @@ bool USoundNodeConcatenator::NotifyWaveInstanceFinished( FWaveInstance* WaveInst
 	ConcatenatorPayload.CurrentChildNodeSoundIndex++;
 	if (ConcatenatorPayload.NodeIndex < ChildNodes.Num())
 	{
+		USoundNode* CurrentChildNode = ChildNodes[ConcatenatorPayload.NodeIndex];
+		check(CurrentChildNode);
+
 		if (ConcatenatorPayload.CurrentChildNodeSoundIndex == ConcatenatorPayload.CurrentChildNodeNumSound)
 		{
 			// Find the next non-null index

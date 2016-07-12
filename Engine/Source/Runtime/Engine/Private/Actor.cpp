@@ -1472,7 +1472,7 @@ void AActor::OnRep_AttachmentReplication()
 	}
 	else
 	{
-		DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		DetachFromActor(FDetachmentTransformRules::KeepRelativeTransform);
 
 		// Handle the case where an object was both detached and moved on the server in the same frame.
 		// Calling this extraneously does not hurt but will properly fire events if the movement state changed while attached.

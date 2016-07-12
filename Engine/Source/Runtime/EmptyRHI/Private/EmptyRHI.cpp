@@ -91,6 +91,7 @@ FEmptyDynamicRHI::FEmptyDynamicRHI()
 // 	GPixelFormats[PF_R5G6B5_UNORM		].PlatformFormat	= 
 // 	GPixelFormats[PF_R8G8B8A8			].PlatformFormat	= 
 // 	GPixelFormats[PF_R8G8				].PlatformFormat	= 
+// 	GPixelFormats[PF_R8_UINT			].PlatformFormat	= 
 
 	GDynamicRHI = this;
 

@@ -315,38 +315,33 @@ void FD3D12DynamicRHIModule::FindAdapter()
 				if (bRequestedWARP && !bIsWARP)
 				{
 					// Requested WARP, reject all other adapters.
-					continue;
 				}
-
-				if (!OutputCount && !bIsWARP && !bUseHmdGraphicsAdapter)
+				else if (!OutputCount && !bIsWARP && !bUseHmdGraphicsAdapter)
 				{
 					// Add special check to support WARP and HMDs, which do not have associated outputs.
 
 					// This device has no outputs. Reject it, 
 					// http://msdn.microsoft.com/en-us/library/windows/desktop/bb205075%28v=vs.85%29.aspx#WARP_new_for_Win8
-					continue;
 				}
-
-				if (bIsPerfHUD && !bAllowPerfHUD)
+				else if (bIsPerfHUD && !bAllowPerfHUD)
 				{
 					// we don't allow the PerfHUD adapter
-					continue;
 				}
-
-				if (CVarValue >= 0 && AdapterIndex != CVarValue)
+				else if (CVarValue >= 0 && AdapterIndex != CVarValue)
 				{
 					// the user wants a specific adapter, not this one
-					continue;
 				}
-
-				if (!bIsIntegrated && !FirstWithoutIntegratedAdapter.IsValid())
+				else
 				{
-					FirstWithoutIntegratedAdapter = CurrentAdapter;
-				}
+					if (!bIsIntegrated && !FirstWithoutIntegratedAdapter.IsValid())
+					{
+						FirstWithoutIntegratedAdapter = CurrentAdapter;
+					}
 
-				if (!FirstAdapter.IsValid())
-				{
-					FirstAdapter = CurrentAdapter;
+					if (!FirstAdapter.IsValid())
+					{
+						FirstAdapter = CurrentAdapter;
+					}
 				}
 			}
 		}

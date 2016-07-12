@@ -11,6 +11,7 @@
 #include "SceneTypes.h"
 #include "ShaderParameters.h"
 #include "RendererInterface.h"
+#include "GameFramework/WorldSettings.h"
 #include "RHIStaticStates.h"
 #include "GlobalDistanceFieldParameters.h"
 #include "DebugViewModeHelpers.h"
@@ -110,6 +111,10 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 	// Whether to use FOV when computing mesh LOD.
 	bool bUseFieldOfViewForLOD;
 
+	// Whether to override the location used when computing mesh LOD.
+	bool bUseLODViewLocation;
+	FVector LODViewLocation;
+
 #if WITH_EDITOR
 	// default to 0'th view index, which is a bitfield of 1
 	uint64 EditorViewBitflag;
@@ -137,6 +142,7 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 		, bInCameraCut(false)
 		, bOriginOffsetThisFrame(false)
 		, bUseFieldOfViewForLOD(true)
+		, bUseLODViewLocation(false)
 #if WITH_EDITOR
 		, EditorViewBitflag(1)
 		, OverrideLODViewOrigin(ForceInitToZero)
@@ -163,6 +169,7 @@ struct FViewMatrices
 		PreShadowTranslation = FVector::ZeroVector;
 		PreViewTranslation = FVector::ZeroVector;
 		ViewOrigin = FVector::ZeroVector;
+		LODViewOrigin = FVector::ZeroVector;
 		ProjectionScale = FVector2D::ZeroVector;
 		TemporalAAProjJitter = FVector2D::ZeroVector;
 		ScreenScale = 1.f;
@@ -186,6 +193,8 @@ struct FViewMatrices
 	FVector		PreViewTranslation;
 	/** To support ortho and other modes this is redundant, in world space */
 	FVector		ViewOrigin;
+	/** View origin to use for LOD calculations */
+	FVector		LODViewOrigin;
 	/** Scale applied by the projection matrix in X and Y. */
 	FVector2D	ProjectionScale;
 	/** TemporalAA jitter offset currently stored in the projection matrix */
@@ -346,7 +355,11 @@ END_UNIFORM_BUFFER_STRUCT(FForwardLightData)
 
 //////////////////////////////////////////////////////////////////////////
 
-static const int MAX_FORWARD_SHADOWCASCADES = 2;
+enum
+{
+	MAX_FORWARD_SHADOWCASCADES = 2,
+	MAX_CLUSTERED_FORWARD_LIGHTS = 8,		// Must correspond to bit depth of light lookup grid
+};
 
 /** 
  * Enumeration for currently used translucent lighting volume cascades 
@@ -475,8 +488,12 @@ BEGIN_UNIFORM_BUFFER_STRUCT_WITH_CONSTRUCTOR(FFrameUniformShaderParameters, ENGI
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FLinearColor, DirectionalLightColor, EShaderPrecisionModifier::Half)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector, DirectionalLightDirection, EShaderPrecisionModifier::Half)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(float, DirectionalLightShadowTransition, EShaderPrecisionModifier::Half)
-	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, DirectionalLightShadowSize, EShaderPrecisionModifier::Half)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, DirectionalLightShadowSize, EShaderPrecisionModifier::Half)			
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector, DirectionalLightMinRoughnessMAD, EShaderPrecisionModifier::Half)			
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector2D, DirectionalLightDistanceFadeMAD, EShaderPrecisionModifier::Half) // For oculus forward rendering
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, DirectionalLightShadowMapChannelMask, EShaderPrecisionModifier::Half)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FMatrix, DirectionalLightScreenToShadow, [MAX_FORWARD_SHADOWCASCADES])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FMatrix, DirectionalLightWorldToShadow, [MAX_FORWARD_SHADOWCASCADES])
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, DirectionalLightShadowDistances, EShaderPrecisionModifier::Half)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FLinearColor, UpperSkyColor, EShaderPrecisionModifier::Half)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FLinearColor, LowerSkyColor, EShaderPrecisionModifier::Half)
@@ -519,14 +536,38 @@ BEGIN_UNIFORM_BUFFER_STRUCT_WITH_CONSTRUCTOR(FFrameUniformShaderParameters, ENGI
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FLinearColor, SkyLightColor)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, SkyIrradianceEnvironmentMap, [7])
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, MobilePreviewMode)
-	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, HMDEyePaddingOffset)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, HMDViewportWidth)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(float, HMDViewportOffset, [2])
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(float, ReflectionCubemapMaxMip, EShaderPrecisionModifier::Half)
-
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, GlobalVolumeCenterAndExtent_UB, [GMaxGlobalDistanceFieldClipmaps])
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, GlobalVolumeWorldToUVAddAndMul_UB, [GMaxGlobalDistanceFieldClipmaps])
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, GlobalVolumeDimension_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, GlobalVolumeTexelSize_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, MaxGlobalDistance_UB)
+
+	// Oculus forward data
+    DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector2D, GeometricAAScaleBias)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4, ExponentialFogParameters0)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4, ExponentialFogParameters1)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, ExponentialFogInscatteringLightDirection, EShaderPrecisionModifier::Half)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_EX(FVector4, ExponentialFogDirectionalInscatteringColor, EShaderPrecisionModifier::Half)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, ExponentialFogDirectionalInscatteringStartDistance)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(float, GlobalReflectionCaptureIndex)							// in cubemap array
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector, GlobalReflectionCapturePosition)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FMatrix, GlobalReflectionCaptureBoxTransform)					// box capture transform
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4, GlobalReflectionCaptureBoxScales)					// box capture transform
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4, GlobalReflectionCaptureBrightnessRadii)				// brightness, radius, (radius*scale)^2, 1/radius  (yzw are for sphere capture)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector4, LightGridZParams)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER(FVector2D, LightGridViewOffset)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightPositionAndInvRadius, [MAX_CLUSTERED_FORWARD_LIGHTS])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightColorAndFalloffExponent, [MAX_CLUSTERED_FORWARD_LIGHTS])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightDirectionAndSpotlightMask, [MAX_CLUSTERED_FORWARD_LIGHTS])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightMinRoughnessMAD, [MAX_CLUSTERED_FORWARD_LIGHTS])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightSpotAnglesAndSourceRadiusAndRadial, [MAX_CLUSTERED_FORWARD_LIGHTS])
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_ARRAY(FVector4, LightShadowMapChannelMask, [MAX_CLUSTERED_FORWARD_LIGHTS])
+
+	// All resources must be declared last.
+
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture3D, GlobalDistanceFieldTexture0_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_SAMPLER(SamplerState, GlobalDistanceFieldSampler0_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture3D, GlobalDistanceFieldTexture1_UB)
@@ -538,6 +579,10 @@ BEGIN_UNIFORM_BUFFER_STRUCT_WITH_CONSTRUCTOR(FFrameUniformShaderParameters, ENGI
 
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture2D, DirectionalLightShadowTexture)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_SAMPLER(SamplerState, DirectionalLightShadowSampler)
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture3D<uint>, ClusteredLightGridTexture)	
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(TextureCubeArray, GlobalReflectionCaptureTextureArray)	
+	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_SAMPLER(SamplerState, GlobalReflectionCaptureSampler)
+
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture2D, AtmosphereTransmittanceTexture_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_SAMPLER(SamplerState, AtmosphereTransmittanceTextureSampler_UB)
 	DECLARE_UNIFORM_BUFFER_STRUCT_MEMBER_TEXTURE(Texture2D, AtmosphereIrradianceTexture_UB)
@@ -626,6 +671,8 @@ public:
 	FQuat		BaseHmdOrientation;
 	FVector		BaseHmdLocation;
 	float		WorldToMetersScale;
+	FVector		UnionEyeViewLocation;		// Oculus forward: center of the union eye.  same orientation as ViewRotation
+	FMatrix		UnionEyeProjection;			// Oculus forward: projection that contains both eye's frusta.
 
 	// normally the same as ViewMatrices unless "r.Shadow.FreezeCamera" is activated
 	FViewMatrices ShadowViewMatrices;
@@ -956,6 +1003,8 @@ public:
 		,	DeltaWorldTime(0.0f)
 		,	CurrentRealTime(0.0f)
 		,	GammaCorrection(1.0f)
+		,	GeometricAAScale(0.f)
+		,	GeometricAABias(0.f)
 		,	bRealtimeUpdate(false)
 		,	bDeferClear(false)
 		,	bResolveScene(true)			
@@ -971,6 +1020,12 @@ public:
 					DeltaWorldTime = World->GetDeltaSeconds();
 					CurrentRealTime = World->GetRealTimeSeconds();
 					bTimesSet = true;
+
+					if (const auto* Settings = World->GetWorldSettings())
+					{
+						GeometricAAScale = Settings->GeometricAAScale;
+						GeometricAABias = Settings->GeometricAABias;
+					}
 				}
 			}
 		}
@@ -994,6 +1049,12 @@ public:
 
 		/** Gamma correction used when rendering this family. Default is 1.0 */
 		float GammaCorrection;
+
+		/** Geometric AA Scale from world settings */
+		float GeometricAAScale;
+
+		/** Geometric AA bias from world settings */
+		float GeometricAABias;
 
 		/** Indicates whether the view family is updated in real-time. */
 		uint32 bRealtimeUpdate:1;
@@ -1073,12 +1134,16 @@ public:
 
 	/** Gamma correction used when rendering this family. Default is 1.0 */
 	float GammaCorrection;
+
+	/** Geometric AA Scale, Bias from world settings */
+	float GeometricAAScale;
+	float GeometricAABias;
 	
 	/** Editor setting to allow designers to override the automatic expose. 0:Automatic, following indices: -4 .. +4 */
 	FExposureSettings ExposureSettings;
 
-    /** Extensions that can modify view parameters on the render thread. */
-    TArray<TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> > ViewExtensions;
+	/** Extensions that can modify view parameters on the render thread. */
+	TArray<TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> > ViewExtensions;
 
 #if WITH_EDITOR
 	// Override the LOD of landscape in this viewport

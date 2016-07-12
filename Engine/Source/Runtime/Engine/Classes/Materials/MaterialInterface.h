@@ -63,6 +63,9 @@ struct ENGINE_API FMaterialRelevance
 	uint32 bUsesGlobalDistanceField : 1;
 
 	UPROPERTY()
+    uint32 bUsesTranslucencyDepthPrepass : 1;
+
+	UPROPERTY()
 	uint16 ShadingModelMask;
 
 	/** Default constructor. */
@@ -76,6 +79,7 @@ struct ENGINE_API FMaterialRelevance
 		, bDisableDepthTest(false)		
 		, bOutputsVelocityInBasePass(true)
 		, bUsesGlobalDistanceField(false)
+		, bUsesTranslucencyDepthPrepass(false)
 		, ShadingModelMask(0)
 	{}
 
@@ -92,6 +96,7 @@ struct ENGINE_API FMaterialRelevance
 		ShadingModelMask |= B.ShadingModelMask;
 		bOutputsVelocityInBasePass |= B.bOutputsVelocityInBasePass;
 		bUsesGlobalDistanceField |= B.bUsesGlobalDistanceField;
+        bUsesTranslucencyDepthPrepass |= B.bUsesTranslucencyDepthPrepass;
 		return *this;
 	}
 
@@ -538,6 +543,9 @@ public:
 	ENGINE_API virtual bool IsTwoSided() const;
 	ENGINE_API virtual bool IsDitheredLODTransition() const;
 	ENGINE_API virtual bool IsMasked() const;
+	ENGINE_API virtual bool IsAlphaToCoverage() const;
+	ENGINE_API virtual bool IsFullyRough() const;
+	ENGINE_API virtual bool IsCheapShading() const;
 
 	ENGINE_API virtual USubsurfaceProfile* GetSubsurfaceProfile_Internal() const;
 

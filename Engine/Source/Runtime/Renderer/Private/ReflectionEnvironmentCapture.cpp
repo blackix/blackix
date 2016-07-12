@@ -827,7 +827,7 @@ void FScene::AllocateReflectionCaptures(const TArray<UReflectionCaptureComponent
 {
 	if (NewCaptures.Num() > 0)
 	{
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (UseReflectionCaptureCubemapArray(GetFeatureLevel()))
 		{
 			for (int32 CaptureIndex = 0; CaptureIndex < NewCaptures.Num(); CaptureIndex++)
 			{
@@ -899,7 +899,7 @@ void FScene::AllocateReflectionCaptures(const TArray<UReflectionCaptureComponent
 				}
 			}
 		}
-		else if (GetFeatureLevel() == ERHIFeatureLevel::SM4)
+		else if (GetFeatureLevel() >= ERHIFeatureLevel::SM4)
 		{
 			for (int32 ComponentIndex = 0; ComponentIndex < NewCaptures.Num(); ComponentIndex++)
 			{
@@ -1329,7 +1329,7 @@ void FScene::UpdateReflectionCaptureContents(UReflectionCaptureComponent* Captur
 		if (DerivedData && DerivedData->CompressedCapturedData.Num() > 0)
 		{
 			// For other feature levels the reflection textures are stored on the component instead of in a scene-wide texture array
-			if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+			if (UseReflectionCaptureCubemapArray(GetFeatureLevel()))
 			{
 				ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER( 
 					UploadCaptureCommand,
@@ -1396,11 +1396,11 @@ void FScene::UpdateReflectionCaptureContents(UReflectionCaptureComponent* Captur
 				FReflectionCaptureProxy*, ReflectionProxy, ReflectionProxy,
 				ERHIFeatureLevel::Type, FeatureLevel, GetFeatureLevel(),
 			{
-				if (FeatureLevel == ERHIFeatureLevel::SM5)
+				if (UseReflectionCaptureCubemapArray(FeatureLevel))
 				{
 					CopyToSceneArray(RHICmdList, Scene, ReflectionProxy);
 				}
-				else if (FeatureLevel == ERHIFeatureLevel::SM4)
+				else if (FeatureLevel >= ERHIFeatureLevel::SM4)
 				{
 					CopyToComponentTexture(RHICmdList, Scene, ReflectionProxy);
 				}

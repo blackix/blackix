@@ -412,6 +412,10 @@ public:
 	UPROPERTY()
 	FScalarMaterialInput PixelDepthOffset;
 
+    /** Determines if only the front most surface of the translucent geometry renders, fixing sorting issues. */
+    UPROPERTY(EditAnywhere, Category=Translucency, meta=(DisplayName = "Perform Translucent Depth Prepass"), AdvancedDisplay)
+    uint32 bEnableTranslucentDepthPrepass : 1;
+
 	/** Indicates that the material should be rendered in the SeparateTranslucency Pass (not affected by DOF, requires bAllowSeparateTranslucency to be set in .ini). */
 	UPROPERTY(EditAnywhere, Category=Translucency, meta=(DisplayName = "Separate Translucency"), AdvancedDisplay)
 	uint32 bEnableSeparateTranslucency:1;
@@ -634,6 +638,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile)
 	uint32 bFullyRough:1;
 
+	/* Forces the material to use a simpler shading model for the directional light (cheaper, and skips shadow sampling). Clustered forward only. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile)
+	uint32 bCheapShading:1;
+
+	/* Uses geometric antialiasing. Clustered forward only. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile)
+	uint32 bGeometricAA:1;
+
 	/* Use lightmap directionality and per pixel normals. If disabled, lighting from lightmaps will be flat but cheaper. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Mobile)
 	uint32 bUseLightmapDirectionality:1;
@@ -714,6 +726,10 @@ public:
 	/** when true, the material attributes pin is used instead of the regular pins. */
 	UPROPERTY(EditAnywhere, Category=Material)
 	uint32 bUseMaterialAttributes:1;
+
+	/** enable alpha-to-coverage for this material (Opaque and Masked only!) */
+	UPROPERTY(EditAnywhere, Category=Translucency)
+	uint32 bAlphaToCoverage:1;
 
 	/** When true, translucent materials are fogged. Defaults to true. */
 	UPROPERTY(EditAnywhere, Category=Translucency)
@@ -837,6 +853,7 @@ public:
 	ENGINE_API virtual bool IsTwoSided() const override;
 	ENGINE_API virtual bool IsDitheredLODTransition() const override;
 	ENGINE_API virtual bool IsMasked() const override;
+	ENGINE_API virtual bool IsAlphaToCoverage() const override;
 	ENGINE_API virtual bool IsUIMaterial() const { return MaterialDomain == MD_UI; }
 	ENGINE_API virtual USubsurfaceProfile* GetSubsurfaceProfile_Internal() const override;
 

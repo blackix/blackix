@@ -1511,6 +1511,8 @@ void UMaterialInstance::UpdateOverridableBaseProperties()
 		ShadingModel = MSM_DefaultLit;
 		TwoSided = 0;
 		DitheredLODTransition = 0;
+		CheapShading = 0;
+		FullyRough = 0;
 		return;
 	}
 
@@ -1557,6 +1559,33 @@ void UMaterialInstance::UpdateOverridableBaseProperties()
 	else
 	{
 		DitheredLODTransition = Parent->IsDitheredLODTransition();
+	}
+
+	if (BasePropertyOverrides.bOverride_CheapShading)
+	{
+		CheapShading = BasePropertyOverrides.CheapShading != 0;
+	}
+	else
+	{
+		CheapShading = Parent->IsCheapShading();
+	}
+
+	if (BasePropertyOverrides.bOverride_FullyRough)
+	{
+		FullyRough = BasePropertyOverrides.FullyRough != 0;
+	}
+	else
+	{
+		FullyRough = Parent->IsFullyRough();
+	}
+
+	if (BasePropertyOverrides.bOverride_AlphaToCoverage)
+	{
+		AlphaToCoverage = BasePropertyOverrides.AlphaToCoverage != 0;
+	}
+	else
+	{
+		AlphaToCoverage = Parent->IsAlphaToCoverage();
 	}
 }
 
@@ -2694,6 +2723,33 @@ void UMaterialInstance::GetBasePropertyOverridesHash(FSHAHash& OutHash)const
 		bHasOverrides = true;
 	}
 
+	bool bUsedIsFullyRough = IsFullyRough();
+	if (bUsedIsFullyRough != Mat->IsFullyRough())
+	{
+		const FString HashString = TEXT("bOverride_FullyRough");
+		Hash.UpdateWithString(*HashString, HashString.Len());
+		Hash.Update((uint8*)&bUsedIsFullyRough, sizeof(bUsedIsFullyRough));
+		bHasOverrides = true;
+	}
+
+	bool bUsedIsCheapShading = IsCheapShading();
+	if (bUsedIsCheapShading != Mat->IsCheapShading())
+	{
+		const FString HashString = TEXT("bOverride_CheapShading");
+		Hash.UpdateWithString(*HashString, HashString.Len());
+		Hash.Update((uint8*)&bUsedIsCheapShading, sizeof(bUsedIsCheapShading));
+		bHasOverrides = true;
+	}
+
+	bool bUsedIsAlphaToCoverage = IsAlphaToCoverage();
+	if (bUsedIsAlphaToCoverage != Mat->IsAlphaToCoverage())
+	{
+		const FString HashString = TEXT("bOverride_AlphaToCoverage");
+		Hash.UpdateWithString(*HashString, HashString.Len());
+		Hash.Update((uint8*)&bUsedIsAlphaToCoverage, sizeof(bUsedIsAlphaToCoverage));
+		bHasOverrides = true;
+	}
+
  	if (bHasOverrides)
  	{
 		Hash.Final();
@@ -2711,7 +2767,10 @@ bool UMaterialInstance::HasOverridenBaseProperties()const
 		(GetBlendMode() != Parent->GetBlendMode()) ||
 		(GetShadingModel() != Parent->GetShadingModel()) ||
 		(IsTwoSided() != Parent->IsTwoSided()) ||
-		(IsDitheredLODTransition() != Parent->IsDitheredLODTransition()))
+		(IsDitheredLODTransition() != Parent->IsDitheredLODTransition()) ||
+		(IsFullyRough() != Parent->IsFullyRough()) ||
+		(IsAlphaToCoverage() != Parent->IsAlphaToCoverage()) ||
+		(IsCheapShading() != Parent->IsCheapShading()))
 		)
 	{
 		return true;
@@ -2749,6 +2808,22 @@ bool UMaterialInstance::IsMasked() const
 {
 	return GetBlendMode() == EBlendMode::BLEND_Masked;
 }
+
+bool UMaterialInstance::IsCheapShading() const
+{
+    return CheapShading;
+}
+
+bool UMaterialInstance::IsFullyRough() const
+{
+    return FullyRough;
+}
+
+bool UMaterialInstance::IsAlphaToCoverage() const
+{
+    return AlphaToCoverage;
+}
+
 
 USubsurfaceProfile* UMaterialInstance::GetSubsurfaceProfile_Internal() const
 {

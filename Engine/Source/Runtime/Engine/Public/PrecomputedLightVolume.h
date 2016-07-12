@@ -27,7 +27,7 @@ public:
 	 */
 	TSHVectorRGB<SHOrder> Lighting;
 
-	/** BentNormal occlusion of the sky, packed into an FColor.  This is only valid in the high quality lightmap data. */
+	/** BentNormal occlusion of the sky, packed into an FColor. */
 	FColor PackedSkyBentNormal;
 
 	/** Shadow factor for the stationary directional light. */
@@ -118,7 +118,18 @@ public:
 
 	/** Interpolates incident radiance to Position. */
 	ENGINE_API void InterpolateIncidentRadiancePoint(
+		class FViewInfo* DebugDrawingView,
 		const FVector& Position, 
+		float& AccumulatedWeight,
+		float& AccumulatedDirectionalLightShadowing,
+		FSHVectorRGB3& AccumulatedIncidentRadiance,
+		FVector& SkyBentNormal) const;
+
+	/** Interpolates incident radiance over the area to a single sample. */
+	ENGINE_API void InterpolateIncidentRadianceVolumeToPoint(
+		class FViewInfo* DebugDrawingView,
+		const FBoxCenterAndExtent& QueryVolume,
+		const FSphere& MeshSphere,
 		float& AccumulatedWeight,
 		float& AccumulatedDirectionalLightShadowing,
 		FSHVectorRGB3& AccumulatedIncidentRadiance,

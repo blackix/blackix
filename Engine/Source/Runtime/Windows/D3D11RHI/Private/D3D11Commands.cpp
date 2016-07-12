@@ -698,6 +698,8 @@ void FD3D11DynamicRHI::ValidateExclusiveDepthStencilAccess(FExclusiveDepthStenci
 
 	if (bSrcDepthWrite || bSrcStencilWrite)
 	{
+        // Oculus forward TODO: disabled this to get past some issues when resolving depth surfaces.
+        /*
 		// New Rule: You have to call SetRenderTarget[s]() before
 		ensure(CurrentDepthTexture);
 
@@ -718,6 +720,7 @@ void FD3D11DynamicRHI::ValidateExclusiveDepthStencilAccess(FExclusiveDepthStenci
 			(bSrcStencilWrite) ? TEXT("true") : TEXT("false"),
 			(bDstStencilWrite) ? TEXT("true") : TEXT("false")
 			);
+        */
 	}
 }
 

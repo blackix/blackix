@@ -2820,7 +2820,7 @@ void FRCPassPostProcessAaES2::Process(FRenderingCompositePassContext& Context)
 		NonConstView.ViewMatrices.TranslatedViewProjectionMatrix = TranslatedViewMatrix * NonConstView.ViewMatrices.ProjMatrix;
 		NonConstView.ViewMatrices.InvTranslatedViewProjectionMatrix = NonConstView.ViewMatrices.TranslatedViewProjectionMatrix.Inverse();
 
-		NonConstView.InitRHIResources(nullptr);
+		NonConstView.InitRHIResources(nullptr, nullptr);
 	}
 }
 

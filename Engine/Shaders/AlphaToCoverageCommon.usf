@@ -1,0 +1,37 @@
+// Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	AlphaToCoverageCommon.usf: common code for a2c
+=============================================================================*/
+  
+#pragma once
+
+float ClipAndGetAlphaToCoverage(FMaterialPixelParameters MaterialParameters, FPixelMaterialInputs PixelMaterialInputs)
+{
+    // We automatically convert the mask dithering to A2C, as they are both after the same thing.
+    #if (MATERIALBLENDING_MASKED_ALPHATOCOVERAGE || (MATERIALBLENDING_MASKED && MATERIAL_DITHER_OPACITY_MASK))
+        // TODO: what we actually want to do is evaluate the clip value once per MSAA sample location
+        // at the sample location, and use that.  But the way the material system is set up doesn't let
+        // us do that... so instead we use derivatives and magic values to estimate.
+        // We can clip if all of them are < clip value, otherwise continue running the shader.
+
+        ClipLODTransition(MaterialParameters);
+
+        float mask = GetMaterialMaskInputRaw(PixelMaterialInputs) - GetMaterialOpacityMaskClipValue();
+        float dcdx = ddx_fine(mask);
+        float dcdy = ddy_fine(mask);
+
+        float MAGIC = .4;   // adjust to get a result you like
+        float4 masks = float4(mask.xxxx) + float4(+dcdx, -dcdx, +dcdy, -dcdy)*MAGIC;
+        float CoverageAlpha = dot(masks >= float4(0,0,0,0), float4(.25, .25, .25, .25));
+
+        clip(CoverageAlpha - .001f);
+
+        return CoverageAlpha;
+
+    #elif MATERIALBLENDING_MASKED
+        GetMaterialCoverageAndClipping(MaterialParameters, PixelMaterialInputs);
+    #endif
+
+    return 0.0;
+}

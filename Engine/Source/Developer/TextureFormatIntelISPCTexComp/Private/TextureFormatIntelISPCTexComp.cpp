@@ -37,7 +37,7 @@ static FName GSupportedTextureFormatNames[] =
 /**
  * BC6H Compression function
  */
-static void IntelBC6HCompressScans(bc6h_enc_settings* pEncSettings, FImage* pInImage, FCompressedImage2D* pOutImage, int yStart, int yEnd)
+static void IntelBC6HCompressScans(bc6h_enc_settings* pEncSettings, FImage* pInImage, TArray<uint8>* pOutImage, int Slice, int yStart, int yEnd)
 {
 	check(pInImage->Format == ERawImageFormat::RGBA16F);
 	check((yStart % 4) == 0);
@@ -46,7 +46,10 @@ static void IntelBC6HCompressScans(bc6h_enc_settings* pEncSettings, FImage* pInI
 
 	uint8* pInTexels = reinterpret_cast<uint8*>(&pInImage->RawData[0]);
 	const int iInStride = pInImage->SizeX * 8;
-	uint8* pOutTexels = reinterpret_cast<uint8*>(&pOutImage->RawData[0]);
+	// Move to current slice.
+	pInTexels += iInStride*pInImage->SizeY*Slice;
+
+	uint8* pOutTexels = pOutImage->GetData();
 
 	rgba_surface insurface;
 	insurface.ptr		= pInTexels + (yStart * iInStride);
@@ -61,7 +64,7 @@ static void IntelBC6HCompressScans(bc6h_enc_settings* pEncSettings, FImage* pInI
 /**
  * BC7 Compression function
  */
-static void IntelBC7CompressScans(bc7_enc_settings* pEncSettings, FImage* pInImage, FCompressedImage2D* pOutImage, int yStart, int yEnd)
+static void IntelBC7CompressScans(bc7_enc_settings* pEncSettings, FImage* pInImage, TArray<uint8>* pOutImage, int Slice, int yStart, int yEnd)
 {
 	check(pInImage->Format == ERawImageFormat::BGRA8);
 	check((yStart % 4) == 0);
@@ -70,7 +73,10 @@ static void IntelBC7CompressScans(bc7_enc_settings* pEncSettings, FImage* pInIma
 
 	uint8* pInTexels = reinterpret_cast<uint8*>(&pInImage->RawData[0]);
 	const int iInStride = pInImage->SizeX * 4;
-	uint8* pOutTexels = reinterpret_cast<uint8*>(&pOutImage->RawData[0]);
+	// Move to current slice
+	pInTexels += iInStride*Slice*pInImage->SizeY;
+
+	uint8* pOutTexels = pOutImage->GetData();
 
 	// Switch byte order for compressors input
 	for ( int y=yStart; y < yEnd; ++y )
@@ -135,8 +141,8 @@ class FTextureFormatIntelISPCTexComp : public ITextureFormat
 
 		const int iWidthInBlocks	= ((InImage.SizeX + 3) & ~ 3) / 4;
 		const int iHeightInBlocks	= ((InImage.SizeY + 3) & ~ 3) / 4;
-		const int iOutputBytes		= iWidthInBlocks * iHeightInBlocks * 16;
-		OutCompressedImage.RawData.AddUninitialized(iOutputBytes);
+		const int iOutputBytesPerSlice		= iWidthInBlocks * iHeightInBlocks * 16;
+		OutCompressedImage.RawData.Reserve(iOutputBytesPerSlice * InImage.NumSlices);
 
 		// When we allow async tasks to execute we do so with 4 lines of the image per task
 		// This isn't optimal for long thin textures, but works well with how ISPC works
@@ -153,62 +159,73 @@ class FTextureFormatIntelISPCTexComp : public ITextureFormat
 			bc6h_enc_settings settings;
 			GetProfile_bc6h_basic(&settings);
 
-			if ( bUseTasks )
+			bCompressionSucceeded = true;
+			int32 SliceSize = Image.SizeX * Image.SizeY;
+			for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
 			{
-				class FIntelCompressWorker : public FNonAbandonableTask
+				TArray<uint8> CompressedSliceData;
+				CompressedSliceData.AddUninitialized(iOutputBytesPerSlice);
+
+				if (bUseTasks)
 				{
-				public:
-					FIntelCompressWorker(bc6h_enc_settings* pEncSettings, FImage* pInImage, FCompressedImage2D* pOutImage, int yStart, int yEnd)
-						: mpEncSettings(pEncSettings)
-						, mpInImage(pInImage)
-						, mpOutImage(pOutImage)
-						, mYStart(yStart)
-						, mYEnd(yEnd)
+					class FIntelCompressWorker : public FNonAbandonableTask
 					{
+					public:
+						FIntelCompressWorker(bc6h_enc_settings* pEncSettings, FImage* pInImage, TArray<uint8>* pOutImage, int Slice, int yStart, int yEnd)
+							: mpEncSettings(pEncSettings)
+							, mpInImage(pInImage)
+							, mpOutImage(pOutImage)
+							, mYStart(yStart)
+							, mYEnd(yEnd)
+							, mSlice(Slice)
+						{
+						}
+
+						void DoWork()
+						{
+							IntelBC6HCompressScans(mpEncSettings, mpInImage, mpOutImage, mSlice, mYStart, mYEnd);
+						}
+
+						FORCEINLINE TStatId GetStatId() const
+						{
+							RETURN_QUICK_DECLARE_CYCLE_STAT(FIntelCompressWorker, STATGROUP_ThreadPoolAsyncTasks);
+						}
+
+						bc6h_enc_settings*	mpEncSettings;
+						FImage*				mpInImage;
+						TArray<uint8>*	mpOutImage;
+						int					mYStart;
+						int					mYEnd;
+						int					mSlice;
+					};
+					typedef FAsyncTask<FIntelCompressWorker> FIntelCompressTask;
+
+					// One less task because we'll do the final + non multiple of 4 inside this task
+					TIndirectArray<FIntelCompressTask> CompressionTasks;
+					CompressionTasks.Reserve(iNumTasks);
+					for (int iTask=0; iTask < iNumTasks; ++iTask)
+					{
+						auto* AsyncTask = new(CompressionTasks)FIntelCompressTask(&settings, &Image, &CompressedSliceData, SliceIndex, iTask * iScansPerTask, (iTask + 1) * iScansPerTask);
+						AsyncTask->StartBackgroundTask();
 					}
 
-					void DoWork()
+					IntelBC6HCompressScans(&settings, &Image, &CompressedSliceData, SliceIndex, iScansPerTask * iNumTasks, InImage.SizeY);
+
+					// Wait completion
+					for (int32 TaskIndex = 0; TaskIndex < CompressionTasks.Num(); ++TaskIndex)
 					{
-						IntelBC6HCompressScans(mpEncSettings, mpInImage, mpOutImage, mYStart, mYEnd);
+						CompressionTasks[TaskIndex].EnsureCompletion();
 					}
-
-					FORCEINLINE TStatId GetStatId() const
-					{
-						RETURN_QUICK_DECLARE_CYCLE_STAT(FIntelCompressWorker, STATGROUP_ThreadPoolAsyncTasks);
-					}
-
-					bc6h_enc_settings*	mpEncSettings;
-					FImage*				mpInImage;
-					FCompressedImage2D*	mpOutImage;
-					int					mYStart;
-					int					mYEnd;
-				};
-				typedef FAsyncTask<FIntelCompressWorker> FIntelCompressTask;
-
-				// One less task because we'll do the final + non multiple of 4 inside this task
-				TIndirectArray<FIntelCompressTask> CompressionTasks;
-				CompressionTasks.Reserve(iNumTasks);
-				for ( int iTask=0; iTask < iNumTasks; ++iTask )
+				}
+				else
 				{
-					auto* AsyncTask = new(CompressionTasks) FIntelCompressTask(&settings, &Image, &OutCompressedImage, iTask * iScansPerTask, (iTask + 1) * iScansPerTask);
-					AsyncTask->StartBackgroundTask();
+					IntelBC6HCompressScans(&settings, &Image, &CompressedSliceData, SliceIndex, 0, InImage.SizeY);
 				}
 
-				IntelBC6HCompressScans(&settings, &Image, &OutCompressedImage, iScansPerTask * iNumTasks, InImage.SizeY);
-
-				// Wait completion
-				for (int32 TaskIndex = 0; TaskIndex < CompressionTasks.Num(); ++TaskIndex)
-				{
-					CompressionTasks[TaskIndex].EnsureCompletion();
-				}
-			}
-			else
-			{
-				IntelBC6HCompressScans(&settings, &Image, &OutCompressedImage, 0, InImage.SizeY);
+				OutCompressedImage.RawData.Append(CompressedSliceData);
 			}
 
 			CompressedPixelFormat = PF_BC6H;
-			bCompressionSucceeded = true;
 		}
 		else if ( BuildSettings.TextureFormatName == GTextureFormatNameBC7 )
 		{
@@ -225,62 +242,73 @@ class FTextureFormatIntelISPCTexComp : public ITextureFormat
 				GetProfile_basic(&settings);
 			}
 
-			if ( bUseTasks )
+			bCompressionSucceeded = true;
+			int32 SliceSize = Image.SizeX * Image.SizeY;
+			for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
 			{
-				class FIntelCompressWorker : public FNonAbandonableTask
+				TArray<uint8> CompressedSliceData;
+				CompressedSliceData.AddUninitialized(iOutputBytesPerSlice);
+
+				if (bUseTasks)
 				{
-				public:
-					FIntelCompressWorker(bc7_enc_settings* pEncSettings, FImage* pInImage, FCompressedImage2D* pOutImage, int yStart, int yEnd)
-						: mpEncSettings(pEncSettings)
-						, mpInImage(pInImage)
-						, mpOutImage(pOutImage)
-						, mYStart(yStart)
-						, mYEnd(yEnd)
+					class FIntelCompressWorker : public FNonAbandonableTask
 					{
+					public:
+						FIntelCompressWorker(bc7_enc_settings* pEncSettings, FImage* pInImage, TArray<uint8>* pOutImage, int Slice, int yStart, int yEnd)
+							: mpEncSettings(pEncSettings)
+							, mpInImage(pInImage)
+							, mpOutImage(pOutImage)
+							, mYStart(yStart)
+							, mYEnd(yEnd)
+							, mSlice(Slice)
+						{
+						}
+
+						void DoWork()
+						{
+							IntelBC7CompressScans(mpEncSettings, mpInImage, mpOutImage, mSlice, mYStart, mYEnd);
+						}
+
+						FORCEINLINE TStatId GetStatId() const
+						{
+							RETURN_QUICK_DECLARE_CYCLE_STAT(FIntelCompressWorker, STATGROUP_ThreadPoolAsyncTasks);
+						}
+
+						bc7_enc_settings*	mpEncSettings;
+						FImage*				mpInImage;
+						TArray<uint8>*		mpOutImage;
+						int					mYStart;
+						int					mYEnd;
+						int					mSlice;
+					};
+					typedef FAsyncTask<FIntelCompressWorker> FIntelCompressTask;
+
+					// One less task because we'll do the final + non multiple of 4 inside this task
+					TIndirectArray<FIntelCompressTask> CompressionTasks;
+					CompressionTasks.Reserve(iNumTasks);
+					for (int iTask=0; iTask < iNumTasks; ++iTask)
+					{
+						auto* AsyncTask = new(CompressionTasks)FIntelCompressTask(&settings, &Image, &CompressedSliceData, SliceIndex, iTask * iScansPerTask, (iTask + 1) * iScansPerTask);
+						AsyncTask->StartBackgroundTask();
 					}
 
-					void DoWork()
+					IntelBC7CompressScans(&settings, &Image, &CompressedSliceData, SliceIndex, iScansPerTask * iNumTasks, InImage.SizeY);
+
+					// Wait completion
+					for (int32 TaskIndex = 0; TaskIndex < CompressionTasks.Num(); ++TaskIndex)
 					{
-						IntelBC7CompressScans(mpEncSettings, mpInImage, mpOutImage, mYStart, mYEnd);
+						CompressionTasks[TaskIndex].EnsureCompletion();
 					}
-
-					FORCEINLINE TStatId GetStatId() const
-					{
-						RETURN_QUICK_DECLARE_CYCLE_STAT(FIntelCompressWorker, STATGROUP_ThreadPoolAsyncTasks);
-					}
-
-					bc7_enc_settings*	mpEncSettings;
-					FImage*				mpInImage;
-					FCompressedImage2D*	mpOutImage;
-					int					mYStart;
-					int					mYEnd;
-				};
-				typedef FAsyncTask<FIntelCompressWorker> FIntelCompressTask;
-
-				// One less task because we'll do the final + non multiple of 4 inside this task
-				TIndirectArray<FIntelCompressTask> CompressionTasks;
-				CompressionTasks.Reserve(iNumTasks);
-				for ( int iTask=0; iTask < iNumTasks; ++iTask )
+				}
+				else
 				{
-					auto* AsyncTask = new(CompressionTasks) FIntelCompressTask(&settings, &Image, &OutCompressedImage, iTask * iScansPerTask, (iTask + 1) * iScansPerTask);
-					AsyncTask->StartBackgroundTask();
+					IntelBC7CompressScans(&settings, &Image, &CompressedSliceData, SliceIndex, 0, InImage.SizeY);
 				}
 
-				IntelBC7CompressScans(&settings, &Image, &OutCompressedImage, iScansPerTask * iNumTasks, InImage.SizeY);
-
-				// Wait completion
-				for (int32 TaskIndex = 0; TaskIndex < CompressionTasks.Num(); ++TaskIndex)
-				{
-					CompressionTasks[TaskIndex].EnsureCompletion();
-				}
-			}
-			else
-			{
-				IntelBC7CompressScans(&settings, &Image, &OutCompressedImage, 0, InImage.SizeY);
+				OutCompressedImage.RawData.Append(CompressedSliceData);
 			}
 
 			CompressedPixelFormat = PF_BC7;
-			bCompressionSucceeded = true;
 		}
 
 		if ( bCompressionSucceeded )

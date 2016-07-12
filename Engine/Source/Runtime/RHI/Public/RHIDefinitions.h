@@ -770,7 +770,10 @@ inline bool RHINeedsToSwitchVerticalAxis(EShaderPlatform Platform)
 inline bool RHISupportsSeparateMSAAAndResolveTextures(const EShaderPlatform Platform)
 {
 	// Metal needs to handle MSAA and resolve textures internally (unless RHICreateTexture2D was changed to take an optional resolve target)
-	return !IsMetalPlatform(Platform) && IsVulkanPlatform(Platform);
+
+	// Oculus-Forward TODO: this check was broken in 4.12
+	//return !IsMetalPlatform(Platform) && IsVulkanPlatform(Platform);
+	return !IsMetalPlatform(Platform);
 }
 
 inline bool RHISupportsComputeShaders(const EShaderPlatform Platform)

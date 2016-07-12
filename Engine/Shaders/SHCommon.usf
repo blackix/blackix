@@ -4,6 +4,8 @@
 	SHCommon.usf: Spherical Harmonic functionality
 =============================================================================*/
 
+#pragma once
+
 /** The SH coefficients for the projection of a function that maps directions to scalar values. */
 struct FOneBandSHVector
 {

@@ -268,6 +268,20 @@ void FMaterialThumbnailScene::SetMaterialInterface(UMaterialInterface* InMateria
 			ThumbnailInfo = USceneThumbnailInfoWithPrimitive::StaticClass()->GetDefaultObject<USceneThumbnailInfoWithPrimitive>();
 		}
 
+		// We can't render objects that use the gbuffer in forward
+		{
+			const FMaterialResource* MaterialResource = InMaterial->GetMaterialResource(GetScene()->GetFeatureLevel());
+			if (MaterialResource != nullptr)
+			{
+				const auto* ShaderMap = MaterialResource->GetGameThreadShaderMap();
+				if (ShaderMap != nullptr && ShaderMap->NeedsGBuffer()
+					&& GetScene()->GetShadingPath() != EShadingPath::Deferred)
+				{
+					InMaterial = GUnrealEd->GetThumbnailManager()->FloorPlaneMaterial;
+				}
+			}
+		}
+
 		UMaterial* BaseMaterial = InMaterial->GetBaseMaterial();
 
 		// UI material thumbnails always get a 2D plane centered at the camera which is a better representation of the
@@ -970,13 +984,8 @@ FClassActorThumbnailScene::FClassActorThumbnailScene()
 
 void FClassActorThumbnailScene::SpawnPreviewActor(UClass* InClass)
 {
-	if (PreviewActor.IsValid())
+	if (PreviewActor)
 	{
-		if (PreviewActor->GetClass() == InClass)
-		{
-			return;
-		}
-
 		PreviewActor->Destroy();
 		PreviewActor = nullptr;
 	}
@@ -989,7 +998,7 @@ void FClassActorThumbnailScene::SpawnPreviewActor(UClass* InClass)
 		SpawnInfo.ObjectFlags = RF_Transient;
 		PreviewActor = GetWorld()->SpawnActor<AActor>(InClass, SpawnInfo);
 
-		if (PreviewActor.IsValid())
+		if (PreviewActor)
 		{
 			const FBoxSphereBounds Bounds = GetPreviewActorBounds();
 			const float BoundsZOffset = GetBoundsZOffset(Bounds);
@@ -1024,7 +1033,7 @@ bool FClassActorThumbnailScene::IsValidComponentForVisualization(UActorComponent
 FBoxSphereBounds FClassActorThumbnailScene::GetPreviewActorBounds() const
 {
 	FBoxSphereBounds Bounds(ForceInitToZero);
-	if (PreviewActor.IsValid() && PreviewActor->GetRootComponent())
+	if (PreviewActor && PreviewActor->GetRootComponent())
 	{
 		TArray<USceneComponent*> PreviewComponents;
 		PreviewActor->GetRootComponent()->GetChildrenComponents(true, PreviewComponents);

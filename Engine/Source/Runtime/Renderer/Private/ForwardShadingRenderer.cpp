@@ -21,7 +21,7 @@ uint32 GetShadowQuality();
 
 
 FForwardShadingSceneRenderer::FForwardShadingSceneRenderer(const FSceneViewFamily* InViewFamily,FHitProxyConsumer* HitProxyConsumer)
-	:	FSceneRenderer(InViewFamily, HitProxyConsumer)
+	:	FSceneRenderer(InViewFamily, HitProxyConsumer, EShadingPath::Forward)
 {
 	bModulatedShadowsInUse = false;
 	bCSMShadowsInUse = false;
@@ -31,13 +31,12 @@ FForwardShadingSceneRenderer::FForwardShadingSceneRenderer(const FSceneViewFamil
  * Initialize scene's views.
  * Check visibility, sort translucent items, etc.
  */
-void FForwardShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList)
+bool FForwardShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdList, struct FILCUpdatePrimTaskData& ILCTaskData, FGraphEventArray& SortEvents)
 {
 	SCOPED_DRAW_EVENT(RHICmdList, InitViews);
 
 	SCOPE_CYCLE_COUNTER(STAT_InitViewsTime);
 
-	FILCUpdatePrimTaskData ILCTaskData;
 	PreVisibilityFrameSetup(RHICmdList);
 	ComputeViewVisibility(RHICmdList);
 	PostVisibilityFrameSetup(ILCTaskData);
@@ -77,13 +76,20 @@ void FForwardShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLis
 		}
 
 		// Initialize the view's RHI resources.
-		Views[ViewIndex].InitRHIResources(DirectionalLightShadowInfo);
+		Views[ViewIndex].InitRHIResources(DirectionalLightShadowInfo, nullptr);
 	}
 
 	// Now that the indirect lighting cache is updated, we can update the primitive precomputed lighting buffers.
 	UpdatePrimitivePrecomputedLightingBuffers();
 	
 	OnStartFrame();
+
+	return false;
+}
+
+void FForwardShadingSceneRenderer::InitViewsPossiblyAfterPrepass(FRHICommandListImmediate& RHICmdList, struct FILCUpdatePrimTaskData& ILCTaskData, FGraphEventArray& SortEvents)
+{
+	check(0);
 }
 
 /** 
@@ -105,14 +111,16 @@ void FForwardShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	// Allocate the maximum scene render target space for the current view family.
-	SceneContext.Allocate(RHICmdList, ViewFamily);
+	SceneContext.Allocate(RHICmdList, ViewFamily, ShadingPath);
 
 	//make sure all the targets we're going to use will be safely writable.
 	GRenderTargetPool.TransitionTargetsWritable(RHICmdList);
 
 	// Find the visible primitives.
-	InitViews(RHICmdList);
-	
+	FGraphEventArray SortEvents;
+	FILCUpdatePrimTaskData ILCTaskData;
+	InitViews(RHICmdList, ILCTaskData, SortEvents);
+
 	// Notify the FX system that the scene is about to be rendered.
 	if (Scene->FXSystem && ViewFamily.EngineShowFlags.Particles)
 	{
@@ -270,7 +278,7 @@ void FForwardShadingSceneRenderer::BasicPostProcess(FRHICommandListImmediate& RH
 	// Composite editor primitives if we had any to draw and compositing is enabled
 	if (bDoEditorPrimitives)
 	{
-		FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(false));
+		FRenderingCompositePass* EditorCompNode = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessCompositeEditorPrimitives(EShadingPath::Forward));
 		EditorCompNode->SetInput(ePId_Input0, FRenderingCompositeOutputRef(Context.FinalOutput));
 		//Node->SetInput(ePId_Input1, FRenderingCompositeOutputRef(Context.SceneDepth));
 		Context.FinalOutput = FRenderingCompositeOutputRef(EditorCompNode);

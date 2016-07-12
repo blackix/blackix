@@ -363,7 +363,7 @@ public:
 			DRAWING_POLICY_MATCH(FeatureLevel == Other.FeatureLevel);
 		DRAWING_POLICY_MATCH_END
 	}
-	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType PolicyContext) const;
+	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType& PolicyContext) const;
 
 	/** 
 	 * Create bound shader state using the vertex decl from the mesh draw policy

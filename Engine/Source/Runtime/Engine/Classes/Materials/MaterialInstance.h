@@ -213,6 +213,9 @@ class UMaterialInstance : public UMaterialInterface
 	TEnumAsByte<EMaterialShadingModel> ShadingModel;
 	uint32 TwoSided : 1;
 	uint32 DitheredLODTransition : 1;
+	uint32 CheapShading : 1;
+	uint32 FullyRough : 1;
+	uint32 AlphaToCoverage : 1;
 
 	/** 
 	 * FMaterialRenderProxy derivatives that represent this material instance to the renderer, when the renderer needs to fetch parameter values. 
@@ -292,7 +295,10 @@ public:
 	ENGINE_API virtual EMaterialShadingModel GetShadingModel() const override;
 	ENGINE_API virtual bool IsTwoSided() const override;
 	ENGINE_API virtual bool IsDitheredLODTransition() const override;
-	ENGINE_API virtual bool IsMasked() const override;;
+	ENGINE_API virtual bool IsMasked() const override;
+	ENGINE_API virtual bool IsAlphaToCoverage() const override;
+	ENGINE_API virtual bool IsFullyRough() const override;
+	ENGINE_API virtual bool IsCheapShading() const override;
 	
 	ENGINE_API virtual USubsurfaceProfile* GetSubsurfaceProfile_Internal() const override;
 

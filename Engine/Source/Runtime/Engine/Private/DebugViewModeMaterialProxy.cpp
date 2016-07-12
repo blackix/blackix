@@ -169,6 +169,11 @@ bool FDebugViewModeMaterialProxy::IsMasked() const
 	return Material && Material->IsMasked(); 
 }
 
+bool FDebugViewModeMaterialProxy::IsAlphaToCoverage() const
+{ 
+	return Material && Material->IsAlphaToCoverage(); 
+}
+
 enum EBlendMode FDebugViewModeMaterialProxy::GetBlendMode() const
 { 
 	return Material ? Material->GetBlendMode() : BLEND_Opaque; 

@@ -7,21 +7,14 @@
 static const float FLT_EPSILON = 0.001f;
 static const float FLT_EPSILON2 = 0.01f;
 
-/** Shader parameters shared between exponential and multi-layer height fog, to reduce constant register usage. */
-float4 SharedFogParameter0;
-float4 SharedFogParameter1;
-half4 InscatteringLightDirection;
-half4 DirectionalInscatteringColor;
-float DirectionalInscatteringStartDistance;
-
 // @param WorldPositionRelativeToCamera = WorldPosition - InCameraPosition
 half4 GetExponentialHeightFog(float3 WorldPositionRelativeToCamera)
 {
 	/** FogDensity * exp2(-FogHeightFalloff * (CameraWorldPosition.z - FogHeight)) in x, FogHeightFalloff in y, CosTerminatorAngle in z, StartDistance in w. */
-	const float4 ExponentialFogParameters = SharedFogParameter0;
+	const float4 ExponentialFogParameters = Frame.ExponentialFogParameters0;
 	/** Color to use. */
-	const half3 ExponentialFogColor = SharedFogParameter1.xyz;
-	const half MinFogOpacity = SharedFogParameter1.w;
+	const half3 ExponentialFogColor = Frame.ExponentialFogParameters1.xyz;
+	const half MinFogOpacity = Frame.ExponentialFogParameters1.w;
 
 	float3 CameraToReceiver = WorldPositionRelativeToCamera;
 	float CameraToReceiverLengthSqr = dot( CameraToReceiver, CameraToReceiver );
@@ -38,18 +31,22 @@ half4 GetExponentialHeightFog(float3 WorldPositionRelativeToCamera)
 
 	half3 DirectionalInscattering = 0;
 
-	if (InscatteringLightDirection.w > 0)
+	if (Frame.ExponentialFogInscatteringLightDirection.w > 0)
 	{
+		half3 InscatteringColor = Frame.ExponentialFogDirectionalInscatteringColor.xyz;
+		half3 InscatteringLightDirection = Frame.ExponentialFogInscatteringLightDirection.xyz;
+		half InscatteringExponent = Frame.ExponentialFogDirectionalInscatteringColor.w;
+		float InscatteringStartDistance = Frame.ExponentialFogDirectionalInscatteringStartDistance;
+
 		// Setup a cosine lobe around the light direction to approximate inscattering from the directional light off of the ambient haze;
-		// clamp to avoid issues on some platforms (Could've used ClampedPow(), but we want the dot to be 0..1)
-		half3 DirectionalLightInscattering = DirectionalInscatteringColor.xyz * pow(saturate(dot(CameraToReceiverNormalized, InscatteringLightDirection.xyz)), clamp(DirectionalInscatteringColor.w, 0.000001f, 1000.0));
+		float InscatteringAmount = pow(saturate(dot(CameraToReceiverNormalized, InscatteringLightDirection.xyz)), InscatteringExponent);
 
 		// Calculate the line integral of the eye ray through the haze, using a special starting distance to limit the inscattering to the distance
-		float DirExponentialHeightLineIntegral = ExponentialHeightLineIntegralShared * max(CameraToReceiverLength - DirectionalInscatteringStartDistance, 0.0f);
+		float DirExponentialHeightLineIntegral = ExponentialHeightLineIntegralShared * max(CameraToReceiverLength - InscatteringStartDistance, 0.0f);
 		// Calculate the amount of light that made it through the fog using the transmission equation
 		half DirectionalInscatteringFogFactor = saturate(exp2(-DirExponentialHeightLineIntegral));
 		// Final inscattering from the light
-		DirectionalInscattering = DirectionalLightInscattering * (1 - DirectionalInscatteringFogFactor);
+		DirectionalInscattering = InscatteringColor * (InscatteringAmount * (1 - DirectionalInscatteringFogFactor));
 	}
 
 	// Calculate the amount of light that made it through the fog using the transmission equation

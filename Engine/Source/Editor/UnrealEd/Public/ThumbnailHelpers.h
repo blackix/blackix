@@ -236,7 +236,7 @@ protected:
 
 private:
 
-	TWeakObjectPtr<class AActor> PreviewActor;
+	class AActor* PreviewActor;
 };
 
 class UNREALED_API FBlueprintThumbnailScene : public FClassActorThumbnailScene

@@ -356,7 +356,7 @@ static int32 FrustumCull(const FScene* Scene, FViewInfo& View)
 			}
 		},
 		!FApp::ShouldUseThreadingForPerformance() || (UseCustomCulling && !View.CustomVisibilityQuery->IsThreadsafe()) || CVarParallelInitViews.GetValueOnRenderThread() == 0
-	);
+		);
 
 	return NumCulledPrimitives.GetValue();
 }
@@ -1535,12 +1535,14 @@ struct FRelevancePacket
 			// Cache the nearest reflection proxy if needed
 			if (PrimitiveSceneInfo->bNeedsCachedReflectionCaptureUpdate
 				// During Forward Shading, the per-object reflection is used for everything
-				&& (!Scene->ShouldUseDeferredRenderer() || bTranslucentRelevance || bHasClearCoat))
+				// Otherwise it is just used on translucency
+				// Clustered forward currently doesn't support per-object probes, it may in the future.
+				&& (bTranslucentRelevance || bHasClearCoat || Scene->CurrentShadingPath == EShadingPath::Forward))
 			{
 				PrimitiveSceneInfo->CachedReflectionCaptureProxy = Scene->FindClosestReflectionCapture(Scene->PrimitiveBounds[BitIndex].Origin);
 				PrimitiveSceneInfo->CachedPlanarReflectionProxy = Scene->FindClosestPlanarReflection(Scene->PrimitiveBounds[BitIndex]);
 
-				if (!Scene->ShouldUseDeferredRenderer())
+				if (Scene->CurrentShadingPath == EShadingPath::Forward)
 				{
 					// forward HQ reflections
 					Scene->FindClosestReflectionCaptures(Scene->PrimitiveBounds[BitIndex].Origin, PrimitiveSceneInfo->CachedReflectionCaptureProxies);
@@ -2519,6 +2521,33 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 			HLODTree.UpdateAndApplyVisibilityStates(View);
 		}
 
+		// Update our chosen scene reflection proxy for clustered forward until we support more, or per-object probes.
+		{
+			FReflectionCaptureProxy* FoundProxy = nullptr;
+			float MaxBrightness = 0;
+
+			for (FReflectionCaptureProxy* Proxy : Scene->ReflectionSceneData.RegisteredReflectionCaptures)
+			{
+				// TODO: check view-within-radius?
+				if (((Proxy->Shape == EReflectionCaptureShape::Sphere && !CLUSTERED_USE_BOX_REFLECTION_CAPTURE) ||
+					 (Proxy->Shape == EReflectionCaptureShape::Box && CLUSTERED_USE_BOX_REFLECTION_CAPTURE))
+					&& Proxy->SM4FullHDRCubemap != nullptr
+					&& Proxy->SM4FullHDRCubemap->TextureRHI
+					&& Proxy->Brightness > MaxBrightness)
+				{
+					MaxBrightness = Proxy->Brightness;
+					FoundProxy = Proxy;
+				}
+			}
+
+			// Old one might have been removed, we only use it to check for "was it present last frame"
+			// or not... so we know if we need to rebuild static mesh lists.
+			bool const HasProxy = (FoundProxy != nullptr);
+			bool const HadProxy = (Scene->SceneReflectionCapture != nullptr);
+			Scene->bScenesPrimitivesNeedStaticMeshElementUpdate |= (HasProxy != HadProxy);
+			Scene->SceneReflectionCapture = FoundProxy;
+		}
+
 		MarkAllPrimitivesForReflectionProxyUpdate(Scene);
 		{
 			QUICK_SCOPE_CYCLE_COUNTER(STAT_ViewVisibilityTime_ConditionalMarkStaticMeshElementsForUpdate);
@@ -2826,7 +2855,7 @@ bool FDeferredShadingSceneRenderer::InitViews(FRHICommandListImmediate& RHICmdLi
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			// Initialize the view's RHI resources.
-			Views[ViewIndex].InitRHIResources(nullptr);
+			Views[ViewIndex].InitRHIResources(nullptr, nullptr);
 
 			// Possible stencil dither optimization approach
 			Views[ViewIndex].bAllowStencilDither = bDitheredLODTransitionsUseStencil;

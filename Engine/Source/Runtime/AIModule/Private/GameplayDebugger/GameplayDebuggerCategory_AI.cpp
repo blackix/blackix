@@ -393,7 +393,7 @@ void FGameplayDebuggerCategory_AI::DrawPath(UWorld* World)
 		const FVector P0 = PathDataPack.PathPoints[Idx - 1] + NavigationDebugDrawing::PathOffset;
 		const FVector P1 = PathDataPack.PathPoints[Idx] + NavigationDebugDrawing::PathOffset;
 
-		DrawDebugLine(World, P0, P1, Idx < DataPack.NextPathPointIndex ? InactiveColor : PathColor, false, -1.0f, 0, NavigationDebugDrawing::PathLineThickness);
+		DrawDebugLine(World, P0, P1, Idx < DataPack.NextPathPointIndex ? InactiveColor : PathColor, false, -1.0f, SDPG_World, NavigationDebugDrawing::PathLineThickness);
 	}
 
 	if (NumPathVerts && DataPack.bPathHasGoalActor)
@@ -401,7 +401,7 @@ void FGameplayDebuggerCategory_AI::DrawPath(UWorld* World)
 		const FVector P0 = PathDataPack.PathPoints.Last() + NavigationDebugDrawing::PathOffset;
 		const FVector P1 = DataPack.PathGoalLocation + NavigationDebugDrawing::PathOffset;
 
-		DrawDebugLine(World, P0, P1, PathGoalColor, false, -1.0f, 0, NavigationDebugDrawing::PathLineThickness);
+		DrawDebugLine(World, P0, P1, PathGoalColor, false, -1.0f, SDPG_World, NavigationDebugDrawing::PathLineThickness);
 	}
 }
 

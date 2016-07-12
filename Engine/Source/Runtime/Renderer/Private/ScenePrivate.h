@@ -100,6 +100,7 @@ public:
 #include "AtmosphereRendering.h"
 #include "GlobalDistanceFieldParameters.h"
 #include "LightPropagationVolume.h"
+#include "Clustered/ClusteredBasePassRendering.h"
 
 /** Factor by which to grow occlusion tests **/
 #define OCCLUSION_SLOP (1.0f)
@@ -1355,6 +1356,12 @@ public:
 	virtual void InitDynamicRHI();
 	virtual void ReleaseDynamicRHI();
 
+	/** Scales the speed of temporal smoothing of indirect point lighting samples */
+	void SetTransitionSpeedScale(float Scale) { TransitionSpeedScale = Scale; }
+
+	/** Force point samples only */
+	void SetForcedPointSamples(bool bInForcePointSample) { bForcePointSample = bInForcePointSample;  }
+
 	/** Allocates a block in the volume texture atlas for a primitive. */
 	FIndirectLightingCacheAllocation* AllocatePrimitive(const FPrimitiveSceneInfo* PrimitiveSceneInfo, bool bUnbuiltPreview);
 
@@ -1395,6 +1402,7 @@ private:
 		const FBoxSphereBounds& Bounds, 
 		int32 BlockSize,
 		bool bPointSample,
+		bool bAverageOverVolume,
 		bool bUnbuiltPreview,
 		FIndirectLightingCacheAllocation*& Allocation, 
 		TMap<FIntVector, FBlockUpdateInfo>& BlocksToUpdate,
@@ -1419,7 +1427,7 @@ private:
 	void UpdateTransitionsOverTime(const TArray<FIndirectLightingCacheAllocation*>& TransitionsOverTimeToUpdate, float DeltaWorldTime) const;
 
 	/** Creates an allocation to be used outside the indirect lighting cache and a block to be used internally. */
-	FIndirectLightingCacheAllocation* CreateAllocation(int32 BlockSize, const FBoxSphereBounds& Bounds, bool bPointSample, bool bUnbuiltPreview);	
+	FIndirectLightingCacheAllocation* CreateAllocation(int32 BlockSize, const FBoxSphereBounds& Bounds, bool bPointSample, bool bAverageOverVolume, bool bUnbuiltPreview);
 
 	/** Block accessors. */
 	FIndirectLightingCacheBlock& FindBlock(FIntVector TexelMin);
@@ -1438,6 +1446,8 @@ private:
 	/** Interpolates a single SH sample from all levels. */
 	void InterpolatePoint(
 		FScene* Scene, 
+		FViewInfo* DebugDrawingView,
+		const FIndirectLightingCacheAllocation* Allocation,
 		const FIndirectLightingCacheBlock& Block,
 		float& OutDirectionalShadowing, 
 		FSHVectorRGB3& OutIncidentRadiance,
@@ -1465,13 +1475,19 @@ private:
 		);
 
 	/** Helper that calculates an effective world position min and size given a bounds. */
-	void CalculateBlockPositionAndSize(const FBoxSphereBounds& Bounds, int32 TexelSize, FVector& OutMin, FVector& OutSize) const;
+	void CalculateBlockPositionAndSize(const FBoxSphereBounds& Bounds, int32 TexelSize, bool bAveragePointOverVolume, FVector& OutMin, FVector& OutSize) const;
 
 	/** Helper that calculates a scale and add to convert world space position into volume texture UVs for a given block. */
 	void CalculateBlockScaleAndAdd(FIntVector InTexelMin, int32 AllocationTexelSize, FVector InMin, FVector InSize, FVector& OutScale, FVector& OutAdd, FVector& OutMinUV, FVector& OutMaxUV) const;
 
 	/** true: next rendering we update all entries no matter if they are visible to avoid further hitches */
 	bool bUpdateAllCacheEntries;
+
+	/** force point samples and not volume samples? */
+	bool bForcePointSample;
+
+	/** Lightmass world lighting scale */
+	float TransitionSpeedScale;
 
 	/** Size of the volume texture cache. */
 	int32 CacheSize;
@@ -1673,6 +1689,13 @@ public:
 	/** An optional world associated with the scene. */
 	UWorld* World;
 
+	/** Current shading path, modified only on the renderer thread */
+	EShadingPath CurrentShadingPath;
+	EShadingPath CurrentShadingPath_GameThread;
+
+	/** Runs any initialization specific to a specific shading path */
+	void ShadingPathChanged_RenderThread();
+
 	/** An optional FX system associated with the scene. */
 	class FFXSystemInterface* FXSystem;
 
@@ -1705,16 +1728,23 @@ public:
 	/** Draw list used for rendering whole scene reflective shadow maps.  */
 	TStaticMeshDrawList<FShadowDepthDrawingPolicy<true> > WholeSceneReflectiveShadowMapDrawList;
 
+	/** Forward shading base pass draw lists */
+	TStaticMeshDrawList<TBasePassForForwardShadingDrawingPolicy<FUniformLightMapPolicy,0> > BasePassForForwardShadingUniformLightMapPolicyDrawList[EBasePass_MAX];
+
+	/** Clustered forward shading base pass draw lists */
+	TStaticMeshDrawList<TBasePassForClusteredShadingDrawingPolicy<FUniformLightMapPolicy> > BasePassForClusteredShadingUniformLightMapPolicyDrawList[EBasePass_MAX];
+
 	/** Maps a light-map type to the appropriate base pass draw list. */
 	template<typename LightMapPolicyType>
 	TStaticMeshDrawList<TBasePassDrawingPolicy<LightMapPolicyType> >& GetBasePassDrawList(EBasePassDrawListType DrawType);
 
-	/** Forward shading base pass draw lists */
-	TStaticMeshDrawList<TBasePassForForwardShadingDrawingPolicy<FUniformLightMapPolicy,0> > BasePassForForwardShadingUniformLightMapPolicyDrawList[EBasePass_MAX];
-
 	/** Maps a light-map type to the appropriate base pass draw list. */
 	template<typename LightMapPolicyType>
 	TStaticMeshDrawList<TBasePassForForwardShadingDrawingPolicy<LightMapPolicyType,0> >& GetForwardShadingBasePassDrawList(EBasePassDrawListType DrawType);
+
+	/** Maps a light-map type to the appropriate base pass draw list. */
+	template<typename LightMapPolicyType>
+	TStaticMeshDrawList<TBasePassForClusteredShadingDrawingPolicy<LightMapPolicyType> >& GetClusteredShadingBasePassDrawList(EBasePassDrawListType DrawType);
 
 	/**
 	 * The following arrays are densely packed primitive data needed by various
@@ -1765,6 +1795,10 @@ public:
 
 	/** The directional light to use for simple dynamic lighting, if any. */
 	FLightSceneInfo* SimpleDirectionalLight;
+	bool bSimpleDirectionalLightHasCSM;
+
+	/* The reflection probe used for the single reflection (in forward) */
+	FReflectionCaptureProxy* SceneReflectionCapture;
 
 	/** The sun light for atmospheric effect, if any. */
 	FLightSceneInfo* SunLight;
@@ -1918,6 +1952,7 @@ public:
 	virtual void DumpStaticMeshDrawListStats() const override;
 	virtual void SetClearMotionBlurInfoGameThread() override;
 	virtual void UpdateParameterCollections(const TArray<FMaterialParameterCollectionInstanceResource*>& InParameterCollections) override;
+	virtual EShadingPath GetCurrentShadingPath_RenderThread() const override;
 
 	/** Determines whether the scene has dynamic sky lighting. */
 	bool HasDynamicSkyLighting() const
@@ -2032,6 +2067,11 @@ public:
 	bool ShouldRenderSkylight() const
 	{
 		return SkyLight && !SkyLight->bHasStaticLighting && GSupportsRenderTargetFormat_PF_FloatRGBA;
+	}
+
+	bool ShouldRenderReflectionProbe() const
+	{
+		return SceneReflectionCapture != nullptr;
 	}
 
 	virtual TArray<FPrimitiveComponentId> GetScenePrimitiveComponentIds() const override

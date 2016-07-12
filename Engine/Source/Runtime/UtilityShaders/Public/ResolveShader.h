@@ -38,6 +38,46 @@ public:
 	FShaderResourceParameter UnresolvedSurface;
 };
 
+template <unsigned MSAASampleCount>
+class FResolveDepthMSAAPS : public FGlobalShader
+{
+	DECLARE_EXPORTED_SHADER_TYPE(FResolveDepthMSAAPS, Global, UTILITYSHADERS_API);
+public:
+	
+	typedef FDummyResolveParameter FParameter;
+	
+	static bool ShouldCache(EShaderPlatform Platform) { return Platform == SP_PCD3D_SM5; }
+	
+	FResolveDepthMSAAPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+	FGlobalShader(Initializer)
+	{
+		static_assert(MSAASampleCount == 2 || MSAASampleCount == 4 || MSAASampleCount == 8, "Invalid sample count");
+		UnresolvedSurface.Bind(Initializer.ParameterMap,TEXT("UnresolvedSurface"), SPF_Mandatory);
+	}
+	FResolveDepthMSAAPS() {}
+	
+	void SetParameters(FRHICommandList& RHICmdList, FParameter)
+	{
+	}
+
+	static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("MSAA_SAMPLE_COUNT"), unsigned(MSAASampleCount));
+	}
+	
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+	
+	FShaderResourceParameter UnresolvedSurface;
+};
+
+typedef FResolveDepthMSAAPS<2> FResolveDepth2xPS;
+typedef FResolveDepthMSAAPS<4> FResolveDepth4xPS;
+
 
 class FResolveDepthNonMSPS : public FGlobalShader
 {
@@ -58,7 +98,7 @@ public:
 	void SetParameters(FRHICommandList& RHICmdList, FParameter)
 	{
 	}
-	
+
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);

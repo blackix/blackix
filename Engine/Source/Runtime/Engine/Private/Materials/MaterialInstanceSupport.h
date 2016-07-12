@@ -146,7 +146,7 @@ public:
 		}
 		return NULL;
 	}
-	
+
 private:
 	/**
 	 * Retrieves the array of values for a given type.

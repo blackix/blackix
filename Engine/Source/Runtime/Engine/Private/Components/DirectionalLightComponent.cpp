@@ -135,7 +135,7 @@ public:
 		{
 			const FSceneInterface* Scene = Component->GetScene();
 			// ensure bUseWholeSceneCSMForMovableObjects is only be used with the forward renderer.
-			const bool bUsingDeferredRenderer = Scene == nullptr ? true : Scene->ShouldUseDeferredRenderer();
+			const bool bUsingDeferredRenderer = Scene == nullptr || Scene->GetShadingPath() == EShadingPath::Deferred;
 			bUseWholeSceneCSMForMovableObjects = Component->Mobility == EComponentMobility::Stationary && !Component->bUseInsetShadowsForMovableObjects && !bUsingDeferredRenderer;
 		}
 		bCastModulatedShadows = Component->bCastModulatedShadows;
@@ -212,15 +212,15 @@ public:
 	/** Whether this light should create CSM for dynamic objects only (forward renderer) */
 	virtual bool UseCSMForDynamicObjects() const override
 	{
-		return	FLightSceneProxy::ShouldCreatePerObjectShadowsForDynamicObjects()
-				&& bUseWholeSceneCSMForMovableObjects
-				&& WholeSceneDynamicShadowRadius > 0;
+		return bUseWholeSceneCSMForMovableObjects
+			&& WholeSceneDynamicShadowRadius > 0
+			&& FLightSceneProxy::ShouldCreatePerObjectShadowsForDynamicObjects();
 	}
 
 	/** Returns the number of view dependent shadows this light will create, not counting distance field shadow cascades. */
-	virtual uint32 GetNumViewDependentWholeSceneShadows(const FSceneView& View, bool bPrecomputedLightingIsValid) const override
+	virtual uint32 GetNumViewDependentWholeSceneShadows(int32 MaxShadowCascades, bool bPrecomputedLightingIsValid) const override
 	{ 
-		uint32 TotalCascades = GetNumShadowMappedCascades(View.MaxShadowCascades, bPrecomputedLightingIsValid) + FarShadowCascadeCount;
+		uint32 TotalCascades = GetNumShadowMappedCascades(MaxShadowCascades, bPrecomputedLightingIsValid) + FarShadowCascadeCount;
 
 		return TotalCascades;
 	}
@@ -613,7 +613,7 @@ private:
 		const bool bHasRayTracedCascade = ShouldCreateRayTracedCascade(View.GetFeatureLevel(), bPrecomputedLightingIsValid);
 
 		// this checks for WholeSceneDynamicShadowRadius and DynamicShadowCascades
-		uint32 NumNearAndFarCascades = GetNumViewDependentWholeSceneShadows(View, bPrecomputedLightingIsValid);
+		uint32 NumNearAndFarCascades = GetNumViewDependentWholeSceneShadows(View.MaxShadowCascades, bPrecomputedLightingIsValid);
 
 		uint32 NumTotalCascades = FMath::Max(NumNearAndFarCascades, NumNearCascades + (bHasRayTracedCascade ? 1 : 0));
 

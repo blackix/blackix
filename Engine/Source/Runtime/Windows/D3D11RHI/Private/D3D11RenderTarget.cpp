@@ -234,23 +234,55 @@ void FD3D11DynamicRHI::RHICopyToResolveTarget(FTextureRHIParamRef SourceTextureR
 			&& !DestTextureRHI->IsMultisampled())
 			{
 				D3D11_TEXTURE2D_DESC ResolveTargetDesc;
-				
 				DestTexture2D->GetResource()->GetDesc(&ResolveTargetDesc);
 
-				ResolveTextureUsingShader<FResolveDepthPS>(
-					RHICmdList,
-					SourceTexture2D,
-					DestTexture2D,
-					DestTexture2D->GetRenderTargetView(0, -1),
-					DestTexture2D->GetDepthStencilView(FExclusiveDepthStencil::DepthWrite_StencilWrite),
-					ResolveTargetDesc,
-					GetDefaultRect(ResolveParams.Rect,DestTexture2D->GetSizeX(),DestTexture2D->GetSizeY()),
-					GetDefaultRect(ResolveParams.Rect,DestTexture2D->GetSizeX(),DestTexture2D->GetSizeY()),
-					Direct3DDeviceIMContext,
-					FDummyResolveParameter()
-					);
-			}
-			else if(FeatureLevel == D3D_FEATURE_LEVEL_10_0 
+                if (SourceTextureRHI->GetNumSamples() == 2)
+                {
+                    ResolveTextureUsingShader<FResolveDepth2xPS>(
+                        RHICmdList,
+                        SourceTexture2D,
+                        DestTexture2D,
+                        DestTexture2D->GetRenderTargetView(0, -1),
+                        DestTexture2D->GetDepthStencilView(FExclusiveDepthStencil::DepthWrite_StencilWrite),
+                        ResolveTargetDesc,
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        Direct3DDeviceIMContext,
+                        FDummyResolveParameter()
+                        );
+                }
+                else if (SourceTextureRHI->GetNumSamples() == 4)
+                {
+                    ResolveTextureUsingShader<FResolveDepth4xPS>(
+                        RHICmdList,
+                        SourceTexture2D,
+                        DestTexture2D,
+                        DestTexture2D->GetRenderTargetView(0, -1),
+                        DestTexture2D->GetDepthStencilView(FExclusiveDepthStencil::DepthWrite_StencilWrite),
+					    ResolveTargetDesc,
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        Direct3DDeviceIMContext,
+                        FDummyResolveParameter()
+                        );
+                }
+                else
+                {
+                    ResolveTextureUsingShader<FResolveDepthPS>(
+                        RHICmdList,
+                        SourceTexture2D,
+                        DestTexture2D,
+                        DestTexture2D->GetRenderTargetView(0, -1),
+                        DestTexture2D->GetDepthStencilView(FExclusiveDepthStencil::DepthWrite_StencilWrite),
+                        ResolveTargetDesc,
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        GetDefaultRect(ResolveParams.Rect, DestTexture2D->GetSizeX(), DestTexture2D->GetSizeY()),
+                        Direct3DDeviceIMContext,
+                        FDummyResolveParameter()
+                        );
+                }
+            }
+            else if (FeatureLevel == D3D_FEATURE_LEVEL_10_0
 				&& DestTexture2D->GetDepthStencilView(FExclusiveDepthStencil::DepthWrite_StencilWrite))
 			{
 				D3D11_TEXTURE2D_DESC ResolveTargetDesc;

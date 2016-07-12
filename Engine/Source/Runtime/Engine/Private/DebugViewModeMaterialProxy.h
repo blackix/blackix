@@ -87,6 +87,7 @@ public:
 	virtual bool IsSpecialEngineMaterial() const override;
 	virtual bool IsWireframe() const override;
 	virtual bool IsMasked() const override;
+	virtual bool IsAlphaToCoverage() const override;
 	virtual enum EBlendMode GetBlendMode() const override;
 	virtual enum EMaterialShadingModel GetShadingModel() const override;
 	virtual float GetOpacityMaskClipValue() const override;

@@ -1,0 +1,158 @@
+/*=============================================================================
+	ClusteredLightGridInjection.usf: CS to build light grid
+=============================================================================*/
+
+#include "Common.usf"
+#include "Definitions.usf"
+#include "ClusteredShadingCommon.usf"
+
+uint3 GridSize;
+float3 InvGridSize;
+float2 InvFrameSize;
+float NearClipDistance;
+float4 FrustumCornersNear[4];		// Corners of the frustums's near plane
+float3 InvLightGridZParams;
+uint3 GridOutputOrigin;
+
+// Lights
+uint LightCount;
+float4 LightViewPositionAndRadius[MAX_CLUSTERED_FORWARD_LIGHTS];
+float4 LightDirectionAndDirMask[MAX_CLUSTERED_FORWARD_LIGHTS];
+float4 LightSpotAnglesAndSpotMask[MAX_CLUSTERED_FORWARD_LIGHTS];
+
+// Output
+RWTexture3D<uint> LightGrid; 		// Frustum aligned grid
+
+
+// Returns the z coordinate of a given slice index.
+float zFromSlice(uint slice)
+{
+	if (slice == 0)
+	{
+		return NearClipDistance;
+	}
+	else
+	{
+		return (exp2(slice * InvLightGridZParams.z) + InvLightGridZParams.y) * InvLightGridZParams.x;
+	}
+}
+
+// For a given (screen-space) tile coordinate, return a ray from the camera.
+float3 viewRay(uint tileX, uint tileY)
+{
+	float2 t = float2(tileX * LIGHT_GRID_TILE_SIZE_X, tileY * LIGHT_GRID_TILE_SIZE_Y) * InvFrameSize;
+	float3 ray = -lerp(
+			lerp(FrustumCornersNear[0].xyz, FrustumCornersNear[1].xyz, t.x),
+			lerp(FrustumCornersNear[3].xyz, FrustumCornersNear[2].xyz, t.x),
+			t.y);
+
+	return normalize(ray);
+}
+
+// Intersects a ray with the given x,y tile coordinates with the given slice in z
+float3 rayZPlane(uint tileX, uint tileY, float z)
+{
+	float3 ray = viewRay(tileX, tileY);
+	return ray * (z / ray.z);
+}
+
+// Test the cell against the plane equation
+float testCellPlane(float3 v0, float3 v2, float3 v4, float3 v6, float3 planeN, float3 lightPos)
+{
+	float min1 = -dot(planeN, lightPos);
+	float min2 = min1;
+
+	// factors out a ton of common terms.
+	min1 += min(planeN.x * v0.x, planeN.x * v2.x);
+	min1 += min(planeN.y * v0.y, planeN.y * v2.y);
+	min1 += planeN.z * v0.z;
+	min2 += min(planeN.x * v4.x, planeN.x * v6.x);
+	min2 += min(planeN.y * v4.y, planeN.y * v6.y);
+	min2 += planeN.z * v6.z;
+
+	return min(min1, min2);
+}
+
+[numthreads(GROUP_SIZE_X, GROUP_SIZE_Y, GROUP_SIZE_Z)]
+void ClusteredLightGridInjectionCS(
+	uint3 GroupID : SV_GroupID,
+	uint3 DispatchThreadID : SV_DispatchThreadID,
+	uint3 GroupThreadID : SV_GroupThreadID)
+{
+	uint3 threadCell = DispatchThreadID;
+	if (any(threadCell >= GridSize))
+	{
+		return;
+	}
+
+	// WW-PBD: there is a ton of optimization possibilities here, especially if we share 
+	// work between all the threads when they compute the cell corners.
+	// that said, it's not very large a target for the number of lights we have.
+
+	uint lightMask = 0;
+
+	// the z range for the cell we're testing 
+	float nearZ = zFromSlice(threadCell.z+0);
+	float farZ = zFromSlice(threadCell.z+1);
+
+	// -x,-y and +x,+y for the front and back face of the cell frustum
+	float3 v0 = rayZPlane(threadCell.x+0, threadCell.y+1, nearZ);
+	float3 v2 = rayZPlane(threadCell.x+1, threadCell.y+0, nearZ);
+	float3 v4 = rayZPlane(threadCell.x+0, threadCell.y+1, farZ);
+	float3 v6 = rayZPlane(threadCell.x+1, threadCell.y+0, farZ);
+	float3 c = (v6 + v0) * .5f;
+
+	float2 t = float2(threadCell.x * LIGHT_GRID_TILE_SIZE_X, threadCell.y * LIGHT_GRID_TILE_SIZE_Y) * InvFrameSize;
+
+	for (uint i = 0; i < LightCount; ++i)
+	{
+		bool isSpotLight = CLUSTERED_SUPPORT_SPOT_LIGHTS && LightSpotAnglesAndSpotMask[i].w;
+		bool isDirectionalLight = CLUSTERED_SUPPORT_DIRECTIONAL_LIGHTS && LightDirectionAndDirMask[i].w;
+
+		if (isDirectionalLight)
+		{
+			// Directional light: yes, you are overlapping it.
+		}
+		else
+		{
+			float3 lightPos = LightViewPositionAndRadius[i].xyz;
+			float lightRadius = LightViewPositionAndRadius[i].w;
+
+			// General idea: for point and spot lights, we try to find a separating plane between the cell and the light.
+
+			// For a point light: use the normal between the light center and cell center, tangent to the light's sphere.
+			// This also starts the culling for a spot light.
+			float3 planeN = normalize(c - lightPos);
+			if (testCellPlane(v0, v2, v4, v6, planeN, lightPos) >= lightRadius)
+			{
+				continue;
+			}
+
+			// A spot light culls both against the sphere (above and the cone).
+			// for a spotlight, we use the normal between the cone and cell center.
+			// find two tangents to the cone (find the plane tangent to the cone)
+			// to find the normal+position
+			BRANCH
+			if (isSpotLight)
+			{
+				float r = LightSpotAnglesAndSpotMask[i].x; //radius * sin(coneAngle);
+				float h = LightSpotAnglesAndSpotMask[i].y; //radius * cos(coneAngle);
+				float3 axis = LightDirectionAndDirMask[i].xyz;
+
+				float3 tan0 = normalize(cross(axis, c - lightPos));
+				float3 cd = cross(tan0, axis);
+				float3 tan1 = axis * h + (cd * r);
+				planeN = normalize(cross(tan0, tan1));
+
+				if (testCellPlane(v0, v2, v4, v6, planeN, lightPos) >= 0)
+				{
+					continue;
+				}
+			}
+		}
+
+		lightMask |= 1 << i;
+	}
+
+	LightGrid[threadCell + GridOutputOrigin] = lightMask;
+}

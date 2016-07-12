@@ -19,7 +19,8 @@ void DrawViewElementsInner(
 	)
 {
 	// Get the correct element list based on dpg index
-	const TIndirectArray<FMeshBatch>& ViewMeshElementList = ( DPGIndex == SDPG_Foreground ? View.TopViewMeshElements : View.ViewMeshElements );
+	const TIndirectArray<FMeshBatch>& ViewMeshElementList = View.ViewMeshElements[DPGIndex];
+
 	// Draw the view's mesh elements.
 	check(LastIndex < ViewMeshElementList.Num());
 	for (int32 MeshIndex = FirstIndex; MeshIndex <= LastIndex; MeshIndex++)
@@ -104,7 +105,7 @@ void DrawViewElementsParallel(
 	)
 {
 	// Get the correct element list based on dpg index
-	const TIndirectArray<FMeshBatch>& ViewMeshElementList = (DPGIndex == SDPG_Foreground ? ParallelCommandListSet.View.TopViewMeshElements : ParallelCommandListSet.View.ViewMeshElements);
+	const TIndirectArray<FMeshBatch>& ViewMeshElementList = ParallelCommandListSet.View.ViewMeshElements[DPGIndex];
 
 	{
 		int32 NumPrims = ViewMeshElementList.Num();
@@ -147,7 +148,7 @@ bool DrawViewElements(
 	)
 {
 	// Get the correct element list based on dpg index
-	const TIndirectArray<FMeshBatch>& ViewMeshElementList = (DPGIndex == SDPG_Foreground ? View.TopViewMeshElements : View.ViewMeshElements);
+	const TIndirectArray<FMeshBatch>& ViewMeshElementList = View.ViewMeshElements[DPGIndex];
 	if (ViewMeshElementList.Num() != 0)
 	{
 		DrawViewElementsInner<DrawingPolicyFactoryType>(RHICmdList, View, DrawingContext, DPGIndex, bPreFog, 0, ViewMeshElementList.Num() - 1);
@@ -185,7 +186,7 @@ inline void FViewElementPDI::RegisterDynamicResource(FDynamicPrimitiveResource* 
 
 inline FBatchedElements& FViewElementPDI::GetElements(uint8 DepthPriorityGroup) const
 {
-	return DepthPriorityGroup ? ViewInfo->TopBatchedViewElements : ViewInfo->BatchedViewElements;
+	return ViewInfo->BatchedViewElements[DepthPriorityGroup];
 }
 
 inline void FViewElementPDI::DrawSprite(
@@ -291,12 +292,11 @@ inline int32 FViewElementPDI::DrawMesh(const FMeshBatch& Mesh)
 		// Keep track of view mesh elements whether that have translucency.
 		ViewInfo->bHasTranslucentViewMeshElements |= true;//Mesh.IsTranslucent() ? 1 : 0;
 
-		uint8 DPGIndex = Mesh.DepthPriorityGroup;
 		// Get the correct element list based on dpg index
 		// Translucent view mesh elements in the foreground dpg are not supported yet
-		TIndirectArray<FMeshBatch>& ViewMeshElementList = ( ( DPGIndex == SDPG_Foreground  ) ? ViewInfo->TopViewMeshElements : ViewInfo->ViewMeshElements );
+		TIndirectArray<FMeshBatch>& ViewMeshElementList = ViewInfo->ViewMeshElements[Mesh.DepthPriorityGroup];
 
-		FMeshBatch* NewMesh = new(ViewMeshElementList) FMeshBatch(Mesh);
+		FMeshBatch* NewMesh = new(ViewMeshElementList)FMeshBatch(Mesh);
 		if( CurrentHitProxy != nullptr )
 		{
 			NewMesh->BatchHitProxyId = CurrentHitProxy->Id;

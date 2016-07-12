@@ -6,6 +6,8 @@
 #include "ShaderParameterUtils.h"
 
 IMPLEMENT_SHADER_TYPE(, FResolveDepthPS, TEXT("ResolvePixelShader"), TEXT("MainDepth"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FResolveDepth2xPS, TEXT("ResolvePixelShader"), TEXT("MainDepthMSAA"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FResolveDepth4xPS, TEXT("ResolvePixelShader"), TEXT("MainDepthMSAA"), SF_Pixel);
 IMPLEMENT_SHADER_TYPE(, FResolveDepthNonMSPS, TEXT("ResolvePixelShader"), TEXT("MainDepthNonMS"), SF_Pixel);
 IMPLEMENT_SHADER_TYPE(, FResolveSingleSamplePS, TEXT("ResolvePixelShader"), TEXT("MainSingleSample"), SF_Pixel);
 IMPLEMENT_SHADER_TYPE(, FResolveVS, TEXT("ResolveVertexShader"), TEXT("Main"), SF_Vertex);

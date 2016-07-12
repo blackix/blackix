@@ -101,8 +101,6 @@ void FRenderQueryPool::ReleaseQuery(FRenderQueryRHIRef &Query)
 	}
 }
 
-FGlobalBoundShaderState FDeferredShadingSceneRenderer::OcclusionTestBoundShaderState;
-
 /** 
  * Returns an array of visibility data for the given view position, or NULL if none exists. 
  * The data bits are indexed by VisibilityId of each primitive in the scene.
@@ -1149,7 +1147,10 @@ void BuildHZB( FRHICommandListImmediate& RHICmdList, FViewInfo& View )
 	GRenderTargetPool.VisualizeTexture.SetCheckPoint( RHICmdList, View.HZB );
 }
 
-void FDeferredShadingSceneRenderer::BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, bool bRenderQueries)
+/** bound shader state for occlusion test prims */
+static FGlobalBoundShaderState OcclusionTestBoundShaderState;
+
+void FSceneRenderer::BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, bool bRenderQueries)
 {
 	SCOPE_CYCLE_COUNTER(STAT_BeginOcclusionTestsTime);
 	int32 NumBufferedFrames = FOcclusionQueryHelpers::GetNumBufferedFrames();

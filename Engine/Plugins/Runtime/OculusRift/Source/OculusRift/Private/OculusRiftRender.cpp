@@ -14,6 +14,9 @@
 
 #include "SlateBasics.h"
 
+#if !UE_BUILD_SHIPPING
+#include "OculusStressTests.h"
+#endif
 
 // STATGROUP_OculusRiftHMD is declared in OculusRiftHMD.h
 DEFINE_STAT(STAT_BeginRendering); // see OculusRiftHMD.h
@@ -45,7 +48,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	FMemory::Memcpy(CurrentFrame->CurHeadPose, CurrentFrame->HeadPose);
 
 
-	if (FrameSettings->TexturePaddingPerEye != 0)
+	if (FrameSettings->MinTexturePaddingPerEye != 0)
 	{
 		// clear the padding between two eyes
 		const int32 GapMinX = ViewFamily.Views[0]->ViewRect.Max.X;
@@ -112,10 +115,13 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 	FViewExtension& RenderContext = *this;
 	FGameFrame* CurrentFrame = static_cast<FGameFrame*>(RenderContext.RenderFrame.Get());
 
-	if (!CurrentFrame || !CurrentFrame->Settings->IsStereoEnabled())
+	if (!bFrameBegun || !ShowFlags.Rendering || !CurrentFrame || !CurrentFrame->Settings->IsStereoEnabled() || (pPresentBridge && pPresentBridge->IsSubmitFrameLocked()))
 	{
 		return;
 	}
+
+	FSettings* FrameSettings = CurrentFrame->GetSettings();
+	check(FrameSettings);
 
 	const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
 	if (RenderContext.ShowFlags.Rendering && CurrentFrame->Settings->Flags.bUpdateOnRT)
@@ -167,6 +173,20 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 			// use the current head pose for this calculation instead of the one that was saved on a game thread.
 			FQuat HeadOrientation;
 			CurrentFrame->PoseToOrientationAndPosition(CurrentFrame->CurHeadPose, HeadOrientation, View.BaseHmdLocation);
+		}
+
+		// Update the union eye
+		{
+			OVR::Pose<float> UnionEyePose = CurrentFrame->CurHeadPose;
+			UnionEyePose.Translation = UnionEyePose.Transform(FrameSettings->UnionEyeOffset);
+
+			FQuat UnionEyeOrientation;
+			FVector UnionEyePosition;
+
+			CurrentFrame->PoseToOrientationAndPosition(UnionEyePose, UnionEyeOrientation, UnionEyePosition);
+
+			const FVector DeltaPosition = UnionEyePosition - View.BaseHmdLocation;
+			View.UnionEyeViewLocation = View.ViewLocation + DeltaControlOrientation.RotateVector(DeltaPosition) + CurrentFrame->Settings->PositionOffset;
 		}
 
 		// The HMDPosition already has HMD orientation applied.
@@ -383,6 +403,13 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), FIntRect(), SrcViewRect, false, bClearRenderTargetToBlackFirst);
 		}
 	}
+#if !UE_BUILD_SHIPPING
+	if (StressTester)
+	{
+		StressTester->TickGPU_RenderThread(RHICmdList, BackBuffer, SrcTexture);
+		//StressTester->TickGPU_RenderThread(RHICmdList, SrcTexture, BackBuffer);
+	}
+#endif
 }
 
 static void DrawOcclusionMesh(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass, const FHMDViewMesh MeshAssets[])
@@ -799,7 +826,7 @@ void FOculusRiftHMD::ShutdownRendering()
 // FCustomPresent
 //-------------------------------------------------------------------------------------------------
 
-FCustomPresent::FCustomPresent(FOvrSessionSharedParamRef InOvrSession)
+FCustomPresent::FCustomPresent(const FOvrSessionSharedPtr& InOvrSession)
 	: FRHICustomPresent(nullptr)
 	, Session(InOvrSession)
 	, LayerMgr(MakeShareable(new FLayerManager(this)))
@@ -929,7 +956,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 	}
 
 	// it is possible that eye layer is not added to RenderLayers yet, or previously allocated textureSet is not transferred there yet.
-	const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetLayerDesc(0);
+	const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetEyeLayerDesc();
 	check(pEyeLayerDesc);
 	auto TextureSet = pEyeLayerDesc->GetTextureSet();
 	bool bEyeLayerIsHQ = false;
@@ -979,11 +1006,11 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 			LayerMgr->InvalidateTextureSets();
 		}
 
-		FTexture2DSetProxyRef ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
+		FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
 		if (ColorTextureSet.IsValid())
 		{
 			// update the eye layer textureset. at the moment only one eye layer is supported
-			const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetLayerDesc(0);
+			const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetEyeLayerDesc();
 			check(pEyeLayerDesc);
 			FHMDLayerDesc EyeLayerDesc = *pEyeLayerDesc;
 			EyeLayerDesc.SetHighQuality(bEyeLayerShouldBeHQ);

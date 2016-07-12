@@ -236,7 +236,7 @@ bool					GIsGameThreadIdInitialized		= false;
 /** Helper function to flush resource streaming.															*/
 void					(*GFlushStreamingFunc)(void)	  = &appNoop;
 /** Whether to emit begin/ end draw events.																	*/
-bool					GEmitDrawEvents					= false;
+bool					GEmitDrawEvents					= true;
 /** Whether we want the rendering thread to be suspended, used e.g. for tracing.							*/
 bool					GShouldSuspendRenderingThread	= false;
 /** Determines what kind of trace should occur, NAME_None for none.											*/

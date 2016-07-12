@@ -1937,6 +1937,12 @@ public:
 	{
 		return FString::operator+=(Other);
 	}
+
+	FORCEINLINE FStringOutputDevice& operator=(const FString& Other)
+	{
+		(FString&)*this       = (const FString&)Other;
+		return *this;
+	}
 };
 
 //

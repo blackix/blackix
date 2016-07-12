@@ -1085,8 +1085,6 @@ namespace EditorUtilities
 				TSet<const UProperty*> SourceUCSModifiedProperties;
 				SourceComponent->GetUCSModifiedProperties(SourceUCSModifiedProperties);
 
-				TSet<UActorComponent*> ComponentInstancesToReregister;
-
 				// Copy component properties
 				for( UProperty* Property = ComponentClass->PropertyLink; Property != nullptr; Property = Property->PropertyLinkNext )
 				{
@@ -1191,13 +1189,10 @@ namespace EditorUtilities
 												}
 											}
 
-											if (ComponentArchetypeInstance->IsRegistered())
-											{
-												ComponentArchetypeInstance->UnregisterComponent();
-												ComponentInstancesToReregister.Add(ComponentArchetypeInstance);
-											}
-
 											CopySingleProperty( TargetComponent, ComponentArchetypeInstance, Property );
+
+											// Re-register the component with the scene
+											ComponentArchetypeInstance->ReregisterComponent();
 										}
 									}
 								}
@@ -1211,11 +1206,6 @@ namespace EditorUtilities
 							}
 						}
 					}
-				}
-
-				for (UActorComponent* ModifiedComponentInstance : ComponentInstancesToReregister)
-				{
-					ModifiedComponentInstance->RegisterComponent();
 				}
 			}
 		}

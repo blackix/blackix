@@ -8,6 +8,7 @@
 #include "ScenePrivate.h"
 #include "LightPropagationVolume.h"
 #include "LightPropagationVolumeBlendable.h"
+#include "Clustered/ClusteredShadingRenderer.h"
 
 static float GMinScreenRadiusForShadowCaster = 0.03f;
 static FAutoConsoleVariableRef CVarMinScreenRadiusForShadowCaster(
@@ -1873,6 +1874,11 @@ void FSceneRenderer::InitProjectedShadowVisibility(FRHICommandListImmediate& RHI
 	{
 		FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightIt.GetIndex()];
 
+        if (VisibleLightInfo.AllProjectedShadows.Num() == 0)
+        {
+            continue;
+        }
+
 		// Allocate the light's projected shadow visibility and view relevance maps for this view.
 		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 		{
@@ -2123,6 +2129,14 @@ inline void FSceneRenderer::GatherShadowsForPrimitiveInner(
 				}
 
 				FLightSceneProxy* RESTRICT LightProxy = ProjectedShadowInfo->GetLightSceneInfo().Proxy;
+                const bool PrecomputedLightingValid = ProjectedShadowInfo->GetLightSceneInfo().IsPrecomputedLightingValid();
+
+				// Include all primitives for movable lights, but only statically shadowed primitives from a light with static shadowing,
+				// Since lights with static shadowing still create per-object shadows for primitives without static shadowing.
+                if (LightProxy->HasStaticLighting() && PrecomputedLightingValid)
+                {
+                    continue;
+                }
 
 				const FVector LightDirection = LightProxy->GetDirection();
 				const FVector PrimitiveToShadowCenter = ProjectedShadowInfo->ShadowBounds.Center - PrimitiveBounds.Origin;
@@ -2131,10 +2145,11 @@ inline void FSceneRenderer::GatherShadowsForPrimitiveInner(
 				// Calculate the primitive's squared distance to the cylinder's axis
 				const float PrimitiveDistanceFromCylinderAxisSq = (-LightDirection * ProjectedDistanceFromShadowOriginAlongLightDir + PrimitiveToShadowCenter).SizeSquared();
 				const float CombinedRadiusSq = FMath::Square(ProjectedShadowInfo->ShadowBounds.W + PrimitiveBounds.SphereRadius);
+				const bool bUseCsmForDynamicObjects = LightProxy->UseCSMForDynamicObjects();
 
 				// Include all primitives for movable lights, but only statically shadowed primitives from a light with static shadowing,
 				// Since lights with static shadowing still create per-object shadows for primitives without static shadowing.
-				if( (!LightProxy->HasStaticLighting() || (!ProjectedShadowInfo->GetLightSceneInfo().IsPrecomputedLightingValid() || LightProxy->UseCSMForDynamicObjects()))
+				if( (!LightProxy->HasStaticLighting() || (!PrecomputedLightingValid || bUseCsmForDynamicObjects))
 					// Check if this primitive is in the shadow's cylinder
 					&& PrimitiveDistanceFromCylinderAxisSq < CombinedRadiusSq
 					// Check if the primitive is closer than the cylinder cap toward the light
@@ -2147,22 +2162,22 @@ inline void FSceneRenderer::GatherShadowsForPrimitiveInner(
 				{
 					const bool bInFrustum = ProjectedShadowInfo->CascadeSettings.ShadowBoundsAccurate.IntersectBox( PrimitiveBounds.Origin, PrimitiveBounds.BoxExtent );
 
-					if( bInFrustum )
-					{
-						// Distance culling for RSMs
-						float MinScreenRadiusForShadowCaster = GMinScreenRadiusForShadowCaster;
-						if (ProjectedShadowInfo->bReflectiveShadowmap)
-						{
-							MinScreenRadiusForShadowCaster = GMinScreenRadiusForShadowCasterRSM;
-						}
+                    if (bInFrustum)
+                    {
+                        // Distance culling for RSMs
+                        float MinScreenRadiusForShadowCaster = GMinScreenRadiusForShadowCaster;
+                        if (ProjectedShadowInfo->bReflectiveShadowmap)
+                        {
+                            MinScreenRadiusForShadowCaster = GMinScreenRadiusForShadowCasterRSM;
+                        }
 
-						bool bScreenSpaceSizeCulled = false;
-						check( ProjectedShadowInfo->DependentView );
-						if ( ProjectedShadowInfo->DependentView ) 
-						{
-							const float DistanceSquared = ( PrimitiveBounds.Origin - ProjectedShadowInfo->DependentView->ShadowViewMatrices.ViewOrigin ).SizeSquared();
-							bScreenSpaceSizeCulled = FMath::Square( PrimitiveBounds.SphereRadius ) < FMath::Square( MinScreenRadiusForShadowCaster ) * DistanceSquared;
-						}
+                        bool bScreenSpaceSizeCulled = false;
+                        check(ProjectedShadowInfo->DependentView);
+                        if (ProjectedShadowInfo->DependentView)
+                        {
+                            const float DistanceSquared = (PrimitiveBounds.Origin - ProjectedShadowInfo->DependentView->ShadowViewMatrices.ViewOrigin).SizeSquared();
+                            bScreenSpaceSizeCulled = FMath::Square(PrimitiveBounds.SphereRadius) < FMath::Square(MinScreenRadiusForShadowCaster) * DistanceSquared;
+                        }
 
 						if (ProjectedShadowInfo->GetLightSceneInfoCompact().AffectsPrimitive(PrimitiveSceneInfoCompact)
 							// Exclude primitives that will create their own per-object shadow, except when rendering RSMs
@@ -2172,7 +2187,7 @@ inline void FSceneRenderer::GatherShadowsForPrimitiveInner(
 							// Only render shadows from objects that use static lighting during a reflection capture, since the reflection capture doesn't update at runtime
 							&& (!bStaticSceneOnly || PrimitiveProxy->HasStaticLighting())
 							// Render dynamic lit objects if CSMForDynamicObjects is enabled.
-							&& (!LightProxy->UseCSMForDynamicObjects() || !PrimitiveProxy->HasStaticLighting())
+							&& (!bUseCsmForDynamicObjects || !PrimitiveProxy->HasStaticLighting())
 							&& !bScreenSpaceSizeCulled )
 						{
 							// Add this primitive to the shadow.
@@ -2188,8 +2203,7 @@ inline void FSceneRenderer::GatherShadowsForPrimitiveInner(
 void FSceneRenderer::GatherShadowPrimitives(
 	const TArray<FProjectedShadowInfo*,SceneRenderingAllocator>& PreShadows,
 	const TArray<FProjectedShadowInfo*,SceneRenderingAllocator>& ViewDependentWholeSceneShadows,
-	bool bStaticSceneOnly
-	)
+	bool bStaticSceneOnly)
 {
 	SCOPE_CYCLE_COUNTER(STAT_GatherShadowPrimitivesTime);
 
@@ -2319,7 +2333,7 @@ void FSceneRenderer::AddViewDependentWholeSceneShadowsForView(
 		{
 			const bool bExtraDistanceFieldCascade = LightSceneInfo.Proxy->ShouldCreateRayTracedCascade(View.GetFeatureLevel(), LightSceneInfo.IsPrecomputedLightingValid());
 
-			const int32 ProjectionCount = LightSceneInfo.Proxy->GetNumViewDependentWholeSceneShadows(View, LightSceneInfo.IsPrecomputedLightingValid()) + (bExtraDistanceFieldCascade?1:0);
+			const int32 ProjectionCount = LightSceneInfo.Proxy->GetNumViewDependentWholeSceneShadows(View.MaxShadowCascades, LightSceneInfo.IsPrecomputedLightingValid()) + (bExtraDistanceFieldCascade?1:0);
 
 			checkSlow(INDEX_NONE == -1);
 
@@ -2445,7 +2459,7 @@ void FForwardShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& 
 			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
 			FLightSceneInfo* LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
 			FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
-			
+
 			// see if the light is visible in any view
 			bool bIsVisibleInAnyView = false;
 
@@ -2488,7 +2502,7 @@ void FForwardShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& 
 				bPerObjectShadowsInUse |= (NumWholeSceneShadows != VisibleLightInfo.AllProjectedShadows.Num());
 			}
 
-			NumWholeSceneShadows = FMath::Min(NumWholeSceneShadows, MAX_FORWARD_SHADOWCASCADES);
+			NumWholeSceneShadows = FMath::Min<int32>(NumWholeSceneShadows, MAX_FORWARD_SHADOWCASCADES);
 
 			if (NumWholeSceneShadows > 0)
 			{
@@ -2522,7 +2536,7 @@ void FForwardShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& 
 					}
 				}
 			}
-			else if(bPerObjectShadowsInUse)
+			else if (bPerObjectShadowsInUse)
 			{
 				// Per obj projected shadows are in use. Ensure the shadow depth target is available for modulated shadow use later.
 				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
@@ -2540,9 +2554,137 @@ void FForwardShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& 
 
 	// Generate mesh element arrays from shadow primitive arrays
 	GatherShadowDynamicMeshElements();
-	
+
 	bCSMShadowsInUse = bCSMAllocated;
 	bModulatedShadowsInUse = bPerObjectShadowsInUse && !bCSMShadowsInUse;
+}
+
+void FClusteredForwardShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList)
+{
+	TArray<FProjectedShadowInfo*, SceneRenderingAllocator> ViewDependentWholeSceneShadows;
+	TArray<FProjectedShadowInfo*, SceneRenderingAllocator> ViewDependentWholeSceneShadowsThatNeedCulling;
+	TArray<FProjectedShadowInfo*, SceneRenderingAllocator> PreShadows;
+
+	bool bStaticSceneOnly = false;
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		FViewInfo& View = Views[ViewIndex];
+		bStaticSceneOnly = bStaticSceneOnly || View.bStaticSceneOnly;
+	}
+
+	// Setup modulated shadows if CSM is not in use.
+	bool bCSMAllocated = false;
+	bool bPerObjectShadowsInUse = false;
+
+	{
+		SCOPE_CYCLE_COUNTER(STAT_InitDynamicShadowsTime);
+
+		for (TSparseArray<FLightSceneInfoCompact>::TConstIterator LightIt(Scene->Lights); LightIt; ++LightIt)
+		{
+			const FLightSceneInfoCompact& LightSceneInfoCompact = *LightIt;
+			FLightSceneInfo* LightSceneInfo = LightSceneInfoCompact.LightSceneInfo;
+			FVisibleLightInfo& VisibleLightInfo = VisibleLightInfos[LightSceneInfo->Id];
+
+			// see if the light is visible in any view
+			bool bIsVisibleInAnyView = false;
+
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+			{
+				// View frustums are only checked when lights have visible primitives or have modulated shadows,
+				// so we don't need to check for that again here
+				bIsVisibleInAnyView = LightSceneInfo->ShouldRenderLight(Views[ViewIndex]);
+
+				if (bIsVisibleInAnyView)
+				{
+					break;
+				}
+			}
+
+			int32 NumWholeSceneShadows = 0;
+			if (bIsVisibleInAnyView)
+			{
+				if (LightSceneInfo->ShouldRenderViewIndependentWholeSceneShadows()
+					&& Scene->SimpleDirectionalLight == LightSceneInfo
+					// Only consider movable shadowcasting lights (and in clustered forward, we do it for stationary lights as well)
+					//&& !LightSceneInfo->Proxy->HasStaticShadowing()
+					)
+				{
+					AddViewDependentWholeSceneShadowsForView(ViewDependentWholeSceneShadows, ViewDependentWholeSceneShadowsThatNeedCulling, VisibleLightInfo, *LightSceneInfo);
+				}
+				NumWholeSceneShadows = VisibleLightInfo.AllProjectedShadows.Num();
+
+				// If we're casting modulated shadows then look for dynamic shadow interactions.
+				if (LightSceneInfo->Proxy->CastsModulatedShadows())
+				{
+					// Look for individual primitives with a dynamic shadow.
+					for (FLightPrimitiveInteraction* Interaction = LightSceneInfo->DynamicPrimitiveList;
+						Interaction;
+						Interaction = Interaction->GetNextPrimitive()
+						)
+					{
+						SetupInteractionShadows(RHICmdList, Interaction, VisibleLightInfo, bStaticSceneOnly, ViewDependentWholeSceneShadows, PreShadows);
+					}
+				}
+				bPerObjectShadowsInUse |= (NumWholeSceneShadows != VisibleLightInfo.AllProjectedShadows.Num());
+			}
+
+			NumWholeSceneShadows = FMath::Min<int32>(NumWholeSceneShadows, MAX_FORWARD_SHADOWCASCADES);
+
+			if (NumWholeSceneShadows > 0)
+			{
+				bCSMAllocated = true;
+				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+				//create the shadow depth texture and/or surface
+				const FIntPoint ShadowBufferResolution = SceneContext.GetShadowDepthTextureResolution();
+				const int32 MaxWide = GMaxShadowDepthBufferSizeX / ShadowBufferResolution.X;
+				const int32 MaxHigh = GMaxShadowDepthBufferSizeY / ShadowBufferResolution.Y;
+
+				const int32 NumWide = FMath::Min(NumWholeSceneShadows, MaxWide);
+				const int32 NumHigh = FMath::Min(((NumWholeSceneShadows - 1) / MaxWide) + 1, MaxHigh);
+
+				const FIntPoint AtlasShadowBufferResolution(ShadowBufferResolution.X * NumWide, ShadowBufferResolution.Y * NumHigh);
+				SceneContext.AllocateForwardShadingShadowDepthTarget(RHICmdList, AtlasShadowBufferResolution);
+
+				// Allocate atlas shadow texture space to the shadows.
+				FTextureLayout ShadowLayout(1, 1, AtlasShadowBufferResolution.X, AtlasShadowBufferResolution.Y, false, false);
+
+				for (int32 ShadowIndex = 0; ShadowIndex < NumWholeSceneShadows; ShadowIndex++)
+				{
+					FProjectedShadowInfo* ProjectedShadowInfo = VisibleLightInfo.AllProjectedShadows[ShadowIndex];
+					if (ShadowLayout.AddElement(
+						ProjectedShadowInfo->X,
+						ProjectedShadowInfo->Y,
+						ProjectedShadowInfo->ResolutionX + SHADOW_BORDER * 2,
+						ProjectedShadowInfo->ResolutionY + SHADOW_BORDER * 2)
+						)
+					{
+						ProjectedShadowInfo->bAllocated = true;
+					}
+				}
+			}
+			else if (bPerObjectShadowsInUse)
+			{
+				// Per obj projected shadows are in use. Ensure the shadow depth target is available for modulated shadow use later.
+				FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+				const FIntPoint ShadowBufferResolution = SceneContext.GetShadowDepthTextureResolution();
+				SceneContext.AllocateForwardShadingShadowDepthTarget(RHICmdList, ShadowBufferResolution);
+			}
+		}
+
+		// Calculate visibility of the projected shadows.
+		InitProjectedShadowVisibility(RHICmdList);
+	}
+
+	// Gathers the list of primitives used to draw various shadow types
+	GatherShadowPrimitives(PreShadows, ViewDependentWholeSceneShadowsThatNeedCulling, false);
+
+	// Generate mesh element arrays from shadow primitive arrays
+	GatherShadowDynamicMeshElements();
+
+	/*
+	bCSMShadowsInUse = bCSMAllocated;
+	*/
 }
 
 void FDeferredShadingSceneRenderer::InitDynamicShadows(FRHICommandListImmediate& RHICmdList)

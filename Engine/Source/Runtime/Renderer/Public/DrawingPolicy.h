@@ -214,7 +214,7 @@ public:
 	 * @param CI - The command interface to execute the draw commands on.
 	 * @param View - The view of the scene being drawn.
 	 */
-	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType PolicyContext) const;
+	void SetSharedState(FRHICommandList& RHICmdList, const FSceneView* View, const ContextDataType& PolicyContext) const;
 
 	/**
 	* Get the decl for this mesh policy type and vertexfactory
@@ -258,6 +258,11 @@ public:
 	FORCEINLINE EDebugViewShaderMode GetDebugViewShaderMode() const { return DVSM_None; }
 	FORCEINLINE bool UseDebugViewPS() const { return false; }
 #endif
+
+	/** Called after rendering some number of meshes, should clean any state necessary before
+	 * other meshes are rendered with other policies
+	 */
+	static void CleanPolicyRenderState(FRHICommandList&, ContextDataType&) {}
 
 protected:
 	const FVertexFactory* VertexFactory;

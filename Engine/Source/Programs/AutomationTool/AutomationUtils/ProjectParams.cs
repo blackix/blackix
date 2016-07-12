@@ -263,6 +263,7 @@ namespace AutomationTool
 			this.DeviceName = InParams.DeviceName;
 			this.ServerDevice = InParams.ServerDevice;
             this.NullRHI = InParams.NullRHI;
+            this.NoDevelopmentShaders = InParams.NoDevelopmentShaders;
             this.FakeClient = InParams.FakeClient;
             this.EditorTest = InParams.EditorTest;
             this.RunAutomationTests = InParams.RunAutomationTests;
@@ -379,6 +380,7 @@ namespace AutomationTool
 			bool? NoBootstrapExe = null,
             bool? SignedPak = null,
             bool? NullRHI = null,
+            bool? NoDevelopmentShaders = null,
             bool? FakeClient = null,
             bool? EditorTest = null,
             bool? RunAutomationTests = null,
@@ -613,6 +615,7 @@ namespace AutomationTool
 
 			this.ServerDevice = ParseParamValueIfNotSpecified(Command, ServerDevice, "serverdevice", this.Device);
 			this.NullRHI = GetParamValueIfNotSpecified(Command, NullRHI, this.NullRHI, "nullrhi");
+            this.NoDevelopmentShaders = GetParamValueIfNotSpecified(Command, NoDevelopmentShaders, this.NoDevelopmentShaders, "nodevelopmentshaders");
 			this.FakeClient = GetParamValueIfNotSpecified(Command, FakeClient, this.FakeClient, "fakeclient");
 			this.EditorTest = GetParamValueIfNotSpecified(Command, EditorTest, this.EditorTest, "editortest");
             this.RunAutomationTest = ParseParamValueIfNotSpecified(Command, RunAutomationTest, "RunAutomationTest");
@@ -1465,6 +1468,12 @@ namespace AutomationTool
         public bool NullRHI;
 
         /// <summary>
+        /// Run:adds -nodevelopmentshaders to the client commandline
+        /// </summary>
+        [Help("nodevelopmentshaders", "add -developmentshaders=0 to the client commandlines")]
+        public bool NoDevelopmentShaders;
+
+        /// <summary>
         /// Run:adds ?fake to the server URL
         /// </summary>
         [Help("fakeclient", "adds ?fake to the server URL")]
@@ -2206,7 +2215,6 @@ namespace AutomationTool
 			{
 				// In alphabetical order.
 				CommandUtils.LogLog("Project Params **************");
-
 				CommandUtils.LogLog("AdditionalServerMapParams={0}", AdditionalServerMapParams);
 				CommandUtils.LogLog("Archive={0}", Archive);
 				CommandUtils.LogLog("ArchiveMetaData={0}", ArchiveMetaData);
@@ -2254,6 +2262,7 @@ namespace AutomationTool
 				CommandUtils.LogLog("NoClient={0}", NoClient);
 				CommandUtils.LogLog("NumClients={0}", NumClients);                
 				CommandUtils.LogLog("NoDebugInfo={0}", NoDebugInfo);
+				CommandUtils.LogLog("NoDevelopmentShaders={0}", NoDevelopmentShaders);
 				CommandUtils.LogLog("NoCleanStage={0}", NoCleanStage);
 				CommandUtils.LogLog("NoXGE={0}", NoXGE);
 				CommandUtils.LogLog("MapsToCook={0}", MapsToCook.ToString());

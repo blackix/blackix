@@ -463,6 +463,9 @@ void FMaterialInstanceParameterDetails::CreateBasePropertyOverrideWidgets(IDetai
 	TAttribute<bool> IsOverrideShadingModelEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideShadingModelEnabled));
 	TAttribute<bool> IsOverrideTwoSidedEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideTwoSidedEnabled));
 	TAttribute<bool> IsOverrideDitheredLODTransitionEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideDitheredLODTransitionEnabled));
+	TAttribute<bool> IsOverrideFullyRoughEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideFullyRoughEnabled));
+	TAttribute<bool> IsOverrideCheapShadingEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideCheapShadingEnabled));
+	TAttribute<bool> IsOverrideAlphaToCoverageEnabled = TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateSP(this, &FMaterialInstanceParameterDetails::OverrideAlphaToCoverageEnabled));
 
 	TSharedRef<IPropertyHandle> BasePropertyOverridePropery = DetailLayout.GetProperty("BasePropertyOverrides");
 	TSharedPtr<IPropertyHandle> OpacityClipMaskValueProperty = BasePropertyOverridePropery->GetChildHandle("OpacityMaskClipValue");
@@ -470,6 +473,9 @@ void FMaterialInstanceParameterDetails::CreateBasePropertyOverrideWidgets(IDetai
 	TSharedPtr<IPropertyHandle> ShadingModelProperty = BasePropertyOverridePropery->GetChildHandle("ShadingModel");
 	TSharedPtr<IPropertyHandle> TwoSidedProperty = BasePropertyOverridePropery->GetChildHandle("TwoSided");
 	TSharedPtr<IPropertyHandle> DitheredLODTransitionProperty = BasePropertyOverridePropery->GetChildHandle("DitheredLODTransition");
+	TSharedPtr<IPropertyHandle> FullyRoughProperty = BasePropertyOverridePropery->GetChildHandle("FullyRough");
+	TSharedPtr<IPropertyHandle> CheapShadingProperty = BasePropertyOverridePropery->GetChildHandle("CheapShading");
+	TSharedPtr<IPropertyHandle> AlphaToCoverageProperty = BasePropertyOverridePropery->GetChildHandle("AlphaToCoverage");
 
 	IDetailPropertyRow& OpacityClipMaskValuePropertyRow = BasePropertyOverrideGroup.AddPropertyRow(OpacityClipMaskValueProperty.ToSharedRef());
 	OpacityClipMaskValuePropertyRow
@@ -500,6 +506,24 @@ void FMaterialInstanceParameterDetails::CreateBasePropertyOverrideWidgets(IDetai
 		.DisplayName(DitheredLODTransitionProperty->GetPropertyDisplayName())
 		.ToolTip(DitheredLODTransitionProperty->GetToolTipText())
 		.EditCondition(IsOverrideDitheredLODTransitionEnabled, FOnBooleanValueChanged::CreateSP(this, &FMaterialInstanceParameterDetails::OnOverrideDitheredLODTransitionChanged));
+
+	IDetailPropertyRow& FullyRoughPropertyRow = BasePropertyOverrideGroup.AddPropertyRow(FullyRoughProperty.ToSharedRef());
+	FullyRoughPropertyRow
+		.DisplayName(FullyRoughProperty->GetPropertyDisplayName())
+		.ToolTip(FullyRoughProperty->GetToolTipText())
+		.EditCondition(IsOverrideFullyRoughEnabled, FOnBooleanValueChanged::CreateSP(this, &FMaterialInstanceParameterDetails::OnOverrideFullyRoughChanged));
+
+	IDetailPropertyRow& CheapShadingPropertyRow = BasePropertyOverrideGroup.AddPropertyRow(CheapShadingProperty.ToSharedRef());
+	CheapShadingPropertyRow
+		.DisplayName(CheapShadingProperty->GetPropertyDisplayName())
+		.ToolTip(CheapShadingProperty->GetToolTipText())
+		.EditCondition(IsOverrideCheapShadingEnabled, FOnBooleanValueChanged::CreateSP(this, &FMaterialInstanceParameterDetails::OnOverrideCheapShadingChanged));
+
+	IDetailPropertyRow& AlphaToCoveragePropertyRow = BasePropertyOverrideGroup.AddPropertyRow(AlphaToCoverageProperty.ToSharedRef());
+	AlphaToCoveragePropertyRow
+		.DisplayName(AlphaToCoverageProperty->GetPropertyDisplayName())
+		.ToolTip(AlphaToCoverageProperty->GetToolTipText())
+		.EditCondition(IsOverrideAlphaToCoverageEnabled, FOnBooleanValueChanged::CreateSP(this, &FMaterialInstanceParameterDetails::OnOverrideAlphaToCoverageChanged));
 }
 
 bool FMaterialInstanceParameterDetails::OverrideOpacityClipMaskValueEnabled() const
@@ -525,6 +549,21 @@ bool FMaterialInstanceParameterDetails::OverrideTwoSidedEnabled() const
 bool FMaterialInstanceParameterDetails::OverrideDitheredLODTransitionEnabled() const
 {
 	return MaterialEditorInstance->BasePropertyOverrides.bOverride_DitheredLODTransition;
+}
+
+bool FMaterialInstanceParameterDetails::OverrideFullyRoughEnabled() const
+{
+	return MaterialEditorInstance->BasePropertyOverrides.bOverride_FullyRough;
+}
+
+bool FMaterialInstanceParameterDetails::OverrideCheapShadingEnabled() const
+{
+	return MaterialEditorInstance->BasePropertyOverrides.bOverride_CheapShading;
+}
+
+bool FMaterialInstanceParameterDetails::OverrideAlphaToCoverageEnabled() const
+{
+	return MaterialEditorInstance->BasePropertyOverrides.bOverride_AlphaToCoverage;
 }
 
 void FMaterialInstanceParameterDetails::OnOverrideOpacityClipMaskValueChanged(bool NewValue)
@@ -558,6 +597,27 @@ void FMaterialInstanceParameterDetails::OnOverrideTwoSidedChanged(bool NewValue)
 void FMaterialInstanceParameterDetails::OnOverrideDitheredLODTransitionChanged(bool NewValue)
 {
 	MaterialEditorInstance->BasePropertyOverrides.bOverride_DitheredLODTransition = NewValue;
+	MaterialEditorInstance->PostEditChange();
+	FEditorSupportDelegates::RedrawAllViewports.Broadcast();
+}
+
+void FMaterialInstanceParameterDetails::OnOverrideCheapShadingChanged(bool NewValue)
+{
+	MaterialEditorInstance->BasePropertyOverrides.bOverride_CheapShading = NewValue;
+	MaterialEditorInstance->PostEditChange();
+	FEditorSupportDelegates::RedrawAllViewports.Broadcast();
+}
+
+void FMaterialInstanceParameterDetails::OnOverrideFullyRoughChanged(bool NewValue)
+{
+	MaterialEditorInstance->BasePropertyOverrides.bOverride_FullyRough = NewValue;
+	MaterialEditorInstance->PostEditChange();
+	FEditorSupportDelegates::RedrawAllViewports.Broadcast();
+}
+
+void FMaterialInstanceParameterDetails::OnOverrideAlphaToCoverageChanged(bool NewValue)
+{
+	MaterialEditorInstance->BasePropertyOverrides.bOverride_AlphaToCoverage = NewValue;
 	MaterialEditorInstance->PostEditChange();
 	FEditorSupportDelegates::RedrawAllViewports.Broadcast();
 }

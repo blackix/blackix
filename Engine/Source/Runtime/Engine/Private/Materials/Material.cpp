@@ -609,6 +609,7 @@ UMaterial::UMaterial(const FObjectInitializer& ObjectInitializer)
 	bEnableAdaptiveTessellation = true;
 	MaxDisplacement = 0.0f;
 	bOutputVelocityOnBasePass = true;
+	bEnableTranslucentDepthPrepass = false;
 	bEnableSeparateTranslucency = true;
 	bEnableMobileSeparateTranslucency = false;
 	bEnableResponsiveAA = false;
@@ -617,6 +618,7 @@ UMaterial::UMaterial(const FObjectInitializer& ObjectInitializer)
 	bAutomaticallySetUsageInEditor = true;
 
 	bUseMaterialAttributes = false;
+	bAlphaToCoverage = false;
 	bUseTranslucencyVertexFog = true;
 	BlendableLocation = BL_AfterTonemapping;
 	BlendablePriority = 0;
@@ -2744,12 +2746,18 @@ bool UMaterial::CanEditChange(const UProperty* InProperty) const
 		}
 
 		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bFullyRough) ||
+			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bGeometricAA) ||
 			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, TwoSided) ||
 			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bUseLightmapDirectionality) ||
 			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, D3D11TessellationMode) ||
 			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bUseHQForwardReflections) ||
 			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bUsePlanarForwardReflections)
 			)
+		{
+			return MaterialDomain == MD_Surface;
+		}
+
+		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bCheapShading))
 		{
 			return MaterialDomain == MD_Surface;
 		}
@@ -2796,6 +2804,7 @@ bool UMaterial::CanEditChange(const UProperty* InProperty) const
 		}
 
 		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableSeparateTranslucency)
+			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableTranslucentDepthPrepass)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bEnableResponsiveAA)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bScreenSpaceReflections)
 			|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UMaterial, bDisableDepthTest)
@@ -4110,10 +4119,14 @@ bool UMaterial::IsDitheredLODTransition() const
 	return DitheredLODTransition != 0;
 }
 
-
 bool UMaterial::IsMasked() const
 {
 	return GetBlendMode() == BLEND_Masked;
+}
+
+bool UMaterial::IsAlphaToCoverage() const
+{
+	return bAlphaToCoverage != 0;
 }
 
 USubsurfaceProfile* UMaterial::GetSubsurfaceProfile_Internal() const
@@ -4253,6 +4266,7 @@ bool UMaterial::IsPropertyActive(EMaterialProperty InProperty) const
 		break;
 	case MP_Opacity:
 		Active = bIsTranslucentBlendMode && BlendMode != BLEND_Modulate;
+		Active |= IsAlphaToCoverage() && BlendMode != BLEND_Masked;
 		if (IsSubsurfaceShadingModel(ShadingModel))
 		{
 			Active = true;
