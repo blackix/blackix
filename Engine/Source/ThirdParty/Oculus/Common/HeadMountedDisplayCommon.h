@@ -39,9 +39,6 @@ public:
 			/** Whether stereo is currently on or off. */
 			uint64 bStereoEnabled : 1;
 
-			/** Whether game wants to be in stereo mode. (WindowMode != Windowed) */
-			uint64 bStereoDesired : 1;
-
 			/** Whether stereo was enforced by the console command. Doesn't make sense w/o bStereoEnabled == true. */
 			uint64 bStereoEnforced : 1;
 
@@ -108,9 +105,6 @@ public:
 
 			/** Is mirroring enabled or not (see 'HMD MIRROR' console cmd) */
 			uint64 bMirrorToWindow : 1;
-
-			/** Is mirror fullscreen or windowed (see 'HMD FULLSCREEN' console cmd) */
-			uint64 bFullscreenAllowed : 1;
 
 			/** Whether timewarp is enabled or not */
 			uint64 bTimeWarp : 1;
@@ -192,9 +186,6 @@ public:
 
 	/** Scale the positional movement */
 	FVector		PositionScale3D;
-
-	/** Size of mirror window; {0,0} if size is the default one */
-	FIntPoint	MirrorWindowSize;
 
 	/** HMD base values, specify forward orientation and zero pos offset */
 	FVector2D				NeckToEyeInMeters;  // neck-to-eye vector, in meters (X - horizontal, Y - vertical)
@@ -279,7 +270,7 @@ public:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> Clone() const;
 };
 
-typedef TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> FHMDGameFrameRef;
+typedef TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> FHMDGameFramePtr;
 
 class FHMDViewExtension : public ISceneViewExtension, public TSharedFromThis<FHMDViewExtension, ESPMode::ThreadSafe>
 {
@@ -339,8 +330,7 @@ protected:
 	uint32			SourceSizeX, SourceSizeY, SourceNumMips;
 	EPixelFormat	SourceFormat;
 };
-typedef TSharedPtr<FTextureSetProxy, ESPMode::ThreadSafe>	FTextureSetProxyParamRef;
-typedef TSharedPtr<FTextureSetProxy, ESPMode::ThreadSafe>	FTextureSetProxyRef;
+typedef TSharedPtr<FTextureSetProxy, ESPMode::ThreadSafe>	FTextureSetProxyPtr;
 
 /**
  * Base implementation for a layer descriptor.
@@ -351,10 +341,10 @@ class FHMDLayerDesc : public TSharedFromThis<FHMDLayerDesc>
 public:
 	enum ELayerTypeMask : uint32
 	{
-		Unknown,
-		Eye   = 0x00000000,
-		Quad  = 0x40000000,
-		Debug = 0x80000000,
+		Unknown = 0,
+		Eye   = 0x40000000,
+		Quad  = 0x80000000,
+		Debug = 0xC0000000,
 
 		TypeMask = (Eye | Quad | Debug),
 		IdMask =  ~TypeMask,
@@ -375,8 +365,8 @@ public:
 	UTexture* GetTexture() const { return (HasTexture()) ? Texture : nullptr; }
 	bool HasTexture() const { return Texture && Texture->IsValidLowLevel(); }
 
-	void SetTextureSet(FTextureSetProxyParamRef InTextureSet);
-	FTextureSetProxyRef GetTextureSet() const { return TextureSet; }
+	void SetTextureSet(const FTextureSetProxyPtr& InTextureSet);
+	FTextureSetProxyPtr GetTextureSet() const { return TextureSet; }
 	bool HasTextureSet() const { return TextureSet.IsValid(); }
 
 	void SetTextureViewport(const FBox2D&);
@@ -411,7 +401,7 @@ protected:
 	class FHMDLayerManager& LayerManager;
 	uint32			Id;		// ELayerTypeMask | Id
 	mutable UTexture* Texture;// Source texture (for quads) (mutable for GC)
-	FTextureSetProxyRef TextureSet;	// TextureSet (for eye buffers)
+	FTextureSetProxyPtr TextureSet;	// TextureSet (for eye buffers)
 	FBox2D			TextureUV;
 	FTransform		Transform; // layer world or HMD transform (Rotation, Translation, Scale), see bHeadLocked.
 	FVector2D		QuadSize;  // size of the quad in UU
@@ -463,7 +453,7 @@ public:
 
 protected:
 	FHMDLayerDesc		LayerInfo;
-	FTextureSetProxyRef	TextureSet;
+	FTextureSetProxyPtr	TextureSet;
 	bool				bOwnsTextureSet; // indicate that the TextureSet is owned by this instance; otherwise, should be false
 };
 
@@ -472,6 +462,7 @@ protected:
  */
 class FHMDLayerManager : public TSharedFromThis<FHMDLayerManager>, public FGCObject
 {
+	friend class FHeadMountedDisplay;
 public:
 	FHMDLayerManager();
 	virtual ~FHMDLayerManager();
@@ -521,6 +512,8 @@ public:
 		return const_cast<FHMDLayerManager*>(this)->GetRenderLayer_RenderThread_NoLock(LayerId);
 	}
 
+	uint32 GetTotalNumberOfLayers() const;
+
 protected:
 	// Creates a layer. Could be overridden by inherited class to create custom layers. Called on a RenderThread
 	virtual TSharedPtr<FHMDRenderLayer> CreateRenderLayer_RenderThread(FHMDLayerDesc&);
@@ -530,6 +523,8 @@ protected:
 	// Should be called before SubmitFrame is called.
 	// Updates sizes, distances, orientations, textures of each layer, as needed.
 	virtual void PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICmdList, const FHMDGameFrame* CurrentFrame, bool ShowFlagsRendering);
+
+	virtual uint32 GetTotalNumberOfLayersSupported() const = 0;
 
 	static uint32 FindLayerIndex(const TArray<TSharedPtr<FHMDLayerDesc> >& Layers, uint32 LayerId);
 	const TArray<TSharedPtr<FHMDLayerDesc> >& GetLayersArrayById(uint32 LayerId) const;
@@ -557,6 +552,7 @@ class FHeadMountedDisplay : public IHeadMountedDisplay, public IStereoLayers
 {
 public:
 	FHeadMountedDisplay();
+	~FHeadMountedDisplay();
 
 	/** @return	True if the HMD was initialized OK */
 	virtual bool IsInitialized() const;
@@ -596,7 +592,6 @@ public:
 
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
-	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 	virtual void RebaseObjectOrientationAndPosition(FVector& OutPosition, FQuat& OutOrientation) const override;
 
 	virtual bool IsInLowPersistenceMode() const override;
@@ -608,7 +603,6 @@ public:
 	virtual void GetFieldOfView(float& InOutHFOVInDegrees, float& InOutVFOVInDegrees) const override;
 
 	virtual bool IsChromaAbCorrectionEnabled() const override;
-	virtual void OnScreenModeChange(EWindowMode::Type WindowMode) override;
 
 	virtual bool IsPositionalTrackingEnabled() const override;
 	virtual bool EnablePositionalTracking(bool enable) override;
@@ -712,9 +706,9 @@ public:
 
 	virtual FHMDLayerManager* GetLayerManager() { return nullptr; }
 
-	virtual uint32 CreateLayerEx(UTexture2D* InTexture, int32 InPrioirity, FHMDLayerManager::LayerOriginType InLayerOriginType);
+	virtual uint32 CreateLayerEx(UTexture* InTexture, int32 InPrioirity, FHMDLayerManager::LayerOriginType InLayerOriginType);
 	//** IStereoLayers implementation
-	virtual uint32 CreateLayer(UTexture2D* InTexture, int32 InPrioirity, bool bFixedToFace = false) override;
+	virtual uint32 CreateLayer(UTexture* InTexture, int32 InPrioirity, bool bFixedToFace = false) override;
 	virtual void DestroyLayer(uint32 LayerId) override;
 	virtual void SetTransform(uint32 LayerId, const FTransform& InTransform) override;
 	virtual void SetQuadSize(uint32 LayerId, const FVector2D& InSize) override;
@@ -722,13 +716,15 @@ public:
 
 	virtual class FAsyncLoadingSplash* GetAsyncLoadingSplash() const { return nullptr; }
 
+	virtual void SetPixelDensity(float NewPD) {}
+
 	uint32 GetCurrentFrameNumber() const { return CurrentFrameNumber.GetValue(); }
 
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const = 0;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const = 0;
 
-	virtual bool DoEnableStereo(bool bStereo, bool bApplyToHmd) = 0;
+	virtual bool DoEnableStereo(bool bStereo) = 0;
 	virtual void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) = 0;
 
 	virtual void ResetStereoRenderingParams();
@@ -772,7 +768,6 @@ protected:
 
 			/** Indicates if it is necessary to update stereo rendering params */
 			uint64	bNeedUpdateStereoRenderingParams : 1;
-			uint64  bEnableStereoToHmd : 1;
 			uint64	bApplySystemOverridesOnStereo : 1;
 
 			uint64	bNeedEnableStereo : 1;
@@ -787,6 +782,10 @@ protected:
 		uint64 Raw;
 	} Flags;
 
+#if !UE_BUILD_SHIPPING
+	// Stress testing
+	class FOculusStressTester* StressTester;
+#endif // #if !UE_BUILD_SHIPPING
 
 	FHMDGameFrame* GetGameFrame()
 	{

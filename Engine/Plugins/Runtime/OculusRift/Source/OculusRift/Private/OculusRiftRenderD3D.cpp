@@ -1,6 +1,6 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 //
-#include "HMDPrivatePCH.h"
+#include "OculusRiftPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
@@ -87,7 +87,7 @@ public:
 
 	static FD3D11Texture2DSet* D3D11CreateTexture2DSet(
 		FD3D11DynamicRHI* InD3D11RHI,
-		FOvrSessionSharedParamRef OvrSession,
+		const FOvrSessionSharedPtr& OvrSession,
 		ovrTextureSwapChain InTextureSet,
 		const D3D11_TEXTURE2D_DESC& InDsDesc,
 		EPixelFormat InFormat,
@@ -110,7 +110,7 @@ protected:
 class FD3D11Texture2DSetProxy : public FTexture2DSetProxy
 {
 public:
-	FD3D11Texture2DSetProxy(FOvrSessionSharedParamRef InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips)
+	FD3D11Texture2DSetProxy(const FOvrSessionSharedPtr& InOvrSession, FTextureRHIRef InTexture, uint32 SrcSizeX, uint32 SrcSizeY, EPixelFormat SrcFormat, uint32 SrcNumMips)
 		: FTexture2DSetProxy(InOvrSession, InTexture, SrcSizeX, SrcSizeY, SrcFormat, SrcNumMips) {}
 
 	virtual ovrTextureSwapChain GetSwapTextureSet() const override
@@ -201,7 +201,7 @@ void FD3D11Texture2DSet::ReleaseResources(ovrSession InOvrSession)
 
 FD3D11Texture2DSet* FD3D11Texture2DSet::D3D11CreateTexture2DSet(
 	FD3D11DynamicRHI* InD3D11RHI,
-	FOvrSessionSharedParamRef InOvrSession,
+	const FOvrSessionSharedPtr& InOvrSession,
 	ovrTextureSwapChain InTextureSet,
 	const D3D11_TEXTURE2D_DESC& InDsDesc,
 	EPixelFormat InFormat,
@@ -438,7 +438,7 @@ void FOculusRiftPlugin::SetGraphicsAdapter(const ovrGraphicsLuid& luid)
 // FOculusRiftHMD::D3D11Bridge
 //-------------------------------------------------------------------------------------------------
 
-FOculusRiftHMD::D3D11Bridge::D3D11Bridge(FOvrSessionSharedParamRef InOvrSession)
+FOculusRiftHMD::D3D11Bridge::D3D11Bridge(const FOvrSessionSharedPtr& InOvrSession)
 	: FCustomPresent(InOvrSession)
 {
 }
@@ -482,16 +482,16 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 
 	SetRenderContext(&InRenderContext);
 
-	FGameFrame* CurrentFrame = GetRenderFrame();
-	check(CurrentFrame);
-	FSettings* FrameSettings = CurrentFrame->GetSettings();
+	FGameFrame* CurrentRenderFrame = GetRenderFrame();
+	check(CurrentRenderFrame);
+	FSettings* FrameSettings = CurrentRenderFrame->GetSettings();
 	check(FrameSettings);
 
 	const uint32 RTSizeX = RT->GetSizeX();
 	const uint32 RTSizeY = RT->GetSizeY();
 
 	FOvrSessionShared::AutoSession OvrSession(Session);
-	const FVector2D ActualMirrorWindowSize = CurrentFrame->WindowSize;
+	const FVector2D ActualMirrorWindowSize = CurrentRenderFrame->WindowSize;
 	// detect if mirror texture needs to be re-allocated or freed
 	if (Session->IsActive() && MirrorTextureRHI && (bNeedReAllocateMirrorTexture || 
 		(FrameSettings->Flags.bMirrorToWindow && (
@@ -553,7 +553,7 @@ void FOculusRiftHMD::D3D11Bridge::BeginRendering(FHMDViewExtension& InRenderCont
 	}
 }
 
-FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
+FTexture2DSetProxyPtr FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags)
 {
 	auto D3D11RHI = static_cast<FD3D11DynamicRHI*>(GDynamicRHI);
 	ID3D11Device* D3DDevice = D3D11RHI->GetDevice();
@@ -575,7 +575,7 @@ FTexture2DSetProxyRef FOculusRiftHMD::D3D11Bridge::CreateTextureSet(const uint32
 	desc.Height = InSizeY;
 	// Override the format to be sRGB so that the compositor always treats eye buffers
 	// as if they're sRGB even if we are sending in linear formatted textures
-	desc.Format = OVR_FORMAT_B8G8R8A8_UNORM_SRGB;
+	desc.Format = (InCreateTexFlags & LinearSpace) ? OVR_FORMAT_B8G8R8A8_UNORM : OVR_FORMAT_B8G8R8A8_UNORM_SRGB;
 	desc.MiscFlags = ovrTextureMisc_DX_Typeless;
 
 	// just make sure the proper format is used; if format is different then we might

@@ -83,20 +83,14 @@ if ( vrapi_Initialize( &initParms ) != VRAPI_INITIALIZE_SUCCESS )
 	abort();
 }
 
-// Create an EGLContext and get the suggested FOV and suggested
-// resolution to setup a projection matrix and eye texture swap chains.
-const float suggestedEyeFovDegreesX = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X );
-const float suggestedEyeFovDegreesY = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y );
+// Create an EGLContext for the application.
+EGLContext eglContext = ;	// application's context
 
-// Setup a projection matrix based on the 'ovrHmdInfo'.
-const ovrMatrix4f eyeProjectionMatrix = ovrMatrix4f_CreateProjectionFov( suggestedEyeFovDegreesX,
-																		suggestedEyeFovDegreesY,
-																		0.0f, 0.0f, VRAPI_ZNEAR, 0.0f );
-
+// Get the suggested resolution to create eye texture swap chains.
 const int suggestedEyeTextureWidth = vrapi_GetSystemPropertyInt( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH );
 const int suggestedEyeTextureHeight = vrapi_GetSystemPropertyInt( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT );
 
-// Allocate a texture swap chain for each eye.
+// Allocate a texture swap chain for each eye with the application's EGLContext current.
 ovrTextureSwapChain * colorTextureSwapChain[VRAPI_FRAME_LAYER_EYE_MAX];
 for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 {
@@ -106,64 +100,83 @@ for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 																1, true );
 }
 
+// Get the suggested FOV to setup a projection matrix.
+const float suggestedEyeFovDegreesX = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X );
+const float suggestedEyeFovDegreesY = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y );
+
+// Setup a projection matrix based on the suggested FOV.
+// Note that this is an infinite projection matrix for the best precision.
+const ovrMatrix4f eyeProjectionMatrix = ovrMatrix4f_CreateProjectionFov( suggestedEyeFovDegreesX,
+																		suggestedEyeFovDegreesY,
+																		0.0f, 0.0f, VRAPI_ZNEAR, 0.0f );
+
 // Android Activity/Surface life cycle loop.
-for ( ; ; )
+while ( !exit )
 {
-	// Acquire ANativeWindow from Android Surface and create EGLSurface.
-	// Make the EGLContext context current on the surface.
+	// Acquire ANativeWindow from Android Surface.
 
-	// Enter VR mode once the activity is in the resumed state with a
-	// valid EGLSurface and current EGLContext.
-	const ovrModeParms modeParms = vrapi_DefaultModeParms( &java );
-	ovrMobile * ovr = vrapi_EnterVrMode( &modeParms );
+	ANativeWindow * nativeWindow = ;	// ANativeWindow for the Android Surface
+	bool resumed = ;					// set to true in onResume() and set to false in onPause()
 
-	// Frame loop, possibly running on another thread.
-	for ( long long frameIndex = 1; ; frameIndex++ )
+	while ( resumed && nativeWindow != NULL )
 	{
-		// Get the HMD pose, predicted for the middle of the time period during which
-		// the new eye images will be displayed. The number of frames predicted ahead
-		// depends on the pipeline depth of the engine and the synthesis rate.
-		// The better the prediction, the less black will be pulled in at the edges.
-		const double predictedDisplayTime = vrapi_GetPredictedDisplayTime( ovr, frameIndex );
-		const ovrTracking baseTracking = vrapi_GetPredictedTracking( ovr, predictedDisplayTime );
+		// Enter VR mode once the Android Activity is in the resumed state with a valid ANativeWindow.
+		ovrModeParms modeParms = vrapi_DefaultModeParms( &java );
+		modeParms.Flags |= VRAPI_MODE_FLAG_NATIVE_WINDOW;
+		modeParms.Display = eglDisplay;
+		modeParms.WindowSurface = nativeWindow;
+		modeParms.ShareContext = eglContext;
+		ovrMobile * ovr = vrapi_EnterVrMode( &modeParms );
 
-		// Apply the head-on-a-stick model if there is no positional tracking.
-		const ovrHeadModelParms headModelParms = vrapi_DefaultHeadModelParms();
-		const ovrTracking tracking = vrapi_ApplyHeadModel( &headModelParms, &baseTracking );
-
-		// Advance the simulation based on the predicted display time.
-
-		// Render eye images and setup ovrFrameParms using 'ovrTracking'.
-		const double currentTime = vrapi_GetTimeInSeconds();
-		ovrFrameParms frameParms = vrapi_DefaultFrameParms( &java, VRAPI_FRAME_INIT_DEFAULT, currentTime, NULL );
-		frameParms.FrameIndex = frameIndex;
-
-		const ovrMatrix4f centerEyeViewMatrix = vrapi_GetCenterEyeViewMatrix( &headModelParms, &tracking, NULL );
-		for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
+		// Frame loop, possibly running on another thread.
+		for ( long long frameIndex = 1; ; frameIndex++ )
 		{
-			const ovrMatrix4f eyeViewMatrix = vrapi_GetEyeViewMatrix( &headModelParms, &centerEyeViewMatrix, eye );
+			// Get the HMD pose, predicted for the middle of the time period during which
+			// the new eye images will be displayed. The number of frames predicted ahead
+			// depends on the pipeline depth of the engine and the synthesis rate.
+			// The better the prediction, the less black will be pulled in at the edges.
+			const double predictedDisplayTime = vrapi_GetPredictedDisplayTime( ovr, frameIndex );
+			const ovrTracking baseTracking = vrapi_GetPredictedTracking( ovr, predictedDisplayTime );
 
-			const int colorTextureSwapChainIndex = frameIndex % vrapi_GetTextureSwapChainLength( colorTextureSwapChain[eye] );
-			const unsigned int textureId = vrapi_GetTextureSwapChainHandle( colorTextureSwapChain[eye], colorTextureSwapChainIndex );
+			// Apply the head-on-a-stick model if there is no positional tracking.
+			const ovrHeadModelParms headModelParms = vrapi_DefaultHeadModelParms();
+			const ovrTracking tracking = vrapi_ApplyHeadModel( &headModelParms, &baseTracking );
 
-			// Render to 'textureId' using the 'eyeViewMatrix' and 'eyeProjectionMatrix'.
+			// Advance the simulation based on the predicted display time.
 
-			frameParms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].ColorTextureSwapChain = colorTextureSwapChain[eye];
-			frameParms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].TextureSwapChainIndex = colorTextureSwapChainIndex;
-			frameParms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection( &eyeProjectionMatrix );
-			frameParms.Layers[VRAPI_FRAME_LAYER_TYPE_WORLD].Textures[eye].HeadPose = tracking.HeadPose;
+			// Render eye images and setup ovrFrameParms using 'ovrTracking'.
+			ovrFrameParms frameParms = vrapi_DefaultFrameParms( &java, VRAPI_FRAME_INIT_DEFAULT, predictedDisplayTime, NULL );
+			frameParms.FrameIndex = frameIndex;
+
+			const ovrMatrix4f centerEyeViewMatrix = vrapi_GetCenterEyeViewMatrix( &headModelParms, &tracking, NULL );
+			for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
+			{
+				const ovrMatrix4f eyeViewMatrix = vrapi_GetEyeViewMatrix( &headModelParms, &centerEyeViewMatrix, eye );
+
+				const int colorTextureSwapChainIndex = frameIndex % vrapi_GetTextureSwapChainLength( colorTextureSwapChain[eye] );
+				const unsigned int textureId = vrapi_GetTextureSwapChainHandle( colorTextureSwapChain[eye], colorTextureSwapChainIndex );
+
+				// Render to 'textureId' using the 'eyeViewMatrix' and 'eyeProjectionMatrix'.
+				// Insert 'fence' using eglCreateSyncKHR.
+
+				frameParms.Layers[0].Textures[eye].ColorTextureSwapChain = colorTextureSwapChain[eye];
+				frameParms.Layers[0].Textures[eye].TextureSwapChainIndex = colorTextureSwapChainIndex;
+				frameParms.Layers[0].Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection( &eyeProjectionMatrix );
+				frameParms.Layers[0].Textures[eye].HeadPose = tracking.HeadPose;
+				frameParms.Layers[0].Textures[eye].CompletionFence = fence;
+			}
+
+			// Hand over the eye images to the time warp.
+			vrapi_SubmitFrame( ovr, &frameParms );
 		}
-
-		// Hand over the eye images to the time warp.
-		vrapi_SubmitFrame( ovr, &frameParms );
 	}
 
-	// Leave VR mode when the activity is paused, the Android Surface is
-	// destroyed, or when switching to another activity.
+	// Must leave VR mode when the Android Activity is paused or the Android Surface is destroyed or changed.
 	vrapi_LeaveVrMode( ovr );
 }
 
 // Destroy the texture swap chains.
+// Make sure to delete the swapchains before the application's EGLContext is destroyed.
 for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 {
 	vrapi_DestroyTextureSwapChain( colorTextureSwapChain[eye] );
@@ -204,10 +217,10 @@ surfaceChanged / surfaceDestroyed). The application (or 3rd party engine) typica
 these events. Since the VrApi cannot just allocate a new window/frontbuffer, and the VrApi
 does not handle the life cycle events, the VrApi somehow has to take over ownership of the
 Android surface from the application. To allow this, the application can explicitly pass
-the EGLDisplay, EGLSurface and EGLContext to vrapi_EnterVrMode(), where the EGLSurface is
-the surface created from the ANativeWindow. The EGLContext is used to match the version and
-config for the context used by the background time warp thread. This EGLContext, and no other
-context can be current on the EGLSurface.
+the EGLDisplay, EGLContext EGLSurface or ANativeWindow to vrapi_EnterVrMode(), where the
+EGLSurface is the surface created from the ANativeWindow. The EGLContext is used to match
+the version and config for the context used by the background time warp thread. This EGLContext,
+and no other context can be current on the EGLSurface.
 
 If, however, the application does not explicitly pass in these objects, then vrapi_EnterVrMode()
 *must* be called from a thread with an OpenGL ES context current on the Android window surface.
@@ -437,13 +450,19 @@ OVR_VRAPI_EXPORT ovrInitializeStatus vrapi_Initialize( const ovrInitParms * init
 OVR_VRAPI_EXPORT void vrapi_Shutdown();
 
 //-----------------------------------------------------------------
-// System properties and status
+// System Properties
 //-----------------------------------------------------------------
 
 // Returns a system property. These are constants for a particular device.
 // This function can be called any time from any thread once the VrApi is initialized.
 OVR_VRAPI_EXPORT int vrapi_GetSystemPropertyInt( const ovrJava * java, const ovrSystemProperty propType );
 OVR_VRAPI_EXPORT float vrapi_GetSystemPropertyFloat( const ovrJava * java, const ovrSystemProperty propType );
+// The return memory is guaranteed to be valid until the next call to vrapi_GetSystemPropertyString.
+OVR_VRAPI_EXPORT const char * vrapi_GetSystemPropertyString( const ovrJava * java, const ovrSystemProperty propType );
+
+//-----------------------------------------------------------------
+// System Status
+//-----------------------------------------------------------------
 
 // Returns a system status. These are variables that may change at run-time.
 // This function can be called any time from any thread once the VrApi is initialized.
@@ -459,10 +478,10 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // not referenced after the function returns.
 //
 // This should be called after vrapi_Initialize(), when the app is both
-// resumed and has a valid window surface. 
+// resumed and has a valid window surface (ANativeWindow).
 //
 // On Android, an application cannot just allocate a new window surface
-// and render to it. Android allocates and manages the window/frontbuffer and
+// and render to it. Android allocates and manages the window surface and
 // (after the fact) notifies the application of the state of affairs through
 // life cycle events (surfaceCreated / surfaceChanged / surfaceDestroyed).
 // The application (or 3rd party engine) typically handles these events.
@@ -472,7 +491,7 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // application can explicitly pass the EGLDisplay, EGLContext and EGLSurface
 // or ANativeWindow to vrapi_EnterVrMode(). The EGLDisplay and EGLContext are
 // used to create a shared context used by the background time warp thread.
-
+//
 // If, however, the application does not explicitly pass in these objects, then
 // vrapi_EnterVrMode() *must* be called from a thread with an OpenGL ES context
 // current on the Android window surface. The context of the calling thread is
@@ -482,9 +501,20 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // from the calling thread will be current on an invisible pbuffer, because the
 // time warp takes ownership of the Android window surface. Note that this requires
 // the config used by the calling thread to have an EGL_SURFACE_TYPE with EGL_PBUFFER_BIT.
+//
+// New applications should always explicitly pass in the EGLDisplay, EGLContext
+// and ANativeWindow. The other paths are still available to support old applications
+// but they will be deprecated.
+//
+// This function will return NULL when entering VR mode failed because the ANativeWindow
+// was not valid. If the ANativeWindow's buffer queue is abandoned
+// ("BufferQueueProducer: BufferQueue has been abandoned"), then the app can wait for a
+// new ANativeWindow (through SurfaceCreated). If another API is already connected to
+// the ANativeWindow ("BufferQueueProducer: already connected"), then the app has to first
+// disconnect whatever is connected to the ANativeWindow (typically an EGLSurface).
 OVR_VRAPI_EXPORT ovrMobile * vrapi_EnterVrMode( const ovrModeParms * parms );
 
-// Shut everything down for window destruction.
+// Shut everything down for window destruction or when the activity is paused.
 // The ovrMobile object is freed by this function.
 //
 // Must be called from the same thread that called vrapi_EnterVrMode(). If the
@@ -545,7 +575,7 @@ OVR_VRAPI_EXPORT ovrTextureSwapChain * vrapi_CreateTextureSwapChain( ovrTextureT
 																int width, int height, int levels, bool buffered );
 
 // Destroy the given texture swap chain.
-// Must be called from a thread with a valid OpenGL ES context current.
+// Must be called from a thread with the same OpenGL ES context current when vrapi_CreateTextureSwapChain was called.
 OVR_VRAPI_EXPORT void vrapi_DestroyTextureSwapChain( ovrTextureSwapChain * chain );
 
 // Returns the number of textures in the swap chain.

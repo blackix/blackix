@@ -1,6 +1,6 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 //
-#include "HMDPrivatePCH.h"
+#include "OculusRiftPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
@@ -58,7 +58,7 @@ FOculusRiftSplash::FOculusRiftSplash(FOculusRiftHMD* InPlugin) :
 			{
 				if (GConfig->GetFloat(SplashSettings, *(FString(TEXT("RotationDeltaInDegrees")) + num), f, GEngineIni))
 				{
-					SplashDesc.DeltaRotation = FQuat(vec, f);
+					SplashDesc.DeltaRotation = FQuat(vec, FMath::DegreesToRadians(f));
 				}
 			}
 		}
@@ -75,7 +75,7 @@ void FOculusRiftSplash::Startup()
 	FAsyncLoadingSplash::Startup();
 
 	ovrHmdDesc Desc = ovr_GetHmdDesc(nullptr);
-	DisplayRefreshRate = Desc.DisplayRefreshRate;
+	DisplayRefreshRate = 1.f / Desc.DisplayRefreshRate;
 	LayerMgr->Startup();
 }
 
@@ -107,20 +107,19 @@ void FOculusRiftSplash::Tick(float DeltaTime)
 	check(IsInRenderingThread());
 	FCustomPresent* pCustomPresent = pPlugin->GetCustomPresent_Internal();
 	FGameFrame* pCurrentFrame = (FGameFrame*)RenderFrame.Get();
-	FOvrSessionShared::AutoSession OvrSession(pCustomPresent->GetSession());
 	if (pCustomPresent && pCurrentFrame && pCustomPresent->GetSession()->IsActive())
 	{
 		static double LastHighFreqTime = FPlatformTime::Seconds();
-		double CurTime = FPlatformTime::Seconds();
-		double DeltaSecondsHighFreq = CurTime - LastHighFreqTime;
+		const double CurTime = FPlatformTime::Seconds();
+		const double DeltaSecondsHighFreq = CurTime - LastHighFreqTime;
 
+		bool bNeedToPushFrame = false;
 		FScopeLock ScopeLock2(&RenderSplashScreensLock);
 		for (int32 i = 0; i < RenderSplashScreens.Num(); ++i)
 		{
 			FRenderSplashInfo& Splash = RenderSplashScreens[i];
 			// Let update only each 1/3 secs or each 2nd frame if rotation is needed
-			if ((!Splash.Desc.DeltaRotation.Equals(FQuat::Identity) && DeltaSecondsHighFreq > 2.f / DisplayRefreshRate) ||
-				DeltaSecondsHighFreq > 1.f / 3.f)
+			if (!Splash.Desc.DeltaRotation.Equals(FQuat::Identity) && DeltaSecondsHighFreq > 2.f * DisplayRefreshRate)
 			{
 				const FHMDLayerDesc* pLayerDesc = LayerMgr->GetLayerDesc(Splash.SplashLID);
 				if (pLayerDesc)
@@ -135,20 +134,25 @@ void FOculusRiftSplash::Tick(float DeltaTime)
 						layerDesc.SetTransform(transform);
 					}
 					LayerMgr->UpdateLayer(layerDesc);
+					bNeedToPushFrame = true;
 				}
-				pCurrentFrame->FrameNumber = pPlugin->GetCurrentFrameNumber();
-				ovr_GetPredictedDisplayTime(OvrSession, pCurrentFrame->FrameNumber);
-
-				LayerMgr->PreSubmitUpdate_RenderThread(FRHICommandListExecutor::GetImmediateCommandList(), pCurrentFrame, false);
-
-				LayerMgr->SubmitFrame_RenderThread(OvrSession, pCurrentFrame, false);
-
-				if (DeltaSecondsHighFreq > 0.5)
-				{
-					UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::Tick, DELTA > 0.5 secs, ie: %.4f %.4f"), DeltaTime, float(DeltaSecondsHighFreq));
-				}
-				LastHighFreqTime = CurTime;
 			}
+		}
+		if (bNeedToPushFrame || DeltaSecondsHighFreq > 1.f / 3.f)
+		{
+			FOvrSessionShared::AutoSession OvrSession(pCustomPresent->GetSession());
+			pCurrentFrame->FrameNumber = pPlugin->GetCurrentFrameNumber();
+			ovr_GetPredictedDisplayTime(OvrSession, pCurrentFrame->FrameNumber);
+
+			LayerMgr->PreSubmitUpdate_RenderThread(FRHICommandListExecutor::GetImmediateCommandList(), pCurrentFrame, false);
+
+			LayerMgr->SubmitFrame_RenderThread(OvrSession, pCurrentFrame, false);
+
+			if (DeltaSecondsHighFreq > 0.5)
+			{
+				UE_LOG(LogHMD, Log, TEXT("FOculusRiftSplash::Tick, DELTA > 0.5 secs, ie: %.4f %.4f"), DeltaTime, float(DeltaSecondsHighFreq));
+			}
+			LastHighFreqTime = CurTime;
 		}
 	}
 }
@@ -241,20 +245,20 @@ void FOculusRiftSplash::PushFrame()
 		struct FSplashRenParams
 		{
 			FCustomPresent*		pCustomPresent;
-			FHMDGameFrameRef	CurrentFrame;
-			FHMDGameFrameRef*	RenderFrameRef;
+			FHMDGameFramePtr	CurrentFrame;
+			FHMDGameFramePtr*	RenderFramePtr;
 		};
 
 		FSplashRenParams params;
 		params.pCustomPresent = pCustomPresent;
 		params.CurrentFrame = CurrentFrame;
-		params.RenderFrameRef = &RenderFrame;
+		params.RenderFramePtr = &RenderFrame;
 
 		ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(SubmitSplash,
 		const FSplashRenParams&, Params, params,
 		FLayerManager*, LayerMgr, LayerMgr.Get(),
 		{
-			*Params.RenderFrameRef = Params.CurrentFrame;
+			*Params.RenderFramePtr = Params.CurrentFrame;
 
 			auto pCurrentFrame = (FGameFrame*)Params.CurrentFrame.Get();
 			FOvrSessionShared::AutoSession OvrSession(Params.pCustomPresent->GetSession());

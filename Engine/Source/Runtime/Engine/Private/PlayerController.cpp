@@ -3540,6 +3540,27 @@ void APlayerController::PlayHapticEffect(UHapticFeedbackEffect* HapticEffect, TE
 	}
 }
 
+void APlayerController::PlayHapticSoundWave(USoundWave* SoundWave, TEnumAsByte<EControllerHand> Hand, float Scale, bool Loop)
+{
+	if (SoundWave)
+	{
+		switch (Hand)
+		{
+		case EControllerHand::Left:
+			ActiveHapticSoundWave_Left.Reset();
+			ActiveHapticSoundWave_Left = MakeShareable(new FActiveHapticFeedbackSoundWave(SoundWave, Scale, Loop));
+			break;
+		case EControllerHand::Right:
+			ActiveHapticSoundWave_Right.Reset();
+			ActiveHapticSoundWave_Right = MakeShareable(new FActiveHapticFeedbackSoundWave(SoundWave, Scale, Loop));
+			break;
+		default:
+			UE_LOG(LogPlayerController, Warning, TEXT("Invalid hand specified (%d) for haptic sound wave"), (int32)Hand.GetValue());
+			break;
+		}
+	}
+}
+
 void APlayerController::StopHapticEffect(TEnumAsByte<EControllerHand> Hand)
 {
 	SetHapticsByValue(0.f, 0.f, Hand);
@@ -3603,6 +3624,8 @@ void APlayerController::ProcessForceFeedbackAndHaptics(const float DeltaTime, co
 	FHapticFeedbackValues LeftHaptics, RightHaptics;
 	bool bLeftHapticsNeedUpdate = false;
 	bool bRightHapticsNeedUpdate = false;
+	bool bLeftHapticsNeedSoundUpdate = false; 
+	bool bRightHapticsNeedSoundUpdate = false;
 
 	if (!bGamePaused)
 	{
@@ -3642,6 +3665,35 @@ void APlayerController::ProcessForceFeedbackAndHaptics(const float DeltaTime, co
 
 			bRightHapticsNeedUpdate = true;
 		}
+
+		if (ActiveHapticSoundWave_Left.IsValid())
+		{
+			ActiveHapticSoundWave_Left->Update();
+
+			if (ActiveHapticSoundWave_Left->NeedsUpdate())
+			{
+				bLeftHapticsNeedSoundUpdate = true;
+			}
+			else
+			{
+				ActiveHapticSoundWave_Left.Reset();
+			}
+		}
+
+		if (ActiveHapticSoundWave_Right.IsValid())
+		{
+			ActiveHapticSoundWave_Right->Update();
+
+			if (ActiveHapticSoundWave_Right->NeedsUpdate())
+			{
+				bRightHapticsNeedSoundUpdate = true;
+			}
+			else
+			{
+				ActiveHapticSoundWave_Right.Reset();
+			}
+		}
+
 	}
 
 	if (FSlateApplication::IsInitialized())
@@ -3663,6 +3715,17 @@ void APlayerController::ProcessForceFeedbackAndHaptics(const float DeltaTime, co
 			{
 				InputInterface->SetHapticFeedbackValues(ControllerId, (int32)EControllerHand::Right, RightHaptics);
 			}
+
+			if (bLeftHapticsNeedSoundUpdate)
+			{
+				InputInterface->SetHapticFeedbackBuffer(ControllerId, (int32)EControllerHand::Left, ActiveHapticSoundWave_Left->HapticBuffer);
+			}
+
+			if (bRightHapticsNeedSoundUpdate)
+			{
+				InputInterface->SetHapticFeedbackBuffer(ControllerId, (int32)EControllerHand::Right, ActiveHapticSoundWave_Right->HapticBuffer);
+			}
+
 		}
 	}
 }

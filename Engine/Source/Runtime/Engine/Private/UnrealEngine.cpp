@@ -1086,6 +1086,23 @@ void UEngine::PreExit()
 	delete ScreenSaverInhibitorRunnable;
 
 	ShutdownHMD();
+// 	// we can't just nulify these pointers here since RenderThread still might use them.
+// 	{
+// 		auto SavedStereo = StereoRenderingDevice;
+// 		auto SavedHMD = HMDDevice;
+// 		auto SavedViewExtentions = ViewExtensions;
+// 		{
+// 			FSuspendRenderingThread Suspend(false);
+// 			StereoRenderingDevice.Reset();
+// 			HMDDevice.Reset();
+// 			for (auto& ViewExt : ViewExtensions)
+// 			{
+// 				ViewExt.Reset();
+// 			}
+// 			ViewExtensions.Empty();
+// 		}
+// 		// shutdown will occur here.
+// 	}
 }
 
 void UEngine::ShutdownHMD()
@@ -1996,18 +2013,45 @@ bool UEngine::InitializeHMDDevice()
 			// Sort modules by priority
 			HMDModules.Sort(IHeadMountedDisplayModule::FCompareModulePriority());
 
-			// Select first module able to create an HMDDevice
+			// Select first module with a connected HMD able to create a device
 			IHeadMountedDisplayModule* HMDModuleSelected = nullptr;
+			TArray<IHeadMountedDisplayModule*> HMDModulesDisconnected;
 
 			for (auto HMDModuleIt = HMDModules.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
 			{
 				IHeadMountedDisplayModule* HMDModule = *HMDModuleIt;
-				HMDDevice = HMDModule->CreateHeadMountedDisplay();
+				FHeadMountedDisplayModuleExt* HMDModuleExt = FHeadMountedDisplayModuleExt::GetExtendedInterface(HMDModule);
 
-				if (HMDDevice.IsValid())
+				if(HMDModuleExt && HMDModuleExt->IsHMDConnected())
 				{
-					HMDModuleSelected = HMDModule;
-					break;
+					HMDDevice = HMDModule->CreateHeadMountedDisplay();
+
+					if (HMDDevice.IsValid())
+					{
+						HMDModuleSelected = HMDModule;
+						break;
+					}
+				}
+				else
+				{
+					HMDModulesDisconnected.Add(HMDModule);
+				}
+			}
+
+			// If no module selected yet, just select first module able to create a device, even if HMD is not connected.
+			if (!HMDModuleSelected)
+			{
+				for (auto HMDModuleIt = HMDModulesDisconnected.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
+				{
+					IHeadMountedDisplayModule* HMDModule = *HMDModuleIt;
+
+					HMDDevice = HMDModule->CreateHeadMountedDisplay();
+
+					if (HMDDevice.IsValid())
+					{
+						HMDModuleSelected = HMDModule;
+						break;
+					}
 				}
 			}
 
@@ -11247,10 +11291,6 @@ void FSystemResolution::RequestResolutionChange(int32 InResX, int32 InResY, EWin
 		case EWindowMode::Windowed:
 		{
 			WindowModeSuffix = TEXT("w");
-		} break;
-		case EWindowMode::WindowedMirror:
-		{
-			WindowModeSuffix = TEXT("wm");
 		} break;
 		case EWindowMode::WindowedFullscreen:
 		{

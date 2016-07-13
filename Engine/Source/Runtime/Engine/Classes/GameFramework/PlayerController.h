@@ -246,6 +246,10 @@ class ENGINE_API APlayerController : public AController
 	TSharedPtr<struct FActiveHapticFeedbackEffect> ActiveHapticEffect_Left;
 	TSharedPtr<struct FActiveHapticFeedbackEffect> ActiveHapticEffect_Right;
 
+	/** Currently playing haptic sound waves for both the left and right hand */
+	TSharedPtr<struct FActiveHapticFeedbackSoundWave> ActiveHapticSoundWave_Left;
+	TSharedPtr<struct FActiveHapticFeedbackSoundWave> ActiveHapticSoundWave_Right;
+
 	/** list of names of levels the server is in the middle of sending us for a PrepareMapChange() call */
 	TArray<FName> PendingMapChangeLevelNames;
 
@@ -889,6 +893,15 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Game|Feedback")
 	void PlayHapticEffect(class UHapticFeedbackEffect* HapticEffect, TEnumAsByte<EControllerHand> Hand, float Scale = 1.f);
+
+	/**
+	* Play a haptic sound wave on the player's controller
+	* @param	SoundWave				The sound wave to play
+	* @param	Hand					Which hand to play the effect on
+	* @param	Scale					Scale between 0.0 and 1.0 on the intensity of playback
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Game|Feedback")
+	void PlayHapticSoundWave(class USoundWave* SoundWave, TEnumAsByte<EControllerHand> Hand, float Scale = 1.f, bool Loop = false);
 
 	/**
 	* Stops a playing haptic feedback curve

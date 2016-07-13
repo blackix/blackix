@@ -12,6 +12,9 @@
 #include "OculusRiftCommon.h"
 #include "OculusRiftLayers.h"
 #include "OculusRiftSplash.h"
+#if !UE_BUILD_SHIPPING
+#include "SceneCubemapCapturer.h"
+#endif
 
 class FOculusRiftHMD;
 
@@ -151,12 +154,6 @@ class FSettings : public FHMDSettings
 {
 public:
 	const int TexturePaddingPerEye = 12; // padding, in pixels, per eye (total padding will be doubled)
-	enum EQueueAheadStatus
-	{
-		EQA_Default = 0,
-		EQA_Enabled = 1,
-		EQA_Disabled = 2
-	};
 
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
@@ -165,8 +162,9 @@ public:
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
-
-	EQueueAheadStatus		QueueAheadStatus;
+	float					PixelDensityMin;
+	float					PixelDensityMax;
+	bool					PixelDensityAdaptive;
 
 	unsigned				SupportedTrackingCaps;
 	unsigned				SupportedHmdCaps;
@@ -250,7 +248,7 @@ public:
 
 public:
 	class FCustomPresent* pPresentBridge;
-	FOvrSessionSharedRef Session;
+	FOvrSessionSharedPtr Session;
 
 	FEngineShowFlags	ShowFlags; // a copy of showflags
 	bool				bFrameBegun : 1;
@@ -264,7 +262,7 @@ class FCustomPresent : public FRHICustomPresent
 {
 	friend class FLayerManager;
 public:
-	FCustomPresent(FOvrSessionSharedParamRef InOvrSession);
+	FCustomPresent(const FOvrSessionSharedPtr& InOvrSession);
 
 	// Returns true if it is initialized and used.
 	bool IsInitialized() const { return Session->IsActive(); }
@@ -288,7 +286,7 @@ public:
 	FViewExtension* GetRenderContext() const { return static_cast<FViewExtension*>(RenderContext.Get()); }
 	FSettings* GetFrameSetting() const { check(IsInRenderingThread()); return static_cast<FSettings*>(RenderContext->RenderFrame->GetSettings()); }
 
-	FOvrSessionSharedRef GetSession() const { return Session; }
+	const FOvrSessionSharedPtr& GetSession() const { return Session; }
 
 	// marking textures invalid, that will force re-allocation of ones
 	void MarkTexturesInvalid();
@@ -333,23 +331,32 @@ public:
 		RenderTargetable	= 0x2,
 		ShaderResource		= 0x4,
 		EyeBuffer			= 0x8,
+		LinearSpace         = 0x10,
 
 		Default				= RenderTargetable | ShaderResource,
+		DefaultLinear       = LinearSpace | Default,
 		DefaultStaticImage	= StaticImage | Default,
 		DefaultEyeBuffer	= EyeBuffer | Default,
 	};
+
+	enum ECopyTextureAlphaSettings
+	{
+		NoPreMultiply,
+		PreMultiplyAlpha,
+		PreMultiplyRGB
+	};
+
 	// Create and destroy textureset from a texture.
-	virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
+	virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips = 1, uint32 InCreateTexFlags = ECreateTexFlags::Default) = 0;
 
 	// Copies one texture to another
-	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTexture2DRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false) const;
+	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, int SrcSizeX, int SrcSizeY, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), uint32 InCopyTextureAlphaSettings = ECopyTextureAlphaSettings::NoPreMultiply) const;
 
 	FLayerManager* GetLayerMgr() { return static_cast<FLayerManager*>(LayerMgr.Get()); }
 	void UpdateLayers(FRHICommandListImmediate& RHICmdList);
 
 	static uint32 GetNumMipLevels(uint32 w, uint32 h, uint32 InCreateTexFlags);
 
-	bool GetLastVisibilityState() const { return LayerMgr->GetLastVisibilityState(); }
 	ovrResult GetLastSubmitFrameResult() const { return LayerMgr->GetLastSubmitFrameResult(); }
 
 protected:
@@ -357,7 +364,7 @@ protected:
 	void Reset_RenderThread();
 
 protected: // data
-	FOvrSessionSharedRef Session;
+	FOvrSessionSharedPtr Session;
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
 	IRendererModule*	RendererModule;
 
@@ -425,13 +432,13 @@ public:
 
 	virtual bool DoesSupportPositionalTracking() const override;
 	virtual bool HasValidTrackingPosition() override;
-	virtual void GetPositionalTrackingCameraProperties(FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
+	virtual uint32 GetNumOfTrackingSensors() const override;
+	virtual bool GetTrackingSensorProperties(uint8 InSensorIndex, FVector& OutOrigin, FQuat& OutOrientation, float& OutHFOV, float& OutVFOV, float& OutCameraDistance, float& OutNearPlane, float& OutFarPlane) const override;
 	virtual void RebaseObjectOrientationAndPosition(FVector& OutPosition, FQuat& OutOrientation) const override;
 
 	virtual TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe> GetViewExtension() override;
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override;
 
-	virtual bool IsFullscreenAllowed() override;
 	virtual void RecordAnalytics() override;
 
 	virtual bool HasHiddenAreaMesh() const override { return HiddenAreaMeshes[0].IsValid() && HiddenAreaMeshes[1].IsValid(); }
@@ -508,14 +515,22 @@ public:
 
 	virtual void					 SetTrackingOrigin(EHMDTrackingOrigin::Type) override;
 	virtual EHMDTrackingOrigin::Type GetTrackingOrigin() override;
+	virtual void SetPixelDensity(float NewPD) override
+	{
+		GetSettings()->PixelDensity = FMath::Clamp(NewPD, 0.5f, 2.0f);
+		GetSettings()->PixelDensityMin = FMath::Min(GetSettings()->PixelDensity, GetSettings()->PixelDensityMin);
+		GetSettings()->PixelDensityMax = FMath::Max(GetSettings()->PixelDensity, GetSettings()->PixelDensityMax);
+		Flags.bNeedUpdateStereoRenderingParams = true;
+	}
 protected:
 	virtual TSharedPtr<FHMDGameFrame, ESPMode::ThreadSafe> CreateNewGameFrame() const override;
 	virtual TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> CreateNewSettings() const override;
 	
-	virtual bool DoEnableStereo(bool bStereo, bool bApplyToHmd) override;
+	virtual bool DoEnableStereo(bool bStereo) override;
 	virtual void ResetStereoRenderingParams() override;
 
 	virtual void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
+
 
 public:
 
@@ -526,27 +541,27 @@ public:
 	class D3D11Bridge : public FCustomPresent
 	{
 	public:
-		D3D11Bridge(FOvrSessionSharedParamRef InOvrSession);
+		D3D11Bridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 
 	class D3D12Bridge : public FCustomPresent
 	{
 	public:
-		D3D12Bridge(FOvrSessionSharedParamRef InOvrSession);
+		D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
 		virtual void BeginRendering(FHMDViewExtension& InRenderContext, const FTexture2DRHIRef& RT) override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 #endif
 
@@ -554,7 +569,7 @@ public:
 	class OGLBridge : public FCustomPresent
 	{
 	public:
-		OGLBridge(FOvrSessionSharedParamRef InOvrSession);
+		OGLBridge(const FOvrSessionSharedPtr& InOvrSession);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
@@ -562,7 +577,7 @@ public:
 		virtual void Shutdown() override;
 
 		// Create and destroy textureset from a texture.
-		virtual FTexture2DSetProxyRef CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
+		virtual FTexture2DSetProxyPtr CreateTextureSet(const uint32 InSizeX, const uint32 InSizeY, const EPixelFormat InSrcFormat, const uint32 InNumMips, uint32 InCreateTexFlags) override;
 	};
 #endif // OVR_GL
 
@@ -576,6 +591,15 @@ public:
 
 	FCustomPresent* GetCustomPresent_Internal() const { return pCustomPresent; }
 	
+	#if !UE_BUILD_SHIPPING
+	enum ECubemapType
+	{
+		CM_GearVR = 0,
+		CM_Rift = 1
+	};
+	void CaptureCubemap(UWorld* InWorld, ECubemapType CubemapType = CM_Rift, FVector InOffset = FVector::ZeroVector, float InYaw = 0);
+	#endif //#if !UE_BUILD_SHIPPING
+
 private:
 	FOculusRiftHMD* getThis() { return this; }
 
@@ -622,12 +646,13 @@ private:
 	virtual FAsyncLoadingSplash* GetAsyncLoadingSplash() const override { return Splash.Get(); }
 
 	void PreShutdown();
+
 private: // data
 
 	TRefCountPtr<FCustomPresent>pCustomPresent;
 	TSharedPtr<FLayerManager>	LayerMgr;
 	IRendererModule*			RendererModule;
-	FOvrSessionSharedRef		Session;
+	FOvrSessionSharedPtr		Session;
 	ovrHmdDesc					HmdDesc;
 	ovrTrackingOrigin			OvrOrigin;
 
@@ -637,6 +662,9 @@ private: // data
 	ovrResult					LastSubmitFrameResult;
 
 	TSharedPtr<FOculusRiftSplash> Splash;
+
+	// used to capture cubemaps for Oculus Home
+	class USceneCubemapCapturer* CubemapCapturer;
 
 	union
 	{
