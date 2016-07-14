@@ -153,12 +153,6 @@ class FSettings : public FHMDSettings
 {
 public:
 	const int TexturePaddingPerEye = 12; // padding, in pixels, per eye (total padding will be doubled)
-	enum EQueueAheadStatus
-	{
-		EQA_Default = 0,
-		EQA_Enabled = 1,
-		EQA_Disabled = 2
-	};
 
 	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
 	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
@@ -167,8 +161,9 @@ public:
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
-
-	EQueueAheadStatus		QueueAheadStatus;
+	float					PixelDensityMin;
+	float					PixelDensityMax;
+	bool					PixelDensityAdaptive;
 
 	unsigned				SupportedTrackingCaps;
 	unsigned				SupportedHmdCaps;
@@ -518,7 +513,9 @@ public:
 
 	virtual void SetPixelDensity(float NewPD) override
 	{
-		GetSettings()->PixelDensity = NewPD;
+		GetSettings()->PixelDensity = FMath::Clamp(NewPD, 0.5f, 2.0f);
+		GetSettings()->PixelDensityMin = FMath::Min(GetSettings()->PixelDensity, GetSettings()->PixelDensityMin);
+		GetSettings()->PixelDensityMax = FMath::Max(GetSettings()->PixelDensity, GetSettings()->PixelDensityMax);
 		Flags.bNeedUpdateStereoRenderingParams = true;
 	}
 protected:

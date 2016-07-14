@@ -11,9 +11,10 @@
     stereo reset                Resets stereo settings
 
     hmd enable|disable          Enables/Disables HMD
-    hmd pd [0..3.0]             Sets pixel density in the center (default is 1.0)
-    hmd sp [30..300]            Overrides screenpercentage for stereo mode. (Deprecated, use 'hmd pd xxx' instead)
-    hmd sp reset                Resets to original r.ScreenPercentage value. (Deprecated, use 'hmd pd 1' instead)
+    hmd pd [0.5..2.0]           Sets pixel density in the center (default is 1.0)
+    hmd pdmin [0.5..2.0]        Sets minumum adaptive pixel density
+    hmd pdmax [0.5..2.0]        Sets maximum adaptive pixel density
+    hmd pdadaptive on|off       Enables/Disables adaptive pixel density
     hmd hqdistortion on|off     Enables/Disables high-quality distortion
     hmd mirror on|off           Enables/Disables mirroring to the desktop window
     hmd mirror mode [0..4]      Sets mirror mode: 0=Distorted, 1=Undistorted, 2=SingleEye, 3=SingleEye Letterboxed, 4=SingleEye Cropped

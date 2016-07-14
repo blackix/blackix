@@ -1,6 +1,6 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 //
-#include "HMDPrivatePCH.h"
+#include "GearVRPrivatePCH.h"
 #include "GearVR.h"
 
 #if GEARVR_SUPPORTED_PLATFORMS

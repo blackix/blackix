@@ -615,6 +615,9 @@ void FDisplayMetrics::GetDisplayMetrics(struct FDisplayMetrics& OutDisplayMetric
 
 	// Get connected monitor information
 	GetMonitorInfo(OutDisplayMetrics.MonitorInfo);
+
+	// Apply the debug safe zones
+	OutDisplayMetrics.ApplyDefaultSafeZones();
 }
 
 void FWindowsApplication::GetInitialDisplayMetrics( FDisplayMetrics& OutDisplayMetrics ) const
@@ -1968,6 +1971,23 @@ void FWindowsApplication::SetHapticFeedbackValues(int32 ControllerId, int32 Hand
 		if (HapticDevice)
 		{
 			HapticDevice->SetHapticFeedbackValues(ControllerId, Hand, Values);
+		}
+	}
+}
+
+void FWindowsApplication::SetHapticFeedbackBuffer(int32 ControllerId, int32 Hand, FHapticFeedbackBuffer& Buffer)
+{
+	if (FApp::UseVRFocus() && !FApp::HasVRFocus())
+	{
+		return; // do not proceed if the app uses VR focus but doesn't have it
+	}
+
+	for (auto DeviceIt = ExternalInputDevices.CreateIterator(); DeviceIt; ++DeviceIt)
+	{
+		IHapticDevice* HapticDevice = (*DeviceIt)->GetHapticDevice();
+		if (HapticDevice)
+		{
+			HapticDevice->SetHapticFeedbackBuffer(ControllerId, Hand, Buffer);
 		}
 	}
 }

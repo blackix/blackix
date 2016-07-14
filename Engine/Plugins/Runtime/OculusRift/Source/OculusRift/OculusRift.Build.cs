@@ -29,7 +29,8 @@ namespace UnrealBuildTool.Rules
 					"Slate",
 					"SlateCore",
 					"ImageWrapper",
-                    "MediaAssets"
+                    "MediaAssets",
+					"Analytics",
 				});
 
 			if (UEBuildConfiguration.bBuildEditor == true)

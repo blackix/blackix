@@ -1,6 +1,6 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 //
-#include "HMDPrivatePCH.h"
+#include "OculusRiftPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
 #if !PLATFORM_MAC // Mac uses 0.5/OculusRiftRender_05.cpp
@@ -383,7 +383,7 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			// leftover pixels from a previous frame
 			const bool bClearRenderTargetToBlackFirst = ( DstViewRect != BackBufferRect );
 
-			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), FIntRect(), SrcViewRect, false, bClearRenderTargetToBlackFirst);
+			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), DstViewRect, SrcViewRect, false, bClearRenderTargetToBlackFirst);
 		}
 	}
 #if !UE_BUILD_SHIPPING
@@ -637,12 +637,15 @@ void FOculusRiftHMD::DrawDebug(UCanvas* Canvas)
 // 
 // 			Y += RowHeight;
 
-			Str = FString::Printf(TEXT("PD: %.2f"), FrameSettings->PixelDensity);
-			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
-			Y += RowHeight;
-
-			Str = FString::Printf(TEXT("QueueAhead: %s"), (FrameSettings->QueueAheadStatus == FSettings::EQA_Enabled) ? TEXT("ON") : 
-				((FrameSettings->QueueAheadStatus == FSettings::EQA_Default) ? TEXT("DEFLT") : TEXT("OFF")));
+			if(!FrameSettings->PixelDensityAdaptive)
+			{
+				Str = FString::Printf(TEXT("PD: %.2f"), FrameSettings->PixelDensity);
+			}
+			else
+			{
+				Str = FString::Printf(TEXT("PD: %.2f [%0.2f, %0.2f]"), FrameSettings->PixelDensity, 
+					FrameSettings->PixelDensityMin, FrameSettings->PixelDensityMax);
+			}
 			Canvas->Canvas->DrawShadowedString(X, Y, *Str, Font, TextColor);
 			Y += RowHeight;
 
@@ -993,9 +996,9 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 		if (ColorTextureSet.IsValid())
 		{
 			// update the eye layer textureset. at the moment only one eye layer is supported
-			const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetEyeLayerDesc();
-			check(pEyeLayerDesc);
-			FHMDLayerDesc EyeLayerDesc = *pEyeLayerDesc;
+			const FHMDLayerDesc* pEyeLayerDescUpdate = LayerMgr->GetEyeLayerDesc();
+			check(pEyeLayerDescUpdate);
+			FHMDLayerDesc EyeLayerDesc = *pEyeLayerDescUpdate;
 			EyeLayerDesc.SetHighQuality(bEyeLayerShouldBeHQ);
 			EyeLayerDesc.SetTextureSet(ColorTextureSet);
 			LayerMgr->UpdateLayer(EyeLayerDesc);

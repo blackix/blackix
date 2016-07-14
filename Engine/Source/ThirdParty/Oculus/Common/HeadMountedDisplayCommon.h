@@ -218,6 +218,7 @@ public:
 	TSharedPtr<FHMDSettings, ESPMode::ThreadSafe>	Settings;
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
+	float					WorldToMetersScale;
 	FVector					CameraScale3D;
 
 	FRotator				CachedViewRotation[2]; // cached view rotations
