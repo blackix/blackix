@@ -7,16 +7,28 @@
 
 /** Used by IStereoLayer */
 UENUM()
-enum EStereoLayerType
+enum EStereoLayerPositionType
 {
 	/** Location within the world */
-	SLT_WorldLocked UMETA(DisplayName = "World Locked"),
+	SLPT_WorldLocked UMETA(DisplayName = "World Locked"),
 
 	/** Location within the HMD tracking space */
-	SLT_TorseLocked	UMETA(DisplayName = "Torso Locked"),
+	SLPT_TorsoLocked UMETA(DisplayName = "Torso Locked"),
 
 	/** Location within the view space */
-	SLT_FaceLocked	UMETA(DisplayName = "Face Locked"),
+	SLPT_FaceLocked UMETA(DisplayName = "Face Locked"),
+
+	SLPT_MAX,
+};
+
+UENUM()
+enum EStereoLayerType
+{
+	/** Quad layer */
+	SLT_QuadLayer UMETA(DisplayName = "Quad Layer"),
+
+	/** Cylinder layer */
+	SLT_CylinderLayer UMETA(DisplayName = "Cylinder Layer"),
 
 	SLT_MAX,
 };
@@ -28,7 +40,8 @@ UCLASS(ClassGroup="HeadMountedDisplay", hidecategories=(Object,LOD,Lighting,Text
 class ENGINE_API UStereoLayerComponent : public USceneComponent
 {
 	GENERATED_UCLASS_BODY()
-
+    friend class FStereoLayerComponentVisualizer;
+    
 public:
 
 	//~ Begin UObject Interface
@@ -86,38 +99,54 @@ public:
 	void MarkTextureForUpdate();
 
 	/** True if the stereo layer texture needs to update itself every frame(scene capture, video, etc.) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= "StereoLayer")
 	uint32 bLiveTexture:1;
 
 	/** True if the texture should not use it's own alpha channel (1.0 will be substituted) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= "StereoLayer")
 	uint32 bNoAlphaChannel:1;
 
 protected:
 	/** Texture displayed on the stereo layer **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category= "StereoLayer")
 	class UTexture* Texture;
 
 public:
 	/** True if the quad should internally set it's Y value based on the set texture's dimensions */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StereoLayer")
 	uint32 bQuadPreserveTextureRatio : 1;
 
 protected:
 	/** Size of the rendered stereo layer quad **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category="StereoLayer | Quad Overlay Properties")
 	FVector2D QuadSize;
 
 	/** UV coordinates mapped to the quad face **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category="StereoLayer | Quad Overlay Properties")
 	FBox2D UVRect;
 
+	/** Size of the rendered stereo layer quad **/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category = "StereoLayer | Cylinder Overlay Properties")
+	float CylinderRadius;
+
+	/** UV coordinates mapped to the quad face **/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category = "StereoLayer | Cylinder Overlay Properties")
+	float CylinderOverlayArc;
+
+	/** UV coordinates mapped to the quad face **/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category = "StereoLayer | Cylinder Overlay Properties")
+	int CylinderHeight;
+
 	/** Specifies how and where the quad is rendered to the screen **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category=StereoLayer)
-    TEnumAsByte<enum EStereoLayerType> StereoLayerType;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category="StereoLayer")
+    TEnumAsByte<enum EStereoLayerPositionType> StereoLayerPositionType;
+
+	/** Specifies which type of layer it is **/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category = "StereoLayer")
+	TEnumAsByte<enum EStereoLayerType> StereoLayerType;
 
 	/** Render priority among all stereo layers, higher priority render on top of lower priority **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category=StereoLayer)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, export, Category= "StereoLayer")
 	int32 Priority;
 
 private:
