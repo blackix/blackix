@@ -18,12 +18,15 @@
 PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 #include "OVR_Math.h"
 #include "VrApi.h"
+#include "VrApi_Ext.h"
 #include "VrApi_Helpers.h"
 #include "VrApi_LocalPrefs.h"
 #include "SystemActivities.h"
 PRAGMA_ENABLE_SHADOW_VARIABLE_WARNINGS
 
+#if PLATFORM_ANDROID
 #include <GLES2/gl2.h>
+#endif
 #include "OpenGLDrvPrivate.h"
 #include "OpenGLResources.h"
 
@@ -142,9 +145,7 @@ public:
 	ovrRigidBodyPosef		HeadPose;			// position of head actually used
 	ovrMatrix4f				TanAngleMatrix;
 	
-	pid_t					GameThreadId;
-
-	ovrFrameParms			FrameParms;
+	uint32					GameThreadId;
 
 	FGameFrame();
 	virtual ~FGameFrame() {}
@@ -359,6 +360,7 @@ public:
 
 protected:
 	ovrFrameLayer Layer;
+	ovrScaleBias2DExt LayerBias;
 };
 
 class FLayerManager : public FHMDLayerManager 
@@ -445,7 +447,7 @@ public:
 
 	FLayerManager* GetLayerMgr() { return static_cast<FLayerManager*>(LayerMgr.Get()); }
 
-	pid_t GetRenderThreadId() const { return RenderThreadId; }
+	uint32 GetRenderThreadId() const { return RenderThreadId; }
 
 	// Allocates a texture set and copies the texture into it.
 	// To turn it off, call with 'nullptr' param.
@@ -465,7 +467,7 @@ public:
 	void PushFrame(FLayerManager* pInLayerMgr, const FGameFrame* CurrentFrame);
 protected:
 	void SetRenderContext(FHMDViewExtension* InRenderContext);
-	void DoRenderLoadingIcon_RenderThread(int CpuLevel, int GpuLevel, pid_t GameTid);
+	void DoRenderLoadingIcon_RenderThread(int CpuLevel, int GpuLevel, uint32 GameTid);
 	void SystemActivities_Update_RenderThread();
 	void PushBlackFinal(const FGameFrame* frame);
 
@@ -488,7 +490,7 @@ protected: // data
 	TSharedPtr<FLayerManager>				LayerMgr;
 
 	ovrMobile*								OvrMobile;		// to be accessed only on RenderThread (or, when RT is suspended)
-	pid_t									RenderThreadId; // the rendering thread id where EnterVrMode was called.
+	uint32									RenderThreadId; // the rendering thread id where EnterVrMode was called.
 	FCriticalSection						OvrMobileLock;	// used to access OvrMobile_RT/HmdInfo_RT on a game thread
 	ovrJava									JavaRT;			// Rendering thread Java obj
 	jobject									ActivityObject;
