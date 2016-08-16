@@ -185,9 +185,9 @@ void FSteamVRHMD::UpdateLayer(FLayer& Layer) const
 	OVR_VERIFY(VROverlay->SetOverlaySortOrder(Layer.OverlayHandle, Layer.LayerDesc.Priority));
 
 	// Transform
-	switch (Layer.LayerDesc.Type)
+	switch (Layer.LayerDesc.PositionType)
 	{
-	case ELayerType::WorldLocked:
+	case ELayerPositionType::WorldLocked:
 #if 0
 	{
 		// needs final implementation
@@ -203,14 +203,14 @@ void FSteamVRHMD::UpdateLayer(FLayer& Layer) const
 		break;
 	}
 #endif
-	case ELayerType::TrackerLocked:
+	case ELayerPositionType::TrackerLocked:
 	{
 		vr::HmdMatrix34_t HmdTransform;
 		TransformToSteamSpace(Layer.LayerDesc.Transform, HmdTransform, WorldToMeterScale);
 		OVR_VERIFY(VROverlay->SetOverlayTransformAbsolute(Layer.OverlayHandle, vr::ETrackingUniverseOrigin::TrackingUniverseSeated, &HmdTransform));
 		break;
 	}
-	case ELayerType::FaceLocked:
+	case ELayerPositionType::FaceLocked:
 	default:
 	{
 		vr::HmdMatrix34_t HmdTransform;

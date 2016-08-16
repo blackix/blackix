@@ -12,7 +12,8 @@ UStereoLayerComponent::UStereoLayerComponent(const FObjectInitializer& ObjectIni
 	, bQuadPreserveTextureRatio(false)
 	, QuadSize(FVector2D(100.0f, 100.0f))
 	, UVRect(FBox2D(FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f)))
-	, StereoLayerType(SLT_FaceLocked)
+	, StereoLayerPositionType(SLPT_FaceLocked)
+	, StereoLayerType(SLT_QuadLayer)
 	, Priority(0)
 	, bIsDirty(true)
 	, bTextureNeedsUpdate(false)
@@ -47,7 +48,7 @@ void UStereoLayerComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	}
 
 	FTransform Transform;
-	if (StereoLayerType == SLT_WorldLocked)
+	if (StereoLayerPositionType == SLPT_WorldLocked)
 	{
 		Transform = GetComponentTransform();
 	}
@@ -86,21 +87,37 @@ void UStereoLayerComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 			LayerDsec.UVRect = UVRect;
 			LayerDsec.Transform = Transform;
 			LayerDsec.Texture = Texture->Resource->TextureRHI;
+			LayerDsec.CylinderSize = FVector2D(CylinderRadius, CylinderOverlayArc);
+			LayerDsec.CylinderHeight = CylinderHeight;
 			
 			LayerDsec.Flags |= (bLiveTexture) ? IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE : 0;
 			LayerDsec.Flags |= (bNoAlphaChannel) ? IStereoLayers::LAYER_FLAG_TEX_NO_ALPHA_CHANNEL : 0;
 			LayerDsec.Flags |= (bQuadPreserveTextureRatio) ? IStereoLayers::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO : 0;
 
+			switch (StereoLayerPositionType)
+			{
+			case SLPT_WorldLocked:
+				LayerDsec.PositionType = IStereoLayers::WorldLocked;
+				break;
+			case SLPT_TrackerLocked:
+				LayerDsec.PositionType = IStereoLayers::TrackerLocked;
+				break;
+			case SLPT_FaceLocked:
+				LayerDsec.PositionType = IStereoLayers::FaceLocked;
+				break;
+			}
+
 			switch (StereoLayerType)
 			{
-			case SLT_WorldLocked:
-				LayerDsec.Type = IStereoLayers::WorldLocked;
+			case SLT_QuadLayer:
+				LayerDsec.Type = IStereoLayers::QuadLayer;
 				break;
-			case SLT_TrackerLocked:
-				LayerDsec.Type = IStereoLayers::TrackerLocked;
+
+			case SLT_CylinderLayer:
+				LayerDsec.Type = IStereoLayers::CylinderLayer;
 				break;
-			case SLT_FaceLocked:
-				LayerDsec.Type = IStereoLayers::FaceLocked;
+
+			default:
 				break;
 			}
 
