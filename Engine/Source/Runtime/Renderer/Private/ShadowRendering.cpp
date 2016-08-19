@@ -3118,8 +3118,8 @@ bool FDeferredShadingSceneRenderer::RenderOnePassPointLightShadows(FRHICommandLi
 					const FViewInfo& View = Views[ViewIndex];
 
 					// Set the device viewport for the view.
-					RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-					
+					RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
+
 					if (ProjectedShadowInfo->CascadeSettings.bRayTracedDistanceField)
 					{
 						ProjectedShadowInfo->RenderRayTracedDistanceFieldProjection(RHICmdList, View);
@@ -3175,7 +3175,7 @@ void FSceneRenderer::RenderProjections(
 		const FViewInfo& View = Views[ViewIndex];
 
 		// Set the device viewport for the view.
-		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
 
 		// Set the light's scissor rectangle.
 		LightSceneInfo->Proxy->SetScissorRect(RHICmdList, View);

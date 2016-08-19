@@ -486,7 +486,7 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 		return;
 	}
 
-	const int eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? 0 : 1;
+	const int eyeIdx = idxFromStereoPassType(View.StereoPass);
 	if (ShowFlags.Rendering && CurrentFrame->Settings->Flags.bUpdateOnRT)
 	{
 		FQuat	CurrentEyeOrientation;
@@ -608,7 +608,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	check(ViewFamily.RenderTarget->GetRenderTargetTexture());
 	uint32 RenderTargetWidth = ViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeX();
 	uint32 RenderTargetHeight = ViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeY();
-	CurrentFrame->GetSettings()->SetEyeRenderViewport(RenderTargetWidth / 2, RenderTargetHeight);
+	CurrentFrame->GetSettings()->SetEyeRenderViewport(RenderTargetHeight, RenderTargetHeight);
 	pPresentBridge->BeginRendering(*this, ViewFamily.RenderTarget->GetRenderTargetTexture());
 
 	bFrameBegun = true;

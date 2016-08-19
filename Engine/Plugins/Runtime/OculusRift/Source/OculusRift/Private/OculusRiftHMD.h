@@ -160,10 +160,17 @@ public:
 		EQA_Disabled = 2
 	};
 
-	ovrEyeRenderDesc		EyeRenderDesc[2];			// 0 - left, 1 - right, same as Views
-	ovrMatrix4f				EyeProjectionMatrices[2];	// 0 - left, 1 - right, same as Views
-	ovrMatrix4f				PerspectiveProjection[2];	// used for calc ortho projection matrices
-	ovrFovPort				EyeFov[2];					// 0 - left, 1 - right, same as Views
+	ovrEyeRenderDesc		EyeRenderDesc[3];			// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				EyeProjectionMatrices[3];	// 0 - left, 1 - right, same as Views
+	ovrMatrix4f				PerspectiveProjection[3];	// used for calc ortho projection matrices
+	ovrFovPort				EyeFov[3];					// 0 - left, 1 - right, same as Views
+
+	/// Monoscopic data
+	ovrFovPort				UnionEyeFov;
+	ovrVector3f				UnionEyeOffset;
+	float					UnionEyeClipPlaneOffset;
+	ovrMatrix4f				UnionEyePerspectiveProjection;
+	// End monoscopic data
 
 	FIntPoint				RenderTargetSize;
 	float					PixelDensity;
@@ -208,9 +215,9 @@ class FGameFrame : public FHMDGameFrame
 public:
 	ovrTrackingState	InitialTrackingState;		// tracking state at start of frame
 	ovrPosef			CurHeadPose;				// current head pose
-	ovrPosef			CurEyeRenderPose[2];		// current eye render poses
+	ovrPosef			CurEyeRenderPose[3];		// current eye render poses
 	ovrPosef			HeadPose;					// position of head actually used
-	ovrPosef			EyeRenderPose[2];			// eye render pose actually used
+	ovrPosef			EyeRenderPose[3];			// eye render pose actually used
 	ovrSessionStatus	SessionStatus;
 
 	FGameFrame();
@@ -233,7 +240,7 @@ public:
 	// Returns tracking state for current frame
 	ovrTrackingState GetTrackingState(ovrSession InOvrSession) const;
 	// Returns HeadPose and EyePoses calculated from TrackingState
-	void GetHeadAndEyePoses(const ovrTrackingState& TrackingState, ovrPosef& outHeadPose, ovrPosef outEyePoses[2]) const;
+	void GetHeadAndEyePoses(const ovrTrackingState& TrackingState, ovrPosef& outHeadPose, ovrPosef outEyePoses[3]) const;
 };
 
 //-------------------------------------------------------------------------------------------------

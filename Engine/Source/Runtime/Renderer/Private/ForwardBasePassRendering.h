@@ -789,12 +789,16 @@ public:
 		{
 			const uint8 StencilValue = (PrimitiveSceneProxy && !PrimitiveSceneProxy->ReceivesDecals() ? 0x01 : 0x00);
 
-			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
+			/*RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
 					true, CF_GreaterEqual,
 					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
 					0x00, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1)>::GetRHI(), 
-				GET_STENCIL_BIT_MASK(RECEIVE_DECAL, StencilValue)); // we hash the stencil group because we only have 6 bits.
+				GET_STENCIL_BIT_MASK(RECEIVE_DECAL, StencilValue)); // we hash the stencil group because we only have 6 bits. */
+			RHICmdList.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual,
+				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				0xFF, 0x2>::GetRHI(), 0x2);
 		}
 
 

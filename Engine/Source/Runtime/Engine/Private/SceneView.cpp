@@ -386,6 +386,8 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, ViewActor(InitOptions.ViewActor)
 	, Drawer(InitOptions.ViewElementDrawer)
 	, ViewRect(InitOptions.GetConstrainedViewRect())
+	, MinZViewport(0.0f)
+	, MaxZViewport(1.0f)
 	, UnscaledViewRect(InitOptions.GetConstrainedViewRect())
 	, UnconstrainedViewRect(InitOptions.GetViewRect())
 	, MaxShadowCascades(10)
@@ -409,6 +411,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, bIsGameView(false)
 	, bIsViewInfo(false)
 	, bIsSceneCapture(false)
+	, bShouldRender(true)
 	, bIsReflectionCapture(false)
 	, bIsPlanarReflection(false)
 	, bIsLocked(false)
@@ -726,8 +729,23 @@ void FSceneView::UpdateViewMatrix()
 	InvViewMatrix = ViewMatrices.GetInvViewMatrix();
 	InvViewProjectionMatrix = ViewMatrices.GetInvProjMatrix() * InvViewMatrix;
 
-	// Derive the view frustum from the view projection matrix.
-	GetViewFrustumBounds(ViewFrustum, ViewProjectionMatrix, false);
+
+	if ((StereoPass == eSSP_LEFT_EYE || StereoPass == eSSP_RIGHT_EYE) && Family->MonoParameters.MonoMode != eMonoOff)
+	{
+		const FPlane FarPlane(ViewMatrices.ViewOrigin + GetViewDirection() * Family->MonoParameters.MonoCullingDistance, GetViewDirection());
+		// Derive the view frustum from the view projection matrix, overriding the far plane
+		GetViewFrustumBounds(ViewFrustum, ViewProjectionMatrix, FarPlane, true, false);
+	} 
+	else if(StereoPass == eSSP_MONOSCOPIC_EYE)
+	{
+		// Derive the view frustum from the view projection matrix.
+		GetViewFrustumBounds(ViewFrustum, ViewProjectionMatrix, true);
+	}
+	else
+	{
+		GetViewFrustumBounds(ViewFrustum, ViewProjectionMatrix, false);
+	}
+
 }
 
 void FSceneView::SetScaledViewRect(FIntRect InScaledViewRect)
@@ -1916,6 +1934,7 @@ FSceneViewFamily::FSceneViewFamily( const ConstructionValues& CVS )
 	LandscapeLODOverride = -1;
 	HierarchicalLODOverride = -1;
 	bDrawBaseInfo = true;
+
 #endif
 }
 

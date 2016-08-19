@@ -1187,7 +1187,7 @@ void FDeferredShadingSceneRenderer::BeginOcclusionTests(FRHICommandListImmediate
 			}
 			else
 			{
-				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
 			}
 
 			FSceneViewState* ViewState = (FSceneViewState*)View.State;

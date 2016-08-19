@@ -118,6 +118,7 @@ END_UNIFORM_BUFFER_STRUCT( FGBufferResourceStruct )
 * After deferred decals, stencil is cleared to 0 and no longer packed in this way, to ensure use of fast hardware clears and HiStencil.
 */
 #define STENCIL_SANDBOX_BIT_ID				0
+#define STENCIL_OBJECT_WRITTEN_BIT_ID		1
 #define STENCIL_LIGHTING_CHANNELS_BIT_ID	4
 #define STENCIL_RECEIVE_DECAL_BIT_ID		7
 
@@ -128,6 +129,8 @@ END_UNIFORM_BUFFER_STRUCT( FGBufferResourceStruct )
 #define GET_STENCIL_BIT_MASK(BIT_NAME,Value) uint8((uint8(Value) & uint8(0x01)) << (STENCIL_##BIT_NAME##_BIT_ID))
 
 #define STENCIL_SANDBOX_MASK GET_STENCIL_BIT_MASK(SANDBOX,1)
+
+#define STENCIL_OBJECT_WRITTEN_MASK(Value) uint8((Value & 0x1) << STENCIL_OBJECT_WRITTEN_BIT_ID)
 
 #define STENCIL_LIGHTING_CHANNELS_MASK(Value) uint8((Value & 0x7) << STENCIL_LIGHTING_CHANNELS_BIT_ID)
 
@@ -189,6 +192,7 @@ protected:
 		CurrentShadingPath(EShadingPath::Num),
 		bAllocateVelocityGBuffer(false),
 		bSnapshot(false),
+		DefaultDepthClear(FClearValueBinding::DepthFar),
 		QuadOverdrawIndex(INDEX_NONE)
 		{
 		}
@@ -235,6 +239,8 @@ public:
 	 * @param bKeepChanges - if true then the SceneColorSurface is resolved to the SceneColorTexture
 	 */
 	void FinishRenderingSceneColor(FRHICommandListImmediate& RHICmdList, bool bKeepChanges = true, const FResolveRect& ResolveRect = FResolveRect());
+
+	void BeginRenderingSceneMonoColor(FRHICommandList& RHICmdList, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite);
 
 	// @return true: call FinishRenderingCustomDepth after rendering, false: don't render it, feature is disabled
 	bool BeginRenderingCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives);
@@ -296,6 +302,11 @@ public:
 
 	void BeginRenderingLightAttenuation(FRHICommandList& RHICmdList, bool bClearToWhite = false);
 	void FinishRenderingLightAttenuation(FRHICommandList& RHICmdList);
+
+	void SetDefaultDepthClear(FClearValueBinding DClear)
+	{
+		DefaultDepthClear = DClear;
+	}
 
 	void GetSeparateTranslucencyDimensions(FIntPoint& OutScaledSize, float& OutScale)
 	{
@@ -374,6 +385,10 @@ public:
 	const FTexture2DRHIRef& GetSceneAlphaCopyTexture() const { return (const FTexture2DRHIRef&)SceneAlphaCopy->GetRenderTargetItem().ShaderResourceTexture; }
 	bool HasSceneAlphaCopyTexture() const { return SceneAlphaCopy.GetReference() != 0; }
 	const FTexture2DRHIRef& GetSceneDepthTexture() const { return (const FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture; }
+	
+	const FTexture2DRHIRef& GetSceneMonoColorTexture() const { return (const FTexture2DRHIRef&)SceneMonoColor->GetRenderTargetItem().ShaderResourceTexture; }
+	const FTexture2DRHIRef& GetSceneMonoDepthTexture() const { return (const FTexture2DRHIRef&)SceneMonoDepthZ->GetRenderTargetItem().ShaderResourceTexture; }
+
 	const FTexture2DRHIRef& GetNoMSAASceneDepthTexture() const { return (const FTexture2DRHIRef&)NoMSAASceneDepthZ->GetRenderTargetItem().ShaderResourceTexture; }
 	const FTexture2DRHIRef& GetAuxiliarySceneDepthTexture() const
 	{ 
@@ -427,6 +442,9 @@ public:
 	const FTextureRHIRef& GetSceneColorSurface() const;
 	const FTexture2DRHIRef& GetSceneAlphaCopySurface() const						{ return (const FTexture2DRHIRef&)SceneAlphaCopy->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSceneDepthSurface() const							{ return (const FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture; }
+	const FTexture2DRHIRef& GetSceneMonoColorSurface() const						{ return (const FTexture2DRHIRef&)SceneMonoColor->GetRenderTargetItem().TargetableTexture; }
+	const FTexture2DRHIRef& GetSceneMonoDepthSurface() const						{ return (const FTexture2DRHIRef&)SceneMonoDepthZ->GetRenderTargetItem().TargetableTexture; }
+
 	const FTexture2DRHIRef& GetNoMSAASceneDepthSurface() const						{ return (const FTexture2DRHIRef&)NoMSAASceneDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSmallDepthSurface() const							{ return (const FTexture2DRHIRef&)SmallDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetShadowDepthZSurface() const						
@@ -545,7 +563,9 @@ public:
 
 	void AllocLightAttenuation(FRHICommandList& RHICmdList);
 
+	void AllocSceneMonoBuffers(FRHICommandList& RHICmdList, const FSceneView *MonoView);
 	void AllocateReflectionTargets(FRHICommandList& RHICmdList, int32 TargetSize);
+
 
 	void AllocateLightingChannelTexture(FRHICommandList& RHICmdList);
 
@@ -630,6 +650,10 @@ public:
 	TRefCountPtr<IPooledRenderTarget> PreShadowCacheDepthZ;
 	// Stores accumulated density for shadows from translucency
 	TRefCountPtr<IPooledRenderTarget> TranslucencyShadowTransmission[NumTranslucencyShadowSurfaces];
+
+	TRefCountPtr<IPooledRenderTarget> SceneMonoColor;
+	TRefCountPtr<IPooledRenderTarget> SceneMonoDepthZ;
+	TRefCountPtr<FRHIShaderResourceView> SceneMonoStencilSRV;
 
 	TRefCountPtr<IPooledRenderTarget> ReflectiveShadowMapNormal;
 	TRefCountPtr<IPooledRenderTarget> ReflectiveShadowMapDiffuse;
@@ -790,6 +814,8 @@ private:
 
 	/** All outstanding snapshots */
 	TArray<FSceneRenderTargets*> Snapshots;
+
+	FClearValueBinding DefaultDepthClear;
 
 	/** CAUTION: When adding new data, make sure you copy it in the snapshot constructor! **/
 

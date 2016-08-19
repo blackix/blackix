@@ -354,7 +354,7 @@ void FForwardShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate& 
 			}
 			else
 			{
-				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
 			}
 
 			// Enable depth test, disable depth writes.
@@ -369,3 +369,34 @@ void FForwardShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate& 
 		}
 	}
 }
+
+void FForwardShadingSceneRenderer::RenderMonoTranslucency(FRHICommandListImmediate& RHICmdList)
+{
+	if (ShouldRenderTranslucency())
+	{
+		const bool bGammaSpace = !IsMobileHDR();
+		const bool bLinearHDR64 = !bGammaSpace && !IsMobileHDR32bpp();
+
+		const FViewInfo& View = Views[2];
+
+		if (!bGammaSpace)
+		{
+			FSceneRenderTargets::Get(RHICmdList).BeginRenderingTranslucency(RHICmdList, View);
+		}
+		else
+		{
+			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
+		}
+
+		// Enable depth test, disable depth writes.
+		RHICmdList.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+
+		// Draw only translucent prims that don't read from scene color
+		View.TranslucentPrimSet.DrawPrimitivesForForwardShading(RHICmdList, View, false);
+		// Draw the view's mesh elements with the translucent drawing policy.
+		DrawViewElements<FTranslucencyForwardShadingDrawingPolicyFactory>(RHICmdList, View, FTranslucencyForwardShadingDrawingPolicyFactory::ContextType(false), SDPG_World, false);
+		// Draw the view's mesh elements with the translucent drawing policy.
+		DrawViewElements<FTranslucencyForwardShadingDrawingPolicyFactory>(RHICmdList, View, FTranslucencyForwardShadingDrawingPolicyFactory::ContextType(false), SDPG_Foreground, false);
+	}
+}
+

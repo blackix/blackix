@@ -73,6 +73,12 @@ static TAutoConsoleVariable<int32> CVarInstancedStereo(
 	TEXT("0 to disable instanced stereo (default), 1 to enable."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarCompositeMonoDepth(
+	TEXT("vr.CompositeMonoDepth"),
+	0,
+	TEXT("0 to disable monoscopic depth compositing (default), 1 to enable."),
+	ECVF_ReadOnly | ECVF_RenderThreadSafe);
+
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 static TAutoConsoleVariable<float> CVarGeneralPurposeTweak(
 	TEXT("r.GeneralPurposeTweak"),
@@ -1041,7 +1047,9 @@ void FViewInfo::CreateUniformBuffer(
 	// Padding between the left and right eye may be introduced by an HMD, which instanced stereo needs to account for.
 	if ((Family != nullptr) && (StereoPass == eSSP_LEFT_EYE) && (Family->Views.Num() > 1))
 	{
-		check(Family->Views.Num() == 2);
+		check(Family->Views.Num() >= 2);
+		check(Family->Views[0]->ViewRect.Size() == Family->Views[1]->ViewRect.Size());
+
 		const float FamilySizeX = static_cast<float>(Family->FamilySizeX);
 		const float EyePaddingSize = static_cast<float>(Family->Views[1]->ViewRect.Min.X - ViewRect.Max.X);
 		FrameUniformShaderParameters.HMDEyePaddingOffset = (FamilySizeX - EyePaddingSize) / FamilySizeX;
@@ -1741,8 +1749,8 @@ void FSceneRenderer::RenderCustomDepthPass(FRHICommandListImmediate& RHICmdList)
 
 			FViewInfo& View = Views[ViewIndex];
 
-			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-			
+			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
+
 			// seems this is set each draw call anyway
 			RHICmdList.SetRasterizerState(TStaticRasterizerState<>::GetRHI());
 			RHICmdList.SetBlendState(TStaticBlendState<>::GetRHI());

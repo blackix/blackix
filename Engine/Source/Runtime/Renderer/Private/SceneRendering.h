@@ -645,6 +645,10 @@ public:
 	/** Instanced stereo only needs to render the left eye. */
 	bool ShouldRenderView() const 
 	{
+		if (!bShouldRender)
+		{
+			return false;
+		}
 		if (!bIsInstancedStereoEnabled)
 		{
 			return true;
@@ -930,6 +934,39 @@ protected:
 	void RenderDistortion(FRHICommandListImmediate& RHICmdList);
 	void RenderDistortionES2(FRHICommandListImmediate& RHICmdList);
 
+	/** Clears the translucency lighting volumes before light accumulation. */
+	void ClearTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList);
+
+	/** Add AmbientCubemap to the lighting volumes. */
+	void InjectAmbientCubemapTranslucentVolumeLighting(FRHICommandList& RHICmdList);
+
+	/** Filters the translucency lighting volumes to reduce aliasing. */
+	void FilterTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList);
+
+	/** Accumulates direct lighting for the given light.  InProjectedShadowInfo can be NULL in which case the light will be unshadowed. */
+	void InjectTranslucentVolumeLighting(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo, const FProjectedShadowInfo* InProjectedShadowInfo);
+
+	/** Accumulates direct lighting for an array of unshadowed lights. */
+	void InjectTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights, int32 NumLights);
+
+	/** Accumulates direct lighting for simple lights. */
+	void InjectSimpleTranslucentVolumeLightingArray(FRHICommandListImmediate& RHICmdList, const FSimpleLightArray& SimpleLights);
+
+	/** Clears the volume texture used to accumulate per object shadows for translucency. */
+	void ClearTranslucentVolumePerObjectShadowing(FRHICommandList& RHICmdList);
+
+	/** Accumulates the per object shadow's contribution for translucency. */
+	void AccumulateTranslucentVolumeObjectShadowing(FRHICommandList& RHICmdList, const FProjectedShadowInfo* InProjectedShadowInfo, bool bClearVolume);
+
+	/* initializes the stereo depth buffers to a close value for clipping */
+	void ClearStereoDepthBuffers(FRHICommandListImmediate& RHICmdList);
+
+	/** Composites the mono layer back into the stereo layers if it exists */
+	void RenderMonoCompositor(FRHICommandListImmediate& RHICmdList);
+
+	/** Generates the 0x2 stencil in the mono view after the stereo pass */
+	void GenerateMonoStencil(FRHICommandListImmediate& RHICmdList);
+
 	static int32 GetRefractionQuality(const FSceneViewFamily& ViewFamily);
 
 	void UpdatePrimitivePrecomputedLightingBuffers();
@@ -983,6 +1020,9 @@ protected:
 
 	/** Renders the base pass for translucency. */
 	void RenderTranslucency(FRHICommandListImmediate& RHICmdList);
+
+	/** Renders transluency for the monoscopic pass only */
+	void RenderMonoTranslucency(FRHICommandListImmediate& RHICmdList);
 
 	/** Renders any necessary shadowmaps. */
 	void RenderShadowDepthMaps(FRHICommandListImmediate& RHICmdList);

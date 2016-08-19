@@ -182,6 +182,7 @@ void ULocalPlayer::PostInitProperties()
 		if( GEngine->StereoRenderingDevice.IsValid() )
 		{
 			StereoViewState.Allocate();
+			MonoViewState.Allocate();
 		}
 	}
 }
@@ -312,6 +313,7 @@ void ULocalPlayer::FinishDestroy()
 	{
 		ViewState.Destroy();
 		StereoViewState.Destroy();
+		MonoViewState.Destroy();
 	}
 	Super::FinishDestroy();
 }
@@ -688,7 +690,21 @@ bool ULocalPlayer::CalcSceneViewInitOptions(
 	}
 
 	check(PlayerController && PlayerController->GetWorld());
-	ViewInitOptions.SceneViewStateInterface = ((StereoPass != eSSP_RIGHT_EYE) ? ViewState.GetReference() : StereoViewState.GetReference());
+	switch (StereoPass)
+	{
+	case eSSP_FULL:
+	case eSSP_LEFT_EYE:
+		ViewInitOptions.SceneViewStateInterface = ViewState.GetReference();
+		break;
+
+	case eSSP_RIGHT_EYE:
+		ViewInitOptions.SceneViewStateInterface = StereoViewState.GetReference();
+		break;
+
+	case eSSP_MONOSCOPIC_EYE:
+		ViewInitOptions.SceneViewStateInterface = MonoViewState.GetReference();
+		break;
+	}
 	ViewInitOptions.ViewActor = PlayerController->GetViewTarget();
 	ViewInitOptions.ViewElementDrawer = ViewDrawer;
 	ViewInitOptions.BackgroundColor = FLinearColor::Black;
@@ -770,6 +786,31 @@ FSceneView* ULocalPlayer::CalcSceneView( class FSceneViewFamily* ViewFamily,
 	for (int ViewExt = 0; ViewExt < ViewFamily->ViewExtensions.Num(); ViewExt++)
 	{
 		ViewFamily->ViewExtensions[ViewExt]->SetupView(*ViewFamily, *View);
+	}
+	if (ViewFamily->MonoParameters.MonoMode != eMonoOff)
+	{
+		FMatrix projection = ViewFamily->Views[0]->ViewMatrices.ProjMatrix;
+		FVector4 val(0.f, 0.f, (StereoPass == eSSP_MONOSCOPIC_EYE) ? ViewFamily->MonoParameters.MonoCullingDistance - 50 : ViewFamily->MonoParameters.MonoCullingDistance, 1.f);
+			
+		FVector4 result = projection.TransformFVector4(val);
+		float viewportlim = result.Z / result.W;
+		if (StereoPass == eSSP_MONOSCOPIC_EYE) 
+		{
+			ViewFamily->MonoParameters.MonoMonoDepthClip = View->MaxZViewport = viewportlim;
+
+			FVector4 val(0.8f, 0.f, ViewFamily->MonoParameters.MonoDepthClip, 1.f);
+			FVector4 val2 = ViewFamily->Views[0]->ViewMatrices.GetInvViewProjMatrix().TransformFVector4(val);
+			val2 = FVector4(val2.X / val2.W, val2.Y / val2.W, val2.Z / val2.W, 1.0f);
+			FVector4 val3 = View->ViewMatrices.GetViewProjMatrix().TransformFVector4(val2);
+			val3 = FVector4(val3.X / val3.W, val3.Y / val3.W, val3.Z / val3.W, 1.0f);
+
+			ViewFamily->MonoParameters.MonoLateralOffset = (val3.X-val.X) / 2;
+		}
+		else
+		{
+			ViewFamily->MonoParameters.MonoDepthClip = viewportlim;
+		}
+		
 	}
 	return View;
 }
@@ -1558,6 +1599,12 @@ void ULocalPlayer::AddReferencedObjects(UObject* InThis, FReferenceCollector& Co
 	if (StereoRef)
 	{
 		StereoRef->AddReferencedObjects(Collector);
+	}
+
+	FSceneViewStateInterface* MonoRef = This->MonoViewState.GetReference();
+	if (MonoRef)
+	{
+		MonoRef->AddReferencedObjects(Collector);
 	}
 
 	UPlayer::AddReferencedObjects(This, Collector);

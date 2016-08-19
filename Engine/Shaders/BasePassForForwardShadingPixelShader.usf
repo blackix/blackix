@@ -608,4 +608,6 @@ void Main(
 		OutColor *= ClipForEditorPrimitives(MaterialParameters);
 		clip(OutColor.a - GetMaterialOpacityMaskClipValue());
 	#endif
+
+	OutColor.a = 1.0;
 }

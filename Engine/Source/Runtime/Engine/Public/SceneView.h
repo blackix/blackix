@@ -70,6 +70,30 @@ public:
 	}
 };
 
+enum EMonoscopicRenderingMode
+{
+	eMonoOff = 0x0,
+	eMonoOn = 0x1,
+	eMonoStereoOnly = 0x2,
+	eMonoStereoNoCulling = 0x3,
+	eMonoMono = 0x4,
+};
+
+// Parameters defining monoscopic VR rendering
+struct FMonoscopicParameters
+{
+	float MonoCullingDistance; //culling plane in UE4 world units
+	float MonoDepthClip; //culling plane distnace in NDC depth ( [0;1] )
+	float MonoMonoDepthClip; // culling plane distance for the mono view (slightly forward for overlap)
+	float MonoLateralOffset; // lateral offset for reprojection
+	EMonoscopicRenderingMode MonoMode; //monoscopic rendering mode
+
+	FMonoscopicParameters()
+	{
+		MonoMode = eMonoOff;
+	}
+};
+
 // Construction parameters for a FSceneView
 struct FSceneViewInitOptions : public FSceneViewProjectionData
 {
@@ -609,6 +633,10 @@ public:
 	/* Final position of the view in the final render target (in pixels), potentially scaled by ScreenPercentage */
 	FIntRect ViewRect;
 
+	float MinZViewport; 
+
+	float MaxZViewport;
+
 	/* Final position of the view in the final render target (in pixels), potentially constrained by an aspect ratio requirement (black bars) */
 	const FIntRect UnscaledViewRect;
 
@@ -732,6 +760,8 @@ public:
 
 	/** Whether this view was created from a locked viewpoint. */
 	bool bIsLocked;
+
+	bool bShouldRender;
 
 	/** 
 	 * Whether to only render static lights and objects.  
@@ -1043,6 +1073,9 @@ public:
 
 	/** The new show flags for the views (meant to replace the old system). */
 	FEngineShowFlags EngineShowFlags;
+
+	/** Monoscopic rendering parameters for VR */
+	FMonoscopicParameters MonoParameters;
 
 	/** The current world time. */
 	float CurrentWorldTime;

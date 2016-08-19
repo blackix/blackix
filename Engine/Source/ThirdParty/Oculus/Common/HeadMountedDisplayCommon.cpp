@@ -38,7 +38,9 @@ FHMDSettings::FHMDSettings() :
 	Flags.bPlayerControllerFollowsHmd = true;
 	Flags.bPlayerCameraManagerFollowsHmdOrientation = true;
 	Flags.bPlayerCameraManagerFollowsHmdPosition = true;
-	EyeRenderViewport[0] = EyeRenderViewport[1] = FIntRect(0, 0, 0, 0);
+	EyeRenderViewport[0] = EyeRenderViewport[1] = EyeRenderViewport[2] = FIntRect(0, 0, 0, 0);
+
+	MonoMode = 1;
 
 	CameraScale3D = FVector(1.0f, 1.0f, 1.0f);
 	PositionScale3D = FVector(1.0f, 1.0f, 1.0f);
@@ -321,6 +323,8 @@ bool FHeadMountedDisplay::OnStartGameFrame(FWorldContext& WorldContext)
 	CurrentFrame->FrameNumber = (uint32)CurrentFrameNumber.Increment();
 	CurrentFrame->Flags.bOutOfFrame = false;
 
+	CurrentFrame->MonoCullingDistance = WorldContext.World()->GetWorldSettings()->MonoCullingDistance;
+
 	if (Settings->Flags.bWorldToMetersOverride)
 	{
 		CurrentFrame->SetWorldToMetersScale( Settings->WorldToMetersScale );
@@ -533,10 +537,19 @@ bool FHeadMountedDisplay::IsStereoEnabledOnNextFrame() const
 
 void FHeadMountedDisplay::AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
 {
-	SizeX = SizeX / 2;
-	if (StereoPass == eSSP_RIGHT_EYE)
+	if (StereoPass != eSSP_MONOSCOPIC_EYE)
+	{
+		SizeX = SizeX / 2;
+		if (StereoPass == eSSP_RIGHT_EYE)
+		{
+			X += SizeX;
+		}
+
+	}
+	else
 	{
 		X += SizeX;
+		SizeX = SizeX / 2;
 	}
 }
 

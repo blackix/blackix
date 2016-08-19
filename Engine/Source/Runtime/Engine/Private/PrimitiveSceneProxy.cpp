@@ -18,6 +18,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	bReceivesDecals(InComponent->bReceivesDecals)
 ,	bOnlyOwnerSee(InComponent->bOnlyOwnerSee)
 ,	bOwnerNoSee(InComponent->bOwnerNoSee)
+,   bRenderInMono(InComponent->bRenderInMono)
 ,	bStatic(false)
 ,	bOftenMoving(false)
 ,	bParentSelected(InComponent->ShouldRenderSelected())

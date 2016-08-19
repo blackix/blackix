@@ -55,6 +55,8 @@ AWorldSettings::AWorldSettings(const FObjectInitializer& ObjectInitializer)
 
 	WorldToMeters = 100.f;
 
+	MonoCullingDistance = 750.f;
+
 	DefaultPhysicsVolumeClass = ADefaultPhysicsVolume::StaticClass();
 	GameNetworkManagerClass = AGameNetworkManager::StaticClass();
 	SetRemoteRoleForBackwardsCompat(ROLE_SimulatedProxy);

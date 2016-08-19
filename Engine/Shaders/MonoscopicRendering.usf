@@ -1,0 +1,81 @@
+// Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	MonoscopicRendering.usf: Shaders that deal with Monoscopic VR rendering
+=============================================================================*/
+
+#include "Common.usf"
+
+Texture2D MonoColorTexture;
+Texture2D MonoDepthTexture;
+
+#if MSAA_SAMPLE_COUNT > 1
+Texture2DMS<float, MSAA_SAMPLE_COUNT> DepthTexture;
+#else
+Texture2D DepthTexture;
+#endif
+
+SamplerState MonoColorTextureSampler;
+SamplerState MonoDepthTextureSampler;
+SamplerState DepthTextureSampler;
+
+void CompositeMonoscopicView(
+	noperspective float2 InUV : TEXCOORD0,
+//	out float OutDepth : SV_DEPTH,
+	out float4 OutColor : SV_Target0
+	)
+{
+	OutColor = float4(Texture2DSample(MonoColorTexture, MonoColorTextureSampler, InUV).rgb, 1.0);
+//	OutDepth = Texture2DSample(MonoDepthTexture, MonoDepthTextureSampler, InUV).r;
+}
+
+void CompositeMonoscopicViewNoDepth(
+	noperspective float2 InUV : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+	)
+{
+	OutColor = float4(Texture2DSample(MonoColorTexture, MonoColorTextureSampler, InUV).rgb, 1.0);
+}
+
+float MonoZCulling;
+
+void GenerateMonoscopicStencil(
+	//noperspective float2 InUV : TEXCOORD0
+	FScreenVertexOutput Input
+
+	)
+	
+{
+	//uint2 IntUV = (uint2)(Input.UV * (float2)Frame.BufferSizeAndInvSize.xy);
+	//uint stencilval = MonoStencilTexture.Load(uint3(IntUV, 0)).g;
+	//if((stencilval & 0x2) != 0x2) 
+	//{
+	//	discard;
+	//}
+	discard;
+}
+
+float LeftViewWidth;
+float OffsetWidth;
+
+void GenerateMonoscopicStencilDouble(
+	noperspective float2 InUV : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+	)
+{
+#if MSAA_SAMPLE_COUNT > 1
+	int2 IntUV = (int2)(InUV * float2(Frame.BufferSizeAndInvSize.xy));
+	int2 IntUV2 = (int2)(float2(InUV.x+LeftViewWidth, InUV.y) * float2(Frame.BufferSizeAndInvSize.xy))
+	float depthval = DepthTexture.Load(IntUV, 0).r
+	float depthval2 = DepthTexture.Load(IntUV2, 0).r
+#else
+	float depthval = Texture2DSample(DepthTexture, DepthTextureSampler, float2(InUV.x-OffsetWidth, InUV.y)).a;
+	float depthval2 = Texture2DSample(DepthTexture, DepthTextureSampler, float2(InUV.x+LeftViewWidth+OffsetWidth, InUV.y)).a;
+#endif
+	OutColor = float4(0, 0, 0.0, 1);
+	//OutColor = float4(InUV.x, InUV.y, 0, 1);
+	if(depthval != 1.0  || depthval2 != 1.0 )
+	{
+		discard;
+	}
+}

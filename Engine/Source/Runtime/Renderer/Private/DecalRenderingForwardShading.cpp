@@ -34,7 +34,7 @@ void FForwardShadingSceneRenderer::RenderDecals(FRHICommandListImmediate& RHICmd
 			SCOPED_DRAW_EVENT(RHICmdList, DeferredDecals);
 			INC_DWORD_STAT_BY(STAT_Decals, SortedDecals.Num());
 		
-			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
+			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.MinZViewport, View.ViewRect.Max.X, View.ViewRect.Max.Y, View.MaxZViewport);
 			RHICmdList.SetStreamSource(0, GetUnitCubeVertexBuffer(), sizeof(FVector4), 0);
 
 			TOptional<EDecalBlendMode> LastDecalBlendMode;

@@ -152,6 +152,8 @@ public:
 		uint64 Raw;
 	} Flags;
 
+	int MonoMode;
+
 	/** Saved original value for ScreenPercentage. */
 	float SavedScrPerc;
 
@@ -192,7 +194,7 @@ public:
 	FQuat					BaseOrientation;	// base orientation
 
 	/** Viewports for each eye, in render target texture coordinates */
-	FIntRect				EyeRenderViewport[2];
+	FIntRect				EyeRenderViewport[3];
 
 	/** Deprecated position offset */
 	FVector					PositionOffset;
@@ -218,9 +220,10 @@ public:
 	TSharedPtr<FHMDSettings, ESPMode::ThreadSafe>	Settings;
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
+	float					MonoCullingDistance;
 	FVector					CameraScale3D;
 
-	FRotator				CachedViewRotation[2]; // cached view rotations
+	FRotator				CachedViewRotation[3]; // cached view rotations
 
 	FQuat					LastHmdOrientation; // contains last APPLIED ON GT HMD orientation
 	FVector					LastHmdPosition;    // contains last APPLIED ON GT HMD position

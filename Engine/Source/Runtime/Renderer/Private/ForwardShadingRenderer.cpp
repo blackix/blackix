@@ -146,17 +146,29 @@ void FForwardShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	{
 		// Begin rendering to scene color
 		SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EClearColorAndDepth);
+		
+	}
+	if (ViewFamily.MonoParameters.MonoMode == eMonoOff || ViewFamily.MonoParameters.MonoMode == eMonoStereoNoCulling)
+	{
+		FLinearColor color(0, 0, 0, 0);
+		RHICmdList.Clear(true, color, true, (float)ERHIZBuffer::FarPlane, false, 0, FIntRect());
+	}
+	else
+	{
+		FLinearColor color(0, 0, 0, 0);
+		RHICmdList.Clear(true, color, true, (float)ViewFamily.MonoParameters.MonoDepthClip, false, 0, FIntRect());
 	}
 
 	if (GIsEditor && !View.bIsSceneCapture)
 	{
-		RHICmdList.Clear(true, Views[0].BackgroundColor, false, (float)ERHIZBuffer::FarPlane, false, 0, FIntRect());
+		FLinearColor color(0, 0, 0, 0);
+		RHICmdList.Clear(true, color, false, (float)ERHIZBuffer::FarPlane, false, 0, FIntRect());
 	}
 
 	RenderForwardShadingBasePass(RHICmdList);
 
 	// Make a copy of the scene depth if the current hardware doesn't support reading and writing to the same depth buffer
-	ConditionalResolveSceneDepth(RHICmdList);
+	//ConditionalResolveSceneDepth(RHICmdList);
 	
 	if (ViewFamily.EngineShowFlags.Decals)
 	{
@@ -170,7 +182,16 @@ void FForwardShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		Scene->FXSystem->PostRenderOpaque(RHICmdList);
 	}
 
+	if (ViewFamily.MonoParameters.MonoMode != eMonoOff)
+	{
+		SceneContext.BeginRenderingSceneMonoColor(RHICmdList, ESimpleRenderTargetMode::EExistingColorAndDepth);
+		RenderMonoTranslucency(RHICmdList);
+	}
+
 	RenderModulatedShadowProjections(RHICmdList);
+
+	SetRenderTarget(RHICmdList, ViewFamily.RenderTarget->GetRenderTargetTexture(), SceneContext.GetSceneDepthTexture(), ESimpleRenderTargetMode::EExistingColorAndDepth);
+	RenderMonoCompositor(RHICmdList);
 
 	// Draw translucency.
 	if (ViewFamily.EngineShowFlags.Translucency)

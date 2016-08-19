@@ -214,6 +214,10 @@ public:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Rendering)
 	uint32 bOwnerNoSee:1;
 
+	/** If true, this component will be rendered in mono if an HMD is connected */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Rendering)
+	uint32 bRenderInMono : 1;
+
 	/** If this is True, this component will only be visible when the view actor is the component's owner, directly or indirectly. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = Rendering)
 	uint32 bOnlyOwnerSee:1;
@@ -1043,6 +1047,10 @@ public:
 	/** Sets bRenderInMainPass property and marks the render state dirty. */
 	UFUNCTION(BlueprintCallable, Category = "Rendering")
 	void SetRenderInMainPass(bool bValue);
+
+	/** Sets bRenderInMainPass property and marks the render state dirty. */
+	UFUNCTION(BlueprintCallable, Category = "Rendering")
+	void SetRenderInMono(bool bValue);
 
 public:
 	static int32 CurrentTag;

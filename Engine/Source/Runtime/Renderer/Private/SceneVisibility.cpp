@@ -291,6 +291,7 @@ static int32 FrustumCull(const FScene* Scene, FViewInfo& View)
 			uint8 CustomVisibilityFlags = EOcclusionFlags::CanBeOccluded | EOcclusionFlags::HasPrecomputedVisibility;
 
 			const int32 TaskWordOffset = TaskIndex * FrustumCullNumWordsPerTask;
+			const bool useMonoCulling = View.StereoPass != EStereoscopicPass::eSSP_FULL && View.StereoPass != EStereoscopicPass::eSSP_MONOSCOPIC_EYE && View.Family->MonoParameters.MonoMode != eMonoOff;
 
 			for (int32 WordIndex = TaskWordOffset; WordIndex < TaskWordOffset + FrustumCullNumWordsPerTask && WordIndex * NumBitsPerDWORD < BitArrayNumInner; WordIndex++)
 			{
@@ -322,7 +323,8 @@ static int32 FrustumCull(const FScene* Scene, FViewInfo& View)
 						DistanceSquared < Bounds.MinDrawDistanceSq ||
 						(UseCustomCulling && !View.CustomVisibilityQuery->IsVisible(VisibilityId, FBoxSphereBounds(Bounds.Origin, Bounds.BoxExtent, Bounds.SphereRadius))) ||
 						(bAlsoUseSphereTest && View.ViewFrustum.IntersectSphere(Bounds.Origin, Bounds.SphereRadius) == false) ||
-						View.ViewFrustum.IntersectBox(Bounds.Origin, Bounds.BoxExtent) == false)
+						View.ViewFrustum.IntersectBox(Bounds.Origin, Bounds.BoxExtent) == false ||
+						(useMonoCulling && Scene->Primitives[Index]->Proxy->RenderInMono()))
 					{
 						STAT(NumCulledPrimitives.Increment());
 					}

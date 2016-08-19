@@ -120,7 +120,8 @@ void FViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmd
 		return;
 	}
 
-	const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
+	//const ovrEyeType eyeIdx = (View.StereoPass == eSSP_LEFT_EYE) ? ovrEye_Left : ovrEye_Right;
+	const int eyeIdx = View.StereoPass - 1;
 	if (RenderContext.ShowFlags.Rendering && CurrentFrame->Settings->Flags.bUpdateOnRT)
 	{
 		FQuat	CurrentEyeOrientation;
@@ -311,12 +312,17 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_Undistorted)
 		{
 			auto FrameSettings = RenderContext->GetFrameSettings();
-			FIntRect destRect(0, 0, BackBuffer->GetSizeX() / 2, BackBuffer->GetSizeY());
-			for (int i = 0; i < 2; ++i)
+			int maxIdx = Settings->MonoMode ? 3 : 2;
+			
+			float divideRatioX = BackBuffer->GetSizeX() / (float)FrameSettings->EyeRenderViewport[maxIdx-1].Max.X;
+			float divideRatioY = BackBuffer->GetSizeY() / (float)FrameSettings->EyeRenderViewport[maxIdx-1].Max.Y;
+
+			for (int i = 0; i < maxIdx; ++i)
 			{
-				pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), destRect, FrameSettings->EyeRenderViewport[i]);
-				destRect.Min.X += BackBuffer->GetSizeX() / 2;
-				destRect.Max.X += BackBuffer->GetSizeX() / 2;
+				FIntRect destRect(FrameSettings->EyeRenderViewport[i].Min.X * divideRatioX, FrameSettings->EyeRenderViewport[i].Min.Y * divideRatioY,
+					FrameSettings->EyeRenderViewport[i].Max.X * divideRatioX, FrameSettings->EyeRenderViewport[i].Max.Y * divideRatioY);
+
+				//pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, destRect, FrameSettings->EyeRenderViewport[i]);
 			}
 		}
 		else if (RenderContext->GetFrameSettings()->MirrorWindowMode == FSettings::eMirrorWindow_SingleEye ||

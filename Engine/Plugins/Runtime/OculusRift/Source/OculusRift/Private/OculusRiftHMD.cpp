@@ -569,6 +569,8 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 
 		CurrentSettings->EyeRenderDesc[0] = ovr_GetRenderDesc(OvrSession, ovrEye_Left, CurrentSettings->EyeFov[0]);
 		CurrentSettings->EyeRenderDesc[1] = ovr_GetRenderDesc(OvrSession, ovrEye_Right, CurrentSettings->EyeFov[1]);
+		CurrentSettings->EyeRenderDesc[2] = ovr_GetRenderDesc(OvrSession, ovrEye_Right, CurrentSettings->EyeFov[2]);
+
 #if !UE_BUILD_SHIPPING
 		const OVR::Vector3f newLeft(CurrentSettings->EyeRenderDesc[0].HmdToEyeOffset);
 		const OVR::Vector3f newRight(CurrentSettings->EyeRenderDesc[1].HmdToEyeOffset);
@@ -585,11 +587,13 @@ bool FOculusRiftHMD::OnStartGameFrame( FWorldContext& WorldContext )
 			check(CurrentSettings->InterpupillaryDistance >= 0);
 			CurrentSettings->EyeRenderDesc[0].HmdToEyeOffset.x = -CurrentSettings->InterpupillaryDistance * 0.5f;
 			CurrentSettings->EyeRenderDesc[1].HmdToEyeOffset.x = CurrentSettings->InterpupillaryDistance * 0.5f;
+			CurrentSettings->EyeRenderDesc[2].HmdToEyeOffset.x = 0.f;
 		}
 #endif // #if !UE_BUILD_SHIPPING
 		// Save EyeRenderDesc in main settings.
 		MasterSettings->EyeRenderDesc[0] = CurrentSettings->EyeRenderDesc[0];
 		MasterSettings->EyeRenderDesc[1] = CurrentSettings->EyeRenderDesc[1];
+		MasterSettings->EyeRenderDesc[2] = CurrentSettings->EyeRenderDesc[2];
 
 		// Save eye and head poses
 		CurrentFrame->InitialTrackingState = CurrentFrame->GetTrackingState(OvrSession);
@@ -763,13 +767,18 @@ ovrTrackingState FGameFrame::GetTrackingState(ovrSession InOvrSession) const
 }
 
 // Returns HeadPose and EyePoses calculated from TrackingState
-void FGameFrame::GetHeadAndEyePoses(const ovrTrackingState& TrackingState, ovrPosef& outHeadPose, ovrPosef outEyePoses[2]) const
+void FGameFrame::GetHeadAndEyePoses(const ovrTrackingState& TrackingState, ovrPosef& outHeadPose, ovrPosef outEyePoses[3]) const
 {
 	const FSettings* CurrentSettings = GetSettings();
 	const ovrVector3f hmdToEyeViewOffset[2] = { CurrentSettings->EyeRenderDesc[0].HmdToEyeOffset, CurrentSettings->EyeRenderDesc[1].HmdToEyeOffset };
 
 	outHeadPose = TrackingState.HeadPose.ThePose;
 	ovr_CalcEyePoses(TrackingState.HeadPose.ThePose, hmdToEyeViewOffset, outEyePoses);
+
+	using OVR::Posef;
+	using OVR::Vector3f;
+
+	outEyePoses[2] = Posef(TrackingState.HeadPose.ThePose.Orientation, ((Posef)TrackingState.HeadPose.ThePose).Apply((Vector3f)CurrentSettings->EyeRenderDesc[2].HmdToEyeOffset));
 }
 
 void FGameFrame::PoseToOrientationAndPosition(const ovrPosef& InPose, FQuat& OutOrientation, FVector& OutPosition) const
@@ -801,6 +810,7 @@ void FOculusRiftHMD::GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& Curre
 		// This matters only if bUpdateOnRT is OFF.
 		frame->EyeRenderPose[0] = frame->CurEyeRenderPose[0];
 		frame->EyeRenderPose[1] = frame->CurEyeRenderPose[1];
+		frame->EyeRenderPose[2] = frame->CurEyeRenderPose[2];
 		frame->HeadPose = frame->CurHeadPose;
 	}
 
@@ -976,6 +986,11 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			Settings->Flags.bDrawGrid = !Settings->Flags.bDrawGrid;
 			return true;
 		}
+		else if (FParse::Command(&Cmd, TEXT("MONO"))) // grid
+		{
+			Settings->MonoMode = 0;
+			return true;
+		}		
 		else if (FParse::Command(&Cmd, TEXT("CUBEMAP")))
 		{
 			ECubemapType CMType = CM_Rift;
@@ -1462,11 +1477,30 @@ FPerformanceStats FOculusRiftHMD::GetPerformanceStats() const
 	return PerformanceStats;
 }
 
+inline int idxFromStereoPassType(const EStereoscopicPass StereoPassType) {
+	switch (StereoPassType)
+	{
+	case eSSP_LEFT_EYE:
+	case eSSP_FULL:
+		return 0;
+
+	case eSSP_RIGHT_EYE:
+		return 1;
+
+	case eSSP_MONOSCOPIC_EYE:
+		return 2;
+
+	default:
+		check(0);
+		return -1;
+	}
+}
+
 void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation)
 {
 	check(WorldToMeters != 0.f);
 
-	const int idx = (StereoPassType == eSSP_LEFT_EYE) ? 0 : 1;
+	const int idx = idxFromStereoPassType(StereoPassType);
 
 	if (IsInGameThread())
 	{
@@ -1592,6 +1626,30 @@ void FOculusRiftHMD::ResetPosition()
 	}
 }
 
+static FMatrix FixProjectionMatrix(const FSettings* Settings, const ovrMatrix4f& InProjection, float NearOffset = 0, float FarOffset = 0, float NearClippingPlane = 0, float FarClippingPlane = 0)
+{
+	FMatrix proj = ToFMatrix(InProjection);
+
+	// correct far and near planes for reversed-Z projection matrix
+	float InNearZ = (Settings->NearClippingPlane) ? Settings->NearClippingPlane + NearOffset : GNearClippingPlane + NearOffset;
+	float InFarZ = (Settings->FarClippingPlane) ? Settings->FarClippingPlane + FarOffset : GNearClippingPlane + NearOffset;
+	if (NearClippingPlane != 0)
+	{
+		InNearZ = InFarZ = NearClippingPlane;
+	}
+	if (FarClippingPlane != 0)
+	{
+		//	InFarZ = FarClippingPlane;
+	}
+
+	proj.M[3][3] = 0.0f;
+	proj.M[2][3] = 1.0f;
+
+	proj.M[2][2] = (InNearZ == InFarZ) ? 0.0f : InNearZ / (InNearZ - InFarZ);
+	proj.M[3][2] = (InNearZ == InFarZ) ? InNearZ : -InFarZ * InNearZ / (InNearZ - InFarZ);
+
+	return proj;
+}
 FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassType, const float FOV) const
 {
 	auto frame = GetFrame();
@@ -1600,20 +1658,9 @@ FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassTy
 
 	const FSettings* FrameSettings = frame->GetSettings();
 
-	const int idx = (StereoPassType == eSSP_LEFT_EYE) ? 0 : 1;
+	const int idx = idxFromStereoPassType(StereoPassType);
 
-	FMatrix proj = ToFMatrix(FrameSettings->EyeProjectionMatrices[idx]);
-
-	// correct far and near planes for reversed-Z projection matrix
-	const float InNearZ = (FrameSettings->NearClippingPlane) ? FrameSettings->NearClippingPlane : GNearClippingPlane;
-	const float InFarZ = (FrameSettings->FarClippingPlane) ? FrameSettings->FarClippingPlane : GNearClippingPlane;
-	proj.M[3][3] = 0.0f;
-	proj.M[2][3] = 1.0f;
-
-	proj.M[2][2] = (InNearZ == InFarZ) ? 0.0f    : InNearZ / (InNearZ - InFarZ);
-	proj.M[3][2] = (InNearZ == InFarZ) ? InNearZ : -InFarZ * InNearZ / (InNearZ - InFarZ);
-
-	return proj;
+	return idx == 2 ? FixProjectionMatrix(FrameSettings, FrameSettings->EyeProjectionMatrices[idx], 0, 0, frame->MonoCullingDistance) : FixProjectionMatrix(FrameSettings, FrameSettings->EyeProjectionMatrices[idx], 0, 0, 0, frame->MonoCullingDistance);
 }
 
 void FOculusRiftHMD::GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const
@@ -1678,6 +1725,9 @@ void FOculusRiftHMD::SetupViewFamily(FSceneViewFamily& InViewFamily)
 	InViewFamily.EngineShowFlags.MotionBlur = 0;
 	InViewFamily.EngineShowFlags.HMDDistortion = false;
 	InViewFamily.EngineShowFlags.StereoRendering = IsStereoEnabled();
+	InViewFamily.MonoParameters.MonoMode = Settings->MonoMode ? eMonoOn : eMonoOff;
+	InViewFamily.MonoParameters.MonoCullingDistance = frame->MonoCullingDistance;
+
 	if (frame->Settings->Flags.bPauseRendering)
 	{
 		InViewFamily.EngineShowFlags.Rendering = 0;
@@ -1694,7 +1744,7 @@ void FOculusRiftHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InVie
 
 	InViewFamily.bUseSeparateRenderTarget = ShouldUseSeparateRenderTarget();
 
-	const int eyeIdx = (InView.StereoPass == eSSP_LEFT_EYE) ? 0 : 1;
+	const int eyeIdx = idxFromStereoPassType(InView.StereoPass);
 
 	InView.ViewRect = frame->GetSettings()->EyeRenderViewport[eyeIdx];
 
@@ -2107,6 +2157,7 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 	{
 		CurrentSettings->EyeRenderDesc[0] = ovr_GetRenderDesc(OvrSession, ovrEye_Left, CurrentSettings->EyeFov[0]);
 		CurrentSettings->EyeRenderDesc[1] = ovr_GetRenderDesc(OvrSession, ovrEye_Right, CurrentSettings->EyeFov[1]);
+
 #if !UE_BUILD_SHIPPING
 		if (CurrentSettings->Flags.bOverrideIPD)
 		{
@@ -2115,7 +2166,8 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 			CurrentSettings->EyeRenderDesc[1].HmdToEyeOffset.x = CurrentSettings->InterpupillaryDistance * 0.5f;
 		}
 #endif // #if !UE_BUILD_SHIPPING
-
+		const float NearZ = 0.01f;
+		const float FarZ = 10000.f;
 		const unsigned int ProjModifiers = ovrProjection_None; //@TODO revise to use ovrProjection_FarClipAtInfinity and/or ovrProjection_FarLessThanNear
 		// Far and Near clipping planes will be modified in GetStereoProjectionMatrix()
 		CurrentSettings->EyeProjectionMatrices[0] = ovrMatrix4f_Projection(CurrentSettings->EyeFov[0], 0.01f, 10000.0f, ProjModifiers | ovrProjection_LeftHanded);
@@ -2132,10 +2184,63 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 			CurrentSettings->PixelDensity = pd;
 		}
 
+		{
+			// Compute the union of the two eyes to find the a culling camera position/projection
+			const auto& fovL = CurrentSettings->EyeFov[ovrEye_Left];
+			const auto& fovR = CurrentSettings->EyeFov[ovrEye_Right];
+			const float xR = CurrentSettings->EyeRenderDesc[ovrEye_Right].HmdToEyeOffset.x;
+			const float xL = CurrentSettings->EyeRenderDesc[ovrEye_Left].HmdToEyeOffset.x;
+
+			const float dR = (fovR.RightTan * (-xL + xR)) / (fovR.RightTan + fovL.LeftTan);
+			const float dF = dR / fovR.RightTan;
+
+			CurrentSettings->UnionEyeOffset.x = xR - dR;
+			CurrentSettings->UnionEyeOffset.y = 0;
+			CurrentSettings->UnionEyeOffset.z = -(CurrentSettings->EyeRenderDesc[ovrEye_Right].HmdToEyeOffset.z - dF);
+
+			// We can start by using the Left and Right planes from the Left and Right eye's frustums.  We compute
+			// a new eye position so they match up exactly.
+			// Unfortunately, this doesn't work for all situations. On the DK2, the "inner" FOV (RightTan on the 
+			// left eye, LeftTan on the right eye) is larger than the outer FOV.  We need to extend the FOVs of our
+			// union camera to fit, using the frustum points at the far plane.
+			ovrFovPort& fovC = CurrentSettings->EyeFov[2];
+
+			float const xMax = xL + fovL.RightTan * FarZ;
+			float const xMin = xR - fovR.LeftTan * FarZ;
+			fovC.RightTan = FMath::Max(fovR.RightTan, (xMax - CurrentSettings->UnionEyeOffset.x) / (FarZ + dF));
+			fovC.LeftTan = FMath::Max(fovL.LeftTan, (CurrentSettings->UnionEyeOffset.x - xMin) / (FarZ + dF));
+
+			// We're going to do the same thing for the Up and Down tan, but just recompute them from scratch.
+			// Pulling the camera backwards makes the Max of the Up/Down tans from both eyes too large.
+			// We could scale by FarZ / (FarZ+dF), but this doesn't handle vertical offsets in the eye position
+			float const yR = CurrentSettings->EyeRenderDesc[ovrEye_Right].HmdToEyeOffset.y;
+			float const yL = CurrentSettings->EyeRenderDesc[ovrEye_Left].HmdToEyeOffset.y;
+			float const yMax = FMath::Max(yR + fovR.UpTan * FarZ, yL + fovL.UpTan * FarZ);
+			float const yMin = FMath::Min(yR - fovR.DownTan * FarZ, yL - fovL.DownTan * FarZ);
+
+			fovC.UpTan = (yMax - CurrentSettings->UnionEyeOffset.y) / (FarZ + dF);
+			fovC.DownTan = (CurrentSettings->UnionEyeOffset.y - yMin) / (FarZ + dF);
+
+			CurrentSettings->EyeRenderDesc[2] = ovr_GetRenderDesc(OvrSession, ovrEye_Left, fovC);
+			CurrentSettings->EyeRenderDesc[2].HmdToEyeOffset = CurrentSettings->UnionEyeOffset;
+
+			// Adjust the near + far planes to account for how we shifted the eye
+			CurrentSettings->UnionEyeClipPlaneOffset = dF;
+			CurrentSettings->UnionEyePerspectiveProjection = ovrMatrix4f_Projection(fovC, NearZ + dF, FarZ + dF, ProjModifiers | ovrProjection_LeftHanded);
+
+			CurrentSettings->PerspectiveProjection[2] = ovrMatrix4f_Projection(fovC, NearZ + dF, FarZ + dF, ProjModifiers & ~ovrProjection_LeftHanded);
+			CurrentSettings->EyeProjectionMatrices[2] = ovrMatrix4f_Projection(fovC, NearZ + dF, FarZ + dF, ProjModifiers | ovrProjection_LeftHanded);
+		}
+
 		const ovrSizei recommenedTex0Size = ovr_GetFovTextureSize(OvrSession, ovrEye_Left, CurrentSettings->EyeFov[0], CurrentSettings->PixelDensity);
 		const ovrSizei recommenedTex1Size = ovr_GetFovTextureSize(OvrSession, ovrEye_Right, CurrentSettings->EyeFov[1], CurrentSettings->PixelDensity);
+		const ovrSizei recommenedTexMonoSize = ovr_GetFovTextureSize(OvrSession, ovrEye_Left, CurrentSettings->EyeFov[2], CurrentSettings->PixelDensity);
 		const int32 texturePadding = FMath::CeilToInt(CurrentSettings->GetTexturePaddingPerEye());
+
 		CurrentSettings->RenderTargetSize.X = recommenedTex0Size.w + recommenedTex1Size.w + texturePadding*2;
+		if (Settings->MonoMode) {
+			CurrentSettings->RenderTargetSize.X = recommenedTex0Size.w + recommenedTex1Size.w + texturePadding * 3 + recommenedTexMonoSize.w;
+		}
 		CurrentSettings->RenderTargetSize.Y = FMath::Max(recommenedTex0Size.h, recommenedTex1Size.h);
 		
 		FHeadMountedDisplay::QuantizeBufferSize(CurrentSettings->RenderTargetSize.X, CurrentSettings->RenderTargetSize.Y, 16);
@@ -2148,8 +2253,9 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 
 		const int32 RTSizeX = CurrentSettings->RenderTargetSize.X;
 		const int32 RTSizeY = CurrentSettings->RenderTargetSize.Y;
-		CurrentSettings->EyeRenderViewport[0] = FIntRect(0, 0, RTSizeX/2 - texturePadding, RTSizeY);
-		CurrentSettings->EyeRenderViewport[1] = FIntRect(RTSizeX/2 + texturePadding, 0, RTSizeX, RTSizeY);
+		CurrentSettings->EyeRenderViewport[0] = FIntRect(0, 0, recommenedTex0Size.w, RTSizeY);
+		CurrentSettings->EyeRenderViewport[1] = FIntRect(recommenedTex0Size.w + texturePadding, 0, recommenedTex0Size.w + texturePadding + recommenedTex1Size.w, RTSizeY);
+		CurrentSettings->EyeRenderViewport[2] = FIntRect(recommenedTex0Size.w + texturePadding + recommenedTex1Size.w + texturePadding, 0, recommenedTex0Size.w + texturePadding + recommenedTex1Size.w + texturePadding + recommenedTexMonoSize.w, RTSizeY); //viewport for mono
 
 		Flags.bNeedUpdateStereoRenderingParams = false;
 	}
