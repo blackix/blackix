@@ -908,7 +908,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			Flags.bNeedUpdateStereoRenderingParams = true;
 			return true;
 		}
-#if 0
 		if (FParse::Command(&Cmd, TEXT("PDADAPTIVE"))) // pixel density max
 		{
 			FString CmdName = FParse::Token(Cmd, 0);
@@ -933,7 +932,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			}
 			return true;
 		}
-#endif
 		else if (FParse::Command(&Cmd, TEXT("HQDISTORTION")))
 		{
 			FString CmdName = FParse::Token(Cmd, 0);
@@ -1177,7 +1175,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FVector(400, 30, 130));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::WorldLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::WorldLocked;
 					LID1 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -1200,7 +1198,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 0, 0));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::FaceLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::FaceLocked;
 					LID2 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -1223,7 +1221,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 100, 0));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::TrackerLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::TrackerLocked;
 					LID3 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -2280,7 +2278,7 @@ void FOculusRiftHMD::LoadFromIni()
 	if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensityMax"), f, GEngineIni))
 	{
 		check(!FMath::IsNaN(f));
-		GetSettings()->PixelDensityMin = FMath::Clamp(f, 0.5f, 2.0f);
+		GetSettings()->PixelDensityMax = FMath::Clamp(f, 0.5f, 2.0f);
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensityMin"), f, GEngineIni))
 	{
@@ -2292,12 +2290,10 @@ void FOculusRiftHMD::LoadFromIni()
 		check(!FMath::IsNaN(f));
 		GetSettings()->PixelDensity = FMath::Clamp(f, 0.5f, 2.0f);
 	}
-#if 0
 	if (GConfig->GetBool(OculusSettings, TEXT("bPixelDensityAdaptive"), v, GEngineIni))
 	{
 		GetSettings()->PixelDensityAdaptive = v;
 	}
-#endif
 	if (GConfig->GetBool(OculusSettings, TEXT("bHQDistortion"), v, GEngineIni))
 	{
 		Settings->Flags.bHQDistortion = v;
