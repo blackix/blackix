@@ -21,6 +21,11 @@ FRenderLayer::FRenderLayer(FHMDLayerDesc& InDesc) :
 		Layer.Header.Type = ovrLayerType_Quad;
 		break;
 
+	case FHMDLayerDesc::Cylinder:
+		Layer.Header.Type = ovrLayerType_Quad;
+		UE_LOG(LogHMD, Error, TEXT("Cylinder overlays not currently supported on PC"));
+		break;
+
 	default:
 		check(0); // unsupported layer type
 	}

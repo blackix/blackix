@@ -232,6 +232,7 @@ public:
 	TSharedPtr<FHMDSettings, ESPMode::ThreadSafe>	Settings;
 
 	/** World units (UU) to Meters scale.  Read from the level, and used to transform positional tracking data */
+	float					WorldToMetersScale;
 	FVector					CameraScale3D;
 
 	FRotator				CachedViewRotation[2]; // cached view rotations
@@ -361,15 +362,15 @@ class FHMDLayerDesc : public TSharedFromThis<FHMDLayerDesc>
 public:
 	enum ELayerTypeMask : uint32
 	{
-		Unknown = 0,
-		Eye   = 0x40000000,
-		Quad  = 0x80000000,
-		Debug = 0xC0000000,
+		Eye			= 0x00000000,
+		Quad		= 0x40000000,
+		Cylinder	= 0x80000000,
+		Debug		= 0xC0000000,
 
-		TypeMask = (Eye | Quad | Debug),
+		TypeMask = (Eye | Quad | Cylinder | Debug),
 		IdMask =  ~TypeMask,
 
-		MaxPriority = TypeMask - 1
+		MaxPriority = IdMask
 	};
 
 	FHMDLayerDesc(class FHMDLayerManager&, ELayerTypeMask InType, uint32 InPriority, uint32 InID);
@@ -383,6 +384,12 @@ public:
 
 	void SetQuadSize(const FVector2D& InSize);
 	FVector2D GetQuadSize() const { return QuadSize; }
+
+	void SetCylinderSize(const FVector2D& InSize);
+	FVector2D GetCylinderSize() const { return CylinderSize; }
+
+	void SetCylinderHeight(const float InHeight);
+	float GetCylinderHeight() const { return CylinderHeight; }
 
 	void SetTexture(FTextureRHIRef InTexture);
 	FTextureRHIRef GetTexture() const { return (HasTexture()) ? Texture : nullptr; }
@@ -430,6 +437,8 @@ protected:
 	FBox2D			TextureUV;
 	FTransform		Transform; // layer world or HMD transform (Rotation, Translation, Scale), see bHeadLocked.
 	FVector2D		QuadSize;  // size of the quad in UU
+	FVector2D	    CylinderSize;
+	float			CylinderHeight;
 	uint32			Priority;  // priority of the layer (Z-axis); the higher value, the later layer is drawn
 	bool			bHighQuality : 1; // high quality flag
 	bool			bHeadLocked  : 1; // the layer is head-locked; Transform becomes relative to HMD
@@ -809,7 +818,7 @@ protected:
 #if OCULUS_STRESS_TESTS_ENABLED
 	// Stress testing
 	class FOculusStressTester* StressTester;
-#endif // #if OCULUS_STRESS_TESTS_ENABLED
+#endif
 
 	FHMDGameFrame* GetGameFrame()
 	{

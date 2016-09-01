@@ -11,11 +11,18 @@ class IStereoLayers
 {
 public:
 
-	enum ELayerType
+	enum ELayerPositionType
 	{
 		WorldLocked,
 		TrackerLocked,
 		FaceLocked
+	};
+
+	enum ELayerType
+	{
+		QuadLayer,
+		CylinderLayer,
+//		CubemapLayer
 	};
 
 	enum ELayerFlags
@@ -30,13 +37,16 @@ public:
 	 */
 	struct FLayerDesc
 	{
-		FTransform		Transform	= FTransform::Identity;									// View space transform
-		FVector2D		QuadSize	= FVector2D(1.0f, 1.0f);								// Size of rendered quad
-		FBox2D			UVRect		= FBox2D(FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f));	// UVs of rendered quad
-		int32			Priority	= 0;													// Render order priority, higher priority render on top of lower priority
-		ELayerType		Type		= ELayerType::FaceLocked;								// Which space the quad is locked within
-		FTextureRHIRef	Texture		= nullptr;												// Texture mapped to the quad
-		uint32			Flags		= 0;													// Uses LAYER_FLAG_...
+		FTransform			Transform	 = FTransform::Identity;									// View space transform
+		FVector2D			QuadSize	 = FVector2D(1.0f, 1.0f);								// Size of rendered quad
+		FBox2D				UVRect		 = FBox2D(FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f));	// UVs of rendered quad
+		int32				Priority	 = 0;													// Render order priority, higher priority render on top of lower priority
+		ELayerPositionType	PositionType = ELayerPositionType::FaceLocked;								// Which space the layer is locked within
+		ELayerType			Type		 = ELayerType::QuadLayer;                                  // which type of layer it is
+		FVector2D			CylinderSize = FVector2D(1.0f, 1.0f);
+		float				CylinderHeight = 1.0f;
+		FTextureRHIRef		Texture		 = nullptr;												// Texture mapped to the quad
+		uint32				Flags		 = 0;													// Uses LAYER_FLAG_...
 	};
 
 	/**
