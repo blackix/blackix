@@ -35,6 +35,16 @@ public:
     virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) = 0;
 
 	/**
+	* Allows to render content after the 3D content scene, useful for debugging
+	*/
+	virtual void PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) {}
+
+	/**
+	* Allows to render content after the 3D content scene, useful for debugging
+	*/
+	virtual void PostRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) {}
+
+	/**
      * Called to determine view extensions priority in relation to other view extensions, higher comes first
      */
 	virtual int32 GetPriority() const { return 0; }

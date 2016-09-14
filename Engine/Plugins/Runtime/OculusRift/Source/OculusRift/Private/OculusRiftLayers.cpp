@@ -1,12 +1,15 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
-#include "HMDPrivatePCH.h"
+#include "OculusRiftPrivatePCH.h"
 #include "OculusRiftHMD.h"
 
 #if OCULUS_RIFT_SUPPORTED_PLATFORMS
 
 #include "OculusRiftLayers.h"
 #include "MediaTexture.h"
+#include "ScreenRendering.h"
+#include "ScenePrivate.h"
+#include "PostProcess/SceneFilterRendering.h"
 
 FRenderLayer::FRenderLayer(FHMDLayerDesc& InDesc) :
 	FHMDRenderLayer(InDesc)
@@ -21,6 +24,14 @@ FRenderLayer::FRenderLayer(FHMDLayerDesc& InDesc) :
 		Layer.Header.Type = ovrLayerType_Quad;
 		break;
 
+	case FHMDLayerDesc::Cylinder:
+		Layer.Header.Type = ovrLayerType_Quad;
+		UE_LOG(LogHMD, Error, TEXT("Cylinder overlays not currently supported on PC"));
+		break;
+	case FHMDLayerDesc::Cubemap:
+		Layer.Header.Type = ovrLayerType_Quad;
+		UE_LOG(LogHMD, Error, TEXT("Cubemap overlays not currently supported on PC"));
+		break;
 	default:
 		check(0); // unsupported layer type
 	}
@@ -42,6 +53,7 @@ FLayerManager::FLayerManager(FCustomPresent* InBridge) :
 	pPresentBridge(InBridge)
 	, LayersList(nullptr)
 	, LayersListLen(0)
+	, EyeLayerId(0)
 	, bTextureSetsAreInvalid(true)
 	, bInitialized(false)
 {
@@ -58,8 +70,7 @@ void FLayerManager::Startup()
 	{
 		FHMDLayerManager::Startup();
 
-		uint32 ID;
-		auto EyeLayer = AddLayer(FHMDLayerDesc::Eye, INT_MIN, Layer_UnknownOrigin, ID);
+		auto EyeLayer = AddLayer(FHMDLayerDesc::Eye, INT_MIN, Layer_UnknownOrigin, EyeLayerId);
 		check(EyeLayer.IsValid());
 		bInitialized = true;
 		bTextureSetsAreInvalid = true;
@@ -102,6 +113,22 @@ TSharedPtr<FHMDRenderLayer> FLayerManager::CreateRenderLayer_RenderThread(FHMDLa
 {
 	TSharedPtr<FHMDRenderLayer> NewLayer = MakeShareable(new FRenderLayer(InDesc));
 	return NewLayer;
+}
+
+bool FLayerManager::ShouldSupportLayerType(FHMDLayerDesc::ELayerTypeMask InType)
+{
+	switch (InType)
+	{
+		case FHMDLayerDesc::Quad:
+		case FHMDLayerDesc::Eye:
+		case FHMDLayerDesc::Debug:
+			return true;
+			break;
+
+		default:
+			return false;
+			break;
+	}
 }
 
 FRenderLayer& FLayerManager::GetEyeLayer_RenderThread() const
@@ -198,7 +225,6 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				check(schDesc.Type == ovrTexture_2D);
 			}
 #endif
-
 			// always use HighQuality for eyebuffers; the bHighQuality flag in LayerDesc means mipmaps are generated.
 			EyeLayer.EyeFov.Header.Flags = ovrLayerFlag_HighQuality;
 
@@ -277,12 +303,16 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				}
 			}
 
+			bTextureChanged |= (Texture && LayerDesc.HasPendingTextureCopy()) ? true : false;
+			bTextureChanged |= (LayerDesc.GetFlags() & IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE) ? true : false;
+
 			uint32 NumMips = (LayerDesc.IsHighQuality() ? 0 : 1);
 			if (RenderLayer->TextureSet.IsValid() && (bTextureSetsAreInvalid ||
 				RenderLayer->TextureSet->GetSourceSizeX() != SizeX ||
 				RenderLayer->TextureSet->GetSourceSizeY() != SizeY ||
 				RenderLayer->TextureSet->GetSourceFormat() != Format ||
-				RenderLayer->TextureSet->GetSourceNumMips() != NumMips))
+				RenderLayer->TextureSet->GetSourceNumMips() != NumMips ||
+				(bTextureChanged && RenderLayer->TextureSet->IsStaticImage())))
 			{
 				RenderLayer->TextureSet->ReleaseResources();
 				RenderLayer->TextureSet.Reset();
@@ -293,7 +323,7 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				check(pPresentBridge);
 				if (isStatic)
 				{
-					RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, Format, NumMips, FCustomPresent::DefaultStaticImage);
+					RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, Format, NumMips, FCustomPresent::DefaultLinear);
 				}
 				else
 				{
@@ -313,9 +343,6 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 				check(schDesc.Type == ovrTexture_2D);
 			}
 #endif
-
-			bTextureChanged |= (Texture && LayerDesc.HasPendingTextureCopy()) ? true : false;
-			bTextureChanged |= (LayerDesc.GetFlags() & IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE) ? true : false;
 
 			// Copy texture if it was changed
 			if (RenderLayer->TextureSet.IsValid() && bTextureChanged)
@@ -380,11 +407,8 @@ ovrResult FLayerManager::SubmitFrame_RenderThread(ovrSession OvrSession, const F
 	}
 
 	LastSubmitFrameResult.Set(int32(res));
-	if (OVR_SUCCESS(res))
-	{
-		LastVisibilityState.AtomicSet(res != ovrSuccess_NotVisible);
-	}
-	else
+
+	if (OVR_FAILURE(res))
 	{
 		UE_LOG(LogHMD, Warning, TEXT("Error at SubmitFrame, err = %d"), int(res));
 
@@ -395,6 +419,24 @@ ovrResult FLayerManager::SubmitFrame_RenderThread(ovrSession OvrSession, const F
 		}
 	}
 	return res;
+}
+
+void FLayerManager::GetPokeAHoleMatrices(const FViewInfo *LeftView,const FViewInfo *RightView,const FHMDLayerDesc& LayerDesc, const FHMDGameFrame* CurrentFrame, FMatrix &LeftMatrix, FMatrix &RightMatrix, bool &InvertCoordinates)
+{
+	FMatrix fmat(LayerDesc.GetTransform().ToMatrixNoScale());
+	InvertCoordinates = false;
+	if (LayerDesc.IsTorsoLocked())
+	{
+		FTransform torsoTransform(CurrentFrame->PlayerOrientation, CurrentFrame->PlayerLocation);
+		FMatrix torsoMatrix = torsoTransform.ToMatrixNoScale();
+		LeftMatrix = fmat * torsoMatrix * LeftView->ViewMatrices.ViewMatrix * LeftView->ViewMatrices.GetProjNoAAMatrix();
+		RightMatrix = fmat * torsoMatrix * RightView->ViewMatrices.ViewMatrix * RightView->ViewMatrices.GetProjNoAAMatrix();
+	}
+	else if (LayerDesc.IsWorldLocked())
+	{
+		LeftMatrix = fmat * LeftView->ViewMatrices.ViewMatrix * LeftView->ViewMatrices.GetProjNoAAMatrix();
+		RightMatrix = fmat * RightView->ViewMatrices.ViewMatrix * RightView->ViewMatrices.GetProjNoAAMatrix();
+	}
 }
 
 #endif //OCULUS_RIFT_SUPPORTED_PLATFORMS
