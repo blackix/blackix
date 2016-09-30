@@ -318,7 +318,9 @@ void FOculusInput::SendControllerEvents()
 
 						if (bIsCurrentlyTracked)
 						{
-							State.bIsCurrentlyTracked = true;
+							State.bIsConnected = true;
+							State.bIsPositionTracked = (OvrTrackingState.HandStatusFlags[HandIndex] & ovrStatus_PositionTracked) != 0;
+							State.bIsOrientationTracked = (OvrTrackingState.HandStatusFlags[HandIndex] & ovrStatus_OrientationTracked) != 0;
 
 							const float OvrTriggerAxis = OvrInput.IndexTrigger[HandIndex];
 							const float OvrGripAxis = OvrInput.HandTrigger[HandIndex];
@@ -583,7 +585,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 	{
 		FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
 
-		if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrSession && FApp::HasVRFocus())
+		if( ControllerState.bIsConnected && !ControllerState.bPlayingHapticEffect && OvrSession && FApp::HasVRFocus())
 		{
 			// Make sure Touch is the active controller
 			ovrInputState OvrInput;
@@ -626,7 +628,7 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 			{
 				const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
 
-				if( ControllerState.bIsCurrentlyTracked )
+				if( ControllerState.bIsConnected )
 				{
 					OutOrientation = ControllerState.Orientation.Rotator();
 					OutPosition = ControllerState.Location;
@@ -657,9 +659,9 @@ ETrackingStatus FOculusInput::GetControllerTrackingStatus(const int32 Controller
 		{
 			const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
 
-			if( ControllerState.bIsCurrentlyTracked )
+			if( ControllerState.bIsOrientationTracked )
 			{
-				TrackingStatus = ETrackingStatus::Tracked;
+				TrackingStatus = ControllerState.bIsPositionTracked ? ETrackingStatus::Tracked : ETrackingStatus::InertialOnly;
 			}
 
 			break;
@@ -676,7 +678,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 		if (ControllerPair.UnrealControllerIndex == ControllerId)
 		{
 			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[Hand];
-			if (ControllerState.bIsCurrentlyTracked)
+			if (ControllerState.bIsConnected)
 			{
 				if(IOculusRiftPlugin::IsAvailable())
 				{
