@@ -1670,8 +1670,16 @@ void FSceneRenderer::RenderFinish(FRHICommandListImmediate& RHICmdList)
 			GRenderTargetPool.PresentContent(RHICmdList, View);
 		}
 	}
-
 #endif
+
+	for(int32 ViewExt = 0; ViewExt < ViewFamily.ViewExtensions.Num(); ++ViewExt)
+	{
+		ViewFamily.ViewExtensions[ViewExt]->PostRenderViewFamily_RenderThread(RHICmdList, ViewFamily);
+		for(int32 ViewIndex = 0; ViewIndex < ViewFamily.Views.Num(); ++ViewIndex)
+		{
+			ViewFamily.ViewExtensions[ViewExt]->PostRenderView_RenderThread(RHICmdList, Views[ViewIndex]);
+		}
+	}
 
 	// Notify the RHI we are done rendering a scene.
 	RHICmdList.EndScene();

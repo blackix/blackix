@@ -52,6 +52,30 @@ struct FHapticFeedbackValues
 	}
 };
 
+struct FHapticFeedbackBuffer
+{
+	uint8 *RawData;
+	uint8 *CurrentPtr;
+	int BufferLength;
+	int SamplesSent;
+	bool bFinishedPlaying;
+	int Frequency;
+
+	FHapticFeedbackBuffer()
+		: RawData(NULL)
+		, CurrentPtr(NULL)
+		, BufferLength(0)
+		, SamplesSent(0)
+		, bFinishedPlaying(false)
+	{
+	}
+
+	bool NeedsUpdate()
+	{
+		return !bFinishedPlaying;
+	}
+};
+
 /**
  * Interface for the input interface.
  */
@@ -94,6 +118,16 @@ public:
 	* @param Values			Frequency and amplitude to haptics at
 	*/
 	virtual void SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const FHapticFeedbackValues& Values) {}
+
+	/**
+	* Sets the frequency and amplitude of haptic feedback channels for a given controller id.
+	* Some devices / platforms may support just haptics, or just force feedback.
+	*
+	* @param ControllerId	ID of the controller to issue haptic feedback for
+	* @param HandId			Which hand id (e.g. left or right) to issue the feedback for.  These usually correspond to EControllerHands
+	* @param Buffer			Haptics buffer to play
+	*/
+	virtual void SetHapticFeedbackBuffer(int32 ControllerId, int32 Hand, FHapticFeedbackBuffer& Buffer) {}
 
 	/*
 	 * Sets the controller for the given controller.  Ignored if controller does not support a color.
