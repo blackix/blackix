@@ -122,7 +122,7 @@ ovrResult FOculusRiftPlugin::CreateSession(ovrSession* session, ovrGraphicsLuid*
 	{
 		if (result == ovrError_ServiceConnection || result == ovrError_ServiceError || result == ovrError_NotInitialized)
 		{
-			// Shutdown connection to service
+			// Shutdown connection to serviec
 			FlushRenderingCommands();
 			ShutdownModule();
 			bInitializeCalled = false;
@@ -734,7 +734,7 @@ bool FOculusRiftHMD::GetTrackingSensorProperties(uint8 InSensorIndex, FVector& O
 	OutNearPlane = TrackerDesc.FrustumNearZInMeters * WorldToMetersScale;
 	OutFarPlane = TrackerDesc.FrustumFarZInMeters * WorldToMetersScale;
 
-	// Check if the sensor pose is available
+	// Check if the sensor pose is availables
 	if (TrackerPose.TrackerFlags & (ovrTracker_Connected | ovrTracker_PoseTracked))
 	{
 		FQuat Orient;
@@ -908,7 +908,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			Flags.bNeedUpdateStereoRenderingParams = true;
 			return true;
 		}
-#if 0
 		if (FParse::Command(&Cmd, TEXT("PDADAPTIVE"))) // pixel density max
 		{
 			FString CmdName = FParse::Token(Cmd, 0);
@@ -933,7 +932,6 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 			}
 			return true;
 		}
-#endif
 		else if (FParse::Command(&Cmd, TEXT("HQDISTORTION")))
 		{
 			FString CmdName = FParse::Token(Cmd, 0);
@@ -1177,7 +1175,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FVector(400, 30, 130));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::WorldLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::WorldLocked;
 					LID1 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -1200,7 +1198,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 0, 0));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::FaceLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::FaceLocked;
 					LID2 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -1223,7 +1221,7 @@ bool FOculusRiftHMD::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar 
 					LayerDesc.Priority = 10;
 					LayerDesc.Transform = FTransform(FRotator(0, 30, 0), FVector(300, 100, 0));
 					LayerDesc.QuadSize = FVector2D(200, 200);
-					LayerDesc.Type = IStereoLayers::ELayerType::TrackerLocked;
+					LayerDesc.PositionType = IStereoLayers::ELayerPositionType::TrackerLocked;
 					LID3 = StereoL->CreateLayer(LayerDesc);
 				}
 			}
@@ -1487,6 +1485,53 @@ FPerformanceStats FOculusRiftHMD::GetPerformanceStats() const
 	return PerformanceStats;
 }
 
+FVector FOculusRiftHMD::ScaleAndMovePointWithPlayer(ovrVector3f& OculusRiftPoint)
+{
+	/* Initalization */
+	FGameFrame* frame = GetFrame();
+	const float WorldToMetersScale = frame->GetWorldToMetersScale();
+
+	FVector LastPlayerPos;
+	FQuat LastPlayerRot;
+	this->GetLastPlayerLocationAndRotation(LastPlayerPos, LastPlayerRot);
+
+	FMatrix transmat;
+	transmat.SetIdentity();
+	transmat = transmat.ConcatTranslation(LastPlayerPos);
+
+
+	FVector ConvertedPoint = ToFVector_M2U(OculusRiftPoint, WorldToMetersScale);
+
+	FRotator RotateWithPlayer = LastPlayerRot.Rotator();
+	FVector TransformWithPlayer = RotateWithPlayer.RotateVector(ConvertedPoint);
+	TransformWithPlayer = FVector(transmat.TransformPosition(TransformWithPlayer));
+
+	return TransformWithPlayer;
+}
+
+float FOculusRiftHMD::ConvertFloat_M2U(float OculusFloat)
+{
+	FGameFrame* frame = GetFrame();
+	const float WorldToMetersScale = frame->GetWorldToMetersScale();
+	OculusFloat *= WorldToMetersScale;
+	return OculusFloat;
+}
+
+FVector FOculusRiftHMD::ConvertVector_M2U(ovrVector3f OculusRiftPoint)
+{
+	/* Initalization */
+	FGameFrame* frame = GetFrame();
+	const float WorldToMetersScale = frame->GetWorldToMetersScale();
+
+	return ToFVector_M2U(OculusRiftPoint, WorldToMetersScale);
+}
+
+void FOculusRiftHMD::GetLastPlayerLocationAndRotation(FVector& PlayerLocation, FQuat& PlayerRotation)
+{
+	PlayerLocation = this->LastPlayerLocation;
+	PlayerRotation = this->LastPlayerRotation;
+}
+
 void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPassType, const FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation)
 {
 	check(WorldToMeters != 0.f);
@@ -1507,8 +1552,6 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 
 		if (StereoPassType != eSSP_FULL || frame->Settings->Flags.bHeadTrackingEnforced)
 		{
-			frame->PlayerLocation = ViewLocation;
-
 			if (!frame->Flags.bOrientationChanged)
 			{
 				UE_LOG(LogHMD, Log, TEXT("Orientation wasn't applied to a camera in frame %d"), int(CurrentFrameNumber.GetValue()));
@@ -1524,7 +1567,7 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 			// HeadPosition is supposedly already applied.
 			if (!frame->Flags.bPlayerControllerFollowsHmd)
 			{
-				FQuat HeadOrient;
+				FQuat HeadOrient; 
 				frame->PoseToOrientationAndPosition(frame->HeadPose, HeadOrient, HeadPosition);
 			}
 
@@ -1533,6 +1576,9 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 			// EyeRenderPose and HeadPose are captured by the same call to GetEyePoses.
 			const FVector HmdToEyeOffset = CurEyePosition - HeadPosition;
 
+			frame->PlayerLocation = ViewLocation - HeadPosition;
+			this->LastPlayerLocation = frame->PlayerLocation;
+
 			// Calculate the difference between the final ViewRotation and EyeOrientation:
 			// we need to rotate the HmdToEyeOffset by this differential quaternion.
 			// When bPlayerControllerFollowsHmd == true, the DeltaControlOrientation already contains
@@ -1540,7 +1586,7 @@ void FOculusRiftHMD::CalculateStereoViewOffset(const EStereoscopicPass StereoPas
 			//FRotator r = ViewRotation - CurEyeOrient.Rotator();
 			const FQuat ViewOrient = ViewRotation.Quaternion();
 			const FQuat DeltaControlOrientation =  ViewOrient * CurEyeOrient.Inverse();
-
+			this->LastPlayerRotation = DeltaControlOrientation;
 			//UE_LOG(LogHMD, Log, TEXT("EYEROT: Yaw %.3f Pitch %.3f Roll %.3f"), CurEyeOrient.Rotator().Yaw, CurEyeOrient.Rotator().Pitch, CurEyeOrient.Rotator().Roll);
 			//UE_LOG(LogHMD, Log, TEXT("VIEROT: Yaw %.3f Pitch %.3f Roll %.3f"), ViewRotation.Yaw, ViewRotation.Pitch, ViewRotation.Roll);
 			//UE_LOG(LogHMD, Log, TEXT("DLTROT: Yaw %.3f Pitch %.3f Roll %.3f"), DeltaControlOrientation.Rotator().Yaw, DeltaControlOrientation.Rotator().Pitch, DeltaControlOrientation.Rotator().Roll);
@@ -1630,8 +1676,10 @@ FMatrix FOculusRiftHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassTy
 	FMatrix proj = ToFMatrix(FrameSettings->EyeProjectionMatrices[idx]);
 
 	// correct far and near planes for reversed-Z projection matrix
-	const float InNearZ = (FrameSettings->NearClippingPlane) ? FrameSettings->NearClippingPlane : GNearClippingPlane;
-	const float InFarZ = (FrameSettings->FarClippingPlane) ? FrameSettings->FarClippingPlane : GNearClippingPlane;
+	const float WorldScale = frame->GetWorldToMetersScale() * (1.0 / 100.0f); // physical scale is 100 UUs/meter
+	const float InNearZ = (FrameSettings->NearClippingPlane) ? FrameSettings->NearClippingPlane : (GNearClippingPlane * WorldScale);
+	const float InFarZ = (FrameSettings->FarClippingPlane) ? FrameSettings->FarClippingPlane : (GNearClippingPlane * WorldScale);
+
 	proj.M[3][3] = 0.0f;
 	proj.M[2][3] = 1.0f;
 
@@ -1761,6 +1809,8 @@ FOculusRiftHMD::FOculusRiftHMD()
 	HmdDesc.Type = ovrHmd_None;
 	Session = MakeShareable(new FOvrSessionShared());
 	CubemapCapturer = nullptr;
+	LastPlayerLocation = FVector(0.0f);
+	LastPlayerRotation = FQuat(0.0f, 0.0f, 0.0f, 0.0f);
 
 	Settings = MakeShareable(new FSettings);
 
@@ -2167,7 +2217,13 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 
 		if (CurrentSettings->PixelDensityAdaptive)
 		{
-			pixelDensity *= FMath::Sqrt(ovr_GetFloat(OvrSession, "AdaptiveGpuPerformanceScale", 1.0f));
+			ovrPerfStats perfStats;
+			ovrResult result = ovr_GetPerfStats(OvrSession, &perfStats);
+
+			if(OVR_SUCCESS(result))
+			{
+				pixelDensity *= FMath::Sqrt(perfStats.AdaptiveGpuPerformanceScale);
+			}
 		}
 
 		CurrentSettings->PixelDensityMin = FMath::Min(CurrentSettings->PixelDensityMin, CurrentSettings->PixelDensityMax);
@@ -2199,7 +2255,7 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 			rtSize.h = FMath::Max(vpSizeMax[ovrEye_Left].h, vpSizeMax[ovrEye_Right].h);
 
 			// Quantize render target size to multiple of 16
-			FHeadMountedDisplay::QuantizeBufferSize(rtSize.w, rtSize.h, 16);
+			FHeadMountedDisplay::QuantizeBufferSize(rtSize.w, rtSize.h, 4);
 		}
 
 		const int32 FamilyWidth = vpSize[ovrEye_Left].w + vpSize[ovrEye_Right].w + rtPadding;
@@ -2280,7 +2336,7 @@ void FOculusRiftHMD::LoadFromIni()
 	if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensityMax"), f, GEngineIni))
 	{
 		check(!FMath::IsNaN(f));
-		GetSettings()->PixelDensityMin = FMath::Clamp(f, 0.5f, 2.0f);
+		GetSettings()->PixelDensityMax = FMath::Clamp(f, 0.5f, 2.0f);
 	}
 	if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensityMin"), f, GEngineIni))
 	{
@@ -2292,12 +2348,10 @@ void FOculusRiftHMD::LoadFromIni()
 		check(!FMath::IsNaN(f));
 		GetSettings()->PixelDensity = FMath::Clamp(f, 0.5f, 2.0f);
 	}
-#if 0
 	if (GConfig->GetBool(OculusSettings, TEXT("bPixelDensityAdaptive"), v, GEngineIni))
 	{
 		GetSettings()->PixelDensityAdaptive = v;
 	}
-#endif
 	if (GConfig->GetBool(OculusSettings, TEXT("bHQDistortion"), v, GEngineIni))
 	{
 		Settings->Flags.bHQDistortion = v;

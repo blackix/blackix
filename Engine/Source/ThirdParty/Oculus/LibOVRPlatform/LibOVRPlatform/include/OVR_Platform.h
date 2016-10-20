@@ -12,12 +12,12 @@
 #include "OVR_Message.h"
 #include "OVR_DataStore.h"
 #include "OVR_Error.h"
-#include "OVR_Networking.h"
 #include "OVR_NetworkingPeer.h"
 #include "OVR_UserProof.h"
 #include "OVR_Platform_Defs.h"
 #include "OVR_PlatformVersion.h"
 #include "OVR_PidArray.h"
+#include "OVR_InstalledApplicationArray.h"
 #include "OVR_Product.h"
 #include "OVR_ProductArray.h"
 #include "OVR_Purchase.h"
@@ -40,6 +40,7 @@
 #include "OVR_LeaderboardStartAt.h"
 #include "OVR_LeaderboardFilterType.h"
 #include "OVR_KeyValuePairType.h"
+#include "OVR_MatchmakingAdminSnapshot.h"
 #include "OVR_MatchmakingBrowseResult.h"
 #include "OVR_MatchmakingEnqueueResult.h"
 #include "OVR_MatchmakingEnqueueResultAndRoom.h"
@@ -53,8 +54,16 @@
 #include "OVR_Requests_Leaderboard.h"
 #include "OVR_Requests_Matchmaking.h"
 #include "OVR_Requests_Notification.h"
+#include "OVR_Requests_Party.h"
 #include "OVR_Requests_Room.h"
 #include "OVR_Requests_User.h"
+#include "OVR_Requests_Voip.h"
+#include "OVR_MatchmakingOptions.h"
+#include "OVR_Functions_ApplicationLifecycle.h"
+#include "OVR_Functions_Networking.h"
+#include "OVR_Functions_Voip.h"
+
+OVRP_PUBLIC_FUNCTION(bool) ovr_IsPlatformInitialized();
 
 #ifdef __ANDROID__
 #include <jni.h>

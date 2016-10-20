@@ -13,7 +13,7 @@ typedef TSharedPtr<class FOnlineProfileOculus, ESPMode::ThreadSafe> FOnlineProfi
 typedef TSharedPtr<class FOnlineFriendsOculus, ESPMode::ThreadSafe> FOnlineFriendsOculusPtr;
 typedef TSharedPtr<class FOnlineUserCloudOculus, ESPMode::ThreadSafe> FOnlineUserCloudOculusPtr;
 typedef TSharedPtr<class FOnlineLeaderboardOculus, ESPMode::ThreadSafe> FOnlineLeaderboardsOculusPtr;
-typedef TSharedPtr<class FOnlineVoiceImpl, ESPMode::ThreadSafe> FOnlineVoiceImplPtr;
+typedef TSharedPtr<class FOnlineVoiceOculus, ESPMode::ThreadSafe> FOnlineVoiceOculusPtr;
 typedef TSharedPtr<class FOnlineExternalUIOculus, ESPMode::ThreadSafe> FOnlineExternalUIOculusPtr;
 typedef TSharedPtr<class FOnlineIdentityOculus, ESPMode::ThreadSafe> FOnlineIdentityOculusPtr;
 typedef TSharedPtr<class FOnlineAchievementsOculus, ESPMode::ThreadSafe> FOnlineAchievementsOculusPtr;
@@ -115,6 +115,12 @@ private:
 
 	/** Interface for friends */
 	FOnlineFriendsOculusPtr FriendsInterface;
+
+	/** Interface for CloudStorage User Saves. */
+	FOnlineUserCloudOculusPtr UserCloudInterface;
+
+	/** Interface for voice */
+	FOnlineVoiceOculusPtr VoiceInterface;
 
 	/** Message Task Manager */
 	FOnlineMessageTaskManagerOculusPtr MessageTaskManager;
