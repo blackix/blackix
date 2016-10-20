@@ -189,23 +189,33 @@ static bool AddInteractionPairsToList(ovrSession OculusSession, TArray<FBoundary
 /**
  * Helper that gets geometry (3D points) of outer boundaries or play area (specified by BoundaryType)
  * @param OculusSession Specifies current ovrSession
- * @param BoundaryPoints Empty array of 3D points preallocated to size MaxNumBoundaryPoints
  * @param BoundaryType Must be ovrBoundary_Outer or ovrBoundary_PlayArea, specifies the type of boundary geometry to retrieve
  * @return Array of 3D points in Unreal world coordinate space corresponding to boundary geometry.
  */
-static TArray<FVector> GetBoundaryPoints(ovrSession OculusSession, ovrVector3f* BoundaryPoints, ovrBoundaryType BoundaryType)
+static TArray<FVector> GetBoundaryPoints(ovrSession OculusSession, ovrBoundaryType BoundaryType)
 {
 	TArray<FVector> BoundaryPointList;
+    ovrVector3f* BoundaryPoints = NULL;
 	int NumPoints;
 	ovrResult ovrRes = ovr_GetBoundaryGeometry(OculusSession, BoundaryType, BoundaryPoints, &NumPoints);
 
 	if (OVR_SUCCESS(ovrRes))
 	{
-		for (int i = 0; i < NumPoints; i++)
-		{
-			FVector point = PointToWorldSpace(BoundaryPoints[i]);
-			BoundaryPointList.Add(point);
-		}
+        //allocate points
+        BoundaryPoints = (ovrVector3f*)malloc(sizeof(*BoundaryPoints) * NumPoints);
+        
+        ovrResult ovrRes2 = ovr_GetBoundaryGeometry(OculusSession, BoundaryType, BoundaryPoints, &NumPoints);
+        if (OVR_SUCCESS(ovrRes2))
+        {
+            for (int i = 0; i < NumPoints; i++)
+            {
+                FVector point = PointToWorldSpace(BoundaryPoints[i]);
+                BoundaryPointList.Add(point);
+            }
+        }
+        
+        free(BoundaryPoints);
+        
 	}
 
 	return BoundaryPointList;
@@ -239,14 +249,11 @@ static FBoundaryTestResult CheckPointInBounds(ovrSession OculusSession, EBoundar
 	return InteractionInfo;
 }
 
-#endif // OCULUS_RIFT_SUPPORTED_PLATFORMS
-
 //-------------------------------------------------------------------------------------------------
 // OculusRiftBoundaryComponent Member Functions
 //-------------------------------------------------------------------------------------------------
 
 UOculusRiftBoundaryComponent::UOculusRiftBoundaryComponent(const FObjectInitializer& ObjectInitializer)
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -254,24 +261,18 @@ UOculusRiftBoundaryComponent::UOculusRiftBoundaryComponent(const FObjectInitiali
 	bAutoActivate = true;
 	bIsOuterBoundaryTriggered = false;
 }
-#else
-{}
-#endif
 
 void UOculusRiftBoundaryComponent::BeginPlay()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	Super::BeginPlay();
 	Session = *FOvrSessionShared::AutoSession(FOculusRiftPlugin::Get().GetSession());
 	bIsOuterBoundaryTriggered = AddInteractionPairsToList(Session, NULL, ovrTrackedDevice_HMD, ovrBoundary_Outer) ||
 								AddInteractionPairsToList(Session, NULL, ovrTrackedDevice_LTouch, ovrBoundary_Outer) ||
 								AddInteractionPairsToList(Session, NULL, ovrTrackedDevice_RTouch, ovrBoundary_Outer);
-#endif
 }
 
 void UOculusRiftBoundaryComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	FOculusRiftHMD* OculusHMD = (FOculusRiftHMD*)(GEngine->HMDDevice.Get());
 	if (OculusHMD && OculusHMD->IsHMDActive())
@@ -299,33 +300,23 @@ void UOculusRiftBoundaryComponent::TickComponent(float DeltaTime, enum ELevelTic
 
 		bIsOuterBoundaryTriggered = OuterBoundsTriggered;
 	}
-#endif
 }
 
 bool UOculusRiftBoundaryComponent::IsOuterBoundaryDisplayed()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrBool IsVisible;
 	ovr_GetBoundaryVisible(Session, &IsVisible);
 	return (IsVisible != 0);
-#else
-	return false;
-#endif
 }
 
 bool UOculusRiftBoundaryComponent::IsOuterBoundaryTriggered()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	return bIsOuterBoundaryTriggered;
-#else
-	return false;
-#endif
 }
 
 bool UOculusRiftBoundaryComponent::SetOuterBoundaryColor(const FColor InBoundaryColor)
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
-	ovrColorf NewColor = { InBoundaryColor.R, InBoundaryColor.G, InBoundaryColor.B, InBoundaryColor.A };
+	ovrColorf NewColor = { InBoundaryColor.R / 255.f, InBoundaryColor.G / 255.f, InBoundaryColor.B / 255.f, InBoundaryColor.A / 255.f };
 	ovrBoundaryLookAndFeel OuterBoundaryProperties;
 	OuterBoundaryProperties.Color = NewColor;
 
@@ -334,75 +325,52 @@ bool UOculusRiftBoundaryComponent::SetOuterBoundaryColor(const FColor InBoundary
 	{
 		return false;
 	}
-#endif
 
 	return true;
 }
 
 bool UOculusRiftBoundaryComponent::ResetOuterBoundaryColor()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrResult ovrRes = ovr_ResetBoundaryLookAndFeel(Session);
 	if (!OVR_SUCCESS(ovrRes))
 	{
 		return false;
 	}
-#endif
 
 	return true;
 }
 
 TArray<FVector> UOculusRiftBoundaryComponent::GetPlayAreaPoints()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
-	return GetBoundaryPoints(Session, BoundaryPoints, ovrBoundary_PlayArea);
-#else
-	TArray<FVector> ReturnValue;
-	return ReturnValue;
-#endif
+	return GetBoundaryPoints(Session, ovrBoundary_PlayArea);
 }
 
 TArray<FVector> UOculusRiftBoundaryComponent::GetOuterBoundaryPoints()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
-	return GetBoundaryPoints(Session, BoundaryPoints, ovrBoundary_Outer);
-#else
-	TArray<FVector> ReturnValue;
-	return ReturnValue;
-#endif
+	return GetBoundaryPoints(Session, ovrBoundary_Outer);
 }
 
 FVector UOculusRiftBoundaryComponent::GetPlayAreaDimensions()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrVector3f Dimensions = { 0.f, 0.f, 0.f };
 	ovr_GetBoundaryDimensions(Session, ovrBoundary_PlayArea, &Dimensions);
 
 	return DimensionsToWorldSpace(Dimensions);
-#else
-	return FVector::ZeroVector;
-#endif
 }
 
 FVector UOculusRiftBoundaryComponent::GetOuterBoundaryDimensions()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrVector3f Dimensions = { 0.f, 0.f, 0.f };
 	ovr_GetBoundaryDimensions(Session, ovrBoundary_Outer, &Dimensions);
 
 	return DimensionsToWorldSpace(Dimensions);
-#else
-	return FVector::ZeroVector;
-#endif
 }
 
 FBoundaryTestResult UOculusRiftBoundaryComponent::CheckIfPointWithinPlayArea(const FVector Point)
 {
 	FBoundaryTestResult PlayAreaInteractionInfo;
 	memset(&PlayAreaInteractionInfo, 0, sizeof(FBoundaryTestResult));
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	PlayAreaInteractionInfo = CheckPointInBounds(Session, EBoundaryType::Boundary_PlayArea, Point);
-#endif
 	return PlayAreaInteractionInfo;
 }
 
@@ -410,37 +378,30 @@ FBoundaryTestResult UOculusRiftBoundaryComponent::CheckIfPointWithinOuterBounds(
 {
 	FBoundaryTestResult BoundaryInteractionInfo;
 	memset(&BoundaryInteractionInfo, 0, sizeof(FBoundaryTestResult));
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	BoundaryInteractionInfo = CheckPointInBounds(Session, EBoundaryType::Boundary_Outer, Point);
-#endif
 	return BoundaryInteractionInfo;
 }
 
 bool UOculusRiftBoundaryComponent::RequestOuterBoundaryVisible(bool BoundaryVisible)
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrBool visible = BoundaryVisible ? 1 : 0;
 	ovrResult ovrRes = ovr_RequestBoundaryVisible(Session, visible);
 	if (OVR_SUCCESS(ovrRes))
 	{
 		return true;
 	}
-#endif
 
 	return false;
 }
 
 FBoundaryTestResult UOculusRiftBoundaryComponent::GetTriggeredPlayAreaInfo(ETrackedDeviceType DeviceType)
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	ovrTrackedDeviceType ovrDevice = ToOVRTrackedDeviceType(DeviceType);
 	ovrBoundaryTestResult TestResult;
 	ovrResult ovrRes = ovr_TestBoundary(Session, ovrDevice, ovrBoundary_PlayArea, &TestResult);
-#endif
 
 	FBoundaryTestResult InteractionInfo;
 	memset(&InteractionInfo, 0, sizeof(FBoundaryTestResult));
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	bool IsTriggering = (TestResult.IsTriggering != 0);
 
 	if (OVR_SUCCESS(ovrRes))
@@ -455,17 +416,13 @@ FBoundaryTestResult UOculusRiftBoundaryComponent::GetTriggeredPlayAreaInfo(ETrac
 
 		}
 	}
-#endif
 
 	return InteractionInfo;
 }
 
 TArray<FBoundaryTestResult> UOculusRiftBoundaryComponent::GetTriggeredOuterBoundaryInfo()
 {
-#if OCULUS_RIFT_SUPPORTED_PLATFORMS
 	return OuterBoundsInteractionList;
-#else
-	TArray<FBoundaryTestResult> ReturnValue;
-	return ReturnValue;
-#endif
 }
+
+#endif // OCULUS_RIFT_SUPPORTED_PLATFORMS

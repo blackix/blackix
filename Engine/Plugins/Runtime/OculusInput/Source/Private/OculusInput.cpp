@@ -698,7 +698,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 						ovrInputState OvrInput;
 						ovrResult OvrRes = ovr_GetInputState(OvrSession, ovrControllerType_Active, &OvrInput);
 						UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ovr_GetInputState(Active) ret = %d"), int(OvrRes));
-						if (OVR_SUCCESS(OvrRes) && (ovrControllerType_Touch == OvrInput.ControllerType) != 0)
+						if (OVR_SUCCESS(OvrRes) && ((ovrControllerType_Touch == OvrInput.ControllerType) || (ovrControllerType_LTouch == OvrInput.ControllerType) || (ovrControllerType_RTouch == OvrInput.ControllerType)))
 						{
 							FHapticFeedbackBuffer* Buffer = Values.HapticBuffer;
 							if (Buffer && Buffer->SamplingRate == HapticsDesc.SampleRateHz)
