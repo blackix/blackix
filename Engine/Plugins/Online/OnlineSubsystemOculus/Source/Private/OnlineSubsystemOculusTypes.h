@@ -95,7 +95,7 @@ public:
 	/** Needed for TMap::GetTypeHash() */
 	friend uint32 GetTypeHash(const FUniqueNetIdOculus& A)
 	{
-		return ::PointerHash(&A.ID, sizeof(A.ID));
+		return GetTypeHash(A.ID);
 	}
 };
 

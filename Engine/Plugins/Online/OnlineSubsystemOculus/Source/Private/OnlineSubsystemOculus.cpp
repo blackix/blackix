@@ -8,6 +8,8 @@
 #include "OnlineIdentityOculus.h"
 #include "OnlineLeaderboardInterfaceOculus.h"
 #include "OnlineSessionInterfaceOculus.h"
+#include "OnlineUserCloudOculus.h"
+#include "OnlineVoiceOculus.h"
 
 #if PLATFORM_ANDROID
 #include "AndroidApplication.h"
@@ -39,7 +41,7 @@ IOnlineSharedCloudPtr FOnlineSubsystemOculus::GetSharedCloudInterface() const
 
 IOnlineUserCloudPtr FOnlineSubsystemOculus::GetUserCloudInterface() const
 {
-	return nullptr;
+	return UserCloudInterface;
 }
 
 IOnlineEntitlementsPtr FOnlineSubsystemOculus::GetEntitlementsInterface() const
@@ -54,7 +56,7 @@ IOnlineLeaderboardsPtr FOnlineSubsystemOculus::GetLeaderboardsInterface() const
 
 IOnlineVoicePtr FOnlineSubsystemOculus::GetVoiceInterface() const
 {
-	return nullptr;
+	return VoiceInterface;
 }
 
 IOnlineExternalUIPtr FOnlineSubsystemOculus::GetExternalUIInterface() const
@@ -149,6 +151,11 @@ bool FOnlineSubsystemOculus::Tick(float DeltaTime)
 		SessionInterface->TickPendingInvites(DeltaTime);
 	}
 
+	if (VoiceInterface.IsValid())
+	{
+		VoiceInterface->Tick(DeltaTime);
+	}
+
 	if (MessageTaskManager.IsValid())
 	{
 		if (!MessageTaskManager->Tick(DeltaTime))
@@ -196,10 +203,18 @@ bool FOnlineSubsystemOculus::Init()
 		FriendsInterface = MakeShareable(new FOnlineFriendsOculus(*this));
 		SessionInterface = MakeShareable(new FOnlineSessionOculus(*this));
 		LeaderboardsInterface = MakeShareable(new FOnlineLeaderboardOculus(*this));
+		UserCloudInterface = MakeShareable(new FOnlineUserCloudOculus(*this));
+		VoiceInterface = MakeShareable(new FOnlineVoiceOculus(*this));
+		if (!VoiceInterface->Init())
+		{
+			VoiceInterface.Reset();
+		}
 	}
 	else
 	{
-		Shutdown();
+		// Only do the parent shutdown since nothing else is setup and we don't want to do
+		// any LibOVRPlatform calls against an invalid or missing dll
+		FOnlineSubsystemImpl::Shutdown();
 	}
 
 	return bOculusInit;
@@ -219,7 +234,7 @@ bool FOnlineSubsystemOculus::InitWithWindowsPlatform()
 	auto InitResult = ovr_PlatformInitializeWindows(TCHAR_TO_ANSI(*OculusAppId));
 	if (InitResult != ovrPlatformInitialize_Success)
 	{
-		UE_LOG_ONLINE(Error, TEXT("Failed to initialize the Oculus Platform SDK! Error code: %d"), (int)InitResult);
+		UE_LOG_ONLINE(Warning, TEXT("Failed to initialize the Oculus Platform SDK! Error code: %d"), (int)InitResult);
 		return false;
 	}
 	return true;
@@ -265,6 +280,8 @@ bool FOnlineSubsystemOculus::Shutdown()
 	IdentityInterface.Reset();
 	SessionInterface.Reset();
 	LeaderboardsInterface.Reset();
+	UserCloudInterface.Reset();
+	VoiceInterface.Reset();
 
 	if (MessageTaskManager.IsValid())
 	{
