@@ -68,6 +68,8 @@ typedef enum ovrSuccessTypes_
     /// calling SubmitFrame, but not do any rendering. When the result becomes
     /// ovrSuccess, rendering should continue as usual.
     ovrSuccess_NotVisible                 = 1000,
+    ovrSuccess_BoundaryInvalid            = 1001,  ///< Boundary is invalid due to sensor change or was not setup.
+    ovrSuccess_DeviceUnavailable          = 1002,  ///< Device is not available for the requested operation.
 
 } ovrSuccessTypes;
 
@@ -140,7 +142,6 @@ typedef enum ovrErrorType_
     ovrError_MisformattedBlock          = -9002,   ///< Result of a bad calibration block due to lengths
 
     /* Other errors */
-    ovrError_BoundaryInvalid            = -10000,  ///< Boundary is invalid or was not setup.
 
 
 } ovrErrorType;
