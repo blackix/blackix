@@ -1386,7 +1386,9 @@ void FCustomPresent::PushBlack(const FGameFrame* frame, bool isFinal)
 	{
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("+++++++ PushBlack() ++++++, On RT! tid = %d, final = %b"), FPlatformTLS::GetCurrentThreadId(), isFinal);
 		
+#if PLATFORM_ANDROID
 		check(JavaRT.Vm != nullptr);
+#endif
 		ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, isFinal ? VRAPI_FRAME_INIT_BLACK_FINAL : VRAPI_FRAME_INIT_BLACK, vrapi_GetTimeInSeconds(), nullptr);
 		frameParms.PerformanceParms = DefaultPerfParms;
 		frameParms.Java = JavaRT;
@@ -1420,7 +1422,9 @@ void FCustomPresent::PushFrame(FLayerManager* pInLayerMgr, const FGameFrame* InC
 		}
 		else
 		{
+#if PLATFORM_ANDROID
 			check(JavaRT.Vm != nullptr);
+#endif
 			ovrFrameParms frameParms = vrapi_DefaultFrameParms(&JavaRT, VRAPI_FRAME_INIT_DEFAULT, vrapi_GetTimeInSeconds(), nullptr);
 			frameParms.MinimumVsyncs = MinimumVsyncs;
 			frameParms.ExtraLatencyMode = (bExtraLatencyMode) ? VRAPI_EXTRA_LATENCY_MODE_ON : VRAPI_EXTRA_LATENCY_MODE_OFF;
