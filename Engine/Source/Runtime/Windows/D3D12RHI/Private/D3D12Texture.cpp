@@ -2017,6 +2017,8 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHICreateTexture2DFromD3D12Resource(uint8 For
 	check(Resource);
 
 	D3D12_RESOURCE_DESC TextureDesc = Resource->GetDesc();
+	TextureDesc.Alignment = 0;
+
 	uint32 SizeX = TextureDesc.Width;
 	uint32 SizeY = TextureDesc.Height;
 	uint32 SizeZ = TextureDesc.DepthOrArraySize;
