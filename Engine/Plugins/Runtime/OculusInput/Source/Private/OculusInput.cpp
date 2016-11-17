@@ -4,6 +4,7 @@
 #include "Features/IModularFeatures.h"
 #include "IOculusRiftPlugin.h"
 #include "OculusRiftCommon.h"
+#include "OculusRiftHMD.h"
 
 #if OCULUS_INPUT_SUPPORTED_PLATFORMS
 
@@ -109,6 +110,7 @@ FOculusInput::FOculusInput( const TSharedRef< FGenericApplicationMessageHandler 
 
 		UE_LOG(LogOcInput, Log, TEXT("OculusInput is initialized. Init status %d. Runtime version: %s"), int(initStatus), *FString(ANSI_TO_TCHAR(ovr_GetVersionString())));
 	}
+
 }
 
 
@@ -317,7 +319,9 @@ void FOculusInput::SendControllerEvents()
 
 						if (bIsCurrentlyTracked)
 						{
-							State.bIsCurrentlyTracked = true;
+							State.bIsConnected = true;
+							State.bIsPositionTracked = (OvrTrackingState.HandStatusFlags[HandIndex] & ovrStatus_PositionTracked) != 0;
+							State.bIsOrientationTracked = (OvrTrackingState.HandStatusFlags[HandIndex] & ovrStatus_OrientationTracked) != 0;
 
 							const float OvrTriggerAxis = OvrInput.IndexTrigger[HandIndex];
 							const float OvrGripAxis = OvrInput.HandTrigger[HandIndex];
@@ -582,7 +586,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 	{
 		FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
 
-		if( ControllerState.bIsCurrentlyTracked && !ControllerState.bPlayingHapticEffect && OvrSession && FApp::HasVRFocus())
+		if( ControllerState.bIsConnected && !ControllerState.bPlayingHapticEffect && OvrSession && FApp::HasVRFocus())
 		{
 			// Make sure Touch is the active controller
 			ovrInputState OvrInput;
@@ -601,7 +605,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 
 				const ovrControllerType OvrController = ( Hand == EControllerHand::Left ) ? ovrControllerType_LTouch : ovrControllerType_RTouch;
 
-				ovr_SetControllerVibration( OvrSession, OvrController, ActualFrequency, ActualAmplitude );
+			//	ovr_SetControllerVibration( OvrSession, OvrController, ActualFrequency, ActualAmplitude );
 			}
 		}
 	}
@@ -617,14 +621,48 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 		{
 			if( (int32)DeviceHand >= 0 && (int32)DeviceHand < 2 )
 			{
-				const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
-
-				if( ControllerState.bIsCurrentlyTracked )
+				if (IsInGameThread())
 				{
-					OutOrientation = ControllerState.Orientation.Rotator();
-					OutPosition = ControllerState.Location;
+					const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[(int32)DeviceHand];
 
-					bHaveControllerData = true;
+					if (ControllerState.bIsConnected)
+					{
+						OutOrientation = ControllerState.Orientation.Rotator();
+						OutPosition = ControllerState.Location;
+
+						bHaveControllerData = true;
+					}
+				}
+				else
+				{
+					
+					if (GEngine->HMDDevice.IsValid() && (GEngine->HMDDevice->GetHMDDeviceType() == EHMDDeviceType::DT_OculusRift))
+					{
+						FOculusRiftHMD* OculusHMD = static_cast<FOculusRiftHMD*>(GEngine->HMDDevice.Get());
+						FCustomPresent* OculusCustomPresent = static_cast<FCustomPresent*>(OculusHMD->GetCustomPresent());
+						FViewExtension* ViewExtension = OculusCustomPresent->GetRenderContext();
+						if (ViewExtension)
+						{
+							FGameFrame* Frame = ViewExtension->GetRenderFrame();
+							if (Frame)
+							{
+								ovrTrackingState LateUpdateOvrTrackingState = Frame->RenderThreadTrackingState;
+								ovrPosef& InPose = LateUpdateOvrTrackingState.HandPoses[(int32)DeviceHand].ThePose;
+								FVector NewLocation;
+								FQuat NewOrientation;
+
+								NewOrientation = ToFQuat(InPose.Orientation);
+								float WTMS = Frame->WorldToMetersScaleWhileInFrame;
+								const FVector Pos = (ToFVector_M2U(OVR::Vector3f(InPose.Position), WTMS) - (Frame->Settings->BaseOffset * WTMS)) * Frame->CameraScale3D;
+								OutPosition = Frame->Settings->BaseOrientation.Inverse().RotateVector(Pos);
+
+								NewOrientation = Frame->Settings->BaseOrientation.Inverse() * NewOrientation;
+								NewOrientation.Normalize();
+								OutOrientation = NewOrientation.Rotator();
+
+							}
+						}
+					}
 				}
 			}
 
@@ -650,9 +688,9 @@ ETrackingStatus FOculusInput::GetControllerTrackingStatus(const int32 Controller
 		{
 			const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
 
-			if( ControllerState.bIsCurrentlyTracked )
+			if( ControllerState.bIsOrientationTracked )
 			{
-				TrackingStatus = ETrackingStatus::Tracked;
+				TrackingStatus = ControllerState.bIsPositionTracked ? ETrackingStatus::Tracked : ETrackingStatus::InertialOnly;
 			}
 
 			break;
@@ -669,7 +707,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 		if (ControllerPair.UnrealControllerIndex == ControllerId)
 		{
 			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[Hand];
-			if (ControllerState.bIsCurrentlyTracked)
+			if (ControllerState.bIsConnected)
 			{
 				if(IOculusRiftPlugin::IsAvailable())
 				{
@@ -696,7 +734,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 								const ovrControllerType OvrController = (EControllerHand(Hand) == EControllerHand::Left) ? ovrControllerType_LTouch : ovrControllerType_RTouch;
 								ovr_SetControllerVibration(OvrSession, OvrController, Frequency, Amplitude);
 
-								UE_CLOG(0, LogOcInput, Log, TEXT("SetHapticFeedbackValues: Hand %d, freq %f, amp %f"), int(Hand), Frequency, Amplitude);
+								UE_LOG(LogOcInput, Log, TEXT("SetHapticFeedbackValues: Hand %d, freq %f, amp %f"), int(Hand), Frequency, Amplitude);
 
 								ControllerState.bPlayingHapticEffect = (Amplitude != 0.f) && (Frequency != 0.f);
 							}
@@ -709,6 +747,115 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 		}
 	}
 }
+
+void FOculusInput::SetHapticFeedbackBuffer(int32 ControllerId, int32 Hand, FHapticFeedbackBuffer& Buffer)
+{
+	for (FOculusTouchControllerPair& ControllerPair : ControllerPairs)
+	{
+		if (ControllerPair.UnrealControllerIndex == ControllerId)
+		{
+			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[Hand];
+			if (ControllerState.bIsConnected)
+			{
+				if (IOculusRiftPlugin::IsAvailable())
+				{
+					FOvrSessionShared::AutoSession OvrSession(IOculusRiftPlugin::Get().GetSession());
+					if (OvrSession && FApp::HasVRFocus())
+					{
+						static bool pulledHapticsDesc = false;
+						if (!pulledHapticsDesc)
+						{
+							HapticsDesc = ovr_GetTouchHapticsDesc(OvrSession, ovrControllerType_RTouch);
+							pulledHapticsDesc = true;
+						}
+
+						// Make sure Touch is the active controller
+						ovrInputState OvrInput;
+						ovrResult OvrRes = ovr_GetInputState(OvrSession, ovrControllerType_Active, &OvrInput);
+						UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ovr_GetInputState(Active) ret = %d"), int(OvrRes));
+						if (OVR_SUCCESS(OvrRes) && ((ovrControllerType_Touch == OvrInput.ControllerType) || (ovrControllerType_LTouch == OvrInput.ControllerType) || (ovrControllerType_RTouch == OvrInput.ControllerType)))
+						{
+
+							const ovrControllerType OvrController = (EControllerHand(Hand) == EControllerHand::Left) ? ovrControllerType_LTouch : ovrControllerType_RTouch;
+
+							ovrHapticsPlaybackState state;
+							memset(&state, 0, sizeof(state));
+							ovrResult result = ovr_GetControllerVibrationState(OvrSession, OvrController, &state);
+							int wanttosend = (int)ceil((float)HapticsDesc.SampleRateHz / 90.f) + 1;
+							wanttosend = FMath::Min(wanttosend, HapticsDesc.SubmitMaxSamples);
+							wanttosend = FMath::Max(wanttosend, HapticsDesc.SubmitMinSamples);
+
+							if (Buffer.Frequency != HapticsDesc.SampleRateHz)
+							{
+								UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("Haptic Buffer not sampled at the correct frequency : %d vs %d"), HapticsDesc.SampleRateHz, Buffer.Frequency);
+							}
+
+							if (state.SamplesQueued < HapticsDesc.QueueMinSizeToAvoidStarvation + wanttosend) //trying to minimize latency
+							{
+								void *bufferToFree = NULL;
+								ovrHapticsBuffer obuffer;
+								obuffer.SubmitMode = ovrHapticsBufferSubmit_Enqueue;
+								obuffer.SamplesCount = FMath::Min(wanttosend, Buffer.BufferLength - Buffer.SamplesSent);
+							
+								if (obuffer.SamplesCount == 0 && state.SamplesQueued == 0)
+								{
+									Buffer.bFinishedPlaying = true;
+									ControllerState.bPlayingHapticEffect = false;
+								}
+								else
+								{
+									if (HapticsDesc.SampleSizeInBytes == 1)
+									{
+										uint8* samples = (uint8*)malloc(obuffer.SamplesCount * sizeof(*samples));
+										for (int i = 0; i < obuffer.SamplesCount; i++)
+										{
+											samples[i] = (uint8)*(Buffer.CurrentPtr + i);
+										}
+										obuffer.Samples = bufferToFree = samples;
+									}
+									else if (HapticsDesc.SampleSizeInBytes == 2)
+									{
+										uint16* samples = (uint16*)malloc(obuffer.SamplesCount * sizeof(*samples));
+										for (int i = 0; i < obuffer.SamplesCount; i++)
+										{
+											samples[i] = (uint16)*(Buffer.CurrentPtr + i);
+										}
+										obuffer.Samples = bufferToFree = samples;
+									}
+									else if (HapticsDesc.SampleSizeInBytes == 4)
+									{
+										uint32* samples = (uint32*)malloc(obuffer.SamplesCount * sizeof(*samples));
+										for (int i = 0; i < obuffer.SamplesCount; i++)
+										{
+											samples[i] = (uint32)*(Buffer.CurrentPtr + i);
+										}
+										obuffer.Samples = bufferToFree = samples;
+									}
+
+									ovr_SubmitControllerVibration(OvrSession, OvrController, &obuffer);
+
+									if (bufferToFree)
+									{
+										free(bufferToFree);
+									}
+
+									Buffer.CurrentPtr += obuffer.SamplesCount;
+									Buffer.SamplesSent += obuffer.SamplesCount;
+
+									ControllerState.bPlayingHapticEffect = true;
+								}
+							}
+
+						}
+					}
+				}
+			}
+
+			break;
+		}
+	}
+}
+
 
 void FOculusInput::GetHapticFrequencyRange(float& MinFrequency, float& MaxFrequency) const
 {

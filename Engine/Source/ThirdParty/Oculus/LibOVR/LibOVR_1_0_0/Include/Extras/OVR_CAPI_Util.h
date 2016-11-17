@@ -73,6 +73,39 @@ typedef struct OVR_ALIGNAS(8) ovrDetectResult_
 OVR_STATIC_ASSERT(sizeof(ovrDetectResult) == 8, "ovrDetectResult size mismatch");
 
 
+/// Modes used to generate Touch Haptics from audio PCM buffer.
+///
+typedef enum ovrHapticsGenMode_
+{
+    /// Point sample original signal at Haptics frequency
+    ovrHapticsGenMode_PointSample,
+    ovrHapticsGenMode_Count
+} ovrHapticsGenMode;
+
+/// Store audio PCM data (as 32b float samples) for an audio channel.
+/// Note: needs to be released with ovr_ReleaseAudioChannelData to avoid memory leak.
+///
+typedef struct ovrAudioChannelData_
+{
+    /// Samples stored as floats [-1.0f, 1.0f].
+    const float* Samples;
+    /// Number of samples
+    int SamplesCount;
+    /// Frequency (e.g. 44100)
+    int Frequency;
+} ovrAudioChannelData;
+
+/// Store a full Haptics clip, which can be used as data source for multiple ovrHapticsBuffers.
+///
+typedef struct ovrHapticsClip_
+{
+    /// Samples stored in opaque format
+    const void* Samples;
+    /// Number of samples
+    int SamplesCount;
+} ovrHapticsClip;
+
+
 /// Detects Oculus Runtime and Device Status
 ///
 /// Checks for Oculus Runtime and Oculus HMD device status without loading the LibOVRRT
@@ -137,14 +170,14 @@ OVR_PUBLIC_FUNCTION(ovrMatrix4f) ovrMatrix4f_OrthoSubProjection(ovrMatrix4f proj
 /// Computes offset eye poses based on headPose returned by ovrTrackingState.
 ///
 /// \param[in] headPose Indicates the HMD position and orientation to use for the calculation.
-/// \param[in] HmdToEyeOffset Can be ovrEyeRenderDesc.HmdToEyeOffset returned from 
+/// \param[in] hmdToEyeOffset Can be ovrEyeRenderDesc.HmdToEyeOffset returned from
 ///            ovr_GetRenderDesc. For monoscopic rendering, use a vector that is the average 
 ///            of the two vectors for both eyes.
 /// \param[out] outEyePoses If outEyePoses are used for rendering, they should be passed to 
 ///             ovr_SubmitFrame in ovrLayerEyeFov::RenderPose or ovrLayerEyeFovDepth::RenderPose.
 ///
 OVR_PUBLIC_FUNCTION(void) ovr_CalcEyePoses(ovrPosef headPose,
-                                           const ovrVector3f HmdToEyeOffset[2],
+                                           const ovrVector3f hmdToEyeOffset[2],
                                            ovrPosef outEyePoses[2]);
 
 
@@ -158,17 +191,17 @@ OVR_PUBLIC_FUNCTION(void) ovr_CalcEyePoses(ovrPosef headPose,
 /// \param[in]  hmd Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in]  frameIndex Specifies the targeted frame index, or 0 to refer to one frame after 
 ///             the last time ovr_SubmitFrame was called.
-/// \param[in]  HmdToEyeOffset Can be ovrEyeRenderDesc.HmdToEyeOffset returned from 
-///             ovr_GetRenderDesc. For monoscopic rendering, use a vector that is the average 
-///             of the two vectors for both eyes.
 /// \param[in]  latencyMarker Specifies that this call is the point in time where
 ///             the "App-to-Mid-Photon" latency timer starts from. If a given ovrLayer
 ///             provides "SensorSampleTimestamp", that will override the value stored here.
+/// \param[in]  hmdToEyeOffset Can be ovrEyeRenderDesc.HmdToEyeOffset returned from
+///             ovr_GetRenderDesc. For monoscopic rendering, use a vector that is the average
+///             of the two vectors for both eyes.
 /// \param[out] outEyePoses The predicted eye poses.
 /// \param[out] outSensorSampleTime The time when this function was called. May be NULL, in which case it is ignored.
 ///
 OVR_PUBLIC_FUNCTION(void) ovr_GetEyePoses(ovrSession session, long long frameIndex, ovrBool latencyMarker,
-                                             const ovrVector3f HmdToEyeOffset[2],
+                                             const ovrVector3f hmdToEyeOffset[2],
                                              ovrPosef outEyePoses[2],
                                              double* outSensorSampleTime);
 
@@ -186,6 +219,37 @@ OVR_PUBLIC_FUNCTION(void) ovr_GetEyePoses(ovrSession session, long long frameInd
 /// \param[out] outPose that is requested to be left-handed (can be the same pointer to inPose)
 ///
 OVR_PUBLIC_FUNCTION(void) ovrPosef_FlipHandedness(const ovrPosef* inPose, ovrPosef* outPose);
+
+/// Reads an audio channel from Wav (Waveform Audio File) data.
+/// Input must be a byte buffer representing a valid Wav file. Audio samples from the specified channel are read,
+/// converted to float [-1.0f, 1.0f] and returned through ovrAudioChannelData.
+///
+/// Supported formats: PCM 8b, 16b, 32b and IEEE float (little-endian only).
+///
+/// \param[out] outAudioChannel output audio channel data.
+/// \param[in] inputData a binary buffer representing a valid Wav file data.
+/// \param[in] dataSizeInBytes size of the buffer in bytes.
+/// \param[in] stereoChannelToUse audio channel index to extract (0 for mono).
+///
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_ReadWavFromBuffer(ovrAudioChannelData* outAudioChannel, const void* inputData, int dataSizeInBytes, int stereoChannelToUse);
+
+/// Generates playable Touch Haptics data from an audio channel.
+///
+/// \param[out] outHapticsClip generated Haptics clip.
+/// \param[in] audioChannel input audio channel data. 
+/// \param[in] genMode mode used to convert and audio channel data to Haptics data.
+///
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_GenHapticsFromAudioData(ovrHapticsClip* outHapticsClip, const ovrAudioChannelData* audioChannel, ovrHapticsGenMode genMode);
+
+/// Releases memory allocated for ovrAudioChannelData. Must be called to avoid memory leak.
+/// \param[in] audioChannel pointer to an audio channel
+///
+OVR_PUBLIC_FUNCTION(void) ovr_ReleaseAudioChannelData(ovrAudioChannelData* audioChannel);
+
+/// Releases memory allocated for ovrHapticsClip. Must be called to avoid memory leak.
+/// \param[in] hapticsClip pointer to a haptics clip
+///
+OVR_PUBLIC_FUNCTION(void) ovr_ReleaseHapticsClip(ovrHapticsClip* hapticsClip);
 
 
 #ifdef __cplusplus

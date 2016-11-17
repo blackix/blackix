@@ -15,6 +15,16 @@ public:
 	virtual void SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const FHapticFeedbackValues& Values) = 0;
 
 	/**
+	* Sets the frequency and amplitude of haptic feedback channels for a given controller id.
+	* Some devices / platforms may support just haptics, or just force feedback.
+	*
+	* @param ControllerId	ID of the controller to issue haptic feedback for
+	* @param HandId			Which hand id (e.g. left or right) to issue the feedback for.  These usually correspond to EControllerHands
+	* @param Buffer			Haptics buffer to play
+	*/
+	virtual void SetHapticFeedbackBuffer(int32 ControllerId, int32 Hand, FHapticFeedbackBuffer& Buffer) {};
+
+	/**
 	 * Determines the valid range of frequencies this haptic device supports, to limit input ranges from UHapticFeedbackEffects
 	 */
 	virtual void GetHapticFrequencyRange(float& MinFrequency, float& MaxFrequency) const = 0;

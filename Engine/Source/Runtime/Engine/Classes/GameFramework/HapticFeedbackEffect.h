@@ -1,6 +1,7 @@
 // Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
+#include "Sound/SoundWave.h"
 #include "HapticFeedbackEffect.generated.h"
 
 USTRUCT()
@@ -61,4 +62,39 @@ class UHapticFeedbackEffect : public UObject
 	void GetValues(const float EvalTime, FHapticFeedbackValues& Values) const;
 
 	float GetDuration() const;
+};
+
+USTRUCT()
+struct FActiveHapticFeedbackSoundWave
+{
+	GENERATED_USTRUCT_BODY()
+
+	FActiveHapticFeedbackSoundWave()
+		: PlayTime(0.f)
+		, Scale(1.f)
+		, Loop(false)
+	{
+	}
+
+	FActiveHapticFeedbackSoundWave(USoundWave* SoundWave, float InScale, bool InLoop);
+
+	~FActiveHapticFeedbackSoundWave();
+
+	void Update();
+
+	void PrepareSoundWaveBuffer();
+
+	bool NeedsUpdate() 
+	{
+		return HapticBuffer.NeedsUpdate();
+	}
+
+	FHapticFeedbackBuffer HapticBuffer;
+
+private:
+	USoundWave* SoundWave;
+	int TargetFrequency;
+	float PlayTime;
+	float Scale;
+	bool Loop;
 };

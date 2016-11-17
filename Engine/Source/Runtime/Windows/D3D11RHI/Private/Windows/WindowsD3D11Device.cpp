@@ -317,29 +317,26 @@ void FD3D11DynamicRHIModule::FindAdapter()
 					// To reject the software emulation, unless the cvar wants it.
 					// https://msdn.microsoft.com/en-us/library/windows/desktop/bb205075(v=vs.85).aspx#WARP_new_for_Win8
 					// Before we tested for no output devices but that failed where a laptop had a Intel (with output) and NVidia (with no output)
-					continue;
 				}
-
-				if(bIsPerfHUD && !bAllowPerfHUD)
+				else if(bIsPerfHUD && !bAllowPerfHUD)
 				{
 					// we don't allow the PerfHUD adapter
-					continue;
 				}
-
-				if(CVarValue >= 0 && AdapterIndex != CVarValue)
+				else if(CVarValue >= 0 && AdapterIndex != CVarValue)
 				{
 					// the user wants a specific adapter, not this one
-					continue;
 				}
-
-				if(!bIsIntegrated && !FirstWithoutIntegratedAdapter.IsValid())
+				else
 				{
-					FirstWithoutIntegratedAdapter = CurrentAdapter;
-				}
+					if(!bIsIntegrated && !FirstWithoutIntegratedAdapter.IsValid())
+					{
+						FirstWithoutIntegratedAdapter = CurrentAdapter;
+					}
 
-				if(!FirstAdapter.IsValid())
-				{
-					FirstAdapter = CurrentAdapter;
+					if(!FirstAdapter.IsValid())
+					{
+						FirstAdapter = CurrentAdapter;
+					}
 				}
 			}
 		}
