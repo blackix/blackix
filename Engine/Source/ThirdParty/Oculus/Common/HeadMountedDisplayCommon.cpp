@@ -40,6 +40,7 @@ FHMDSettings::FHMDSettings() :
 	Flags.bUpdateOnRT = true;
 	Flags.bMirrorToWindow = true;
 	Flags.bTimeWarp = true;
+	Flags.bHQBuffer = false;
 	Flags.bHmdPosTracking = true;
 	Flags.bPlayerControllerFollowsHmd = true;
 	Flags.bPlayerCameraManagerFollowsHmdOrientation = true;

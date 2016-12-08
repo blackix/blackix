@@ -121,6 +121,9 @@ public:
 			/** Whether timewarp is enabled or not */
 			uint64 bTimeWarp : 1;
 
+			/** Allocate an high quality OVR_FORMAT_R11G11B10_FLOAT buffer for Rift */
+			uint64 bHQBuffer : 1;
+
 			/** True, if pos tracking is enabled */
 			uint64				bHmdPosTracking : 1;
 

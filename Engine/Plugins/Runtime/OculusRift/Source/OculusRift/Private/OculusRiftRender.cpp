@@ -856,9 +856,10 @@ void FOculusRiftHMD::ShutdownRendering()
 // FCustomPresent
 //-------------------------------------------------------------------------------------------------
 
-FCustomPresent::FCustomPresent(const FOvrSessionSharedPtr& InOvrSession)
+FCustomPresent::FCustomPresent(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* InRiftHMD)
 	: FRHICustomPresent(nullptr)
 	, Session(InOvrSession)
+	, RiftHMD(InRiftHMD)
 	, LayerMgr(MakeShareable(new FLayerManager(this)))
 	, MirrorTexture(nullptr)
 	, NeedToKillHmd(0)
@@ -989,6 +990,9 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 	const FHMDLayerDesc* pEyeLayerDesc = LayerMgr->GetEyeLayerDesc();
 	check(pEyeLayerDesc);
 	auto TextureSet = pEyeLayerDesc->GetTextureSet();
+
+	bool bEyeLayer10bitFloat = RiftHMD->Settings->Flags.bHQBuffer;
+
 	bool bEyeLayerIsHQ = false;
 	bool bEyeLayerShouldBeHQ = (LayerFlags & HighQuality) != 0;
 	if (!TextureSet.IsValid())
@@ -1035,8 +1039,8 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 			TextureSet->ReleaseResources();
 			LayerMgr->InvalidateTextureSets();
 		}
-
-		FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumMips, DefaultEyeBuffer);
+		
+		FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, bEyeLayer10bitFloat ? PF_FloatR11G11B10 : EPixelFormat(Format), NumMips, DefaultEyeBuffer);
 		if (ColorTextureSet.IsValid())
 		{
 			// update the eye layer textureset. at the moment only one eye layer is supported

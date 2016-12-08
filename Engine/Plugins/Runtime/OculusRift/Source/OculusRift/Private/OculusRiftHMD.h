@@ -268,7 +268,7 @@ class FCustomPresent : public FRHICustomPresent
 {
 	friend class FLayerManager;
 public:
-	FCustomPresent(const FOvrSessionSharedPtr& InOvrSession);
+	FCustomPresent(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* InRiftHMD);
 
 	// Returns true if it is initialized and used.
 	bool IsInitialized() const { return Session->IsActive(); }
@@ -365,6 +365,7 @@ protected: // data
 	FOvrSessionSharedPtr Session;
 	TSharedPtr<FViewExtension, ESPMode::ThreadSafe> RenderContext;
 	IRendererModule*	RendererModule;
+	FOculusRiftHMD*		RiftHMD;
 
 	TSharedPtr<FLayerManager> LayerMgr;
 
@@ -419,6 +420,7 @@ class FOculusRiftHMD : public FHeadMountedDisplay
 	friend class FOculusRiftPlugin;
 	friend class FLayerManager;
 	friend class FOculusRiftSplash;
+	friend class FCustomPresent;
 public:
 	/** IHeadMountedDisplay interface */
 	virtual FName GetDeviceName() const override
@@ -560,7 +562,7 @@ public:
 	class D3D11Bridge : public FCustomPresent
 	{
 	public:
-		D3D11Bridge(const FOvrSessionSharedPtr& InOvrSession);
+		D3D11Bridge(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* RiftHMD);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
@@ -573,7 +575,7 @@ public:
 	class D3D12Bridge : public FCustomPresent
 	{
 	public:
-		D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession);
+		D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* RiftHMD);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
@@ -588,7 +590,7 @@ public:
 	class OGLBridge : public FCustomPresent
 	{
 	public:
-		OGLBridge(const FOvrSessionSharedPtr& InOvrSession);
+		OGLBridge(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* RiftHMD);
 
 		// Implementation of FCustomPresent, called by Plugin itself
 		virtual bool IsUsingGraphicsAdapter(const ovrGraphicsLuid& luid) override;
