@@ -40,6 +40,7 @@ FHMDSettings::FHMDSettings() :
 	Flags.bUpdateOnRT = true;
 	Flags.bMirrorToWindow = true;
 	Flags.bTimeWarp = true;
+	Flags.bHQBuffer = false;
 	Flags.bHmdPosTracking = true;
 	Flags.bPlayerControllerFollowsHmd = true;
 	Flags.bPlayerCameraManagerFollowsHmdOrientation = true;
@@ -1941,7 +1942,6 @@ FHMDLayerDesc& FHMDLayerDesc::operator=(const FHMDLayerDesc& InSrc)
 
 void FHMDLayerDesc::ResetChangedFlags()
 {
-	bTextureCopyPending |= !!bTextureHasChanged;
 	bTextureHasChanged = bTransformHasChanged = bNewLayer = bAlreadyAdded = false;
 }
 
