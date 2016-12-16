@@ -56,15 +56,7 @@ public:
 
 	virtual const uint8* GetBytes() const override
 	{
-		auto byteArray = static_cast<uint8*>(malloc(sizeof(uint8) * 4));
-
-		// convert from an unsigned long int to a 4-byte array
-		byteArray[0] = static_cast<uint8>((ID >> 24) & 0xFF);
-		byteArray[1] = static_cast<uint8>((ID >> 16) & 0xFF);
-		byteArray[2] = static_cast<uint8>((ID >> 8) & 0XFF);
-		byteArray[3] = static_cast<uint8>((ID & 0XFF));
-
-		return byteArray;
+		return (uint8*)ID;
 	}
 
 	virtual int32 GetSize() const override
@@ -95,7 +87,7 @@ public:
 	/** Needed for TMap::GetTypeHash() */
 	friend uint32 GetTypeHash(const FUniqueNetIdOculus& A)
 	{
-		return ::PointerHash(&A.ID, sizeof(A.ID));
+		return GetTypeHash(A.ID);
 	}
 };
 

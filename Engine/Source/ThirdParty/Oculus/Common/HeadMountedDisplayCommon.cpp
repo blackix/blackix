@@ -2,6 +2,10 @@
 
 #include "Engine.h"
 #include "HeadMountedDisplayCommon.h"
+#include "RendererPrivate.h"
+#include "ScenePrivate.h"
+#include "PostProcess/PostProcessHMD.h"
+#include "ScreenRendering.h"
 
 #if OCULUS_STRESS_TESTS_ENABLED
 #include "OculusStressTests.h"
@@ -153,6 +157,21 @@ void FHMDViewExtension::PreRenderView_RenderThread(FRHICommandListImmediate& RHI
 	check(IsInRenderingThread());
 }
 
+void FHMDViewExtension::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
+{
+	FHMDViewExtension& RenderContext = *this;
+
+	FHeadMountedDisplay* HeadMountedDisplay = static_cast<FHeadMountedDisplay*>(RenderContext.Delegate);
+
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+	SetRenderTarget(RHICmdList, InViewFamily.RenderTarget->GetRenderTargetTexture(), SceneContext.GetSceneDepthSurface());
+
+	FHMDLayerManager *LayerMgr = HeadMountedDisplay->GetLayerManager();//->GetLayerMgr();
+	LayerMgr->PokeAHole(RHICmdList, RenderContext.RenderFrame.Get(), HeadMountedDisplay->GetRendererModule(), InViewFamily);
+	check(IsInRenderingThread());
+}
+
 ////////////////////////////////////////////////////////////////////////////
 FHeadMountedDisplay::FHeadMountedDisplay()
 {
@@ -171,14 +190,14 @@ FHeadMountedDisplay::FHeadMountedDisplay()
 
 #if OCULUS_STRESS_TESTS_ENABLED
 	StressTester = nullptr;
-#endif // #if OCULUS_STRESS_TESTS_ENABLED
+#endif
 }
 
 FHeadMountedDisplay::~FHeadMountedDisplay()
 {
 #if OCULUS_STRESS_TESTS_ENABLED
 	delete StressTester;
-#endif // #if OCULUS_STRESS_TESTS_ENABLED
+#endif
 }
 
 bool FHeadMountedDisplay::IsInitialized() const
@@ -248,7 +267,7 @@ bool FHeadMountedDisplay::OnStartGameFrame(FWorldContext& WorldContext)
 	{
 		StressTester->TickCPU_GameThread(this);
 	}
-#endif // #if OCULUS_STRESS_TESTS_ENABLED
+#endif
 
 	if( !WorldContext.World() || ( !( GEnableVREditorHacks && WorldContext.WorldType == EWorldType::Editor ) && !WorldContext.World()->IsGameWorld() ) )	// @todo vreditor: (Also see OnEndGameFrame()) Kind of a hack here so we can use VR in editor viewports.  We need to consider when running GameWorld viewports inside the editor with VR.
 	{
@@ -948,7 +967,7 @@ bool FHeadMountedDisplay::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice&
 
 		return true;
 	}
-#endif // #if OCULUS_STRESS_TESTS_ENABLED
+#endif // OCULUS_STRESS_TESTS_ENABLED
 #endif //!UE_BUILD_SHIPPING
 	else if (FParse::Command(&Cmd, TEXT("HMDPOS")))
 	{
@@ -1421,9 +1440,9 @@ void FHeadMountedDisplay::DrawSeaOfCubes(UWorld* World, FVector ViewLocation)
 }
 #endif // #if !UE_BUILD_SHIPPING
 
-static FHMDLayerManager::LayerOriginType ConvertLayerType(IStereoLayers::ELayerType InLayerType)
+static FHMDLayerManager::LayerOriginType ConvertLayerPositionType(IStereoLayers::ELayerPositionType InLayerPositionType)
 {
-	switch (InLayerType)
+	switch (InLayerPositionType)
 	{
 	case IStereoLayers::WorldLocked:
 		return FHMDLayerManager::Layer_WorldLocked;
@@ -1436,6 +1455,21 @@ static FHMDLayerManager::LayerOriginType ConvertLayerType(IStereoLayers::ELayerT
 	};
 }
 
+static FHMDLayerDesc::ELayerTypeMask ConvertLayerType(IStereoLayers::ELayerType InLayerType)
+{
+	switch (InLayerType)
+	{
+	case IStereoLayers::QuadLayer:
+		return FHMDLayerDesc::Quad;
+	case IStereoLayers::CylinderLayer:
+		return FHMDLayerDesc::Cylinder;
+	case IStereoLayers::CubemapLayer:
+		return FHMDLayerDesc::Cubemap;
+	default:
+		return FHMDLayerDesc::Quad;
+	};
+}
+
 uint32 FHeadMountedDisplay::CreateLayer(const IStereoLayers::FLayerDesc& InLayerDesc)
 {
 	FHMDLayerManager* pLayerMgr = GetLayerManager();
@@ -1445,7 +1479,7 @@ uint32 FHeadMountedDisplay::CreateLayer(const IStereoLayers::FLayerDesc& InLayer
 		{
 			FScopeLock ScopeLock(&pLayerMgr->LayersLock);
 			uint32 id = 0;
-			pLayerMgr->AddLayer(FHMDLayerDesc::Quad, InLayerDesc.Priority, ConvertLayerType(InLayerDesc.Type), id);
+			pLayerMgr->AddLayer(ConvertLayerType(InLayerDesc.Type), InLayerDesc.Priority, ConvertLayerPositionType(InLayerDesc.PositionType), id);
 			if (id != 0)
 			{
 				SetLayerDesc(id, InLayerDesc);
@@ -1487,25 +1521,30 @@ void FHeadMountedDisplay::SetLayerDesc(uint32 LayerId, const IStereoLayers::FLay
 	}
 
 	const FHMDLayerDesc* pLayer = pLayerMgr->GetLayerDesc(LayerId);
-	if (pLayer && pLayer->GetType() == FHMDLayerDesc::Quad)
+	if (pLayer && (pLayer->GetType() == FHMDLayerDesc::Quad || pLayer->GetType() == FHMDLayerDesc::Cylinder || pLayer->GetType() == FHMDLayerDesc::Cubemap))
 	{
 		FVector2D NewQuadSize = InLayerDesc.QuadSize;
+		float NewCylinderHeight = InLayerDesc.CylinderHeight;
 		if (InLayerDesc.Flags & IStereoLayers::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO && InLayerDesc.Texture.IsValid())
 		{
 			FRHITexture2D* Texture2D = InLayerDesc.Texture->GetTexture2D();
 			if (Texture2D)
 			{
 				const float TexRatio = (Texture2D->GetSizeY() == 0) ? 1280.0f/720.0f : (float)Texture2D->GetSizeX() / (float)Texture2D->GetSizeY();
+				NewCylinderHeight = (TexRatio) ? InLayerDesc.CylinderSize.Y / TexRatio : NewCylinderHeight;
 				NewQuadSize.Y = (TexRatio) ? NewQuadSize.X / TexRatio : NewQuadSize.Y;
 			}
 		}
 
 		FHMDLayerDesc Layer = *pLayer;
 		Layer.SetFlags(InLayerDesc.Flags);
-		Layer.SetLockedToHead(InLayerDesc.Type == IStereoLayers::ELayerType::FaceLocked);
-		Layer.SetLockedToTorso(InLayerDesc.Type == IStereoLayers::ELayerType::TrackerLocked);
+		Layer.SetLockedToHead(InLayerDesc.PositionType == IStereoLayers::ELayerPositionType::FaceLocked);
+		Layer.SetLockedToTorso(InLayerDesc.PositionType == IStereoLayers::ELayerPositionType::TrackerLocked);
 		Layer.SetTexture(InLayerDesc.Texture);
+		Layer.SetLeftTexture(InLayerDesc.LeftTexture);
 		Layer.SetQuadSize(NewQuadSize);
+		Layer.SetCylinderSize(InLayerDesc.CylinderSize);
+		Layer.SetCylinderHeight(NewCylinderHeight);
 		Layer.SetTransform(InLayerDesc.Transform);
 		Layer.ResetChangedFlags();
 		Layer.SetTextureViewport(InLayerDesc.UVRect);
@@ -1527,7 +1566,7 @@ bool FHeadMountedDisplay::GetLayerDesc(uint32 LayerId, IStereoLayers::FLayerDesc
 	}
 
 	const FHMDLayerDesc* pLayer = pLayerMgr->GetLayerDesc(LayerId);
-	if (!pLayer || pLayer->GetType() != FHMDLayerDesc::Quad)
+	if (!pLayer)
 	{
 		return false;
 	}
@@ -1536,20 +1575,39 @@ bool FHeadMountedDisplay::GetLayerDesc(uint32 LayerId, IStereoLayers::FLayerDesc
 	OutLayerDesc.Priority = Layer.GetPriority();
 	OutLayerDesc.QuadSize = Layer.GetQuadSize();
 	OutLayerDesc.Texture = Layer.GetTexture();
+	OutLayerDesc.LeftTexture = Layer.GetLeftTexture();
 	OutLayerDesc.Transform = Layer.GetTransform();
 	OutLayerDesc.UVRect = Layer.GetTextureViewport();
+	OutLayerDesc.CylinderSize = Layer.GetCylinderSize();
+	OutLayerDesc.CylinderHeight = Layer.GetCylinderHeight();
 
 	if (Layer.IsHeadLocked())
 	{
-		OutLayerDesc.Type = IStereoLayers::FaceLocked;
+		OutLayerDesc.PositionType = IStereoLayers::FaceLocked;
 	}
 	else if (Layer.IsTorsoLocked())
 	{
-		OutLayerDesc.Type = IStereoLayers::TrackerLocked;
+		OutLayerDesc.PositionType = IStereoLayers::TrackerLocked;
 	}
 	else
 	{
-		OutLayerDesc.Type = IStereoLayers::WorldLocked;
+		OutLayerDesc.PositionType = IStereoLayers::WorldLocked;
+	}
+
+	switch (pLayer->GetType())
+	{
+	case FHMDLayerDesc::Quad:
+		OutLayerDesc.Type = IStereoLayers::QuadLayer;
+		break;
+
+	case FHMDLayerDesc::Cylinder:
+		OutLayerDesc.Type = IStereoLayers::CylinderLayer;
+		break;
+	case FHMDLayerDesc::Cubemap:
+		OutLayerDesc.Type = IStereoLayers::CubemapLayer;
+	default:
+		return false;
+		break;
 	}
 
 	return true;
@@ -1591,9 +1649,12 @@ FHMDLayerDesc::FHMDLayerDesc(class FHMDLayerManager& InLayerMgr, ELayerTypeMask 
 	LayerManager(InLayerMgr)
 	, Id(InID | InType)
 	, Texture(nullptr)
+	, LeftTexture(nullptr)
 	, Flags(0)
 	, TextureUV(ForceInit)
 	, QuadSize(FVector2D::ZeroVector)
+	, CylinderHeight(0)
+	, CylinderSize(FVector2D::ZeroVector)
 	, Priority(InPriority & IdMask)
 	, bHighQuality(true)
 	, bHeadLocked(false)
@@ -1626,6 +1687,30 @@ void FHMDLayerDesc::SetQuadSize(const FVector2D& InSize)
 	LayerManager.SetDirty();
 }
 
+void FHMDLayerDesc::SetCylinderSize(const FVector2D& InSize)
+{
+	if (CylinderSize == InSize)
+	{
+		return;
+	}
+
+	CylinderSize = InSize;
+	bTransformHasChanged = true;
+	LayerManager.SetDirty();
+}
+
+void FHMDLayerDesc::SetCylinderHeight(const float InHeight)
+{
+	if (CylinderHeight == InHeight)
+	{
+		return;
+	}
+
+	CylinderHeight = InHeight;
+	bTransformHasChanged = true;
+	LayerManager.SetDirty();
+}
+
 void FHMDLayerDesc::SetTexture(FTextureRHIRef InTexture)
 {
 	if (Texture == InTexture)
@@ -1634,6 +1719,18 @@ void FHMDLayerDesc::SetTexture(FTextureRHIRef InTexture)
 	}
 
 	Texture = InTexture;
+	bTextureHasChanged = true;
+	LayerManager.SetDirty();
+}
+
+void FHMDLayerDesc::SetLeftTexture(FTextureRHIRef InTexture)
+{
+	if (LeftTexture == InTexture)
+	{
+		return;
+	}
+
+	LeftTexture = InTexture;
 	bTextureHasChanged = true;
 	LayerManager.SetDirty();
 }
@@ -1690,19 +1787,23 @@ FHMDLayerDesc& FHMDLayerDesc::operator=(const FHMDLayerDesc& InSrc)
 	{
 		bTextureHasChanged = true;
 		Texture = InSrc.Texture;
+		LeftTexture = InSrc.LeftTexture;
 	}
 	if (TextureSet.Get() != InSrc.TextureSet.Get())
 	{
 		bTextureHasChanged = true;
 		TextureSet = InSrc.TextureSet;
 	}
-	if (!(TextureUV == InSrc.TextureUV) || QuadSize != InSrc.QuadSize || !Transform.Equals(InSrc.Transform))
+	if (!(TextureUV == InSrc.TextureUV) || QuadSize != InSrc.QuadSize || !Transform.Equals(InSrc.Transform) || CylinderSize != InSrc.CylinderSize || CylinderHeight != InSrc.CylinderHeight)
 	{
 		bTransformHasChanged = true;
 		TextureUV = InSrc.TextureUV;
 		QuadSize = InSrc.QuadSize;
+		CylinderSize = InSrc.CylinderSize;
+		CylinderHeight = InSrc.CylinderHeight;
 		Transform = InSrc.Transform;
 	}
+	
 	Flags = InSrc.Flags;
 	LayerManager.SetDirty();
 	return *this;
@@ -1775,7 +1876,7 @@ uint32 FHMDLayerManager::GetTotalNumberOfLayers() const
 TSharedPtr<FHMDLayerDesc> 
 FHMDLayerManager::AddLayer(FHMDLayerDesc::ELayerTypeMask InType, uint32 InPriority, LayerOriginType InLayerOriginType, uint32& OutLayerId)
 {
-	if (GetTotalNumberOfLayers() >= GetTotalNumberOfLayersSupported())
+	if (GetTotalNumberOfLayers() >= GetTotalNumberOfLayersSupported() || !ShouldSupportLayerType(InType))
 	{
 		return nullptr;
 	}
@@ -1843,6 +1944,8 @@ const TArray<TSharedPtr<FHMDLayerDesc> >& FHMDLayerManager::GetLayersArrayById(u
 		return EyeLayers;
 		break;
 	case FHMDLayerDesc::Quad:
+	case FHMDLayerDesc::Cylinder:
+	case FHMDLayerDesc::Cubemap:
 		return QuadLayers;
 		break;
 	case FHMDLayerDesc::Debug:
@@ -1862,6 +1965,8 @@ TArray<TSharedPtr<FHMDLayerDesc> >& FHMDLayerManager::GetLayersArrayById(uint32 
 		return EyeLayers;
 		break;
 	case FHMDLayerDesc::Quad:
+	case FHMDLayerDesc::Cylinder:
+	case FHMDLayerDesc::Cubemap:
 		return QuadLayers;
 		break;
 	case FHMDLayerDesc::Debug:
@@ -2052,7 +2157,7 @@ void FHMDLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RH
 				}
 				auto LayerDesc1 = l1->GetLayerDesc();
 				auto LayerDesc2 = l2->GetLayerDesc();
-				return (LayerDesc1.GetPriority() | LayerDesc1.GetType()) < (LayerDesc2.GetPriority() | LayerDesc2.GetType());
+				return LayerDesc1.IsPokeAHole() == LayerDesc2.IsPokeAHole() ? (LayerDesc1.GetType() == LayerDesc2.GetType() ? (LayerDesc1.GetPriority() < LayerDesc2.GetPriority()) : LayerDesc1.IsPokeAHole() ^ (LayerDesc1.GetType() < LayerDesc2.GetType())) : LayerDesc1.IsPokeAHole();
 			}
 		};
 		LayersToRender.Sort(Comparator());
@@ -2063,6 +2168,214 @@ void FHMDLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RH
 	}
 }
 
+static void DrawPokeAHoleQuadMesh(FRHICommandList& RHICmdList, const FMatrix& PosTransform, float X, float Y, float Z, float SizeX, float SizeY, float SizeZ, bool InvertCoords)
+{
+	float ClipSpaceQuadZ = 0.0f;
 
+	FFilterVertex Vertices[4];
+	Vertices[0].Position = PosTransform.TransformFVector4(FVector4(X, Y, Z, 1));
+	Vertices[1].Position = PosTransform.TransformFVector4(FVector4(X + SizeX, Y, Z + SizeZ, 1));
+	Vertices[2].Position = PosTransform.TransformFVector4(FVector4(X, Y + SizeY, Z, 1));
+	Vertices[3].Position = PosTransform.TransformFVector4(FVector4(X + SizeX, Y + SizeY, Z + SizeZ, 1));
 
+	if (InvertCoords)
+	{
+		Vertices[0].UV = FVector2D(1, 0);
+		Vertices[1].UV = FVector2D(1, 1);
+		Vertices[2].UV = FVector2D(0, 0);
+		Vertices[3].UV = FVector2D(0, 1);
+	}
+	else
+	{
+		Vertices[0].UV = FVector2D(0, 1);
+		Vertices[1].UV = FVector2D(0, 0);
+		Vertices[2].UV = FVector2D(1, 1);
+		Vertices[3].UV = FVector2D(1, 0);
+	}
+
+	static const uint16 Indices[] = { 0, 1, 3, 0, 3, 2 };
+
+	DrawIndexedPrimitiveUP(RHICmdList, PT_TriangleList, 0, 4, 2, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+}
+
+static void DrawPokeAHoleCylinderMesh(FRHICommandList& RHICmdList, FVector Base, FVector X, FVector Y, const FMatrix& PosTransform, float ArcAngle, float CylinderHeight, float CylinderRadius, bool InvertCoords)
+{
+	float ClipSpaceQuadZ = 0.0f;
+	const int Sides = 40;
+
+	FFilterVertex Vertices[2 * (Sides+1)];
+	static uint16 Indices[6 * Sides]; //	 = { 0, 1, 3, 0, 3, 2 };
+
+	float currentAngle = -ArcAngle / 2;
+	float angleStep = ArcAngle / Sides;
+
+	FVector LastVertex = Base + CylinderRadius * (FMath::Cos(currentAngle) * X + FMath::Sin(currentAngle) * Y);
+	FVector HalfHeight = FVector(0, 0, CylinderHeight / 2);
+
+	Vertices[0].Position = PosTransform.TransformFVector4(LastVertex - HalfHeight);
+	Vertices[1].Position = PosTransform.TransformFVector4(LastVertex + HalfHeight);
+	Vertices[0].UV = FVector2D(1, 0);
+	Vertices[1].UV = FVector2D(1, 1);
+
+	currentAngle += angleStep;
+
+	for (int side = 0; side < Sides; side++)
+	{
+		FVector ThisVertex = Base + CylinderRadius * (FMath::Cos(currentAngle) * X + FMath::Sin(currentAngle) * Y);
+		currentAngle += angleStep;
+
+		Vertices[2*(side+1)].Position = PosTransform.TransformFVector4(ThisVertex - HalfHeight);
+		Vertices[2*(side+1)+1].Position = PosTransform.TransformFVector4(ThisVertex + HalfHeight);
+		Vertices[2 * (side + 1)].UV = FVector2D(1 - (side + 1) / (float)Sides, 0);
+		Vertices[2 * (side + 1) + 1].UV = FVector2D(1 - (side + 1) / (float)Sides, 1);
+
+		Indices[6 * side + 0] = 2 * side;
+		Indices[6 * side + 1] = 2 * side + 1;
+		Indices[6 * side + 2] = 2 * (side + 1) + 1;
+		Indices[6 * side + 3] = 2 * side;
+		Indices[6 * side + 4] = 2 * (side + 1) + 1;
+		Indices[6 * side + 5] = 2 * (side + 1);
+
+		LastVertex = ThisVertex;
+	}
+	
+	DrawIndexedPrimitiveUP(RHICmdList, PT_TriangleList, 0, 2*(Sides+1), 2*Sides, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
+}
+
+static void DrawPokeAHoleMesh(FRHICommandList& RHICmdList,const FHMDLayerDesc& LayerDesc, FMatrix matrix, float scale, bool invertCoords)
+{
+	if (LayerDesc.GetType() == FHMDLayerDesc::Quad)
+	{
+		FVector2D quadsize = LayerDesc.GetQuadSize();
+
+		DrawPokeAHoleQuadMesh(RHICmdList, matrix, 0, -quadsize.X*scale / 2, -quadsize.Y*scale / 2, 0, quadsize.X*scale, quadsize.Y*scale, invertCoords);
+
+	}
+	else if (LayerDesc.GetType() == FHMDLayerDesc::Cylinder)
+	{
+		FVector XAxis = FVector(-1, 0, 0);
+		FVector YAxis = FVector(0, 1, 0);
+		FVector Base = FVector::ZeroVector;
+		
+		float CylinderRadius = LayerDesc.GetCylinderSize().X;
+		float ArcAngle = LayerDesc.GetCylinderSize().Y / CylinderRadius;
+		float CylinderHeight = LayerDesc.GetCylinderHeight();
+
+		DrawPokeAHoleCylinderMesh(RHICmdList, Base, XAxis, YAxis, matrix, ArcAngle*scale, CylinderHeight*scale, CylinderRadius, invertCoords);
+	}
+}
+
+void FHMDLayerManager::PokeAHole(FRHICommandListImmediate& RHICmdList, const FHMDGameFrame* CurrentFrame, IRendererModule* RendererModule,  FSceneViewFamily& InViewFamily)
+{
+	const uint32 NumLayers = LayersToRender.Num();
+	const float WorldToMetersScale = 100;
+
+	//const FGameFrame* CurrentGameFrame = static_cast<const FGameFrame*>(CurrentFrame);	
+
+	if (NumLayers > 0 && CurrentFrame)
+	{
+		const auto FeatureLevel = GMaxRHIFeatureLevel;
+
+		const FViewInfo* LeftView = (FViewInfo*)(InViewFamily.Views[0]);
+		const FViewInfo* RightView = (FViewInfo*)(InViewFamily.Views[1]);
+
+		TShaderMapRef<FOculusVertexShader> ScreenVertexShader(LeftView->ShaderMap);
+		TShaderMapRef<FOculusAlphaInverseShader> PixelShader(LeftView->ShaderMap);
+		TShaderMapRef<FOculusWhiteShader> WhitePixelShader(LeftView->ShaderMap);
+
+		static FGlobalBoundShaderState BoundShaderState;
+		static FGlobalBoundShaderState BoundWhiteShaderState;
+		static FGlobalBoundShaderState BoundBlackShaderState;
+
+		for (uint32 i = 0; i < NumLayers; ++i)
+		{
+			auto RenderLayer = static_cast<FHMDRenderLayer*>(LayersToRender[i].Get());
+			if (!RenderLayer || !RenderLayer->IsFullySetup())
+			{
+				continue;
+			}
+			const FHMDLayerDesc& LayerDesc = RenderLayer->GetLayerDesc();
+			FTextureRHIRef Texture = LayerDesc.GetTexture();
+
+			FMatrix leftMat, rightMat;
+			bool invertCoords;
+			GetPokeAHoleMatrices(LeftView, RightView, LayerDesc, CurrentFrame, leftMat, rightMat, invertCoords);
+
+			if (LayerDesc.IsPokeAHole())
+			{
+				if (LayerDesc.GetType() == FHMDLayerDesc::Cubemap)
+				{
+					TShaderMapRef<FOculusBlackShader> BlackPixelShader(LeftView->ShaderMap);
+
+					SetGlobalBoundShaderState(RHICmdList, FeatureLevel, BoundWhiteShaderState, RendererModule->GetFilterVertexDeclaration().VertexDeclarationRHI, *ScreenVertexShader, *WhitePixelShader);
+
+					RHICmdList.SetRasterizerState(TStaticRasterizerState<FM_Solid, CM_None>::GetRHI());
+					RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+					RHICmdList.SetBlendState(TStaticBlendState<CW_ALPHA, BO_Add, BF_One, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
+
+					RHICmdList.SetViewport(LeftView->ViewRect.Min.X, LeftView->ViewRect.Min.Y, 0.000, RightView->ViewRect.Max.X, RightView->ViewRect.Max.Y, 0.000);
+
+					RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
+						false, CF_Always
+					>::GetRHI());
+					DrawPokeAHoleQuadMesh(RHICmdList, FMatrix::Identity, -1, -1, 0, 2, 2, 0, false);
+
+					SetGlobalBoundShaderState(RHICmdList, FeatureLevel, BoundBlackShaderState, RendererModule->GetFilterVertexDeclaration().VertexDeclarationRHI, *ScreenVertexShader, *BlackPixelShader);
+
+					RHICmdList.SetBlendState(TStaticBlendState<CW_ALPHA, BO_Add, BF_One, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI());
+					RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
+						false, CF_DepthNearOrEqual
+					>::GetRHI());
+					DrawPokeAHoleQuadMesh(RHICmdList, FMatrix::Identity, -1, -1, 0, 2, 2, 0, false);
+
+				}
+				else
+				{
+					//draw quad outlines
+					SetGlobalBoundShaderState(RHICmdList, FeatureLevel, BoundWhiteShaderState, RendererModule->GetFilterVertexDeclaration().VertexDeclarationRHI, *ScreenVertexShader, *WhitePixelShader);
+
+					RHICmdList.SetRasterizerState(TStaticRasterizerState<FM_Solid, CM_None>::GetRHI());
+					RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+
+					RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
+						false, CF_Always
+					>::GetRHI());
+					RHICmdList.SetBlendState(TStaticBlendState<CW_ALPHA>::GetRHI());
+
+					RHICmdList.SetViewport(LeftView->ViewRect.Min.X, LeftView->ViewRect.Min.Y, 0, LeftView->ViewRect.Max.X, LeftView->ViewRect.Max.Y, 1);
+					DrawPokeAHoleMesh(RHICmdList, LayerDesc, leftMat, 1.10, invertCoords);
+
+					RHICmdList.SetViewport(RightView->ViewRect.Min.X, RightView->ViewRect.Min.Y, 0, RightView->ViewRect.Max.X, RightView->ViewRect.Max.Y, 1);
+
+					DrawPokeAHoleMesh(RHICmdList, LayerDesc, rightMat, 1.10, invertCoords);
+
+					//draw inverse alpha
+					SetGlobalBoundShaderState(RHICmdList, FeatureLevel, BoundShaderState, RendererModule->GetFilterVertexDeclaration().VertexDeclarationRHI, *ScreenVertexShader, *PixelShader);
+
+					PixelShader->SetParameters(RHICmdList, TStaticSamplerState<SF_Bilinear>::GetRHI(), Texture);
+
+					RHICmdList.SetDepthStencilState(TStaticDepthStencilState<
+						false, CF_DepthNearOrEqual
+					>::GetRHI());
+					RHICmdList.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_InverseSourceAlpha, BF_SourceAlpha, BO_Add, BF_One, BF_Zero>::GetRHI());
+
+					RHICmdList.SetViewport(LeftView->ViewRect.Min.X, LeftView->ViewRect.Min.Y, 0, LeftView->ViewRect.Max.X, LeftView->ViewRect.Max.Y, 1);
+
+					DrawPokeAHoleMesh(RHICmdList, LayerDesc, leftMat, 0.99, invertCoords);
+
+					RHICmdList.SetViewport(RightView->ViewRect.Min.X, RightView->ViewRect.Min.Y, 0, RightView->ViewRect.Max.X, RightView->ViewRect.Max.Y, 1);
+
+					DrawPokeAHoleMesh(RHICmdList, LayerDesc, rightMat, 0.99, invertCoords);
+				}
+			
+			}
+			
+		}
+	}
+}
+
+IMPLEMENT_SHADER_TYPE(, FOculusVertexShader, TEXT("OculusShaders"), TEXT("MainVertexShader"), SF_Vertex);
+IMPLEMENT_SHADER_TYPE(, FOculusWhiteShader, TEXT("OculusShaders"), TEXT("MainWhiteShader"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FOculusBlackShader, TEXT("OculusShaders"), TEXT("MainBlackShader"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FOculusAlphaInverseShader, TEXT("OculusShaders"), TEXT("MainAlphaInverseShader"), SF_Pixel);
 
