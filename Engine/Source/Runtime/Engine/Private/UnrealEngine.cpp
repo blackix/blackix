@@ -2042,21 +2042,57 @@ bool UEngine::InitializeHMDDevice()
 			IModularFeatures& ModularFeatures = IModularFeatures::Get();
 			TArray<IHeadMountedDisplayModule*> HMDModules = ModularFeatures.GetModularFeatureImplementations<IHeadMountedDisplayModule>(Type);
 
+			// Check whether the user passed in an explicit HMD module on the command line
+			FString ExplicitHMDName;
+			bool bUseExplicitHMDDevice = FParse::Value(FCommandLine::Get(), TEXT("hmd="), ExplicitHMDName);
+						
 			// Sort modules by priority
 			HMDModules.Sort(IHeadMountedDisplayModule::FCompareModulePriority());
 
-			// Select first module able to create an HMDDevice
+			// Select first module with a connected HMD able to create a device
 			IHeadMountedDisplayModule* HMDModuleSelected = nullptr;
+			TArray<IHeadMountedDisplayModule*> HMDModulesDisconnected;
 
 			for (auto HMDModuleIt = HMDModules.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
 			{
 				IHeadMountedDisplayModule* HMDModule = *HMDModuleIt;
-				HMDDevice = HMDModule->CreateHeadMountedDisplay();
 
-				if (HMDDevice.IsValid())
+				// Skip all non-matching modules when an explicit module name has been specified on the command line
+				if (bUseExplicitHMDDevice && !ExplicitHMDName.Equals(HMDModule->GetModulePriorityKeyName(), ESearchCase::IgnoreCase))
 				{
-					HMDModuleSelected = HMDModule;
-					break;
+					continue;
+				}
+
+				if(HMDModule->IsHMDConnected())
+				{
+					HMDDevice = HMDModule->CreateHeadMountedDisplay();
+
+					if (HMDDevice.IsValid())
+					{
+						HMDModuleSelected = HMDModule;
+						break;
+					}
+				}
+				else
+				{
+					HMDModulesDisconnected.Add(HMDModule);
+				}
+			}
+
+			// If no module selected yet, just select first module able to create a device, even if HMD is not connected.
+			if (!HMDModuleSelected)
+			{
+				for (auto HMDModuleIt = HMDModulesDisconnected.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
+				{
+					IHeadMountedDisplayModule* HMDModule = *HMDModuleIt;
+
+					HMDDevice = HMDModule->CreateHeadMountedDisplay();
+
+					if (HMDDevice.IsValid())
+					{
+						HMDModuleSelected = HMDModule;
+						break;
+					}
 				}
 			}
 
@@ -2080,6 +2116,12 @@ bool UEngine::InitializeHMDDevice()
 					HMDDevice->EnableStereo(true);
 				}
 			}
+			// Else log an error if we got an explicit module name on the command line
+			else if (bUseExplicitHMDDevice)
+			{
+				UE_LOG(LogInit, Error, TEXT("Failed to find or initialize HMD module named '%s'. HMD mode will be disabled."), *ExplicitHMDName);
+			}
+
 		}
 	}
  
