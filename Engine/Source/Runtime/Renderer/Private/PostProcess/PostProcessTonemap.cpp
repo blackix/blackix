@@ -73,6 +73,7 @@ typedef enum {
 	TonemapperMsaa              = (1<<13),
 	TonemapperSharpen           = (1<<14),
 	TonemapperInverseTonemapping = (1 << 15),
+	TonemapperLinearFloatRT		 = (1 << 16)
 } TonemapperOption;
 
 // Tonemapper option cost (0 = no cost, 255 = max cost).
@@ -95,6 +96,7 @@ static uint8 TonemapperCostTab[] = {
 	1, //TonemapperMsaa
 	1, //TonemapperSharpen
 	1, //TonemapperInverseTonemapping
+	1, //TonemapperLinearFloatRT
 };
 
 // Edit the following to add and remove configurations.
@@ -102,7 +104,7 @@ static uint8 TonemapperCostTab[] = {
 // Place most common first (faster when searching in TonemapperFindLeastExpensive()).
 
 // List of configurations compiled for PC.
-static uint32 TonemapperConfBitmaskPC[15] = { 
+static uint32 TonemapperConfBitmaskPC[18] = { 
 
 	TonemapperBloom +
 	TonemapperGrainJitter +
@@ -201,7 +203,25 @@ static uint32 TonemapperConfBitmaskPC[15] = {
 	TonemapperInverseTonemapping +
 	0,
 
-	//
+	// with linear float rendertarget (linear instead of sRGB, and less grain jitter)
+
+	TonemapperBloom +
+	TonemapperGrainJitter +
+	TonemapperGrainIntensity +
+	TonemapperGrainQuantization +
+	TonemapperVignette +
+	TonemapperColorFringe +
+	TonemapperSharpen +
+	TonemapperLinearFloatRT +
+	0,
+
+	TonemapperBloom +
+	TonemapperSharpen +
+	TonemapperLinearFloatRT +
+	0,
+
+	TonemapperLinearFloatRT +
+	0,
 
 	TonemapperGammaOnly +
 	0,
@@ -590,6 +610,12 @@ static uint32 TonemapperGenerateBitmask(const FViewInfo* RESTRICT View, bool bGa
 
 	float Sharpen = CVarTonemapperSharpen.GetValueOnRenderThread();
 
+	EPixelFormat Format = Family->RenderTarget->GetRenderTargetTexture()->GetFormat();
+	if (Format == PF_FloatRGB || Format == PF_FloatRGBA || Format == PF_FloatR11G11B10)
+	{
+		Bitmask += TonemapperLinearFloatRT;
+	}
+
 	Bitmask += (Settings->FilmShadowTintAmount > 0.0f) ? TonemapperShadowTint     : 0;	
 	Bitmask += (Settings->FilmContrast > 0.0f)         ? TonemapperContrast       : 0;
 	Bitmask += (Settings->GrainIntensity > 0.0f)       ? TonemapperGrainIntensity : 0;
@@ -923,19 +949,20 @@ class FPostProcessTonemapPS : public FGlobalShader
 
 		uint32 ConfigBitmask = TonemapperConfBitmaskPC[ConfigIndex];
 
-		OutEnvironment.SetDefine(TEXT("USE_GAMMA_ONLY"),         TonemapperIsDefined(ConfigBitmask, TonemapperGammaOnly));
-		OutEnvironment.SetDefine(TEXT("USE_COLOR_MATRIX"),       TonemapperIsDefined(ConfigBitmask, TonemapperColorMatrix));
-		OutEnvironment.SetDefine(TEXT("USE_SHADOW_TINT"),        TonemapperIsDefined(ConfigBitmask, TonemapperShadowTint));
-		OutEnvironment.SetDefine(TEXT("USE_CONTRAST"),           TonemapperIsDefined(ConfigBitmask, TonemapperContrast));
-		OutEnvironment.SetDefine(TEXT("USE_BLOOM"),              TonemapperIsDefined(ConfigBitmask, TonemapperBloom));
-		OutEnvironment.SetDefine(TEXT("USE_GRAIN_JITTER"),       TonemapperIsDefined(ConfigBitmask, TonemapperGrainJitter));
-		OutEnvironment.SetDefine(TEXT("USE_GRAIN_INTENSITY"),    TonemapperIsDefined(ConfigBitmask, TonemapperGrainIntensity));
-		OutEnvironment.SetDefine(TEXT("USE_GRAIN_QUANTIZATION"), TonemapperIsDefined(ConfigBitmask, TonemapperGrainQuantization));
-		OutEnvironment.SetDefine(TEXT("USE_VIGNETTE"),           TonemapperIsDefined(ConfigBitmask, TonemapperVignette));
-		OutEnvironment.SetDefine(TEXT("USE_COLOR_FRINGE"),		 TonemapperIsDefined(ConfigBitmask, TonemapperColorFringe));
-		OutEnvironment.SetDefine(TEXT("USE_SHARPEN"),	         TonemapperIsDefined(ConfigBitmask, TonemapperSharpen));
+		OutEnvironment.SetDefine(TEXT("USE_GAMMA_ONLY"),          TonemapperIsDefined(ConfigBitmask, TonemapperGammaOnly));
+		OutEnvironment.SetDefine(TEXT("USE_COLOR_MATRIX"),		  TonemapperIsDefined(ConfigBitmask, TonemapperColorMatrix));
+		OutEnvironment.SetDefine(TEXT("USE_SHADOW_TINT"),         TonemapperIsDefined(ConfigBitmask, TonemapperShadowTint));
+		OutEnvironment.SetDefine(TEXT("USE_CONTRAST"),            TonemapperIsDefined(ConfigBitmask, TonemapperContrast));
+		OutEnvironment.SetDefine(TEXT("USE_BLOOM"),               TonemapperIsDefined(ConfigBitmask, TonemapperBloom));
+		OutEnvironment.SetDefine(TEXT("USE_GRAIN_JITTER"),        TonemapperIsDefined(ConfigBitmask, TonemapperGrainJitter));
+		OutEnvironment.SetDefine(TEXT("USE_GRAIN_INTENSITY"),     TonemapperIsDefined(ConfigBitmask, TonemapperGrainIntensity));
+		OutEnvironment.SetDefine(TEXT("USE_GRAIN_QUANTIZATION"),  TonemapperIsDefined(ConfigBitmask, TonemapperGrainQuantization));
+		OutEnvironment.SetDefine(TEXT("USE_VIGNETTE"),            TonemapperIsDefined(ConfigBitmask, TonemapperVignette));
+		OutEnvironment.SetDefine(TEXT("USE_COLOR_FRINGE"),		  TonemapperIsDefined(ConfigBitmask, TonemapperColorFringe));
+		OutEnvironment.SetDefine(TEXT("USE_SHARPEN"),	          TonemapperIsDefined(ConfigBitmask, TonemapperSharpen));
 		OutEnvironment.SetDefine(TEXT("USE_INVERSE_TONEMAPPING"), TonemapperIsDefined(ConfigBitmask, TonemapperInverseTonemapping));
-		OutEnvironment.SetDefine(TEXT("USE_VOLUME_LUT"), UseVolumeTextureLUT(Platform));
+		OutEnvironment.SetDefine(TEXT("USE_LINEAR_FLOAT_RT"),	  TonemapperIsDefined(ConfigBitmask, TonemapperLinearFloatRT));
+		OutEnvironment.SetDefine(TEXT("USE_VOLUME_LUT"),		  UseVolumeTextureLUT(Platform));
 	}
 
 	/** Default constructor. */
@@ -1155,13 +1182,13 @@ public:
 
 						const FTextureRHIRef& SrcTexture = InputPooledElement->GetRenderTargetItem().ShaderResourceTexture;
 					
-						SetTextureParameter(Context.RHICmdList, ShaderRHI, ColorGradingLUT, ColorGradingLUTSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), SrcTexture);
+						SetTextureParameter(Context.RHICmdList, ShaderRHI, ColorGradingLUT, ColorGradingLUTSampler, TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI(), SrcTexture);
 					}
 				}
 			}
 		}
 
-		{
+		{		
 			FVector InvDisplayGammaValue;
 			InvDisplayGammaValue.X = 1.0f / ViewFamily.RenderTarget->GetDisplayGamma();
 			InvDisplayGammaValue.Y = 2.2f / ViewFamily.RenderTarget->GetDisplayGamma();

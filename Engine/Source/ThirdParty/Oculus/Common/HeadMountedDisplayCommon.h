@@ -121,6 +121,9 @@ public:
 			/** Whether timewarp is enabled or not */
 			uint64 bTimeWarp : 1;
 
+			/** Allocate an high quality OVR_FORMAT_R11G11B10_FLOAT buffer for Rift */
+			uint64 bHQBuffer : 1;
+
 			/** True, if pos tracking is enabled */
 			uint64				bHmdPosTracking : 1;
 
@@ -429,8 +432,6 @@ public:
 
 	FHMDLayerDesc& operator=(const FHMDLayerDesc&);
 
-	bool HasPendingTextureCopy() const { return bTextureCopyPending; }
-	void ClearPendingTextureCopy() const { bTextureCopyPending = false; }
 	bool IsTextureChanged() const { return bTextureHasChanged; }
 	void MarkTextureChanged() const { bTextureHasChanged = true; }
 	bool IsTransformChanged() const { return bTransformHasChanged; }
@@ -454,7 +455,6 @@ protected:
 	bool			bHeadLocked  : 1; // the layer is head-locked; Transform becomes relative to HMD
 	bool			bTorsoLocked : 1; // locked to torso (to player's orientation / location)
 	mutable bool	bTextureHasChanged : 1;
-	mutable bool	bTextureCopyPending : 1;
 	bool			bTransformHasChanged : 1;
 	bool			bNewLayer : 1;
 	bool			bAlreadyAdded : 1; // internal flag indicating the layer is already added into render layers.
