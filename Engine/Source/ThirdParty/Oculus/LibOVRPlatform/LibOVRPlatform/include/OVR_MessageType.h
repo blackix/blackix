@@ -68,6 +68,7 @@ typedef enum ovrMessageType_ {
   ovrMessage_Notification_MarkAsRead                             = 0x717259E3, ///< Generated in response to ovr_Notification_MarkAsRead()
   ovrMessage_Party_GetCurrent                                    = 0x47933760, ///< Generated in response to ovr_Party_GetCurrent()
   ovrMessage_Room_CreateAndJoinPrivate                           = 0x75D6E377, ///< Generated in response to ovr_Room_CreateAndJoinPrivate()
+  ovrMessage_Room_CreateAndJoinPrivate2                          = 0x5A3A6243, ///< Generated in response to ovr_Room_CreateAndJoinPrivate2()
   ovrMessage_Room_Get                                            = 0x659A8FB8, ///< Generated in response to ovr_Room_Get()
   ovrMessage_Room_GetCurrent                                     = 0x09A6A504, ///< Generated in response to ovr_Room_GetCurrent()
   ovrMessage_Room_GetCurrentForUser                              = 0x0E0017E5, ///< Generated in response to ovr_Room_GetCurrentForUser()
@@ -119,7 +120,7 @@ typedef enum ovrMessageType_ {
   /// Home. Use ovr_Message_GetString() to extract the ID of the room that the
   /// user has been inivted to as a string. Then call ovrID_FromString() to parse
   /// it into an ovrID.
-  /// 
+  ///
   /// Note that you must call ovr_Room_Join() if you want to actually join the
   /// room.
   ///
@@ -145,13 +146,13 @@ typedef enum ovrMessageType_ {
   ovrMessage_Notification_Voip_StateChange = 0x34EFA660,
 
   /// Sent to indicate that some part of the overall state of SystemVoip has
-  /// changed. Use ovr_Message_GetSystemVoipState() and
-  /// ovr_SystemVoipState_Get...() to extract the state that triggered the
+  /// changed. Use ovr_Message_GetSystemVoipState() and the properties of
+  /// ovrSystemVoipStateHandle to extract the state that triggered the
   /// notification.
-  /// 
+  ///
   /// Note that the state may have changed further since the notification was
-  /// generated, and that you may call ovr_Voip_GetSystemVoip...() at any time to
-  /// get the current state directly.
+  /// generated, and that you may call the `GetSystemVoip...()` family of
+  /// functions at any time to get the current state directly.
   ovrMessage_Notification_Voip_SystemVoipState = 0x58D254A5,
 
 } ovrMessageType;
