@@ -25,7 +25,7 @@
 
 /// Retrieve the user with the given ID. This might fail if the ID is invalid
 /// or the user is blocked.
-/// 
+///
 /// NOTE: Users will have a unique ID per application.
 /// \param userID User ID retrieved with this application.
 ///
@@ -49,10 +49,10 @@ OVRP_PUBLIC_FUNCTION(ovrRequest) ovr_User_Get(ovrID userID);
 OVRP_PUBLIC_FUNCTION(ovrRequest) ovr_User_GetAccessToken();
 
 /// Retrieve the currently signed in user. This call is available offline.
-/// 
+///
 /// NOTE: This will not return the user's presence as it should always be
 /// 'online' in your application.
-/// 
+///
 /// NOTE: Users will have a unique ID per application.
 ///
 /// A message with type ::ovrMessage_User_GetLoggedInUser will be generated in response.
@@ -100,7 +100,7 @@ OVRP_PUBLIC_FUNCTION(ovrRequest) ovr_User_GetOrgScopedID(ovrID userID);
 /// from ovr_User_Get() to your your backend. Your server can then use our api
 /// to verify identity. 'https://graph.oculus.com/user_nonce_validate?nonce=USE
 /// R_PROOF&user_id=USER_ID&access_token=ACCESS_TOKEN'
-/// 
+///
 /// NOTE: The nonce is only good for one check and then it is invalidated.
 ///
 /// A message with type ::ovrMessage_User_GetUserProof will be generated in response.

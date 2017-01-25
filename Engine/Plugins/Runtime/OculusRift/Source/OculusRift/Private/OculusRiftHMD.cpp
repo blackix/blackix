@@ -2222,13 +2222,7 @@ void FOculusRiftHMD::UpdateStereoRenderingParams()
 
 		if (CurrentSettings->PixelDensityAdaptive && pCustomPresent && pCustomPresent->IsReadyToSubmitFrame())
 		{
-			ovrPerfStats perfStats;
-			ovrResult result = ovr_GetPerfStats(OvrSession, &perfStats);
-
-			if(OVR_SUCCESS(result))
-			{
-				pixelDensity *= FMath::Sqrt(perfStats.AdaptiveGpuPerformanceScale);
-			}
+			pixelDensity *= ovr_GetFloat(OvrSession, "AdaptiveGpuPerformanceScale", 1.0f);
 		}
 
 		CurrentSettings->PixelDensityMin = FMath::Min(CurrentSettings->PixelDensityMin, CurrentSettings->PixelDensityMax);
