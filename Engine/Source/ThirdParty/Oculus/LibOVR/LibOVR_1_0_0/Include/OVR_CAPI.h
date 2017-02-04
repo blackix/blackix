@@ -433,6 +433,7 @@ typedef enum ovrTrackingOrigin_
     /// to make sure the user is in a comfortable pose, facing a comfortable
     /// direction.
     ovrTrackingOrigin_EyeLevel = 0,
+    
     /// \brief Tracking system origin reported at floor height
     /// \details Prefer using this origin when your application requires the
     /// physical floor height to match the virtual floor height, such as
@@ -442,6 +443,7 @@ typedef enum ovrTrackingOrigin_
     /// will recenter the X & Z axes as well as yaw, but the Y-axis (i.e. height) will continue
     /// to be reported using the floor height as the origin for all poses.
     ovrTrackingOrigin_FloorLevel = 1,
+    
     ovrTrackingOrigin_Count = 2,            ///< \internal Count of enumerated elements.
     ovrTrackingOrigin_EnumSize = 0x7fffffff ///< \internal Force type int32_t.
 } ovrTrackingOrigin;
@@ -556,14 +558,15 @@ typedef struct OVR_ALIGNAS(8) ovrTrackingState_
 
     /// The pose of the origin captured during calibration.
     /// Like all other poses here, this is expressed in the space set by ovr_RecenterTrackingOrigin,
-    /// and so will change every time that is called. This pose can be used to calculate
-    /// where the calibrated origin lands in the new recentered space.
-    /// If an application never calls ovr_RecenterTrackingOrigin, expect this value to be the identity
-    /// pose and as such will point respective origin based on ovrTrackingOrigin requested when
-    /// calling ovr_GetTrackingState.
+    /// or ovr_SpecifyTrackingOrigin and so will change every time either of those functions are called.
+    /// This pose can be used to calculate where the calibrated origin lands in the new recentered space.
+    /// If an application never calls ovr_RecenterTrackingOrigin or ovr_SpecifyTrackingOrigin, expect
+    /// this value to be the identity pose and as such will point respective origin based on
+    /// ovrTrackingOrigin requested when calling ovr_GetTrackingState.
     ovrPosef      CalibratedOrigin;
 
 } ovrTrackingState;
+
 
 
 /// Rendering information for each eye. Computed by ovr_GetRenderDesc() based on the
@@ -655,34 +658,37 @@ typedef enum ovrTextureBindFlags_
 ///
 typedef enum ovrTextureFormat_
 {
-    OVR_FORMAT_UNKNOWN,
-    OVR_FORMAT_B5G6R5_UNORM,    ///< Not currently supported on PC. Would require a DirectX 11.1 device.
-    OVR_FORMAT_B5G5R5A1_UNORM,  ///< Not currently supported on PC. Would require a DirectX 11.1 device.
-    OVR_FORMAT_B4G4R4A4_UNORM,  ///< Not currently supported on PC. Would require a DirectX 11.1 device.
-    OVR_FORMAT_R8G8B8A8_UNORM,
-    OVR_FORMAT_R8G8B8A8_UNORM_SRGB,
-    OVR_FORMAT_B8G8R8A8_UNORM,
-    OVR_FORMAT_B8G8R8A8_UNORM_SRGB, ///< Not supported for OpenGL applications
-    OVR_FORMAT_B8G8R8X8_UNORM,      ///< Not supported for OpenGL applications
-    OVR_FORMAT_B8G8R8X8_UNORM_SRGB, ///< Not supported for OpenGL applications
-    OVR_FORMAT_R16G16B16A16_FLOAT,
-    OVR_FORMAT_D16_UNORM,
-    OVR_FORMAT_D24_UNORM_S8_UINT,
-    OVR_FORMAT_D32_FLOAT,
-    OVR_FORMAT_D32_FLOAT_S8X24_UINT,
+    OVR_FORMAT_UNKNOWN              = 0,
+    OVR_FORMAT_B5G6R5_UNORM         = 1,    ///< Not currently supported on PC. Would require a DirectX 11.1 device.
+    OVR_FORMAT_B5G5R5A1_UNORM       = 2,    ///< Not currently supported on PC. Would require a DirectX 11.1 device.
+    OVR_FORMAT_B4G4R4A4_UNORM       = 3,    ///< Not currently supported on PC. Would require a DirectX 11.1 device.
+    OVR_FORMAT_R8G8B8A8_UNORM       = 4,
+    OVR_FORMAT_R8G8B8A8_UNORM_SRGB  = 5,
+    OVR_FORMAT_B8G8R8A8_UNORM       = 6,
+    OVR_FORMAT_B8G8R8A8_UNORM_SRGB  = 7,    ///< Not supported for OpenGL applications
+    OVR_FORMAT_B8G8R8X8_UNORM       = 8,    ///< Not supported for OpenGL applications
+    OVR_FORMAT_B8G8R8X8_UNORM_SRGB  = 9,    ///< Not supported for OpenGL applications
+    OVR_FORMAT_R16G16B16A16_FLOAT   = 10,
+    OVR_FORMAT_R11G11B10_FLOAT      = 25,   ///< Introduced in v1.10
+
+    // Depth formats
+    OVR_FORMAT_D16_UNORM            = 11,
+    OVR_FORMAT_D24_UNORM_S8_UINT    = 12,
+    OVR_FORMAT_D32_FLOAT            = 13,
+    OVR_FORMAT_D32_FLOAT_S8X24_UINT = 14,
 
     // Added in 1.5 compressed formats can be used for static layers
-    OVR_FORMAT_BC1_UNORM,
-    OVR_FORMAT_BC1_UNORM_SRGB,
-    OVR_FORMAT_BC2_UNORM,
-    OVR_FORMAT_BC2_UNORM_SRGB,
-    OVR_FORMAT_BC3_UNORM,
-    OVR_FORMAT_BC3_UNORM_SRGB,
-    OVR_FORMAT_BC6H_UF16,
-    OVR_FORMAT_BC6H_SF16,
-    OVR_FORMAT_BC7_UNORM,
-    OVR_FORMAT_BC7_UNORM_SRGB,
-
+    OVR_FORMAT_BC1_UNORM            = 15,
+    OVR_FORMAT_BC1_UNORM_SRGB       = 16,
+    OVR_FORMAT_BC2_UNORM            = 17,
+    OVR_FORMAT_BC2_UNORM_SRGB       = 18,
+    OVR_FORMAT_BC3_UNORM            = 19,
+    OVR_FORMAT_BC3_UNORM_SRGB       = 20,
+    OVR_FORMAT_BC6H_UF16            = 21,
+    OVR_FORMAT_BC6H_SF16            = 22,
+    OVR_FORMAT_BC7_UNORM            = 23,
+    OVR_FORMAT_BC7_UNORM_SRGB       = 24,
+    
     OVR_FORMAT_ENUMSIZE = 0x7fffffff  ///< \internal Force type int32_t.
 } ovrTextureFormat;
 
@@ -757,26 +763,27 @@ typedef struct ovrMirrorTextureData* ovrMirrorTexture;
 /// The ovrButton_Enter and ovrButton_Return map to Start and Back controller buttons, respectively.
 typedef enum ovrButton_
 {
-    ovrButton_A         = 0x00000001,
-    ovrButton_B         = 0x00000002,
-    ovrButton_RThumb    = 0x00000004,
-    ovrButton_RShoulder = 0x00000008,
+    ovrButton_A         = 0x00000001, /// A button on XBox controllers and right Touch controller. Select button on Oculus Remote.
+    ovrButton_B         = 0x00000002, /// B button on XBox controllers and right Touch controller. Back button on Oculus Remote.
+    ovrButton_RThumb    = 0x00000004, /// Right thumbstick on XBox controllers and Touch controllers. Not present on Oculus Remote.
+    ovrButton_RShoulder = 0x00000008, /// Right shoulder button on XBox controllers. Not present on Touch controllers or Oculus Remote.
 
-    ovrButton_X         = 0x00000100,
-    ovrButton_Y         = 0x00000200,
-    ovrButton_LThumb    = 0x00000400,
-    ovrButton_LShoulder = 0x00000800,
+    ovrButton_X         = 0x00000100,  /// X button on XBox controllers and left Touch controller. Not present on Oculus Remote.
+    ovrButton_Y         = 0x00000200,  /// Y button on XBox controllers and left Touch controller. Not present on Oculus Remote.
+    ovrButton_LThumb    = 0x00000400,  /// Left thumbstick on XBox controllers and Touch controllers. Not present on Oculus Remote.
+    ovrButton_LShoulder = 0x00000800,  /// Left shoulder button on XBox controllers. Not present on Touch controllers or Oculus Remote.
 
-    // Navigation through DPad.
-    ovrButton_Up        = 0x00010000,
-    ovrButton_Down      = 0x00020000,
-    ovrButton_Left      = 0x00040000,
-    ovrButton_Right     = 0x00080000,
-    ovrButton_Enter     = 0x00100000, // Start on XBox controller.
-    ovrButton_Back      = 0x00200000, // Back on Xbox controller.
-    ovrButton_VolUp     = 0x00400000,  // only supported by Remote.
-    ovrButton_VolDown   = 0x00800000,  // only supported by Remote.
-    ovrButton_Home      = 0x01000000,
+    ovrButton_Up        = 0x00010000,  /// Up button on XBox controllers and Oculus Remote. Not present on Touch controllers.
+    ovrButton_Down      = 0x00020000,  /// Down button on XBox controllers and Oculus Remote. Not present on Touch controllers.
+    ovrButton_Left      = 0x00040000,  /// Left button on XBox controllers and Oculus Remote. Not present on Touch controllers.
+    ovrButton_Right     = 0x00080000,  /// Right button on XBox controllers and Oculus Remote. Not present on Touch controllers.
+    ovrButton_Enter     = 0x00100000,  /// Start on XBox 360 controller. Menu on XBox One controller and Left Touch controller. Should be referred to as the Menu button in user-facing documentation.
+    ovrButton_Back      = 0x00200000,  /// Back on Xbox 360 controller. View button on XBox One controller. Not present on Touch controllers or Oculus Remote.
+    ovrButton_VolUp     = 0x00400000,  /// Volume button on Oculus Remote. Not present on XBox or Touch controllers.
+    ovrButton_VolDown   = 0x00800000,  /// Volume button on Oculus Remote. Not present on XBox or Touch controllers.
+    ovrButton_Home      = 0x01000000,  /// Home button on XBox controllers. Oculus button on Touch controllers and Oculus Remote.
+    
+    // Bit mask of all buttons that are for private usage by Oculus
     ovrButton_Private   = ovrButton_VolUp | ovrButton_VolDown | ovrButton_Home,
 
     // Bit mask of all buttons on the right Touch controller
@@ -785,7 +792,6 @@ typedef enum ovrButton_
     // Bit mask of all buttons on the left Touch controller
     ovrButton_LMask = ovrButton_X | ovrButton_Y | ovrButton_LThumb | ovrButton_LShoulder |
                       ovrButton_Enter,
-
 
     ovrButton_EnumSize  = 0x7fffffff ///< \internal Force type int32_t.
 } ovrButton;
@@ -817,12 +823,11 @@ typedef enum ovrTouch_
     // Derived internally based on distance, proximity to sensors and filtering.
     ovrTouch_RIndexPointing = 0x00000020,
     ovrTouch_RThumbUp       = 0x00000040,
+    ovrTouch_LIndexPointing = 0x00002000,
+    ovrTouch_LThumbUp       = 0x00004000,
 
     // Bit mask of all right controller poses
     ovrTouch_RPoseMask      = ovrTouch_RIndexPointing | ovrTouch_RThumbUp,
-
-    ovrTouch_LIndexPointing = 0x00002000,
-    ovrTouch_LThumbUp       = 0x00004000,
 
     // Bit mask of all left controller poses
     ovrTouch_LPoseMask      = ovrTouch_LIndexPointing | ovrTouch_LThumbUp,
@@ -852,14 +857,20 @@ typedef struct OVR_ALIGNAS(OVR_PTR_SIZE) ovrTouchHapticsDesc_
 /// Specifies which controller is connected; multiple can be connected at once.
 typedef enum ovrControllerType_
 {
-    ovrControllerType_None      = 0x00,
-    ovrControllerType_LTouch    = 0x01,
-    ovrControllerType_RTouch    = 0x02,
-    ovrControllerType_Touch     = 0x03,
-    ovrControllerType_Remote    = 0x04,
-    ovrControllerType_XBox      = 0x10,
+    ovrControllerType_None      = 0x0000,
+    ovrControllerType_LTouch    = 0x0001,
+    ovrControllerType_RTouch    = 0x0002,
+    ovrControllerType_Touch     = (ovrControllerType_LTouch | ovrControllerType_RTouch),
+    ovrControllerType_Remote    = 0x0004,
 
-    ovrControllerType_Active    = 0xff,      ///< Operate on or query whichever controller is active.
+    ovrControllerType_XBox      = 0x0010,
+
+    ovrControllerType_Object0   = 0x0100,
+    ovrControllerType_Object1   = 0x0200,
+    ovrControllerType_Object2   = 0x0400,
+    ovrControllerType_Object3   = 0x0800,
+
+    ovrControllerType_Active    = 0xffffffff, ///< Operate on or query whichever controller is active.
 
     ovrControllerType_EnumSize  = 0x7fffffff ///< \internal Force type int32_t.
 } ovrControllerType;
@@ -874,8 +885,11 @@ typedef enum ovrHapticsBufferSubmitMode_
 /// Haptics buffer descriptor, contains amplitude samples used for Touch vibration
 typedef struct ovrHapticsBuffer_
 {
+    /// Samples stored in opaque format
     const void* Samples;
+    /// Number of samples
     int SamplesCount;
+    /// How samples are submitted to the hardware
     ovrHapticsBufferSubmitMode SubmitMode;
 } ovrHapticsBuffer;
 
@@ -895,7 +909,13 @@ typedef enum ovrTrackedDeviceType_
     ovrTrackedDevice_HMD        = 0x0001,
     ovrTrackedDevice_LTouch     = 0x0002,
     ovrTrackedDevice_RTouch     = 0x0004,
-    ovrTrackedDevice_Touch      = 0x0006,
+    ovrTrackedDevice_Touch      = (ovrTrackedDevice_LTouch| ovrTrackedDevice_RTouch),
+    
+    ovrTrackedDevice_Object0    = 0x0010,
+    ovrTrackedDevice_Object1    = 0x0020,
+    ovrTrackedDevice_Object2    = 0x0040,
+    ovrTrackedDevice_Object3    = 0x0080,
+
     ovrTrackedDevice_All        = 0xFFFF,
 } ovrTrackedDeviceType;
 
@@ -905,7 +925,7 @@ typedef enum ovrBoundaryType_
     // Outer boundary - closely represents user setup walls
     ovrBoundary_Outer           = 0x0001,
 
-    // Play area - smaller convex area inside outer boundary where gameplay happens
+    // Play area - safe rectangular area inside outer boundary which can optionally be used to restrict user interactions and motion.
     ovrBoundary_PlayArea        = 0x0100,
 } ovrBoundaryType;
 
@@ -919,13 +939,16 @@ typedef struct ovrBoundaryLookAndFeel_
 /// Provides boundary test information
 typedef struct ovrBoundaryTestResult_
 {
-    // True, if the boundary system is being triggered and visible
+    // True if the boundary system is being triggered. Note that due to fade in/out effects this may not exactly match visibility.
     ovrBool IsTriggering;
-    // Distance to the closest play area or outer boundary surface
+    
+    // Distance to the closest play area or outer boundary surface.
     float ClosestDistance;
-    // Closest point in the surface
+    
+    // Closest point on the boundary surface.
     ovrVector3f ClosestPoint;
-    // Normal of the closest point
+    
+    // Unit surface normal of the closest boundary surface.
     ovrVector3f ClosestPointNormal;
 } ovrBoundaryTestResult;
 
@@ -958,10 +981,14 @@ typedef struct ovrInputState_
     unsigned int        Touches;
 
     /// Left and right finger trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
-    /// Returns 0 if the value would otherwise be less than 0.1176, for ovrControllerType_XBox
+    /// Returns 0 if the value would otherwise be less than 0.1176, for ovrControllerType_XBox.
+    /// This has been formally named simply "Trigger". We retain the name IndexTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Trigger.
     float               IndexTrigger[ovrHand_Count];
 
     /// Left and right hand trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
+    /// This has been formally named "Grip Button". We retain the name HandTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Grip Button or simply Grip.
     float               HandTrigger[ovrHand_Count];
 
     /// Horizontal and vertical thumbstick axis values (ovrHand_Left and ovrHand_Right), in the range -1.0f to 1.0f.
@@ -972,19 +999,42 @@ typedef struct ovrInputState_
     ovrControllerType   ControllerType;
 
     /// Left and right finger trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
-    /// Does not apply a deadzone
+    /// Does not apply a deadzone.  Only touch applies a filter.
+    /// This has been formally named simply "Trigger". We retain the name IndexTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Trigger.
     /// Added in 1.7
     float               IndexTriggerNoDeadzone[ovrHand_Count];
 
     /// Left and right hand trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
-    /// Does not apply a deadzone
+    /// Does not apply a deadzone. Only touch applies a filter.
+    /// This has been formally named "Grip Button". We retain the name HandTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Grip Button or simply Grip.
     /// Added in 1.7
     float               HandTriggerNoDeadzone[ovrHand_Count];
 
     /// Horizontal and vertical thumbstick axis values (ovrHand_Left and ovrHand_Right), in the range -1.0f to 1.0f
-    /// Does not apply a deadzone
+    /// Does not apply a deadzone or filter.
     /// Added in 1.7
     ovrVector2f         ThumbstickNoDeadzone[ovrHand_Count];
+
+    /// Left and right finger trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
+    /// No deadzone or filter
+    /// This has been formally named "Grip Button". We retain the name HandTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Grip Button or simply Grip.
+    /// Added in 1.11
+    float               IndexTriggerRaw[ovrHand_Count];
+
+    /// Left and right hand trigger values (ovrHand_Left and ovrHand_Right), in the range 0.0 to 1.0f.
+    /// No deadzone or filter
+    /// This has been formally named "Grip Button". We retain the name HandTrigger for backwards code compatibility.
+    /// User-facing documentation should refer to it as the Grip Button or simply Grip.
+    /// Added in 1.11
+    float               HandTriggerRaw[ovrHand_Count];
+
+    /// Horizontal and vertical thumbstick axis values (ovrHand_Left and ovrHand_Right), in the range -1.0f to 1.0f
+    /// No deadzone or filter
+    /// Added in 1.11
+    ovrVector2f         ThumbstickRaw[ovrHand_Count];
 } ovrInputState;
 
 
@@ -1002,6 +1052,7 @@ typedef enum ovrInitFlags_
     /// run which can be used to help solve problems in the library and debug application code.
     ovrInit_Debug          = 0x00000001,
 
+
     /// When a version is requested, the LibOVR runtime respects the RequestedMinorVersion
     /// field and verifies that the RequestedMinorVersion is supported. Normally when you 
     /// specify this flag you simply use OVR_MINOR_VERSION for ovrInitParams::RequestedMinorVersion,
@@ -1009,7 +1060,20 @@ typedef enum ovrInitFlags_
     /// version behavior.
     ovrInit_RequestVersion = 0x00000004,
 
-    // These bits are writable by user code.
+
+    /// This client will not be visible in the HMD.
+    /// Typically set by diagnostic or debugging utilities.
+    ovrInit_Invisible      = 0x00000010,
+
+    /// This client will alternate between VR and 2D rendering.
+    /// Typically set by game engine editors and VR-enabled web browsers.
+    ovrInit_MixedRendering = 0x00000020,
+
+    
+
+
+
+    /// These bits are writable by user code.
     ovrinit_WritableBits   = 0x00ffffff,
 
     ovrInit_EnumSize       = 0x7fffffff ///< \internal Force type int32_t.
@@ -1280,7 +1344,7 @@ OVR_PUBLIC_FUNCTION(ovrTrackerDesc) ovr_GetTrackerDesc(ovrSession session, unsig
 /// A second call to ovr_Create will result in an error return value if the previous session has not been destroyed.
 ///
 /// \param[out] pSession Provides a pointer to an ovrSession which will be written to upon success.
-/// \param[out] luid Provides a system specific graphics adapter identifier that locates which
+/// \param[out] pLuid Provides a system specific graphics adapter identifier that locates which
 /// graphics adapter has the HMD attached. This must match the adapter used by the application
 /// or no rendering output will be possible. This is important for stability on multi-adapter systems. An
 /// application that simply chooses the default adapter will not run reliably on multi-adapter systems.
@@ -1321,7 +1385,7 @@ typedef struct ovrSessionStatus_
     ovrBool HmdMounted;   ///< True if the HMD is on the user's head.
     ovrBool DisplayLost;  ///< True if the session is in a display-lost state. See ovr_SubmitFrame.
     ovrBool ShouldQuit;   ///< True if the application should initiate shutdown.
-    ovrBool ShouldRecenter;  ///< True if UX has requested re-centering. Must call ovr_ClearShouldRecenterFlag or ovr_RecenterTrackingOrigin.
+    ovrBool ShouldRecenter;  ///< True if UX has requested re-centering. Must call ovr_ClearShouldRecenterFlag, ovr_RecenterTrackingOrigin or ovr_SpecifyTrackingOrigin
 }ovrSessionStatus;
 
 #if !defined(OVR_EXPORTING_CAPI)
@@ -1384,8 +1448,12 @@ OVR_PUBLIC_FUNCTION(ovrTrackingOrigin) ovr_GetTrackingOriginType(ovrSession sess
 
 /// Re-centers the sensor position and orientation.
 ///
-/// This resets the (x,y,z) positional components and the yaw orientation component.
-/// The Roll and pitch orientation components are always determined by gravity and cannot
+/// This resets the (x,y,z) positional components and the yaw orientation component of the
+/// tracking space for the HMD and controllers using the HMD's current tracking pose.
+/// If the caller requires some tweaks on top of the HMD's current tracking pose, consider using
+/// ovr_SpecifyTrackingOrigin instead.
+///
+/// The roll and pitch orientation components are always determined by gravity and cannot
 /// be redefined. All future tracking will report values relative to this new reference position.
 /// If you are using ovrTrackerPoses then you will need to call ovr_GetTrackerPose after
 /// this, because the sensor position(s) will change as a result of this.
@@ -1404,16 +1472,60 @@ OVR_PUBLIC_FUNCTION(ovrTrackingOrigin) ovr_GetTrackingOriginType(ovrSession sess
 ///     - ovrError_InvalidHeadsetOrientation: The headset was facing an invalid direction when
 ///       attempting recentering, such as facing vertically.
 ///
-/// \see ovrTrackingOrigin, ovr_GetTrackerPose
+/// \see ovrTrackingOrigin, ovr_GetTrackerPose, ovr_SpecifyTrackingOrigin
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_RecenterTrackingOrigin(ovrSession session);
+
+/// Allows manually tweaking the sensor position and orientation.
+///
+/// This function is similar to ovr_RecenterTrackingOrigin in that it modifies the
+/// (x,y,z) positional components and the yaw orientation component of the tracking space for
+/// the HMD and controllers.
+/// 
+/// While ovr_RecenterTrackingOrigin resets the tracking origin in reference to the HMD's
+/// current pose, ovr_SpecifyTrackingOrigin allows the caller to explicitly specify a transform
+/// for the tracking origin. This transform is expected to be an offset to the most recent
+/// recentered origin, so calling this function repeatedly with the same originPose will keep
+/// nudging the recentered origin in that direction.
+///
+/// There are several use cases for this function. For example, if the application decides to
+/// limit the yaw, or translation of the recentered pose instead of directly using the HMD pose
+/// the application can query the current tracking state via ovr_GetTrackingState, and apply
+/// some limitations to the HMD pose because feeding this pose back into this function.
+/// Similarly, this can be used to "adjust the seating position" incrementally in apps that
+/// feature seated experiences such as cockpit-based games.
+///
+/// This function can emulate ovr_RecenterTrackingOrigin as such:
+///     ovrTrackingState ts = ovr_GetTrackingState(session, 0.0, ovrFalse);
+///     ovr_SpecifyTrackingOrigin(session, ts.HeadPose.ThePose);
+///
+/// The roll and pitch orientation components are determined by gravity and cannot be redefined.
+/// If you are using ovrTrackerPoses then you will need to call ovr_GetTrackerPose after
+/// this, because the sensor position(s) will change as a result of this.
+///
+/// For more info, see the notes on each ovrTrackingOrigin enumeration to understand how
+/// recenter will vary slightly in its behavior based on the current ovrTrackingOrigin setting.
+///
+/// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
+/// \param[in] originPose Specifies a pose that will be used to transform the current tracking origin.
+///
+/// \return Returns an ovrResult indicating success or failure. In the case of failure, use
+///         ovr_GetLastErrorInfo to get more information. Return values include but aren't limited to:
+///     - ovrSuccess: Completed successfully.
+///     - ovrError_InvalidParameter: The heading direction in originPose was invalid,
+///         such as facing vertically. This can happen if the caller is directly feeding the pose
+///         of a position-tracked device such as an HMD or controller into this function.
+///
+/// \see ovrTrackingOrigin, ovr_GetTrackerPose, ovr_RecenterTrackingOrigin
+///
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_SpecifyTrackingOrigin(ovrSession session, ovrPosef originPose);
 
 
 /// Clears the ShouldRecenter status bit in ovrSessionStatus.
 ///
-/// Clears the ShouldRecenter status bit in ovrSessionStatus, allowing further recenter
-/// requests to be detected. Since this is automatically done by ovr_RecenterTrackingOrigin,
-/// this is only needs to be called when application is doing its own re-centering.
+/// Clears the ShouldRecenter status bit in ovrSessionStatus, allowing further recenter requests to be
+/// detected. Since this is automatically done by ovr_RecenterTrackingOrigin and ovr_SpecifyTrackingOrigin,
+/// this function only needs to be called when application is doing its own re-centering logic.
 OVR_PUBLIC_FUNCTION(void) ovr_ClearShouldRecenterFlag(ovrSession session);
 
 
@@ -1436,6 +1548,7 @@ OVR_PUBLIC_FUNCTION(void) ovr_ClearShouldRecenterFlag(ovrSession session);
 /// \see ovrTrackingState, ovr_GetEyePoses, ovr_GetTimeInSeconds
 ///
 OVR_PUBLIC_FUNCTION(ovrTrackingState) ovr_GetTrackingState(ovrSession session, double absTime, ovrBool latencyMarker);
+
 
 
 
@@ -1484,13 +1597,15 @@ OVR_PUBLIC_FUNCTION(ovrTouchHapticsDesc) ovr_GetTouchHapticsDesc(ovrSession sess
 /// Note: ovr_SetControllerVibration cannot be used interchangeably with ovr_SubmitControllerVibration.
 ///
 /// This method should be called periodically, vibration lasts for a maximum of 2.5 seconds.
-/// It's recommended to call this method once a second, calls will be rejected if called too frequently (over 30hz).
 ///
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in] controllerType The controller to set the vibration to.
 /// \param[in] frequency Vibration frequency. Supported values are: 0.0 (disabled), 0.5 and 1.0. Non valid values will be clamped.
 /// \param[in] amplitude Vibration amplitude in the [0.0, 1.0] range.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_DeviceUnavailable: The call succeeded but the device referred to by controllerType is not available.
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_SetControllerVibration(ovrSession session, ovrControllerType controllerType, float frequency, float amplitude);
 
@@ -1500,7 +1615,11 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_SetControllerVibration(ovrSession session, ov
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in] controllerType Controller where the Haptics buffer will be played.
 /// \param[in] buffer Haptics buffer containing amplitude samples to be played.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_DeviceUnavailable: The call succeeded but the device referred to by controllerType is not available.
+///
 /// \see ovrHapticsBuffer
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_SubmitControllerVibration(ovrSession session, ovrControllerType controllerType, const ovrHapticsBuffer* buffer);
@@ -1510,7 +1629,11 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_SubmitControllerVibration(ovrSession session,
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in] controllerType Controller where the Haptics buffer wil be played.
 /// \param[in] outState State of the haptics engine.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_DeviceUnavailable: The call succeeded but the device referred to by controllerType is not available.
+///
 /// \see ovrHapticsPlaybackState
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetControllerVibrationState(ovrSession session, ovrControllerType controllerType, ovrHapticsPlaybackState* outState);
@@ -1523,7 +1646,12 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetControllerVibrationState(ovrSession sessio
 /// \param[in] deviceBitmask Bitmask of one or more tracked devices to test.
 /// \param[in] boundaryType Must be either ovrBoundary_Outer or ovrBoundary_PlayArea.
 /// \param[out] outTestResult Result of collision/proximity test, contains information such as distance and closest point.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_BoundaryInvalid: The call succeeded but the result is not a valid boundary due to not being set up.
+///     - ovrSuccess_DeviceUnavailable: The call succeeded but the device referred to by deviceBitmask is not available.
+///
 /// \see ovrBoundaryTestResult
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_TestBoundary(ovrSession session, ovrTrackedDeviceType deviceBitmask, 
@@ -1535,7 +1663,11 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_TestBoundary(ovrSession session, ovrTrackedDe
 /// \param[in] point 3D point to test.
 /// \param[in] singleBoundaryType Must be either ovrBoundary_Outer or ovrBoundary_PlayArea to test against
 /// \param[out] outTestResult Result of collision/proximity test, contains information such as distance and closest point.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_BoundaryInvalid: The call succeeded but the result is not a valid boundary due to not being set up.
+///
 /// \see ovrBoundaryTestResult
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_TestBoundaryPoint(ovrSession session, const ovrVector3f* point, 
@@ -1562,9 +1694,12 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_ResetBoundaryLookAndFeel(ovrSession session);
 ///
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in] boundaryType Must be either ovrBoundary_Outer or ovrBoundary_PlayArea.
-/// \param[out] outFloorPoints Array of 3D points (in clockwise order) defining the boundary at floor height (up to 256).
+/// \param[out] outFloorPoints Array of 3D points (in clockwise order) defining the boundary at floor height (can be NULL to retrieve only the number of points).
 /// \param[out] outFloorPointsCount Number of 3D points returned in the array.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_BoundaryInvalid: The call succeeded but the result is not a valid boundary due to not being set up.
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetBoundaryGeometry(ovrSession session, ovrBoundaryType boundaryType, ovrVector3f* outFloorPoints, int* outFloorPointsCount);
 
@@ -1572,8 +1707,11 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetBoundaryGeometry(ovrSession session, ovrBo
 ///
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[in] boundaryType Must be either ovrBoundary_Outer or ovrBoundary_PlayArea.
-/// \param[out] dimensions Dimensions of the axis aligned bounding box that encloses the area in meters (width, height and length).
-/// \return Returns ovrSuccess upon success.
+/// \param[out] outDimensions Dimensions of the axis aligned bounding box that encloses the area in meters (width, height and length).
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: The call succeeded and a result was returned.
+///     - ovrSuccess_BoundaryInvalid: The call succeeded but the result is not a valid boundary due to not being set up.
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetBoundaryDimensions(ovrSession session, ovrBoundaryType boundaryType, ovrVector3f* outDimensions);
 
@@ -1584,7 +1722,10 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetBoundaryDimensions(ovrSession session, ovr
 ///
 /// \param[in] session Specifies an ovrSession previously returned by ovr_Create.
 /// \param[out] outIsVisible ovrTrue, if the boundary is visible.
-/// \return Returns ovrSuccess upon success.
+/// \return Returns an ovrResult for which OVR_SUCCESS(result) is false upon error and true
+///         upon success. Return values include but aren't limited to:
+///     - ovrSuccess: Result was successful and a result was returned.
+///     - ovrSuccess_BoundaryInvalid: The call succeeded but the result is not a valid boundary due to not being set up.
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetBoundaryVisible(ovrSession session, ovrBool* outIsVisible); 
 
@@ -2009,7 +2150,9 @@ OVR_PUBLIC_FUNCTION(ovrEyeRenderDesc) ovr_GetRenderDesc(ovrSession session,
 ///     - ovrSuccess_NotVisible: rendering completed successfully but was not displayed on the HMD,
 ///       usually because another application currently has ownership of the HMD. Applications receiving
 ///       this result should stop rendering new content, but continue to call ovr_SubmitFrame periodically
-///       until it returns a value other than ovrSuccess_NotVisible.
+///       until it returns a value other than ovrSuccess_NotVisible. Applications should not loop on
+///       calls to ovr_SubmitFrame in order to detect visibility; instead ovr_GetSessionStatus should be used.
+///       Similarly, appliations should not call ovr_SubmitFrame with zero layers to detect visibility.
 ///     - ovrError_DisplayLost: The session has become invalid (such as due to a device removal)
 ///       and the shared resources need to be released (ovr_DestroyTextureSwapChain), the session needs to
 ///       destroyed (ovr_Destroy) and recreated (ovr_Create), and new resources need to be created
@@ -2018,7 +2161,7 @@ OVR_PUBLIC_FUNCTION(ovrEyeRenderDesc) ovr_GetRenderDesc(ovrSession session,
 ///     - ovrError_TextureSwapChainInvalid: The ovrTextureSwapChain is in an incomplete or inconsistent state.
 ///       Ensure ovr_CommitTextureSwapChain was called at least once first.
 ///
-/// \see ovr_GetPredictedDisplayTime, ovrViewScaleDesc, ovrLayerHeader
+/// \see ovr_GetPredictedDisplayTime, ovrViewScaleDesc, ovrLayerHeader, ovr_GetSessionStatus
 ///
 OVR_PUBLIC_FUNCTION(ovrResult) ovr_SubmitFrame(ovrSession session, long long frameIndex,
                                                   const ovrViewScaleDesc* viewScaleDesc,
@@ -2051,21 +2194,26 @@ typedef struct OVR_ALIGNAS(4) ovrPerfStatsPerCompositorFrame_
 
     /// Index that increments with each successive ovr_SubmitFrame call
     int     AppFrameIndex;
+    
     /// If the app fails to call ovr_SubmitFrame on time, then expect this value to increment with each missed frame
     int     AppDroppedFrameCount;
+    
     /// Motion-to-photon latency for the application
     /// This value is calculated by either using the SensorSampleTime provided for the ovrLayerEyeFov or if that
     /// is not available, then the call to ovr_GetTrackingState which has latencyMarker set to ovrTrue
     float   AppMotionToPhotonLatency;
+    
     /// Amount of queue-ahead in seconds provided to the app based on performance and overlap of CPU & GPU utilization
     /// A value of 0.0 would mean the CPU & GPU workload is being completed in 1 frame's worth of time, while
     /// 11 ms (on the CV1) of queue ahead would indicate that the app's CPU workload for the next frame is
     /// overlapping the app's GPU workload for the current frame.
     float   AppQueueAheadTime;
+    
     /// Amount of time in seconds spent on the CPU by the app's render-thread that calls ovr_SubmitFrame
     /// Measured as elapsed time between from when app regains control from ovr_SubmitFrame to the next time the app
     /// calls ovr_SubmitFrame.
     float   AppCpuElapsedTime;
+    
     /// Amount of time in seconds spent on the GPU by the app
     /// Measured as elapsed time between each ovr_SubmitFrame call using GPU timing queries.
     float   AppGpuElapsedTime;
@@ -2078,28 +2226,52 @@ typedef struct OVR_ALIGNAS(4) ovrPerfStatsPerCompositorFrame_
     /// Since the compositor operates asynchronously, even if the app calls ovr_SubmitFrame too late,
     /// the compositor will kick off for each vsync.
     int     CompositorFrameIndex;
+    
     /// Increments each time the SDK compositor fails to complete in time
     /// This is not tied to the app's performance, but failure to complete can be tied to other factors
     /// such as OS capabilities, overall available hardware cycles to execute the compositor in time
     /// and other factors outside of the app's control.
     int     CompositorDroppedFrameCount;
+    
     /// Motion-to-photon latency of the SDK compositor in seconds
     /// This is the latency of timewarp which corrects the higher app latency as well as dropped app frames.
     float   CompositorLatency;
+    
     /// The amount of time in seconds spent on the CPU by the SDK compositor. Unless the VR app is utilizing
     /// all of the CPU cores at their peak performance, there is a good chance the compositor CPU times
     /// will not affect the app's CPU performance in a major way.
     float   CompositorCpuElapsedTime;
+    
     /// The amount of time in seconds spent on the GPU by the SDK compositor. Any time spent on the compositor
     /// will eat away from the available GPU time for the app.
     float   CompositorGpuElapsedTime;
+    
     /// The amount of time in seconds spent from the point the CPU kicks off the compositor to the point in time
     /// the compositor completes the distortion & timewarp on the GPU. In the event the GPU time is not
     /// available, expect this value to be -1.0f
     float   CompositorCpuStartToGpuEndElapsedTime;
+    
     /// The amount of time in seconds left after the compositor is done on the GPU to the associated V-Sync time.
     /// In the event the GPU time is not available, expect this value to be -1.0f
     float   CompositorGpuEndToVsyncElapsedTime;
+
+    ///
+    /// Async Spacewarp stats (ASW)
+    ///
+
+    /// Will be true is ASW is active for the given frame such that the application is being forced into
+    /// half the frame-rate while the compositor continues to run at full frame-rate
+    ovrBool AswIsActive;
+
+    /// Accumulates each time ASW it activated where the app was forced in and out of half-rate rendering
+    int AswActivatedToggleCount;
+
+    /// Accumulates the number of frames presented by the compositor which had extrapolated ASW frames presented
+    int AswPresentedFrameCount;
+
+    /// Accumulates the number of frames that the compositor tried to present when ASW is active but failed
+    int AswFailedFrameCount;
+
 } ovrPerfStatsPerCompositorFrame;
 
 ///
@@ -2110,41 +2282,47 @@ enum { ovrMaxProvidedFrameStats = 5 };
 ///
 /// This is a complete descriptor of the performance stats provided by the SDK
 ///
-/// FrameStatsCount will have a maximum value set by ovrMaxProvidedFrameStats
-/// If the application calls ovr_GetPerfStats at the native refresh rate of the HMD
-/// then FrameStatsCount will be 1. If the app's workload happens to force
-/// ovr_GetPerfStats to be called at a lower rate, then FrameStatsCount will be 2 or more.
-/// If the app does not want to miss any performance data for any frame, it needs to
-/// ensure that it is calling ovr_SubmitFrame and ovr_GetPerfStats at a rate that is at least:
-/// "HMD_refresh_rate / ovrMaxProvidedFrameStats". On the Oculus Rift CV1 HMD, this will
-/// be equal to 18 times per second.
-/// If the app calls ovr_SubmitFrame at a rate less than 18 fps, then when calling
-/// ovr_GetPerfStats, expect AnyFrameStatsDropped to become ovrTrue while FrameStatsCount
-/// is equal to ovrMaxProvidedFrameStats.
 ///
-/// The performance entries will be ordered in reverse chronological order such that the
-/// first entry will be the most recent one.
-///
-/// AdaptiveGpuPerformanceScale is an edge-filtered value that a caller can use to adjust
-/// the graphics quality of the application to keep the GPU utilization in check. The value
-/// is calculated as: (desired_GPU_utilization / current_GPU_utilization)
-/// As such, when this value is 1.0, the GPU is doing the right amount of work for the app.
-/// Lower values mean the app needs to pull back on the GPU utilization.
-/// If the app is going to directly drive render-target resolution using this value, then
-/// be sure to take the square-root of the value before scaling the resolution with it.
-/// Changing render target resolutions however is one of the many things an app can do
-/// increase or decrease the amount of GPU utilization.
-/// Since AdaptiveGpuPerformanceScale is edge-filtered and does not change rapidly
-/// (i.e. reports non-1.0 values once every couple of seconds) the app can make the
-/// necessary adjustments and then keep watching the value to see if it has been satisfied.
 /// 
 /// \see ovr_GetPerfStats, ovrPerfStatsPerCompositorFrame
 typedef struct OVR_ALIGNAS(4) ovrPerfStats_
 {
+    /// FrameStatsCount will have a maximum value set by ovrMaxProvidedFrameStats
+    /// If the application calls ovr_GetPerfStats at the native refresh rate of the HMD
+    /// then FrameStatsCount will be 1. If the app's workload happens to force
+    /// ovr_GetPerfStats to be called at a lower rate, then FrameStatsCount will be 2 or more.
+    /// If the app does not want to miss any performance data for any frame, it needs to
+    /// ensure that it is calling ovr_SubmitFrame and ovr_GetPerfStats at a rate that is at least:
+    /// "HMD_refresh_rate / ovrMaxProvidedFrameStats". On the Oculus Rift CV1 HMD, this will
+    /// be equal to 18 times per second.
+    ///
+    /// The performance entries will be ordered in reverse chronological order such that the
+    /// first entry will be the most recent one.
     ovrPerfStatsPerCompositorFrame  FrameStats[ovrMaxProvidedFrameStats];
     int                             FrameStatsCount;
+
+    /// If the app calls ovr_SubmitFrame at a rate less than 18 fps, then when calling
+    /// ovr_GetPerfStats, expect AnyFrameStatsDropped to become ovrTrue while FrameStatsCount
+    /// is equal to ovrMaxProvidedFrameStats.
     ovrBool                         AnyFrameStatsDropped;
+
+    /// AdaptiveGpuPerformanceScale is an edge-filtered value that a caller can use to adjust
+    /// the graphics quality of the application to keep the GPU utilization in check. The value
+    /// is calculated as: (desired_GPU_utilization / current_GPU_utilization)
+    /// As such, when this value is 1.0, the GPU is doing the right amount of work for the app.
+    /// Lower values mean the app needs to pull back on the GPU utilization.
+    /// If the app is going to directly drive render-target resolution using this value, then
+    /// be sure to take the square-root of the value before scaling the resolution with it.
+    /// Changing render target resolutions however is one of the many things an app can do
+    /// increase or decrease the amount of GPU utilization.
+    /// Since AdaptiveGpuPerformanceScale is edge-filtered and does not change rapidly
+    /// (i.e. reports non-1.0 values once every couple of seconds) the app can make the
+    /// necessary adjustments and then keep watching the value to see if it has been satisfied.
     float                           AdaptiveGpuPerformanceScale;
+
+    /// Will be true if Async Spacewarp (ASW) is available for this system which is dependent on
+    /// several factors such as choice of GPU, OS and debug overrides
+    ovrBool                         AswIsAvailable;
 } ovrPerfStats;
 
 #if !defined(OVR_EXPORTING_CAPI)
@@ -2235,8 +2413,9 @@ typedef enum ovrPerfHudMode_
     ovrPerfHud_LatencyTiming      = 2,  ///< Shows latency related timing info
     ovrPerfHud_AppRenderTiming    = 3,  ///< Shows render timing info for application
     ovrPerfHud_CompRenderTiming   = 4,  ///< Shows render timing info for OVR compositor
+    ovrPerfHud_AswStats           = 6,  ///< Shows Async Spacewarp-specific info
     ovrPerfHud_VersionInfo        = 5,  ///< Shows SDK & HMD version Info
-    ovrPerfHud_Count              = 6,  ///< \internal Count of enumerated elements.
+    ovrPerfHud_Count              = 7,  ///< \internal Count of enumerated elements.
     ovrPerfHud_EnumSize = 0x7fffffff    ///< \internal Force type int32_t.
 } ovrPerfHudMode;
 

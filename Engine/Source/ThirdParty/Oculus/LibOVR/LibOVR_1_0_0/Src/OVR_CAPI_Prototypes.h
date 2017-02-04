@@ -35,6 +35,7 @@ _(ovrResult, ovr_GetSessionStatus, , (ovrSession session, ovrSessionStatus* sess
 _(ovrResult, ovr_SetTrackingOriginType, , (ovrSession session, ovrTrackingOrigin origin)) \
 _(ovrTrackingOrigin, ovr_GetTrackingOriginType, , (ovrSession session)) \
 _(ovrResult, ovr_RecenterTrackingOrigin, , (ovrSession session)) \
+_(ovrResult, ovr_SpecifyTrackingOrigin, , (ovrSession session, ovrPosef originPose)) \
 _(void, ovr_ClearShouldRecenterFlag, , (ovrSession session)) \
 _(ovrTrackingState, ovr_GetTrackingState, , (ovrSession session, double absTime, ovrBool latencyMarker)) \
 _(ovrTrackerPose, ovr_GetTrackerPose, , (ovrSession session, unsigned int index)) \
@@ -80,7 +81,9 @@ _(ovrResult, ovr_ResetBoundaryLookAndFeel, , (ovrSession session)) \
 _(ovrResult, ovr_GetBoundaryGeometry, , (ovrSession session, ovrBoundaryType singleBoundaryType, ovrVector3f* outFloorPoints, int* outFloorPointsCount)) \
 _(ovrResult, ovr_GetBoundaryDimensions, , (ovrSession session, ovrBoundaryType singleBoundaryType, ovrVector3f* outDimension)) \
 _(ovrResult, ovr_GetBoundaryVisible, , (ovrSession session, ovrBool* outIsVisible)) \
-_(ovrResult, ovr_RequestBoundaryVisible, , (ovrSession session, ovrBool visible))
+_(ovrResult, ovr_RequestBoundaryVisible, , (ovrSession session, ovrBool visible)) \
+_(ovrResult, ovr_GetPerfStats, , (ovrSession session, ovrPerfStats* outPerfStats)) \
+_(ovrResult, ovr_ResetPerfStats, , (ovrSession session))
 
 #if defined (_WIN32)
     #define OVR_LIST_WIN32_APIS(_,X) \
@@ -100,7 +103,13 @@ _(ovrResult, ovr_RequestBoundaryVisible, , (ovrSession session, ovrBool visible)
 
     #define OVR_LIST_INTERNAL_APIS(_,X)
 
-    #define OVR_LIST_PRIVATE_APIS(_,X)
+// We need to forward declare the ovrSensorData type here, as it won't be in a public OVR_CAPI.h header.
+struct ovrSensorData_;
+typedef struct ovrSensorData_ ovrSensorData;
+
+#define OVR_LIST_PRIVATE_APIS(_,X) \
+_(ovrTrackingState, ovr_GetTrackingStateWithSensorData, , (ovrSession session, double absTime, ovrBool latencyMarker, ovrSensorData* sensorData)) \
+_(ovrResult, ovr_GetDevicePoses, , (ovrSession session, ovrTrackedDeviceType* deviceTypes, int deviceCount, double absTime, ovrPoseStatef* outDevicePoses))
 
 //
 // OVR_LIST_APIS - master list of all API entrypoints
