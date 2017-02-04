@@ -187,6 +187,10 @@ void FHMDViewExtension::PostRenderViewFamily_RenderThread(FRHICommandListImmedia
 	FHeadMountedDisplay* HeadMountedDisplay = static_cast<FHeadMountedDisplay*>(RenderContext.Delegate);
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	if (InViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeX() == SceneContext.GetBufferSizeXY().X / 2)
+	{
+		return; //PokeAHole not supported yet for direct-multiview.
+	}
 
 	SetRenderTarget(RHICmdList, InViewFamily.RenderTarget->GetRenderTargetTexture(), SceneContext.GetSceneDepthTexture());
 
