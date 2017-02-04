@@ -16,6 +16,9 @@ private:
 	/** Reference to the owning subsystem */
 	FOnlineSubsystemOculus& OculusSubsystem;
 
+	bool ReadOculusLeaderboards(bool bOnlyFriends, bool bOnlyLoggedInUser, FOnlineLeaderboardReadRef& ReadObject);
+	void OnReadLeaderboardsComplete(ovrMessageHandle Message, bool bIsError, const FOnlineLeaderboardReadRef& ReadObject);
+
 public:
 
 	/**

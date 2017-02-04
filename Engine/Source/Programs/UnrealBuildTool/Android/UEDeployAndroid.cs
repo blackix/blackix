@@ -1,4 +1,4 @@
-﻿// Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2016 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -1201,8 +1201,31 @@ namespace UnrealBuildTool
 
 
 
-		private string GenerateManifest(AndroidToolChain ToolChain, string ProjectName, bool bIsForDistribution, bool bPackageDataInsideApk, string GameBuildFilesPath, bool bHasOBBFiles, bool bDisableVerifyOBBOnStartUp, string UE4Arch, string GPUArch)
+		private string GenerateManifest(AndroidToolChain ToolChain, string ProjectName, string EngineDirectory, bool bIsForDistribution, bool bPackageDataInsideApk, string GameBuildFilesPath, bool bHasOBBFiles, bool bDisableVerifyOBBOnStartUp, string UE4Arch, string GPUArch)
 		{
+			// Read the engine version
+			string EngineMajorVersion = "4";
+			string EngineMinorVersion = "0";
+			string EnginePatchVersion = "0";
+			string EngineVersionFile = Path.Combine(EngineDirectory, "Source", "Runtime", "Launch", "Resources", "Version.h");
+			string[] EngineVersionLines = File.ReadAllLines(EngineVersionFile);
+			for (int i = 0; i < EngineVersionLines.Length; ++i)
+			{
+				if (EngineVersionLines[i].StartsWith("#define ENGINE_MAJOR_VERSION"))
+				{
+					EngineMajorVersion = EngineVersionLines[i].Split('\t')[1].Trim(' ');
+				}
+				else if (EngineVersionLines[i].StartsWith("#define ENGINE_MINOR_VERSION"))
+				{
+					EngineMinorVersion = EngineVersionLines[i].Split('\t')[1].Trim(' ');
+				}
+				else if (EngineVersionLines[i].StartsWith("#define ENGINE_PATCH_VERSION"))
+				{
+					EnginePatchVersion = EngineVersionLines[i].Split('\t')[1].Trim(' ');
+				}
+			}
+			string EngineVersion = EngineMajorVersion + "." + EngineMinorVersion + "." + EnginePatchVersion;
+
 			string Arch = GetNDKArch(UE4Arch);
 			int NDKLevelInt = ToolChain.GetNdkApiLevelInt();
 
@@ -1407,6 +1430,7 @@ namespace UnrealBuildTool
 				Text.AppendLine("\t\t<activity android:name=\".DownloaderActivity\" />");
 			}
 
+			Text.AppendLine(string.Format("\t\t<meta-data android:name=\"com.epicgames.ue4.GameActivity.EngineVersion\" android:value=\"{0}\"/>", EngineVersion));
 			Text.AppendLine(string.Format("\t\t<meta-data android:name=\"com.epicgames.ue4.GameActivity.DepthBufferPreference\" android:value=\"{0}\"/>", ConvertDepthBufferIniValue(DepthBufferPreference)));
 			Text.AppendLine(string.Format("\t\t<meta-data android:name=\"com.epicgames.ue4.GameActivity.bPackageDataInsideApk\" android:value=\"{0}\"/>", bPackageDataInsideApk ? "true" : "false"));
 			Text.AppendLine(string.Format("\t\t<meta-data android:name=\"com.epicgames.ue4.GameActivity.bVerifyOBBOnStartUp\" android:value=\"{0}\"/>", (bIsForDistribution && !bDisableVerifyOBBOnStartUp) ? "true" : "false"));
@@ -1864,7 +1888,7 @@ namespace UnrealBuildTool
 			{
 				BuildList = from Arch in Arches
 							from GPUArch in GPUArchitectures
-							let manifest = GenerateManifest(ToolChain, ProjectName, bForDistribution, bPackageDataInsideApk, GameBuildFilesPath, RequiresOBB(bDisallowPackagingDataInApk, ObbFileLocation), bDisableVerifyOBBOnStartUp, Arch, GPUArch)
+							let manifest = GenerateManifest(ToolChain, ProjectName, EngineDirectory, bForDistribution, bPackageDataInsideApk, GameBuildFilesPath, RequiresOBB(bDisallowPackagingDataInApk, ObbFileLocation), bDisableVerifyOBBOnStartUp, Arch, GPUArch)
 							select Tuple.Create(Arch, GPUArch, manifest);
 			}
 			else
@@ -1872,7 +1896,7 @@ namespace UnrealBuildTool
 				BuildList = from Arch in Arches
 							from GPUArch in GPUArchitectures
 							let manifestFile = Path.Combine(IntermediateAndroidPath, Arch + "_" + GPUArch + "_AndroidManifest.xml")
-							let manifest = GenerateManifest(ToolChain, ProjectName, bForDistribution, bPackageDataInsideApk, GameBuildFilesPath, RequiresOBB(bDisallowPackagingDataInApk, ObbFileLocation), bDisableVerifyOBBOnStartUp, Arch, GPUArch)
+							let manifest = GenerateManifest(ToolChain, ProjectName, EngineDirectory, bForDistribution, bPackageDataInsideApk, GameBuildFilesPath, RequiresOBB(bDisallowPackagingDataInApk, ObbFileLocation), bDisableVerifyOBBOnStartUp, Arch, GPUArch)
 							let OldManifest = File.Exists(manifestFile) ? File.ReadAllText(manifestFile) : ""
 							where manifest != OldManifest
 							select Tuple.Create(Arch, GPUArch, manifest);

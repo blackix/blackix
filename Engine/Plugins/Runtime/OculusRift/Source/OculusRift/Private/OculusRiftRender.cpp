@@ -73,7 +73,7 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 	FOculusRiftHMD* OculusRiftHMD = static_cast<FOculusRiftHMD*>(RenderContext.Delegate);
 
 	OculusRiftHMD->PerformanceStats.Frames++;
-	OculusRiftHMD->PerformanceStats.Seconds += DisplayTime;
+	OculusRiftHMD->PerformanceStats.Seconds = DisplayTime;
 
 	if (RenderContext.ShowFlags.Rendering)
 	{
@@ -83,7 +83,12 @@ void FViewExtension::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& 
 			(!CurrentFrame->Flags.bOrientationChanged && !CurrentFrame->Flags.bPositionChanged))
 		{
 			// get latest orientation/position and cache it
-			CurrentFrame->GetHeadAndEyePoses(CurrentFrame->GetTrackingState(OvrSession), CurrentFrame->CurHeadPose, CurrentFrame->CurEyeRenderPose);
+			CurrentFrame->RenderThreadTrackingState = CurrentFrame->GetTrackingState(OvrSession);
+			CurrentFrame->GetHeadAndEyePoses(CurrentFrame->RenderThreadTrackingState, CurrentFrame->CurHeadPose, CurrentFrame->CurEyeRenderPose);
+		}
+		else
+		{
+			CurrentFrame->RenderThreadTrackingState = CurrentFrame->InitialTrackingState;
 		}
 	}
 
@@ -390,7 +395,7 @@ void FOculusRiftHMD::RenderTexture_RenderThread(class FRHICommandListImmediate& 
 			pCustomPresent->CopyTexture_RenderThread(RHICmdList, BackBuffer, SrcTexture, SrcTexture->GetTexture2D()->GetSizeX(), SrcTexture->GetTexture2D()->GetSizeY(), DstViewRect, SrcViewRect, false, false);
 		}
 	}
-#if !UE_BUILD_SHIPPING
+#if OCULUS_STRESS_TESTS_ENABLED
 	if (StressTester)
 	{
 		StressTester->TickGPU_RenderThread(RHICmdList, BackBuffer, SrcTexture);
@@ -1123,6 +1128,8 @@ void FCustomPresent::Reset_RenderThread()
 		RenderContext->bFrameBegun = false;
 		SetRenderContext(nullptr);
 	}
+
+	bReady = false;
 }
 
 void FCustomPresent::Reset()

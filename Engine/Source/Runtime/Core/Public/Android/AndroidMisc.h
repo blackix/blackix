@@ -66,6 +66,7 @@ struct CORE_API FAndroidMisc : public FGenericPlatformMisc
 
 	static FCPUState& GetCPUState();
 	static int32 NumberOfCores();
+	static void LaunchGDBServer(int32 port);
 	static void LoadPreInitModules();
 	static void BeforeRenderThreadStarts();
 	static bool SupportsLocalCaching();

@@ -433,6 +433,27 @@ int32 FAndroidMisc::NumberOfCores()
 	return NumberOfCores;
 }
 
+void FAndroidMisc::LaunchGDBServer(int32 port)
+{
+	int parentPID = getpid();
+	int newPID = fork();
+
+	if (newPID == 0)
+	{
+		char parentPIDs[5];
+		sprintf(parentPIDs, "%d", parentPID);
+		char host[15];
+		sprintf(host, "host:%d", port);
+		FString gdbserverPath = GInternalFilePath + FString("/../lib/gdbserver");
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Launching GDB %s port %d\n"), *gdbserverPath, port);
+		int e1 = execl(TCHAR_TO_UTF8(*gdbserverPath), "gdbserver", "--attach", host, parentPIDs, (char *)0);
+		int e2 = errno;
+
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("GDB launch failed %d\n"), e2);
+		exit(0);
+	}
+}
+
 static FAndroidMisc::FCPUState CurrentCPUState;
 
 FAndroidMisc::FCPUState& FAndroidMisc::GetCPUState(){
@@ -507,7 +528,7 @@ FAndroidMisc::FCPUState& FAndroidMisc::GetCPUState(){
 	return CurrentCPUState;
 }
 
-
+extern FString GInternalFilePath;
 extern FString GFilePathBase;
 extern FString GFontPathBase;
 

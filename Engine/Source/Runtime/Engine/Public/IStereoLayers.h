@@ -11,11 +11,18 @@ class IStereoLayers
 {
 public:
 
-	enum ELayerType
+	enum ELayerPositionType
 	{
 		WorldLocked,
 		TrackerLocked,
 		FaceLocked
+	};
+
+	enum ELayerType
+	{
+		QuadLayer,
+		CylinderLayer,
+		CubemapLayer
 	};
 
 	enum ELayerFlags
@@ -23,6 +30,7 @@ public:
 		LAYER_FLAG_TEX_CONTINUOUS_UPDATE	= 0x00000001, // Internally copies the texture on every frame for video, etc.
 		LAYER_FLAG_TEX_NO_ALPHA_CHANNEL		= 0x00000002, // Ignore the textures alpha channel, this makes the stereo layer opaque
 		LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO	= 0x00000004, // Quad Y component will be calculated based on the texture dimensions
+		LAYER_FLAG_SUPPORT_DEPTH			= 0x00000008, // The layer will intersect with the scene's depth
 	};
 
 	/**
@@ -30,13 +38,17 @@ public:
 	 */
 	struct FLayerDesc
 	{
-		FTransform		Transform	= FTransform::Identity;									// View space transform
-		FVector2D		QuadSize	= FVector2D(1.0f, 1.0f);								// Size of rendered quad
-		FBox2D			UVRect		= FBox2D(FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f));	// UVs of rendered quad
-		int32			Priority	= 0;													// Render order priority, higher priority render on top of lower priority
-		ELayerType		Type		= ELayerType::FaceLocked;								// Which space the quad is locked within
-		FTextureRHIRef	Texture		= nullptr;												// Texture mapped to the quad
-		uint32			Flags		= 0;													// Uses LAYER_FLAG_...
+		FTransform			Transform	 = FTransform::Identity;									// View space transform
+		FVector2D			QuadSize	 = FVector2D(1.0f, 1.0f);								// Size of rendered quad
+		FBox2D				UVRect		 = FBox2D(FVector2D(0.0f, 0.0f), FVector2D(1.0f, 1.0f));	// UVs of rendered quad
+		int32				Priority	 = 0;													// Render order priority, higher priority render on top of lower priority
+		ELayerPositionType	PositionType = ELayerPositionType::FaceLocked;								// Which space the layer is locked within
+		ELayerType			Type		 = ELayerType::QuadLayer;                                  // which type of layer it is
+		FVector2D			CylinderSize = FVector2D(1.0f, 1.0f);
+		float				CylinderHeight = 1.0f;
+		FTextureRHIRef		Texture = nullptr;												// Texture mapped for right eye (if one texture provided, mono assumed)
+		FTextureRHIRef		LeftTexture = nullptr;												// Texture mapped for left eye (if one texture provided, mono assumed)
+		uint32				Flags		 = 0;													// Uses LAYER_FLAG_...
 	};
 
 	/**

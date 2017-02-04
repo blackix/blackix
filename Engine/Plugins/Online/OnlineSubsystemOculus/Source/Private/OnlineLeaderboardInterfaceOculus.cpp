@@ -12,50 +12,144 @@ FOnlineLeaderboardOculus::FOnlineLeaderboardOculus(class FOnlineSubsystemOculus&
 
 bool FOnlineLeaderboardOculus::ReadLeaderboards(const TArray< TSharedRef<const FUniqueNetId> >& Players, FOnlineLeaderboardReadRef& ReadObject)
 {
-	// Not supported
-	return false;
+	bool bOnlyLoggedInUser = false;
+	if (Players.Num() > 0) 
+	{
+		auto LoggedInPlayerId = OculusSubsystem.GetIdentityInterface()->GetUniquePlayerId(0);
+		if (Players.Num() == 1 && LoggedInPlayerId.IsValid() && *Players[0] == *LoggedInPlayerId)
+		{
+			bOnlyLoggedInUser = true;
+		}
+		else
+		{
+			UE_LOG_ONLINE(Warning, TEXT("Filtering by player ids other than the logged in player is not supported.  Ignoring the 'Players' parameter"));
+		}
+	}
+	return ReadOculusLeaderboards(/* Only Friends */ false, bOnlyLoggedInUser, ReadObject);
 };
 
 bool FOnlineLeaderboardOculus::ReadLeaderboardsForFriends(int32 LocalUserNum, FOnlineLeaderboardReadRef& ReadObject)
 {
+	return ReadOculusLeaderboards(/* Only Friends */ true, /* Only Logged In User */ false, ReadObject);
+}
+
+bool FOnlineLeaderboardOculus::ReadOculusLeaderboards(bool bOnlyFriends, bool bOnlyLoggedInUser, FOnlineLeaderboardReadRef& ReadObject)
+{
+	auto FilterType = (bOnlyFriends) ? ovrLeaderboard_FilterFriends : ovrLeaderboard_FilterNone;
+
+	auto Limit = 100;
+	auto StartAt = ovrLeaderboard_StartAtTop;
+
+	// If only getting the logged in user, then only return back one result
+	if (bOnlyLoggedInUser)
+	{
+		Limit = 1;
+		StartAt = ovrLeaderboard_StartAtCenteredOnViewer;
+	}
+
 	ReadObject->ReadState = EOnlineAsyncTaskState::InProgress;
 	OculusSubsystem.AddRequestDelegate(
-		ovr_Leaderboard_GetEntries(TCHAR_TO_ANSI(*ReadObject->LeaderboardName.ToString()), 100, ovrLeaderboard_FilterFriends, ovrLeaderboard_StartAtTop),
+		ovr_Leaderboard_GetEntries(TCHAR_TO_ANSI(*ReadObject->LeaderboardName.ToString()), Limit, FilterType, StartAt),
 		FOculusMessageOnCompleteDelegate::CreateLambda([this, ReadObject](ovrMessageHandle Message, bool bIsError)
 	{
-		if (bIsError)
-		{
-			ReadObject->ReadState = EOnlineAsyncTaskState::Failed;
-			TriggerOnLeaderboardReadCompleteDelegates(false);
-			return;
-		}
-
-		auto LeaderboardArray = ovr_Message_GetLeaderboardEntryArray(Message);
-		auto LeaderboardArraySize = ovr_LeaderboardEntryArray_GetSize(LeaderboardArray);
-
-		for (size_t i = 0; i < LeaderboardArraySize; i++)
-		{
-			auto LeaderboardEntry = ovr_LeaderboardEntryArray_GetElement(LeaderboardArray, i);
-			auto User = ovr_LeaderboardEntry_GetUser(LeaderboardEntry);
-			auto NickName = FString(ovr_User_GetOculusID(User));
-			auto UserID = ovr_User_GetID(User);
-			auto Rank = ovr_LeaderboardEntry_GetRank(LeaderboardEntry);
-			auto Score = ovr_LeaderboardEntry_GetScore(LeaderboardEntry);
-
-			auto Row = FOnlineStatsRow(NickName, MakeShareable(new FUniqueNetIdOculus(UserID)));
-			Row.Rank = Rank;
-			Row.Columns.Add(ReadObject->SortedColumn, FVariantData(Score));
-			ReadObject->Rows.Add(Row);
-		}
-
-		auto ScoreColumnMetaData = new FColumnMetaData(ReadObject->SortedColumn, EOnlineKeyValuePairDataType::Double);
-
-		ReadObject->ColumnMetadata.Add(*ScoreColumnMetaData);
-
-		ReadObject->ReadState = EOnlineAsyncTaskState::Done;
-		TriggerOnLeaderboardReadCompleteDelegates(true);
+		OnReadLeaderboardsComplete(Message, bIsError, ReadObject);
 	}));
 	return true;
+}
+
+void FOnlineLeaderboardOculus::OnReadLeaderboardsComplete(ovrMessageHandle Message, bool bIsError, const FOnlineLeaderboardReadRef& ReadObject)
+{
+	if (bIsError)
+	{
+		ReadObject->ReadState = EOnlineAsyncTaskState::Failed;
+		TriggerOnLeaderboardReadCompleteDelegates(false);
+		return;
+	}
+
+	auto LeaderboardArray = ovr_Message_GetLeaderboardEntryArray(Message);
+	auto LeaderboardArraySize = ovr_LeaderboardEntryArray_GetSize(LeaderboardArray);
+
+	EOnlineKeyValuePairDataType::Type ScoreType = EOnlineKeyValuePairDataType::Int64;
+
+	for (auto Metadata : ReadObject->ColumnMetadata)
+	{
+		if (Metadata.ColumnName == ReadObject->SortedColumn)
+		{
+			ScoreType = Metadata.DataType;
+			break;
+		}
+	}
+
+	for (size_t i = 0; i < LeaderboardArraySize; i++)
+	{
+		auto LeaderboardEntry = ovr_LeaderboardEntryArray_GetElement(LeaderboardArray, i);
+		auto User = ovr_LeaderboardEntry_GetUser(LeaderboardEntry);
+		auto NickName = FString(ovr_User_GetOculusID(User));
+		auto UserID = ovr_User_GetID(User);
+		auto Rank = ovr_LeaderboardEntry_GetRank(LeaderboardEntry);
+		auto Score = ovr_LeaderboardEntry_GetScore(LeaderboardEntry);
+
+		auto Row = FOnlineStatsRow(NickName, MakeShareable(new FUniqueNetIdOculus(UserID)));
+		Row.Rank = Rank;
+		FVariantData ScoreData = [ScoreType, Score] {
+			switch (ScoreType)
+			{
+				case EOnlineKeyValuePairDataType::Int32:
+					// prevent overflowing by capping to the max rather than truncate to preserve
+					// order of the score
+					if (Score > INT32_MAX)
+					{
+						return FVariantData((int32)INT32_MAX);
+					}
+					else if (Score < INT32_MIN)
+					{
+						return FVariantData((int32)INT32_MIN);
+					}
+					else
+					{
+						return FVariantData((int32)Score);
+					}
+					break;
+				case EOnlineKeyValuePairDataType::UInt32:
+					// prevent overflowing by capping to the max rather than truncate to preserve
+					// order of the score
+					if (Score > UINT32_MAX)
+					{
+						return FVariantData((uint32)UINT32_MAX);
+					}
+					else if (Score < 0)
+					{
+						return FVariantData((uint32)0);
+					}
+					else
+					{
+						return FVariantData((uint32)Score);
+					}
+					break;
+				default:
+					return FVariantData(Score);
+					break;
+			}
+		} ();
+
+		Row.Columns.Add(ReadObject->SortedColumn, MoveTemp(ScoreData));
+		ReadObject->Rows.Add(Row);
+	}
+
+	bool bHasPaging = ovr_LeaderboardEntryArray_HasNextPage(LeaderboardArray);
+	if (bHasPaging)
+	{
+		OculusSubsystem.AddRequestDelegate(
+			ovr_Leaderboard_GetNextEntries(LeaderboardArray),
+			FOculusMessageOnCompleteDelegate::CreateLambda([this, ReadObject](ovrMessageHandle Message, bool bIsError)
+		{
+			OnReadLeaderboardsComplete(Message, bIsError, ReadObject);
+		}));
+		return;
+	}
+
+	ReadObject->ReadState = EOnlineAsyncTaskState::Done;
+	TriggerOnLeaderboardReadCompleteDelegates(true);
 }
 
 void FOnlineLeaderboardOculus::FreeStats(FOnlineLeaderboardRead& ReadObject)
@@ -133,7 +227,17 @@ bool FOnlineLeaderboardOculus::WriteLeaderboards(const FName& SessionName, const
 
 	for (const auto& LeaderboardName : WriteObject.LeaderboardNames)
 	{
-		ovr_Leaderboard_WriteEntry(TCHAR_TO_ANSI(*LeaderboardName.ToString()), Score, /* extra_data */ nullptr, 0, (WriteObject.UpdateMethod == ELeaderboardUpdateMethod::Force));
+		OculusSubsystem.AddRequestDelegate(
+			ovr_Leaderboard_WriteEntry(TCHAR_TO_ANSI(*LeaderboardName.ToString()), Score, /* extra_data */ nullptr, 0, (WriteObject.UpdateMethod == ELeaderboardUpdateMethod::Force)),
+			FOculusMessageOnCompleteDelegate::CreateLambda([this](ovrMessageHandle Message, bool bIsError)
+		{
+			if (bIsError) 
+			{
+				auto Error = ovr_Message_GetError(Message);
+				auto ErrorMessage = ovr_Error_GetMessage(Error);
+				UE_LOG_ONLINE(Error, TEXT("%s"), *FString(ErrorMessage));
+			}
+		}));
 	}
 
 	return true;

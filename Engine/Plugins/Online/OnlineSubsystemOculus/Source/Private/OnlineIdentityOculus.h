@@ -30,7 +30,7 @@ public:
 
 	// FUserOnlineAccountOculus
 
-	FUserOnlineAccountOculus(const TSharedRef<FUniqueNetIdOculus>& InUserId, const FString& InName)
+	FUserOnlineAccountOculus(const TSharedRef<const FUniqueNetId>& InUserId, const FString& InName)
 		: UserIdPtr(InUserId),
 		Name(InName)
 	{ }
@@ -40,7 +40,7 @@ public:
 	}
 
 	/** User Id represented as a FUniqueNetId */
-	TSharedRef<FUniqueNetIdOculus> UserIdPtr;
+	TSharedRef<const FUniqueNetId> UserIdPtr;
 
 	/** Additional key/value pair data related to auth */
 	TMap<FString, FString> AdditionalAuthData;
