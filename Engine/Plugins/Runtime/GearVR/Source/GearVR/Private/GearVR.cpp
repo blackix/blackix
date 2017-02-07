@@ -46,6 +46,8 @@ class FGearVRPlugin : public IGearVRPlugin
 	// Pre-init the HMD module
 	virtual bool PreInit() override;
 
+	virtual bool IsHMDConnected() override;
+
 	FString GetModuleKeyName() const
 	{
 		return FString(TEXT("GearVR"));
@@ -98,19 +100,57 @@ TSharedPtr< class IHeadMountedDisplay, ESPMode::ThreadSafe > FGearVRPlugin::Crea
 	return NULL;
 }
 
+
+#if PLATFORM_WINDOWS
+static bool IsOculusServiceRunning()
+{
+	HANDLE hEvent = ::OpenEventW(SYNCHRONIZE, 0 /*FALSE*/, L"OculusHMDConnected");
+
+	if (!hEvent)
+	{
+		return false;
+	}
+
+	::CloseHandle(hEvent);
+	return true;
+}
+#endif
+
+
 bool FGearVRPlugin::PreInit()
 {
 #if GEARVR_SUPPORTED_PLATFORMS
 #if PLATFORM_ANDROID
-	if (!AndroidThunkCpp_IsGearVRApplication())
+	if (AndroidThunkCpp_IsGearVRApplication())
 	{
-		UE_LOG(LogHMD, Log, TEXT("GearVR: not packaged for GearVR"));
-		return false;
+		UE_LOG(LogHMD, Log, TEXT("GearVR: Application packaged for GearVR!"));
+		return true;
+	}
+#else 
+	if (!IsRunningDedicatedServer() && IsOculusServiceRunning())
+	{
+		UE_LOG(LogHMD, Log, TEXT("GearVR: Emulating GearVR using Oculus Rift!"));
+		return true;
 	}
 #endif
-	UE_LOG(LogHMD, Log, TEXT("GearVR: it is packaged for GearVR!"));
-	return true;
 #endif//GEARVR_SUPPORTED_PLATFORMS
+
+	return false;
+}
+
+
+bool FGearVRPlugin::IsHMDConnected()
+{
+#if GEARVR_SUPPORTED_PLATFORMS
+#if PLATFORM_ANDROID
+	// consider HMD connected if this is a GearVR application
+	return AndroidThunkCpp_IsGearVRApplication();
+#else
+	// consider HMD disconnected for purposes of plug-in selection, so that OculusRift always has precedence.
+	return false;
+#endif
+#endif//GEARVR_SUPPORTED_PLATFORMS
+
 	return false;
 }
 
@@ -130,6 +170,7 @@ FSettings::FSettings()
 
 	Flags.bStereoEnabled = false; Flags.bHMDEnabled = true;
 	Flags.bUpdateOnRT = Flags.bTimeWarp = true;
+	Flags.bEnableDirectMultiview = false;
 }
 
 TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> FSettings::Clone() const
@@ -270,11 +311,7 @@ bool FGearVR::GetHMDMonitorInfo(MonitorInfo& MonitorDesc)
 bool FGearVR::IsHMDConnected()
 {
 	// consider HMD connected all the time if GearVR enabled
-#if PLATFORM_ANDROID
-	return AndroidThunkCpp_IsGearVRApplication();
-#else
 	return true;
-#endif
 }
 
 bool FGearVR::IsInLowPersistenceMode() const
@@ -489,7 +526,21 @@ bool FGearVR::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 			SetLoadingIconTexture(nullptr);
 		}
 	}
-	else if (FParse::Command(&Cmd, TEXT("TESTL"))) 
+	else if (FParse::Command(&Cmd, TEXT("GDBSERVER")))
+	{
+		FString ValueStr = FParse::Token(Cmd, 0);
+		int port = FCString::Atoi(*ValueStr);
+		if (port == 0)
+		{
+			port = 6667;
+		}
+
+		#if PLATFORM_ANDROID
+		FAndroidMisc::LaunchGDBServer(port);
+		#endif
+		return true;
+	}
+	else if (FParse::Command(&Cmd, TEXT("TESTL")))
 	{
 		static uint32 LID1 = ~0u, LID2 = ~0u, LID3 = ~0u;
 		IStereoLayers* StereoL = this;
@@ -1217,6 +1268,10 @@ void FGearVR::LoadFromIni()
 	if (GConfig->GetBool(GearVRSettings, TEXT("bUpdateOnRT"), v, GEngineIni))
 	{
 		CurrentSettings->Flags.bUpdateOnRT = v;
+	}
+	if (GConfig->GetBool(GearVRSettings, TEXT("bEnableDirectMultiview"), v, GEngineIni))
+	{
+		CurrentSettings->Flags.bEnableDirectMultiview = v;
 	}
 	if (GConfig->GetFloat(GearVRSettings, TEXT("FarClippingPlane"), f, GEngineIni))
 	{
