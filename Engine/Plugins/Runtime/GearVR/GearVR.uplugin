@@ -16,13 +16,25 @@
 	"Installed" : false,
 	"Modules" :
 	[
-		{
-			"Name" : "GearVR",
+    {
+      "Name": "GearVR",
+      "Type": "Runtime",
+      "LoadingPhase": "PostConfigInit",
+      "WhitelistPlatforms": [
+        "Android",
+        "Win64",
+        "Win32"
+      ]
+    },
+    {
+			"Name" : "GearVRController",
 			"Type" : "Runtime",
 			"LoadingPhase" : "PostConfigInit",
 			"WhitelistPlatforms" :
 			[
-				"Android"
+        "Android",
+        "Win64",
+        "Win32"
 			]
 		}
 	]
