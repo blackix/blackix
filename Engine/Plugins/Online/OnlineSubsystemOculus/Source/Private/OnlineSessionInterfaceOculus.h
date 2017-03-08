@@ -6,6 +6,10 @@
 #include "OnlineSubsystemOculusTypes.h"
 #include "OnlineSubsystemOculusPackage.h"
 
+#define SETTING_OCULUS_POOL FName(TEXT("OCULUSPOOL"))
+
+#define SEARCH_OCULUS_MODERATED_ROOMS_ONLY FName(TEXT("OCULUSMODERATEDROOMSONLY"))
+
 /**
  * Interface definition for the online services session services
  * Session services are defined as anything related managing a session
@@ -51,8 +55,19 @@ PACKAGE_SCOPE:
 	TSharedRef<FOnlineSession> CreateSessionFromRoom(ovrRoomHandle Room);
 
 	void UpdateSessionFromRoom(FNamedOnlineSession& Session, ovrRoomHandle Room);
+	void UpdateSessionSettingsFromDataStore(FOnlineSessionSettings& SessionSettings, ovrDataStoreHandle DataStore);
 
 	void TickPendingInvites(float DeltaTime);
+
+	bool CreateRoomSession(FNamedOnlineSession& Session, ovrRoomJoinPolicy JoinPolicy);
+	bool CreateMatchmakingSession(FNamedOnlineSession& Session, ovrRoomJoinPolicy JoinPolicy);
+	void OnCreateRoomComplete(ovrMessageHandle Message, bool bIsError, FName SessionName);
+
+	bool FindModeratedRoomSessions(const TSharedRef<FOnlineSessionSearch>& SearchSettings);
+	bool FindMatchmakingSessions(const FString Pool, const TSharedRef<FOnlineSessionSearch>& SearchSettings);
+
+	bool UpdateMatchmakingRoom(FName SessionName, FOnlineSessionSettings& UpdatedSessionSettings);
+	bool UpdateRoomDataStore(FName SessionName, FOnlineSessionSettings& UpdatedSessionSettings);
 
 public:
 

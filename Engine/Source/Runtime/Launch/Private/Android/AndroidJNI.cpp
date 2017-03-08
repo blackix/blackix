@@ -20,6 +20,7 @@ static IVirtualKeyboardEntry *VirtualKeyboardWidget = NULL;
 
 extern FString GFilePathBase;
 extern FString GExternalFilePath;
+extern FString GInternalFilePath;
 extern FString GFontPathBase;
 extern bool GOBBinAPK;
 
@@ -1050,12 +1051,23 @@ extern "C" void Java_com_epicgames_ue4_GameActivity_nativeSetGlobalActivity(JNIE
 		// Copy that somewhere safe 
 		GExternalFilePath = FString(nativeExternalFilesPathString);
 
+		jmethodID getInternalFilesDir = jenv->GetMethodID(ContextClass, "getFilesDir", "()Ljava/io/File;");
+		jobject internalFilesDirPath = jenv->CallObjectMethod(FJavaWrapper::GameActivityThis, getInternalFilesDir, nullptr);
+		jstring internalFilesPathString = (jstring)jenv->CallObjectMethod(internalFilesDirPath, getFilePath, nullptr);
+		const char *nativeInternalFilesPathString = jenv->GetStringUTFChars(internalFilesPathString, 0);
+		GInternalFilePath = FString(nativeInternalFilesPathString);
+
 		// then release...
 		jenv->ReleaseStringUTFChars(externalFilesPathString, nativeExternalFilesPathString);
 		jenv->DeleteLocalRef(externalFilesPathString);
 		jenv->DeleteLocalRef(externalFilesDirPath);
+		jenv->DeleteLocalRef(internalFilesPathString);
+		jenv->DeleteLocalRef(internalFilesDirPath);
+
 		jenv->DeleteLocalRef(ContextClass);
+
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("ExternalFilePath found as '%s'\n"), *GExternalFilePath);
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("InternalFilePath found as '%s'\n"), *GInternalFilePath);
 	}
 }
 
