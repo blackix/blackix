@@ -22,6 +22,15 @@
 			"LoadingPhase" : "PostConfigInit",
 			"WhitelistPlatforms" :
 			[
+				"Android"
+			]
+		},
+		{
+			"Name" : "GearVRController",
+			"Type" : "Runtime",
+			"LoadingPhase" : "PostConfigInit",
+			"WhitelistPlatforms" :
+			[
 				"Android",
 				"Win64",
 				"Win32"

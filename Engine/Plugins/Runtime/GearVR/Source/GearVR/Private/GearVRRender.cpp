@@ -73,6 +73,7 @@ void FOpenGLTexture2DSet::InitWithCurrentElement()
 FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
 	FOpenGLDynamicRHI* InGLRHI,
 	uint32 SizeX, uint32 SizeY,
+	uint32 InNumLayers,
 	uint32 InNumSamples,
 	uint32 InNumSamplesTileMem,
 	uint32 InNumMips,
@@ -82,23 +83,27 @@ FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
     bool bInCubemap
 	)
 {
-	GLenum Target = (InNumSamples > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+	GLenum Target = (InNumLayers > 1) ? GL_TEXTURE_2D_ARRAY : ((InNumSamples > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D);
 	GLenum Attachment = GL_NONE;// GL_COLOR_ATTACHMENT0;
 	bool bAllocatedStorage = false;
 	uint8* TextureRange = nullptr;
 
 	FOpenGLTexture2DSet* NewTextureSet = new FOpenGLTexture2DSet(
-		InGLRHI, 0, Target, Attachment, SizeX, SizeY, 0, InNumMips, InNumSamples, InNumSamplesTileMem, 1, InFormat, bInCubemap, bAllocatedStorage, InFlags, TextureRange);
+		InGLRHI, 0, Target, Attachment, SizeX, SizeY, 0, InNumMips, InNumSamples, InNumSamplesTileMem, InNumLayers, InFormat, bInCubemap, bAllocatedStorage, InFlags, TextureRange);
 
 	const int32 NumLevels = (InNumMips == 0) ? VRAPI_TEXTURE_SWAPCHAIN_FULL_MIP_CHAIN : int(InNumMips);
     if (bInCubemap)
     {
         NewTextureSet->ColorTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_CUBE, VRAPI_TEXTURE_FORMAT_8888, SizeX, SizeY, 0, bBuffered); // NumLevels = 0 to prevent allocation of swapchain while using vrapi_SetTextureSwapChainHandle() method
     }
-    else
+    else if(InNumLayers>1)
     {
-        NewTextureSet->ColorTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D, VRAPI_TEXTURE_FORMAT_8888, SizeX, SizeY, NumLevels, bBuffered);
+		NewTextureSet->ColorTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D_ARRAY, VRAPI_TEXTURE_FORMAT_8888, SizeX, SizeY, NumLevels, bBuffered);
     }
+	else
+	{
+		NewTextureSet->ColorTextureSet = vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D, VRAPI_TEXTURE_FORMAT_8888, SizeX, SizeY, NumLevels, bBuffered);
+	}
 	if (!NewTextureSet->ColorTextureSet)
 	{
 		// hmmm... can't allocate a texture set for some reasons.
@@ -106,7 +111,7 @@ FOpenGLTexture2DSet* FOpenGLTexture2DSet::CreateTexture2DSet(
 		delete NewTextureSet;
 		return nullptr;
 	}
-	UE_LOG(LogHMD, Log, TEXT("Allocated textureSet %p (%d x %d)"), NewTextureSet->ColorTextureSet, SizeX, SizeY);
+	UE_LOG(LogHMD, Log, TEXT("Allocated textureSet %p (%d x %d) with %d layers"), NewTextureSet->ColorTextureSet, SizeX, SizeY, InNumLayers);
 	NewTextureSet->TextureCount = vrapi_GetTextureSwapChainLength(NewTextureSet->ColorTextureSet);
 
 	NewTextureSet->InitWithCurrentElement();
@@ -231,6 +236,7 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 		{
 		case FHMDLayerDesc::Eye:
 		{
+			bool bMVEye = RenderLayer->IsSwapTextureMultiView();
 			RenderLayer->Layer.Textures[0].HeadPose = CurrentFrame->CurSensorState.HeadPose;
 			RenderLayer->Layer.Textures[1].HeadPose = CurrentFrame->CurSensorState.HeadPose;
 
@@ -242,36 +248,47 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 
 #if PLATFORM_ANDROID
 			// split screen stereo
-			const float ScaleX = (float) CurrentFrame->ViewportSize.Y / (float) CurrentFrame->ViewportSize.X;
-
-			for ( int i = 0 ; i < 2 ; i++ )
+			const float ScaleX = (float)CurrentFrame->ViewportSize.Y / (float)CurrentFrame->ViewportSize.X;
+			if (!bMVEye)
 			{
-				for ( int j = 0 ; j < 3 ; j++ )
+				for (int i = 0; i < 2; i++)
 				{
-					RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][j] *= ScaleX;
+					for (int j = 0; j < 3; j++)
+					{
+						RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][j] *= ScaleX;
+					}
 				}
+				RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TexCoordsFromTanAngles.M[0][2] -= 1.0 - ScaleX;
 			}
-			RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TexCoordsFromTanAngles.M[0][2] -= 1.0 - ScaleX;
 #else
 			for ( int i = 0 ; i < 2 ; i++ )
 			{
-				// Scale X Axis by half
-				RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][0] *= 0.5f;
-				RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][1] *= 0.5f;
-				RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][2] *= 0.5f;
+				if (!bMVEye)
+				{
+					// Scale X Axis by half
+					RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][0] *= 0.5f;
+					RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][1] *= 0.5f;
+					RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[0][2] *= 0.5f;
+				}
 
 				// Flip Y axis
 				RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[1][0] *= -1.0f;
 				RenderLayer->Layer.Textures[i].TexCoordsFromTanAngles.M[1][1] *= -1.0f;
 			}
+			if (!bMVEye)
+			{
+				RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TexCoordsFromTanAngles.M[0][2] -= 0.5f;
+			}
 
-			RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TexCoordsFromTanAngles.M[0][2] -= 0.5f;
 #endif
 
 			static const ovrRectf LeftEyeRect  = { 0.0f, 0.0f, 0.5f, 1.0f };
 			static const ovrRectf RightEyeRect = { 0.5f, 0.0f, 0.5f, 1.0f };
-			RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_LEFT].TextureRect = LeftEyeRect;
-			RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TextureRect = RightEyeRect;
+			if (!bMVEye)
+			{
+				RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_LEFT].TextureRect = LeftEyeRect;
+				RenderLayer->Layer.Textures[VRAPI_FRAME_LAYER_EYE_RIGHT].TextureRect = RightEyeRect;
+			}
 			RenderLayer->Layer.Textures[0].ColorTextureSwapChain = RenderLayer->Layer.Textures[1].ColorTextureSwapChain = RenderLayer->GetSwapTextureSet();
 			RenderLayer->Layer.Textures[0].TextureSwapChainIndex = RenderLayer->Layer.Textures[1].TextureSwapChainIndex = RenderLayer->GetSwapTextureIndex();
 			RenderLayer->Layer.SrcBlend = VRAPI_FRAME_LAYER_BLEND_ONE;
@@ -318,10 +335,10 @@ void FLayerManager::PreSubmitUpdate_RenderThread(FRHICommandListImmediate& RHICm
 
 				if (!RenderLayer->TextureSet.IsValid())
 				{
-					RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, VrApiFormat, 1, 1, false, IsCubemap);
+					RenderLayer->TextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, VrApiFormat, 1, 1, 1, false, IsCubemap);
 					if (LeftTexture)
 					{
-						RenderLayer->LeftTextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, VrApiFormat, 1, 1, false, IsCubemap);
+						RenderLayer->LeftTextureSet = pPresentBridge->CreateTextureSet(SizeX, SizeY, VrApiFormat, 1, 1, 1, false, IsCubemap);
 					}
 				
 					if (!RenderLayer->TextureSet.IsValid())
@@ -581,16 +598,29 @@ bool FGearVR::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 Siz
 {
 	check(Index == 0);
 #if !OVR_DEBUG_DRAW
-	UE_LOG(LogHMD, Log, TEXT("Allocating Render Target textures"));
 	// ignore NumMips for RT, use 1 
-	pGearVRBridge->AllocateRenderTargetTexture(SizeX, SizeY, Format, 1, InFlags, TargetableTextureFlags, OutTargetableTexture, OutShaderResourceTexture, GetSettings()->MaxFullspeedMSAASamples);
+	FSettings* CurrentSettings = GetSettings();
+
+	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
+	bool bIsMobileMultiViewEnabled = (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
+
+	bool bMVBuf = CurrentSettings->Flags.bEnableDirectMultiview && bIsMobileMultiViewEnabled && GSupportsMobileMultiView;
+	if (bMVBuf)
+	{
+		UE_LOG(LogHMD, Log, TEXT("Allocating Multi-View Render Target textures"));
+	} 
+	else
+	{
+		UE_LOG(LogHMD, Log, TEXT("Allocating Render Target textures"));
+	}
+	pGearVRBridge->AllocateRenderTargetTexture(bMVBuf ? SizeX / 2 : SizeX, SizeY, Format, bMVBuf ? 2 : 1, 1, InFlags, TargetableTextureFlags, OutTargetableTexture, OutShaderResourceTexture, GetSettings()->MaxFullspeedMSAASamples);
 	return true;
 #else
 	return false;
 #endif
 }
 
-bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 {
 	check(SizeX != 0 && SizeY != 0);
 
@@ -607,7 +637,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 		TextureSet->ReleaseResources();
 	}
 
-	FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumSamples, NumMips, true, false);
+	FTexture2DSetProxyPtr ColorTextureSet = CreateTextureSet(SizeX, SizeY, EPixelFormat(Format), NumLayers, NumSamples, NumMips, true, false);
 	if (ColorTextureSet.IsValid())
 	{
 		OutTargetableTexture = ColorTextureSet->GetRHITexture2D();
@@ -628,7 +658,7 @@ bool FCustomPresent::AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uin
 	return false;
 }
 
-FTexture2DSetProxyPtr FCustomPresent::CreateTextureSet(uint32 InSizeX, uint32 InSizeY, uint8 InFormat, uint32 NumSamples, uint32 InNumMips, bool bBuffered, bool bInCubemap)
+FTexture2DSetProxyPtr FCustomPresent::CreateTextureSet(uint32 InSizeX, uint32 InSizeY, uint8 InFormat, uint32 NumLayers, uint32 NumSamples, uint32 InNumMips, bool bBuffered, bool bInCubemap)
 {
 	check(InSizeX != 0 && InSizeY != 0);
 	auto GLRHI = static_cast<FOpenGLDynamicRHI*>(GDynamicRHI);
@@ -636,6 +666,7 @@ FTexture2DSetProxyPtr FCustomPresent::CreateTextureSet(uint32 InSizeX, uint32 In
 	FOpenGLTexture2DSetRef texref = FOpenGLTexture2DSet::CreateTexture2DSet(
 		GLRHI,
 		InSizeX, InSizeY,
+		NumLayers,
 		1,
 		NumSamples,
 		NumMips,
@@ -1266,7 +1297,7 @@ void FCustomPresent::SetLoadingIconTexture_RenderThread(FTextureRHIRef InTexture
 		const uint32 SizeX = InTexture->GetTexture2D()->GetSizeX();
 		const uint32 SizeY = InTexture->GetTexture2D()->GetSizeY();
 
-		LoadingIconTextureSet = FCustomPresent::CreateTextureSet(SizeX, SizeY, EPixelFormat::PF_B8G8R8A8, 1, 0, false, false);
+		LoadingIconTextureSet = FCustomPresent::CreateTextureSet(SizeX, SizeY, EPixelFormat::PF_B8G8R8A8, 1, 1, 0, false, false);
 		CopyTexture_RenderThread(FRHICommandListExecutor::GetImmediateCommandList(), LoadingIconTextureSet->GetRHITexture2D(), InTexture->GetTexture2D() , SizeX, SizeY, FIntRect(), FIntRect(), false);
 	}
 }
