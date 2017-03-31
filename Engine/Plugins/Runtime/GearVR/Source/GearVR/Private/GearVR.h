@@ -659,6 +659,7 @@ private:
 	/**
 	 * Reads the device configuration, and sets up the stereoscopic rendering parameters
 	 */
+	void QuantizeBufferSize(int32& InOutBufferSizeX, int32& InOutBufferSizeY);
 	void UpdateStereoRenderingParams();
 	void UpdateHmdRenderInfo();
 

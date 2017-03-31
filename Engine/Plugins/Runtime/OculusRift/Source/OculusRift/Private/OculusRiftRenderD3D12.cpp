@@ -109,8 +109,8 @@ protected:
 // FOculusRiftHMD::D3D12Bridge
 //-------------------------------------------------------------------------------------------------
 
-FOculusRiftHMD::D3D12Bridge::D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession)
-	: FCustomPresent(InOvrSession)
+FOculusRiftHMD::D3D12Bridge::D3D12Bridge(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* RiftHMD)
+	: FCustomPresent(InOvrSession, RiftHMD)
 {
 	check(IsInGameThread());
 
