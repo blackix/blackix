@@ -274,6 +274,7 @@ public:
 	{
 		ColorTextureSet = nullptr;
 		CurrentIndex = TextureCount = 0;
+		MultiView = (InArraySize > 1);
 	}
 
 	~FOpenGLTexture2DSet() { }
@@ -290,6 +291,7 @@ public:
 	static FOpenGLTexture2DSet* CreateTexture2DSet(
 		FOpenGLDynamicRHI* InGLRHI,
 		uint32 SizeX, uint32 SizeY,
+		uint32 InNumLayers,
 		uint32 InNumSamples,
 		uint32 InNumSamplesTileMem,
 		uint32 InNumMips,
@@ -301,9 +303,12 @@ public:
 	ovrTextureSwapChain	*	GetColorTextureSet() const { return ColorTextureSet; }
 	uint32					GetCurrentIndex() const { return CurrentIndex; }
 	uint32					GetTextureCount() const { return TextureCount; }
+	bool					IsMultiView() const { return MultiView; }
+
 protected:
 	void InitWithCurrentElement();
 
+	bool					MultiView;
 	uint32					CurrentIndex;
 	uint32					TextureCount;
 	ovrTextureSwapChain*	ColorTextureSet;
@@ -391,6 +396,15 @@ public:
 			return static_cast<FTexture2DSetProxy*>(TextureSet.Get())->GetTextureSet()->GetCurrentIndex();
 		}
 		return 1;
+	}
+
+	bool IsSwapTextureMultiView() const
+	{
+		if (TextureSet.IsValid())
+		{
+			return static_cast<FTexture2DSetProxy*>(TextureSet.Get())->GetTextureSet()->IsMultiView();
+		}
+		return false;
 	}
 
 	uint32 GetLeftSwapTextureIndex() const
@@ -484,9 +498,9 @@ public:
 
 	// Allocates render target texture
 	// If returns false then a default RT texture will be used.
-	bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
+	bool AllocateRenderTargetTexture(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples);
 
-	FTexture2DSetProxyPtr CreateTextureSet(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumSamples, uint32 NumMips, bool bBuffered, bool bInCubemap);
+	FTexture2DSetProxyPtr CreateTextureSet(uint32 SizeX, uint32 SizeY, uint8 Format, uint32 InNumLayers, uint32 NumSamples, uint32 NumMips, bool bBuffered, bool bInCubemap);
 
 	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, int SrcSizeX, int SrcSizeY, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false) const;
 		
@@ -665,6 +679,14 @@ public:
 		return pGearVRBridge->RendererModule;
 	} 
 
+	FOvrMobileSynced GetMobileSynced()
+	{
+		check(pGearVRBridge);
+		return pGearVRBridge->GetMobileSynced();
+	}
+
+	FGameFrame* GetFrame() const;
+
 private:
 	FGearVR* getThis() { return this; }
 
@@ -711,18 +733,13 @@ protected:
 	virtual void GetCurrentPose(FQuat& CurrentHmdOrientation, FVector& CurrentHmdPosition, bool bUseOrienationForPlayerCamera = false, bool bUsePositionForPlayerCamera = false) override;
 
 	// Returns eye poses instead of head pose.
-	bool GetEyePoses(const FGameFrame& InFrame, ovrPosef outEyePoses[2], ovrTracking& outTracking);
+	bool GetEyePoses(const FGameFrame& InFrame, ovrPosef outEyePoses[3], ovrTracking& outTracking);
 
-	FGameFrame* GetFrame() const;
 
 	void EnterVRMode();
 	void LeaveVRMode();
 
-	FOvrMobileSynced GetMobileSynced() 
-	{ 
-		check(pGearVRBridge);
-		return pGearVRBridge->GetMobileSynced();
-	}
+	
 	// Can be called on GameThread to figure out if OvrMobile obj is valid.
 	bool HasValidOvrMobile() const;
 
