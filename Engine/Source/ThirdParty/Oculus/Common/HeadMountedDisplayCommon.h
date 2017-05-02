@@ -144,6 +144,10 @@ public:
 
 			/** HQ Distortion */
 			uint64				bHQDistortion : 1;
+
+			/** Make GearVR allocate MultiView buffers*/
+			uint64				bEnableDirectMultiview : 1;
+
 #if !UE_BUILD_SHIPPING
 			/** Draw sensor frustum, for debugging purposes. 
 			 *  See 'HMDPOS SHOWCAMERA ON|OFF' console command.
@@ -163,6 +167,7 @@ public:
 
 			/** Profiling mode, removed extra waits in Present (Direct Rendering). See 'hmd profile' cmd */
 			uint64				bProfiling : 1;
+
 #endif
 		};
 		uint64 Raw;

@@ -10,6 +10,8 @@ typedef enum ovrLaunchType_ {
   ovrLaunchType_Normal,
   ovrLaunchType_Invite,
   ovrLaunchType_Coordinated,
+  ovrLaunchType_Deeplink,
+  ovrLaunchType_Event,
 } ovrLaunchType;
 
 /// Converts an ovrLaunchType enum value to a string

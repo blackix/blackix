@@ -31,15 +31,19 @@
 #include "OVR_Party.h"
 #include "OVR_PidArray.h"
 #include "OVR_PingResult.h"
+#include "OVR_PlatformInitialize.h"
 #include "OVR_ProductArray.h"
 #include "OVR_Purchase.h"
 #include "OVR_PurchaseArray.h"
 #include "OVR_Room.h"
 #include "OVR_RoomArray.h"
 #include "OVR_RoomInviteNotificationArray.h"
+#include "OVR_SystemPermission.h"
 #include "OVR_SystemVoipState.h"
 #include "OVR_Types.h"
 #include "OVR_User.h"
+#include "OVR_UserAndRoom.h"
+#include "OVR_UserAndRoomArray.h"
 #include "OVR_UserArray.h"
 #include "OVR_UserProof.h"
 #include <stddef.h>
@@ -73,6 +77,7 @@ OVRP_PUBLIC_FUNCTION(ovrOrgScopedIDHandle)                     ovr_Message_GetOr
 OVRP_PUBLIC_FUNCTION(ovrPartyHandle)                           ovr_Message_GetParty(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrPidArrayHandle)                        ovr_Message_GetPidArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrPingResultHandle)                      ovr_Message_GetPingResult(const ovrMessageHandle obj);
+OVRP_PUBLIC_FUNCTION(ovrPlatformInitializeHandle)              ovr_Message_GetPlatformInitialize(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrProductArrayHandle)                    ovr_Message_GetProductArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrPurchaseHandle)                        ovr_Message_GetPurchase(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrPurchaseArrayHandle)                   ovr_Message_GetPurchaseArray(const ovrMessageHandle obj);
@@ -81,9 +86,11 @@ OVRP_PUBLIC_FUNCTION(ovrRoomHandle)                            ovr_Message_GetRo
 OVRP_PUBLIC_FUNCTION(ovrRoomArrayHandle)                       ovr_Message_GetRoomArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrRoomInviteNotificationArrayHandle)     ovr_Message_GetRoomInviteNotificationArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(const char *)                             ovr_Message_GetString(const ovrMessageHandle obj);
+OVRP_PUBLIC_FUNCTION(ovrSystemPermissionHandle)                ovr_Message_GetSystemPermission(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrSystemVoipStateHandle)                 ovr_Message_GetSystemVoipState(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrMessageType)                           ovr_Message_GetType(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrUserHandle)                            ovr_Message_GetUser(const ovrMessageHandle obj);
+OVRP_PUBLIC_FUNCTION(ovrUserAndRoomArrayHandle)                ovr_Message_GetUserAndRoomArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrUserArrayHandle)                       ovr_Message_GetUserArray(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(ovrUserProofHandle)                       ovr_Message_GetUserProof(const ovrMessageHandle obj);
 OVRP_PUBLIC_FUNCTION(bool)                                     ovr_Message_IsError(const ovrMessageHandle obj);

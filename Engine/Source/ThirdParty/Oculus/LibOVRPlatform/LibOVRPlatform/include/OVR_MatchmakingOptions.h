@@ -4,9 +4,9 @@
 #define OVR_MATCHMAKING_OPTIONS_H
 
 #include "OVR_Platform_Defs.h"
+#include "OVR_Types.h"
 #include <stddef.h>
 #include <stdbool.h>
-#include <OVR_Types.h>
 
 #include "OVR_RoomJoinPolicy.h"
 
@@ -15,6 +15,8 @@ typedef struct ovrMatchmakingOptions* ovrMatchmakingOptionsHandle;
 
 OVRP_PUBLIC_FUNCTION(ovrMatchmakingOptionsHandle) ovr_MatchmakingOptions_Create();
 OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_Destroy(ovrMatchmakingOptionsHandle handle);
+OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_SetCreateRoomDataStoreString(ovrMatchmakingOptionsHandle handle, const char* key, const char* value);
+OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_ClearCreateRoomDataStore(ovrMatchmakingOptionsHandle handle);
 OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_SetCreateRoomJoinPolicy(ovrMatchmakingOptionsHandle handle, ovrRoomJoinPolicy value);
 OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_SetCreateRoomMaxUsers(ovrMatchmakingOptionsHandle handle, unsigned int value);
 OVRP_PUBLIC_FUNCTION(void) ovr_MatchmakingOptions_AddEnqueueAdditionalUser(ovrMatchmakingOptionsHandle handle, ovrID value);
