@@ -21,36 +21,6 @@ void UOculusNetConnection::InitBase(UNetDriver* InDriver, class FSocket* InSocke
 
 	// Initalize the send buffer
 	InitSendBuffer();
-
-	if (Driver->InitialConnectTimeout == 0.0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("InitalConnectTimeout was set to %f"), Driver->InitialConnectTimeout);
-		Driver->InitialConnectTimeout = 120.0;
-	}
-
-	if (Driver->ConnectionTimeout == 0.0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("ConnectionTimeout was set to %f"), Driver->ConnectionTimeout);
-		Driver->ConnectionTimeout = 120.0;
-	}
-
-	if (Driver->KeepAliveTime == 0.0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("KeepAliveTime was set to %f"), Driver->KeepAliveTime);
-		Driver->KeepAliveTime = 0.2;
-	}
-
-	if (Driver->SpawnPrioritySeconds == 0.0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("SpawnPrioritySeconds was set to %f"), Driver->SpawnPrioritySeconds);
-		Driver->SpawnPrioritySeconds = 1.0;
-	}
-
-	if (Driver->RelevantTimeout == 0.0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("RelevantTimeout was set to %f"), Driver->RelevantTimeout);
-		Driver->RelevantTimeout = 5.0;
-	}
 }
 
 void UOculusNetConnection::InitLocalConnection(UNetDriver* InDriver, class FSocket* InSocket, const FURL& InURL, EConnectionState InState, int32 InMaxPacket, int32 InPacketOverhead)
@@ -88,18 +58,16 @@ void UOculusNetConnection::LowLevelSend(void* Data, int32 CountBytes, int32 Coun
 		{
 			DataToSend = ProcessedData.Data;
 			CountBytes = FMath::DivideAndRoundUp(ProcessedData.CountBits, 8);
-			CountBits = ProcessedData.CountBits;
 		}
 		else
 		{
 			CountBytes = 0;
-			CountBits = 0;
 		}
 	}
 
 	if (CountBytes > 0)
 	{
-		ovr_Net_SendPacket(PeerID, (size_t)CountBytes, DataToSend, (InternalAck) ? ovrSend_Reliable : ovrSend_Unreliable);
+		ovr_Net_SendPacket(PeerID, static_cast<size_t>(CountBytes), DataToSend, (InternalAck) ? ovrSend_Reliable : ovrSend_Unreliable);
 	}
 }
 

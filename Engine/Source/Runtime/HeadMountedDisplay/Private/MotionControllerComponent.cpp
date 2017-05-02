@@ -112,9 +112,20 @@ bool UMotionControllerComponent::PollControllerState(FVector& Position, FRotator
 		TArray<IMotionController*> MotionControllers = IModularFeatures::Get().GetModularFeatureImplementations<IMotionController>( IMotionController::GetModularFeatureName() );
 		for( auto MotionController : MotionControllers )
 		{
-			if ((MotionController != nullptr) && MotionController->GetControllerOrientationAndPosition(PlayerIndex, Hand, Orientation, Position, WorldToMetersScale))
+			if (MotionController == nullptr)
+			{
+				continue;
+			}
+
+			EControllerHand QueryHand = (Hand == EControllerHand::AnyHand) ? EControllerHand::Left : Hand;
+			if (MotionController->GetControllerOrientationAndPosition(PlayerIndex, QueryHand, Orientation, Position, WorldToMetersScale))
 			{
 				CurrentTrackingStatus = MotionController->GetControllerTrackingStatus(PlayerIndex, Hand);
+				return true;
+			}
+			if (Hand == EControllerHand::AnyHand && MotionController->GetControllerOrientationAndPosition(PlayerIndex, EControllerHand::Right, Orientation, Position, WorldToMetersScale))
+			{
+				CurrentTrackingStatus = MotionController->GetControllerTrackingStatus(PlayerIndex, EControllerHand::Right);
 				return true;
 			}
 		}

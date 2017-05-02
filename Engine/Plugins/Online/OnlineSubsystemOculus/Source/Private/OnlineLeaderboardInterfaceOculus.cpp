@@ -110,15 +110,15 @@ void FOnlineLeaderboardOculus::OnReadLeaderboardsComplete(ovrMessageHandle Messa
 					// order of the score
 					if (Score > INT32_MAX)
 					{
-						return FVariantData((int32)INT32_MAX);
+						return FVariantData(INT32_MAX);
 					}
 					else if (Score < INT32_MIN)
 					{
-						return FVariantData((int32)INT32_MIN);
+						return FVariantData(INT32_MIN);
 					}
 					else
 					{
-						return FVariantData((int32)Score);
+						return FVariantData(static_cast<int32>(Score));
 					}
 					break;
 				case EOnlineKeyValuePairDataType::UInt32:
@@ -126,15 +126,15 @@ void FOnlineLeaderboardOculus::OnReadLeaderboardsComplete(ovrMessageHandle Messa
 					// order of the score
 					if (Score > UINT32_MAX)
 					{
-						return FVariantData((uint32)UINT32_MAX);
+						return FVariantData(UINT32_MAX);
 					}
 					else if (Score < 0)
 					{
-						return FVariantData((uint32)0);
+						return FVariantData(static_cast<uint32>(0));
 					}
 					else
 					{
-						return FVariantData((uint32)Score);
+						return FVariantData(static_cast<uint32>(Score));
 					}
 					break;
 				default:
