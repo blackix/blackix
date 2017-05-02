@@ -1,10 +1,16 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "OnlineSubsystemOculus.h"
 #include "OnlineSessionInterface.h"
 #include "OnlineSubsystemOculusTypes.h"
 #include "OnlineSubsystemOculusPackage.h"
+
+#define SETTING_OCULUS_POOL FName(TEXT("OCULUSPOOL"))
+#define SETTING_OCULUS_BUILD_UNIQUE_ID FName(TEXT("OCULUSSESSIONBUILDUNIQUEID"))
+
+#define SEARCH_OCULUS_MODERATED_ROOMS_ONLY FName(TEXT("OCULUSMODERATEDROOMSONLY"))
 
 /**
  * Interface definition for the online services session services
@@ -33,9 +39,11 @@ private:
 	 */
 	FName InProgressMatchmakingSearchName;
 
-	ovrID GetOvrIDFromSession(const FNamedOnlineSession& Session);
+	ovrID GetOvrIDFromSession(const FNamedOnlineSession& Session) const;
 
 	TArray<TSharedRef<const FOnlineSessionSearchResult>> PendingInviteAcceptedSessions;
+
+	int32 GetRoomBuildUniqueId(const ovrRoomHandle Room);
 
 PACKAGE_SCOPE:
 
@@ -48,11 +56,22 @@ PACKAGE_SCOPE:
 	FDelegateHandle OnMatchmakingNotificationMatchFoundHandle;
 	void OnMatchmakingNotificationMatchFound(ovrMessageHandle Message, bool bIsError);
 
-	TSharedRef<FOnlineSession> CreateSessionFromRoom(ovrRoomHandle Room);
+	TSharedRef<FOnlineSession> CreateSessionFromRoom(ovrRoomHandle Room) const;
 
-	void UpdateSessionFromRoom(FNamedOnlineSession& Session, ovrRoomHandle Room);
+	void UpdateSessionFromRoom(FNamedOnlineSession& Session, ovrRoomHandle Room) const;
+	void UpdateSessionSettingsFromDataStore(FOnlineSessionSettings& SessionSettings, ovrDataStoreHandle DataStore) const;
 
 	void TickPendingInvites(float DeltaTime);
+
+	bool CreateRoomSession(FNamedOnlineSession& Session, ovrRoomJoinPolicy JoinPolicy);
+	bool CreateMatchmakingSession(FNamedOnlineSession& Session, ovrRoomJoinPolicy JoinPolicy);
+	void OnCreateRoomComplete(ovrMessageHandle Message, bool bIsError, FName SessionName);
+
+	bool FindModeratedRoomSessions(const TSharedRef<FOnlineSessionSearch>& SearchSettings);
+	bool FindMatchmakingSessions(const FString Pool, const TSharedRef<FOnlineSessionSearch>& SearchSettings);
+
+	bool UpdateMatchmakingRoom(FName SessionName, FOnlineSessionSettings& UpdatedSessionSettings);
+	bool UpdateRoomDataStore(FName SessionName, FOnlineSessionSettings& UpdatedSessionSettings);
 
 public:
 

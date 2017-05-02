@@ -1,10 +1,12 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemOculusPrivatePCH.h"
 #include "OnlineAchievementsInterfaceOculus.h"
 #include "OnlineIdentityOculus.h"
 #include "OnlineMessageMultiTaskOculus.h"
 #include "OnlineSubsystemOculusPackage.h"
+
+#include <string>
 
 class FOnlineMessageMultiTaskOculusWriteAchievements : public FOnlineMessageMultiTaskOculus
 {
@@ -91,18 +93,31 @@ void FOnlineAchievementsOculus::WriteAchievements(const FUniqueNetId& PlayerId, 
 		switch (AchievementDesc->Type)
 		{
 			case EAchievementType::Simple:
+			{
 				RequestId = ovr_Achievements_Unlock(TCHAR_TO_ANSI(*AchievementId));
 				break;
+			}
 			case EAchievementType::Count:
+			{
 				uint64 Count;
 				GetWriteAchievementCountValue(VariantData, Count);
 				RequestId = ovr_Achievements_AddCount(TCHAR_TO_ANSI(*AchievementId), Count);
 				break;
+			}
 			case EAchievementType::Bitfield:
+			{
 				FString Bitfield;
 				GetWriteAchievementBitfieldValue(VariantData, Bitfield, AchievementDesc->BitfieldLength);
-				RequestId = ovr_Achievements_AddFields(TCHAR_TO_ANSI(*AchievementId), TCHAR_TO_ANSI(*Bitfield));
+				std::string AchievementIdString(TCHAR_TO_ANSI(*AchievementId));
+				std::string BitfieldString(TCHAR_TO_ANSI(*Bitfield));
+				RequestId = ovr_Achievements_AddFields(AchievementIdString.c_str(), BitfieldString.c_str());
 				break;
+			}
+			default:
+			{
+				UE_LOG_ONLINE(Warning, TEXT("Unknown achievement type"));
+				break;
+			}
 		}
 
 		if (RequestId != 0)
@@ -283,7 +298,7 @@ bool FOnlineAchievementsOculus::ResetAchievements(const FUniqueNetId& PlayerId)
 };
 #endif // !UE_BUILD_SHIPPING
 
-void FOnlineAchievementsOculus::GetWriteAchievementCountValue(FVariantData VariantData, uint64& OutData)
+void FOnlineAchievementsOculus::GetWriteAchievementCountValue(FVariantData VariantData, uint64& OutData) const
 {
 	switch (VariantData.GetType())
 	{
@@ -291,22 +306,37 @@ void FOnlineAchievementsOculus::GetWriteAchievementCountValue(FVariantData Varia
 		{
 			int32 Value;
 			VariantData.GetValue(Value);
-			OutData = (uint64)Value;
+			OutData = static_cast<uint64>(Value);
 			break;
 		}
 		case EOnlineKeyValuePairDataType::Int64:
+		{
+			int64 Value;
+			VariantData.GetValue(Value);
+			OutData = static_cast<uint64>(Value);
+			break;
+		}
+		case EOnlineKeyValuePairDataType::UInt32:
+		{
+			uint32 Value;
+			VariantData.GetValue(Value);
+			OutData = static_cast<uint64>(Value);
+			break;
+		}
+		case EOnlineKeyValuePairDataType::UInt64:
 		{
 			VariantData.GetValue(OutData);
 			break;
 		}
 		default:
 		{
+			UE_LOG_ONLINE(Warning, TEXT("Could not %s convert to uint64"), VariantData.GetTypeString());
 			OutData = 0;
 			break;
 		}
 	}
 }
-void FOnlineAchievementsOculus::GetWriteAchievementBitfieldValue(FVariantData VariantData, FString& OutData, uint32 BitfieldLength)
+void FOnlineAchievementsOculus::GetWriteAchievementBitfieldValue(FVariantData VariantData, FString& OutData, uint32 BitfieldLength) const
 {
 	switch (VariantData.GetType())
 	{
@@ -327,6 +357,11 @@ void FOnlineAchievementsOculus::GetWriteAchievementBitfieldValue(FVariantData Va
 		case EOnlineKeyValuePairDataType::String:
 		{
 			VariantData.GetValue(OutData);
+			break;
+		}
+		default:
+		{
+			UE_LOG_ONLINE(Warning, TEXT("Could not %s convert to string"), VariantData.GetTypeString());
 			break;
 		}
 	}

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "OculusNetConnection.h"
 #include "Engine/NetDriver.h"
 #include "OculusNetDriver.generated.h"
 
@@ -27,13 +28,11 @@ public:
 	virtual bool InitConnect(FNetworkNotify* InNotify, const FURL& ConnectURL, FString& Error) override;
 	virtual bool InitListen(FNetworkNotify* InNotify, FURL& LocalURL, bool bReuseAddressAndPort, FString& Error) override;
 	virtual void TickDispatch(float DeltaTime) override;
-	virtual void ProcessRemoteFunction(class AActor* Actor, UFunction* Function, void* Parameters, FOutParmRec* OutParms, FFrame* Stack, class UObject* SubObject);
+	virtual void ProcessRemoteFunction(class AActor* Actor, UFunction* Function, void* Parameters, FOutParmRec* OutParms, FFrame* Stack, class UObject* SubObject) override;
 	virtual void Shutdown() override;
 	virtual bool IsNetResourceValid() override;
 
 	virtual class ISocketSubsystem* GetSocketSubsystem() override;
-	
-	virtual FSocket * CreateSocket();
 
 	void OnNewNetworkingPeerRequest(ovrMessageHandle Message, bool bIsError);
 

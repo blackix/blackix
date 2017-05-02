@@ -799,11 +799,18 @@ static ModuleHandleType OVR_FindLibraryPath(int requestedProductVersion, int req
 
         if(sdkRoot[0])
         {
-            #if defined(OVR_BUILD_DEBUG)
-                const char* pConfigDirName = "Debug";
-            #else
-                const char* pConfigDirName = "Release";
+
+            #ifndef CONFIG_VARIANT
+                #define CONFIG_VARIANT
             #endif
+
+            #if defined(OVR_BUILD_DEBUG)
+                const char* pConfigDirName = "Debug" CONFIG_VARIANT;
+            #else
+                const char* pConfigDirName = "Release" CONFIG_VARIANT;
+            #endif
+
+            #undef CONFIG_VARIANT
 
             #if defined(_MSC_VER)
                 #if defined(_WIN64)
@@ -1168,7 +1175,7 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_Initialize(const ovrInitParams* inputParams)
     if (reportClientInfo)
     {
         unsigned int mscFullVer = 0;
-#if defined (_MSC_FULL_VER)
+#if defined(_MSC_FULL_VER)
         mscFullVer = _MSC_FULL_VER;
 #endif // _MSC_FULL_VER
 
@@ -1308,6 +1315,13 @@ OVR_PUBLIC_FUNCTION(ovrResult) ovr_RecenterTrackingOrigin(ovrSession session)
     return API.ovr_RecenterTrackingOrigin.Ptr(session);
 }
 
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_SpecifyTrackingOrigin(ovrSession session, ovrPosef originPose)
+{
+    if (!API.ovr_SpecifyTrackingOrigin.Ptr)
+        return ovrError_NotInitialized;
+    return API.ovr_SpecifyTrackingOrigin.Ptr(session, originPose);
+}
+
 OVR_PUBLIC_FUNCTION(void) ovr_ClearShouldRecenterFlag(ovrSession session)
 {
     if (!API.ovr_ClearShouldRecenterFlag.Ptr)
@@ -1327,6 +1341,26 @@ OVR_PUBLIC_FUNCTION(ovrTrackingState) ovr_GetTrackingState(ovrSession session, d
     return API.ovr_GetTrackingState.Ptr(session, absTime, latencyMarker);
 }
 
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetDevicePoses(ovrSession session, ovrTrackedDeviceType* deviceTypes, int deviceCount, double absTime, ovrPoseStatef* outDevicePoses)
+{
+    if (!API.ovr_GetDevicePoses.Ptr)
+        return ovrError_NotInitialized;
+    return API.ovr_GetDevicePoses.Ptr(session, deviceTypes, deviceCount, absTime, outDevicePoses);
+}
+
+OVR_PUBLIC_FUNCTION(ovrTrackingState) ovr_GetTrackingStateWithSensorData(ovrSession session, double absTime, ovrBool latencyMarker, ovrSensorData* sensorData)
+{
+    if (!API.ovr_GetTrackingStateWithSensorData.Ptr)
+    {
+        ovrTrackingState nullTrackingState;
+        memset(&nullTrackingState, 0, sizeof(nullTrackingState));
+        if (sensorData)
+            memset(&sensorData, 0, sizeof(sensorData));
+        return nullTrackingState;
+    }
+
+    return API.ovr_GetTrackingStateWithSensorData.Ptr(session, absTime, latencyMarker, sensorData);
+}
 
 OVR_PUBLIC_FUNCTION(ovrTrackerPose) ovr_GetTrackerPose(ovrSession session, unsigned int trackerPoseIndex)
 {
@@ -1685,6 +1719,21 @@ OVR_PUBLIC_FUNCTION(ovrEyeRenderDesc) ovr_GetRenderDesc(ovrSession session, ovrE
     return API.ovr_GetRenderDesc.Ptr(session, eyeType, fov);
 }
 
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_GetPerfStats(ovrSession session, ovrPerfStats* outPerfStats)
+{
+    if (!API.ovr_GetPerfStats.Ptr)
+        return ovrError_NotInitialized;
+
+    return API.ovr_GetPerfStats.Ptr(session, outPerfStats);
+}
+
+OVR_PUBLIC_FUNCTION(ovrResult) ovr_ResetPerfStats(ovrSession session)
+{
+    if (!API.ovr_ResetPerfStats.Ptr)
+        return ovrError_NotInitialized;
+
+    return API.ovr_ResetPerfStats.Ptr(session);
+}
 
 OVR_PUBLIC_FUNCTION(double) ovr_GetPredictedDisplayTime(ovrSession session, long long frameIndex)
 {

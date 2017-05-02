@@ -1,7 +1,8 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "OnlineSubsystemOculus.h"
 #include "OnlineIdentityInterface.h"
 #include "OnlineSubsystemOculusTypes.h"
 #include "OVR_Platform.h"
@@ -30,7 +31,7 @@ public:
 
 	// FUserOnlineAccountOculus
 
-	FUserOnlineAccountOculus(const TSharedRef<FUniqueNetIdOculus>& InUserId, const FString& InName)
+	FUserOnlineAccountOculus(const TSharedRef<const FUniqueNetId>& InUserId, const FString& InName)
 		: UserIdPtr(InUserId),
 		Name(InName)
 	{ }
@@ -40,7 +41,7 @@ public:
 	}
 
 	/** User Id represented as a FUniqueNetId */
-	TSharedRef<FUniqueNetIdOculus> UserIdPtr;
+	TSharedRef<const FUniqueNetId> UserIdPtr;
 
 	/** Additional key/value pair data related to auth */
 	TMap<FString, FString> AdditionalAuthData;

@@ -1,4 +1,4 @@
-// Copyright 1998-2014 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,7 @@ typedef TSharedPtr<class FOnlineProfileOculus, ESPMode::ThreadSafe> FOnlineProfi
 typedef TSharedPtr<class FOnlineFriendsOculus, ESPMode::ThreadSafe> FOnlineFriendsOculusPtr;
 typedef TSharedPtr<class FOnlineUserCloudOculus, ESPMode::ThreadSafe> FOnlineUserCloudOculusPtr;
 typedef TSharedPtr<class FOnlineLeaderboardOculus, ESPMode::ThreadSafe> FOnlineLeaderboardsOculusPtr;
-typedef TSharedPtr<class FOnlineVoiceImpl, ESPMode::ThreadSafe> FOnlineVoiceImplPtr;
+typedef TSharedPtr<class FOnlineVoiceOculus, ESPMode::ThreadSafe> FOnlineVoiceOculusPtr;
 typedef TSharedPtr<class FOnlineExternalUIOculus, ESPMode::ThreadSafe> FOnlineExternalUIOculusPtr;
 typedef TSharedPtr<class FOnlineIdentityOculus, ESPMode::ThreadSafe> FOnlineIdentityOculusPtr;
 typedef TSharedPtr<class FOnlineAchievementsOculus, ESPMode::ThreadSafe> FOnlineAchievementsOculusPtr;
@@ -75,28 +75,38 @@ public:
 	* Is the Oculus API available for use
 	* @return true if Oculus functionality is available, false otherwise
 	*/
-	bool IsEnabled();
+	bool IsEnabled() const;
+
+	/**
+	 * Allows for the LibOVRPlatform calls to be used directly with the Delegates in the Oculus OSS
+	 */
+	void AddRequestDelegate(ovrRequest RequestId, FOculusMessageOnCompleteDelegate&& Delegate) const;
+
+	/**
+	* Allows for direct subscription to the LibOVRPlatform notifications with the Delegates in the Oculus OSS
+	*/
+	FOculusMulticastMessageOnCompleteDelegate& GetNotifDelegate(ovrMessageType MessageType) const;
+	void RemoveNotifDelegate(ovrMessageType MessageType, const FDelegateHandle& Delegate) const;
 
 PACKAGE_SCOPE:
 
 	/** Only the factory makes instances */
 	FOnlineSubsystemOculus(FName InInstanceName) :
-		FOnlineSubsystemImpl(InInstanceName)
+		FOnlineSubsystemImpl(InInstanceName),
+		bOculusInit(false)
 	{}
 
 	FOnlineSubsystemOculus()
 	{}
 
-	void AddRequestDelegate(ovrRequest RequestId, FOculusMessageOnCompleteDelegate&& Delegate);
-
-	FOculusMulticastMessageOnCompleteDelegate& GetNotifDelegate(ovrMessageType MessageType);
-
-	void RemoveNotifDelegate(ovrMessageType MessageType, const FDelegateHandle& Delegate);
+	bool IsInitialized() const;
 
 private:
 
+	bool bOculusInit;
+
 #if PLATFORM_WINDOWS
-	bool InitWithWindowsPlatform();
+	bool InitWithWindowsPlatform() const;
 #elif PLATFORM_ANDROID
 	bool InitWithAndroidPlatform();
 #endif
@@ -118,6 +128,9 @@ private:
 
 	/** Interface for CloudStorage User Saves. */
 	FOnlineUserCloudOculusPtr UserCloudInterface;
+
+	/** Interface for voice */
+	FOnlineVoiceOculusPtr VoiceInterface;
 
 	/** Message Task Manager */
 	FOnlineMessageTaskManagerOculusPtr MessageTaskManager;

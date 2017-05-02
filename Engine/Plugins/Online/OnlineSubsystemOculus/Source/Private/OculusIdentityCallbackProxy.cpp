@@ -1,4 +1,4 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 
 #include "OnlineSubsystemOculusPrivatePCH.h"
@@ -8,7 +8,7 @@
 #include "OculusIdentityCallbackProxy.h"
 
 UOculusIdentityCallbackProxy::UOculusIdentityCallbackProxy(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
+	: Super(ObjectInitializer), LocalUserNum(0)
 {
 }
 
@@ -17,7 +17,6 @@ UOculusIdentityCallbackProxy* UOculusIdentityCallbackProxy::GetOculusIdentity(in
 	UOculusIdentityCallbackProxy* Proxy = NewObject<UOculusIdentityCallbackProxy>();
 	Proxy->LocalUserNum = LocalUserNum;
 	Proxy->SetFlags(RF_StrongRefOnFrame);
-	Proxy->Activate();
 	return Proxy;
 }
 
@@ -45,7 +44,7 @@ void UOculusIdentityCallbackProxy::OnLoginCompleteDelegate(int32 Unused, bool bW
 	Online::GetIdentityInterface()->ClearOnLoginCompleteDelegate_Handle(LocalUserNum, DelegateHandle);
 	if (bWasSuccessful)
 	{
-    auto PlayerNickName = Online::GetIdentityInterface()->GetPlayerNickname(LocalUserNum);
+		auto PlayerNickName = Online::GetIdentityInterface()->GetPlayerNickname(LocalUserNum);
 		OnSuccess.Broadcast(UserId.ToString(), PlayerNickName);
 	}
 	else

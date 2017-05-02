@@ -1,4 +1,4 @@
-// Copyright 1998-2015 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,7 @@ private:
 	/** Reference to the owning subsystem */
 	FOnlineSubsystemOculus& OculusSubsystem;
 
-	bool ReadOculusLeaderboards(bool OnlyFriends, FOnlineLeaderboardReadRef& ReadObject);
+	bool ReadOculusLeaderboards(bool bOnlyFriends, bool bOnlyLoggedInUser, FOnlineLeaderboardReadRef& ReadObject);
 	void OnReadLeaderboardsComplete(ovrMessageHandle Message, bool bIsError, const FOnlineLeaderboardReadRef& ReadObject);
 
 public:

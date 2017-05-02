@@ -291,8 +291,8 @@ static FOpenGLTexture2D* OpenGLCreateTexture2DAlias(
 }
 
 //////////////////////////////////////////////////////////////////////////
-FOculusRiftHMD::OGLBridge::OGLBridge(const FOvrSessionSharedPtr& InOvrSession) :
-	FCustomPresent(InOvrSession)
+FOculusRiftHMD::OGLBridge::OGLBridge(const FOvrSessionSharedPtr& InOvrSession, FOculusRiftHMD* RiftHMD) :
+	FCustomPresent(InOvrSession, RiftHMD)
 {
 }
 
