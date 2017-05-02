@@ -143,9 +143,10 @@ void FClothingSimulationBase::FillContext(USkeletalMeshComponent* InComponent, I
 
 		for(int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 		{
-			if(InComponent->MasterBoneMap.IsValidIndex(BoneIndex))
+			const int32 ParentIndex = InComponent->MasterBoneMap[BoneIndex];
+
+			if(InComponent->MasterBoneMap.IsValidIndex(ParentIndex))
 			{
-				const int32 ParentIndex = InComponent->MasterBoneMap[BoneIndex];
 				BaseContext->BoneTransforms[BoneIndex] = MasterComponent->GetComponentSpaceTransforms()[ParentIndex];
 			}
 			else

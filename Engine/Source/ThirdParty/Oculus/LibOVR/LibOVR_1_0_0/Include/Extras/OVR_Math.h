@@ -25,6 +25,10 @@
 #if defined(_MSC_VER)
     #pragma warning(push)
     #pragma warning(disable: 4127) // conditional expression is constant
+
+    #if _MSC_VER < 1800 // isfinite was introduced in VS2013
+        #define isfinite(x) _finite((x))
+    #endif
 #endif
 
 
@@ -937,6 +941,39 @@ public:
         b[1].x = (v.x < b[1].x ? b[1].x : v.x);
         b[1].y = (v.y < b[1].y ? b[1].y : v.y);
         b[1].z = (v.z < b[1].z ? b[1].z : v.z);
+    }
+
+    bool Excludes(const Vector3<T>& v) const
+    {
+        bool testing = false;
+        for (int32_t t = 0; t < 3; ++t)
+        {
+            testing |= v[t] > b[1][t];
+            testing |= v[t] < b[0][t];
+        }
+        return testing;
+    }
+
+    // exludes, ignoring vertical
+    bool ExcludesXZ(const Vector3<T>& v) const
+    {
+        bool testing = false;
+        testing |= v[0] > b[1][0];
+        testing |= v[0] < b[0][0];
+        testing |= v[2] > b[1][2];
+        testing |= v[2] < b[0][2];
+        return testing;
+    }
+
+    bool Excludes(const Bounds3<T>& bounds) const
+    {
+        bool testing = false;
+        for (int32_t t = 0; t < 3; ++t)
+        {
+            testing |= bounds.b[0][t] > b[1][t];
+            testing |= bounds.b[1][t] < b[0][t];
+        }
+        return testing;
     }
 
     const Vector3<T> & GetMins() const { return b[0]; }
@@ -3668,7 +3705,7 @@ public:
     Plane(T x, T y, T z, T d) : N(x,y,z), D(d) {}
 
     // construct from a point on the plane and the normal
-    Plane(const Vector3<T>& p, const Vector3<T>& n) : N(n), D(-(p * n)) {}
+    Plane(const Vector3<T>& p, const Vector3<T>& n) : N(n), D(-(p.Dot(n))) {}
 
     // Find the point to plane distance. The sign indicates what side of the plane the point is on (0 = point on plane).
     T TestSide(const Vector3<T>& p) const
@@ -3758,7 +3795,7 @@ struct FovPort
         return reinterpret_cast<const CompatibleType&>(*this);
     }
 #endif
-    
+
     static FovPort CreateFromRadians(float horizontalFov, float verticalFov)
     {
         FovPort result;

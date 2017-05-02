@@ -30,17 +30,41 @@ ISocketSubsystem* UOculusNetDriver::GetSocketSubsystem()
 	return nullptr;
 }
 
-FSocket * UOculusNetDriver::CreateSocket()
-{
-	/** Not used */
-	return nullptr;
-}
-
 bool UOculusNetDriver::InitBase(bool bInitAsClient, FNetworkNotify* InNotify, const FURL& URL, bool bReuseAddressAndPort, FString& Error)
 {
 	if (!Super::InitBase(bInitAsClient, InNotify, URL, bReuseAddressAndPort, Error))
 	{
 		return false;
+	}
+
+	if (InitialConnectTimeout == 0.0)
+	{
+		UE_LOG(LogNet, Warning, TEXT("InitalConnectTimeout was set to %f"), InitialConnectTimeout);
+		InitialConnectTimeout = 120.0;
+	}
+
+	if (ConnectionTimeout == 0.0)
+	{
+		UE_LOG(LogNet, Warning, TEXT("ConnectionTimeout was set to %f"), ConnectionTimeout);
+		ConnectionTimeout = 120.0;
+	}
+
+	if (KeepAliveTime == 0.0)
+	{
+		UE_LOG(LogNet, Warning, TEXT("KeepAliveTime was set to %f"), KeepAliveTime);
+		KeepAliveTime = 0.2;
+	}
+
+	if (SpawnPrioritySeconds == 0.0)
+	{
+		UE_LOG(LogNet, Warning, TEXT("SpawnPrioritySeconds was set to %f"), SpawnPrioritySeconds);
+		SpawnPrioritySeconds = 1.0;
+	}
+
+	if (RelevantTimeout == 0.0)
+	{
+		UE_LOG(LogNet, Warning, TEXT("RelevantTimeout was set to %f"), RelevantTimeout);
+		RelevantTimeout = 5.0;
 	}
 
 	// Listen for network state
@@ -140,7 +164,7 @@ void UOculusNetDriver::ProcessRemoteFunction(class AActor* Actor, UFunction* Fun
 {
 	bool bIsServer = IsServer();
 
-	UNetConnection* Connection = NULL;
+	UNetConnection* Connection = nullptr;
 	if (bIsServer)
 	{
 		if ((Function->FunctionFlags & FUNC_NetMulticast))
@@ -168,9 +192,9 @@ void UOculusNetDriver::ProcessRemoteFunction(class AActor* Actor, UFunction* Fun
 
 					if (IsRelevant)
 					{
-						if (Connection->GetUChildConnection() != NULL)
+						if (Connection->GetUChildConnection() != nullptr)
 						{
-							Connection = ((UChildConnection*)Connection)->Parent;
+							Connection = static_cast<UChildConnection*>(Connection)->Parent;
 						}
 
 						InternalProcessRemoteFunction(Actor, SubObject, Connection, Function, Parameters, OutParms, Stack, bIsServer);
@@ -265,8 +289,16 @@ void UOculusNetDriver::OnNetworkingConnectionStateChange(ovrMessageHandle Messag
 	}
 	else if (State == ovrPeerState_Timeout)
 	{
-		UE_LOG(LogNet, Warning, TEXT("%llu timed out"), PeerID);
-		Connection->State = EConnectionState::USOCK_Closed;
+		if (Connection->State == EConnectionState::USOCK_Pending)
+		{
+			UE_LOG(LogNet, Verbose, TEXT("Retrying connection to %llu"), PeerID);
+			ovr_Net_Connect(PeerID);
+		}
+		else
+		{
+			UE_LOG(LogNet, Warning, TEXT("%llu timed out"), PeerID);
+			Connection->State = EConnectionState::USOCK_Closed;
+		}
 	}
 	else
 	{
