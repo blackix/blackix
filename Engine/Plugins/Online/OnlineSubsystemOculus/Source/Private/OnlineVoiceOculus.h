@@ -54,7 +54,7 @@ public:
 	virtual bool UnregisterLocalTalker(uint32 LocalUserNum) override
 	{
 		// no-op
-		return (LocalUserNum == 0);
+		return true;
 	}
 	virtual void UnregisterLocalTalkers() override
 	{
@@ -73,21 +73,9 @@ public:
 		return (!bIsLocalPlayerMuted && 0 <= LocalUserNum && LocalUserNum <= MAX_LOCAL_PLAYERS);
 	}
 	virtual bool IsRemotePlayerTalking(const FUniqueNetId& UniqueId) override;
-	virtual bool IsMuted(uint32 LocalUserNum, const FUniqueNetId& UniqueId) const override
-	{
-		// currently not able to mute remote users
-		return false;
-	}
-	virtual bool MuteRemoteTalker(uint8 LocalUserNum, const FUniqueNetId& PlayerId, bool bIsSystemWide) override
-	{
-		// currently not able to mute remote users
-		return false;
-	}
-	virtual bool UnmuteRemoteTalker(uint8 LocalUserNum, const FUniqueNetId& PlayerId, bool bIsSystemWide) override
-	{
-		// currently not able to mute remote users
-		return false;
-	}
+	virtual bool IsMuted(uint32 LocalUserNum, const FUniqueNetId& UniqueId) const override;
+	virtual bool MuteRemoteTalker(uint8 LocalUserNum, const FUniqueNetId& PlayerId, bool bIsSystemWide) override;
+	virtual bool UnmuteRemoteTalker(uint8 LocalUserNum, const FUniqueNetId& PlayerId, bool bIsSystemWide) override;
 	virtual TSharedPtr<class FVoicePacket> SerializeRemotePacket(FArchive& Ar) override
 	{
 		// not used
@@ -137,6 +125,9 @@ private:
 	/** Voice decompression buffer, shared by all talkers */
 	TArray<int16_t> DecompressedVoiceBuffer;
 
+	/** Set of talkers that the local player has muted */
+	TSet<class FUniqueNetIdOculus> MutedRemoteTalkers;
+
 	/**
 	* Finds a remote talker in the cached list
 	*
@@ -152,7 +143,7 @@ private:
 	class FOnlineSubsystemOculus& OculusSubsystem;
 
 	FDelegateHandle VoipConnectionRequestDelegateHandle;
-	void OnVoipConnectionRequest(ovrMessageHandle Message, bool bIsError);
+	void OnVoipConnectionRequest(ovrMessageHandle Message, bool bIsError) const;
 
 	FDelegateHandle VoipStateChangeDelegateHandle;
 	void OnVoipStateChange(ovrMessageHandle Message, bool bIsError);

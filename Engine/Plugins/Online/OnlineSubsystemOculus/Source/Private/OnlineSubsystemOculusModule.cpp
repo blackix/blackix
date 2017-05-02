@@ -22,19 +22,26 @@ public:
 	FOnlineFactoryOculus() {}	
 	virtual ~FOnlineFactoryOculus() {}
 
-	virtual IOnlineSubsystemPtr CreateSubsystem(FName InstanceName)
+	IOnlineSubsystemPtr CreateSubsystem(FName InstanceName) override
 	{
 		if (!OnlineSub.IsValid())
 		{
-			OnlineSub = MakeShareable(new FOnlineSubsystemOculus(NAME_None));
+			OnlineSub = MakeShareable(new FOnlineSubsystemOculus(InstanceName));
 		}
 		if (OnlineSub->IsEnabled())
 		{
-			if (!OnlineSub->Init())
+			if (!OnlineSub->IsInitialized())
 			{
-				UE_LOG_ONLINE(Warning, TEXT("Oculus API failed to initialize!"));
-				// Shutdown already called in Init() when this failed
-				OnlineSub = nullptr;
+				if (!OnlineSub->Init())
+				{
+					UE_LOG_ONLINE(Warning, TEXT("Oculus API failed to initialize!"));
+					// Shutdown already called in Init() when this failed
+					OnlineSub = nullptr;
+				}
+			}
+			else
+			{
+				UE_LOG_ONLINE(Log, TEXT("Oculus API already initialized!"));
 			}
 		}
 		else

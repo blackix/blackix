@@ -182,7 +182,8 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	FTextureRHIParamRef SceneColor = nullptr;
 	if (bGammaSpace && !bRenderToSceneColor)
 	{
-		SceneColor = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneColor->GetRenderTargetItem().TargetableTexture : static_cast<FTextureRHIRef>(ViewFamily.RenderTarget->GetRenderTargetTexture());
+		bool DirectMVBuffer = ViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeX() == ViewFamily.RenderTarget->GetRenderTargetTexture()->GetSizeY();
+		SceneColor = (View.bIsMobileMultiViewEnabled && !DirectMVBuffer) ? SceneContext.MobileMultiViewSceneColor->GetRenderTargetItem().TargetableTexture : static_cast<FTextureRHIRef>(ViewFamily.RenderTarget->GetRenderTargetTexture());
 		const FTextureRHIParamRef SceneDepth = (View.bIsMobileMultiViewEnabled) ? SceneContext.MobileMultiViewSceneDepthZ->GetRenderTargetItem().TargetableTexture : static_cast<FTextureRHIRef>(SceneContext.GetSceneDepthTexture());
 		SetRenderTarget(RHICmdList, SceneColor, SceneDepth, ESimpleRenderTargetMode::EClearColorAndDepth);
 	}
@@ -239,7 +240,10 @@ void FMobileSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RenderTranslucency(RHICmdList);
 	}
 
-	CopyMobileMultiViewSceneColor(RHICmdList);
+	if (SceneColor != ViewFamily.RenderTarget->GetRenderTargetTexture())
+	{
+		CopyMobileMultiViewSceneColor(RHICmdList);
+	}
 
 	static const auto CVarMobileMSAA = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
 	bool bOnChipSunMask =
