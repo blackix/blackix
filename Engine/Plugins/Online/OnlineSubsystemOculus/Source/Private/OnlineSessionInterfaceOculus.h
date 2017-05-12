@@ -9,6 +9,7 @@
 #include "OnlineSubsystemOculusPackage.h"
 
 #define SETTING_OCULUS_POOL FName(TEXT("OCULUSPOOL"))
+#define SETTING_OCULUS_BUILD_UNIQUE_ID FName(TEXT("OCULUSSESSIONBUILDUNIQUEID"))
 
 #define SEARCH_OCULUS_MODERATED_ROOMS_ONLY FName(TEXT("OCULUSMODERATEDROOMSONLY"))
 
@@ -39,9 +40,11 @@ private:
 	 */
 	FName InProgressMatchmakingSearchName;
 
-	ovrID GetOvrIDFromSession(const FNamedOnlineSession& Session);
+	ovrID GetOvrIDFromSession(const FNamedOnlineSession& Session) const;
 
 	TArray<TSharedRef<const FOnlineSessionSearchResult>> PendingInviteAcceptedSessions;
+
+	int32 GetRoomBuildUniqueId(const ovrRoomHandle Room);
 
 PACKAGE_SCOPE:
 
@@ -54,10 +57,10 @@ PACKAGE_SCOPE:
 	FDelegateHandle OnMatchmakingNotificationMatchFoundHandle;
 	void OnMatchmakingNotificationMatchFound(ovrMessageHandle Message, bool bIsError);
 
-	TSharedRef<FOnlineSession> CreateSessionFromRoom(ovrRoomHandle Room);
+	TSharedRef<FOnlineSession> CreateSessionFromRoom(ovrRoomHandle Room) const;
 
-	void UpdateSessionFromRoom(FNamedOnlineSession& Session, ovrRoomHandle Room);
-	void UpdateSessionSettingsFromDataStore(FOnlineSessionSettings& SessionSettings, ovrDataStoreHandle DataStore);
+	void UpdateSessionFromRoom(FNamedOnlineSession& Session, ovrRoomHandle Room) const;
+	void UpdateSessionSettingsFromDataStore(FOnlineSessionSettings& SessionSettings, ovrDataStoreHandle DataStore) const;
 
 	void TickPendingInvites(float DeltaTime);
 
