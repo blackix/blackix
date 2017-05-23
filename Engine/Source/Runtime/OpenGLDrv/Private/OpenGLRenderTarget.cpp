@@ -135,8 +135,8 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 	// Allocate mobile multi-view frame buffer if enabled and supported.
 	// Multi-view doesn't support read buffers, explicitly disable and only bind GL_DRAW_FRAMEBUFFER
 	// TODO: We can't reliably use packed depth stencil?
-	const bool bRenderTargetsDefined = RenderTargets[0] && DepthStencilTarget;
-	const bool bUsingArrayTextures = (bRenderTargetsDefined) ? (RenderTargets[0]->Target == GL_TEXTURE_2D_ARRAY && DepthStencilTarget->Target == GL_TEXTURE_2D_ARRAY) : false;
+	const bool bRenderTargetsDefined = RenderTargets[0];
+	const bool bUsingArrayTextures = (bRenderTargetsDefined) ? (RenderTargets[0]->Target == GL_TEXTURE_2D_ARRAY && (!DepthStencilTarget || DepthStencilTarget->Target == GL_TEXTURE_2D_ARRAY)) : false;
 
 	if (bUsingArrayTextures && FOpenGL::SupportsMobileMultiView() && (CVarMobileMultiView && CVarMobileMultiView->GetValueOnAnyThread() != 0))
 	{
@@ -151,16 +151,22 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 			glFramebufferTextureMultisampleMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, RenderTarget->Resource, 0, NumSamplesTileMem, 0, 2);
 			VERIFY_GL(glFramebufferTextureMultisampleMultiviewOVR);
 
-			glFramebufferTextureMultisampleMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, DepthStencilTarget->Resource, 0, NumSamplesTileMem, 0, 2);
-			VERIFY_GL(glFramebufferTextureMultisampleMultiviewOVR);
+			if (DepthStencilTarget)
+			{
+				glFramebufferTextureMultisampleMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, DepthStencilTarget->Resource, 0, NumSamplesTileMem, 0, 2);
+				VERIFY_GL(glFramebufferTextureMultisampleMultiviewOVR);
+			}
 		}
 		else
 		{
 			glFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, RenderTarget->Resource, 0, 0, 2);
 			VERIFY_GL(glFramebufferTextureMultiviewOVR);
 
-			glFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, DepthStencilTarget->Resource, 0, 0, 2);
-			VERIFY_GL(glFramebufferTextureMultiviewOVR);
+			if (DepthStencilTarget)
+			{
+				glFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, DepthStencilTarget->Resource, 0, 0, 2);
+				VERIFY_GL(glFramebufferTextureMultiviewOVR);
+			}
 		}
 
 		FOpenGL::CheckFrameBuffer();

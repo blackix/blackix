@@ -7,6 +7,7 @@
 #include "Misc/CoreDelegates.h"
 #include "Engine/GameEngine.h"
 #include "Engine/Canvas.h"
+#include "RenderUtils.h"
 
 #if GEARVR_SUPPORTED_PLATFORMS && PLATFORM_ANDROID
 
@@ -170,6 +171,7 @@ FSettings::FSettings()
 
 	Flags.bStereoEnabled = false; Flags.bHMDEnabled = true;
 	Flags.bUpdateOnRT = Flags.bTimeWarp = true;
+	Flags.bEnableDirectMultiview = false;
 }
 
 TSharedPtr<FHMDSettings, ESPMode::ThreadSafe> FSettings::Clone() const
@@ -525,7 +527,21 @@ bool FGearVR::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 			SetLoadingIconTexture(nullptr);
 		}
 	}
-	else if (FParse::Command(&Cmd, TEXT("TESTL"))) 
+	else if (FParse::Command(&Cmd, TEXT("GDBSERVER")))
+	{
+		FString ValueStr = FParse::Token(Cmd, 0);
+		int port = FCString::Atoi(*ValueStr);
+		if (port == 0)
+		{
+			port = 6667;
+		}
+
+		#if PLATFORM_ANDROID
+		FAndroidMisc::LaunchGDBServer(port);
+		#endif
+		return true;
+	}
+	else if (FParse::Command(&Cmd, TEXT("TESTL")))
 	{
 		static uint32 LID1 = ~0u, LID2 = ~0u, LID3 = ~0u;
 		IStereoLayers* StereoL = this;
@@ -1175,6 +1191,8 @@ void FGearVR::UpdateStereoRenderingParams()
 		CurrentSettings->RenderTargetSize.X = SuggestedEyeResolutionWidth * 2 * CurrentSettings->ScreenPercentage / 100;
 		CurrentSettings->RenderTargetSize.Y = SuggestedEyeResolutionHeight * CurrentSettings->ScreenPercentage / 100;
 
+		QuantizeSceneBufferSize(CurrentSettings->RenderTargetSize.X, CurrentSettings->RenderTargetSize.Y);
+
 		const float SuggestedEyeFovDegreesX = vrapi_GetSystemPropertyFloat(&JavaGT, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X);
 		const float SuggestedEyeFovDegreesY = vrapi_GetSystemPropertyFloat(&JavaGT, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y);
 		CurrentSettings->HFOVInRadians = FMath::DegreesToRadians(SuggestedEyeFovDegreesX);
@@ -1253,6 +1271,10 @@ void FGearVR::LoadFromIni()
 	if (GConfig->GetBool(GearVRSettings, TEXT("bUpdateOnRT"), v, GEngineIni))
 	{
 		CurrentSettings->Flags.bUpdateOnRT = v;
+	}
+	if (GConfig->GetBool(GearVRSettings, TEXT("bEnableDirectMultiview"), v, GEngineIni))
+	{
+		CurrentSettings->Flags.bEnableDirectMultiview = v;
 	}
 	if (GConfig->GetFloat(GearVRSettings, TEXT("FarClippingPlane"), f, GEngineIni))
 	{
