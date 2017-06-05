@@ -2109,6 +2109,7 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHICreateTexture2DFromD3D12Resource(uint8 For
 
 		FD3D12ResourceLocation& Location = Texture2D->ResourceLocation;
 		Location.AsStandAlone(TextureResource);
+		Location.SetType(FD3D12ResourceLocation::ResourceLocationType::eAliased);
 		TextureResource->AddRef();
 		
 		if (bCreateRTV)
