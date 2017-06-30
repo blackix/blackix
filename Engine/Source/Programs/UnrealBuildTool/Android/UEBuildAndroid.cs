@@ -374,7 +374,26 @@ namespace UnrealBuildTool
 				//LinkEnvironment.AdditionalLibraries.Add("Nvidia_gfx_debugger_stub");
 			}
 
-			LinkEnvironment.AdditionalLibraries.Add("gnustl_shared");
+            {
+                string AndroidGraphicsDebugger;
+                ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(Target.ProjectFile), UnrealTargetPlatform.Android);
+                Ini.GetString("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "AndroidGraphicsDebugger", out AndroidGraphicsDebugger);
+                
+               if (AndroidGraphicsDebugger.ToLower() == "renderdoc")
+               {
+                    string RenderDocPath;
+                    AndroidPlatformSDK.GetPath(Ini, "/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "RenderDocPath", out RenderDocPath);
+                    string RenderDocLibPath = Path.Combine(RenderDocPath, @"android\libs\armeabi-v7a");
+
+					if (Directory.Exists(RenderDocLibPath))
+					{
+	                    LinkEnvironment.LibraryPaths.Add(RenderDocLibPath);
+    	                LinkEnvironment.AdditionalLibraries.Add("VkLayer_RenderDoc");
+    	            }
+               }
+            }
+
+            LinkEnvironment.AdditionalLibraries.Add("gnustl_shared");
 			LinkEnvironment.AdditionalLibraries.Add("gcc");
 			LinkEnvironment.AdditionalLibraries.Add("z");
 			LinkEnvironment.AdditionalLibraries.Add("c");

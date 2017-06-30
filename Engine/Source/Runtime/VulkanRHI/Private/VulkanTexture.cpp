@@ -1370,26 +1370,67 @@ FVulkanTextureBase::FVulkanTextureBase(FVulkanDevice& Device, VkImageViewType Re
 
 FVulkanTextureBase::~FVulkanTextureBase()
 {
+	DestroyViews();
+
 	if (PartialView != &DefaultView)
 	{
-		PartialView->Destroy(*Surface.Device);
 		delete PartialView;
 	}
 
-	DefaultView.Destroy(*Surface.Device);
-
-	#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
 	if (MSAASurface)
 	{
 		delete MSAASurface;
 		MSAASurface = nullptr;
 	}
-	#endif
+#endif
 }
 
 VkImageView FVulkanTextureBase::CreateRenderTargetView(uint32 MipIndex, uint32 NumMips, uint32 ArraySliceIndex, uint32 NumArraySlices)
 {
 	return FVulkanTextureView::StaticCreate(*Surface.Device, Surface.Image, Surface.GetViewType(), Surface.GetFullAspectMask(), Surface.PixelFormat, Surface.ViewFormat, MipIndex, NumMips, ArraySliceIndex, NumArraySlices, true);
+}
+
+void FVulkanTextureBase::AliasTextureResources(const FVulkanTextureBase* SrcTexture)
+{
+	DestroyViews();
+
+	check(!Surface.bIsImageOwner);
+	Surface.Image = SrcTexture->Surface.Image;
+	DefaultView.View = SrcTexture->DefaultView.View;
+
+	if (PartialView != &DefaultView)
+	{
+		PartialView->View = SrcTexture->PartialView->View;
+	}
+
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
+	if (MSAASurface)
+	{
+		check(!MSAASurface->bIsImageOwner);
+		MSAASurface->Image = SrcTexture->MSAASurface->Image;
+		MSAAView.View = SrcTexture->MSAAView.View;
+	}
+#endif
+
+	bIsAliased = true;
+}
+
+void FVulkanTextureBase::DestroyViews()
+{
+	if (!bIsAliased)
+	{
+		DefaultView.Destroy(*Surface.Device);
+
+		if (PartialView != &DefaultView)
+		{
+			PartialView->Destroy(*Surface.Device);
+		}
+
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
+		MSAAView.Destroy(*Surface.Device);
+#endif
+	}
 }
 
 

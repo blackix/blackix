@@ -775,16 +775,32 @@ namespace UnrealBuildTool
 						}
 					}
 					break;
-					// @TODO: Add NVIDIA Gfx Debugger
-			/*
-					case "nvidia":
-						{
-			Directory.CreateDirectory(UE4BuildPath + "/libs/" + NDKArch);
-			File.Copy("F:/NVPACK/android-kk-egl-t124-a32/Stripped_libNvPmApi.Core.so", UE4BuildPath + "/libs/" + NDKArch + "/libNvPmApi.Core.so", true);
-			File.Copy("F:/NVPACK/android-kk-egl-t124-a32/Stripped_libNvidia_gfx_debugger.so", UE4BuildPath + "/libs/" + NDKArch + "/libNvidia_gfx_debugger.so", true);
-						}
-			*/
-				default:
+
+                case "renderdoc":
+                    {
+                        string RenderDocPath;
+                        AndroidPlatformSDK.GetPath(Ini, "/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "RenderDocPath", out RenderDocPath);
+                        if (Directory.Exists(RenderDocPath))
+                        {
+                            string RenderDocLibPath = Path.Combine(RenderDocPath, @"android\libs", NDKArch);
+                            string LibSrcPath = Path.Combine(RenderDocLibPath, "libVkLayer_RenderDoc.so");
+                            string LibDstPath = Path.Combine(UE4BuildPath, "libs", NDKArch, "libVkLayer_RenderDoc.so");
+
+                            Console.WriteLine("Copying {0} to {1}", LibSrcPath, LibDstPath);
+                            File.Copy(LibSrcPath, LibDstPath, true);
+                        }
+                    }
+                    break;
+                // @TODO: Add NVIDIA Gfx Debugger
+                /*
+                        case "nvidia":
+                            {
+                Directory.CreateDirectory(UE4BuildPath + "/libs/" + NDKArch);
+                File.Copy("F:/NVPACK/android-kk-egl-t124-a32/Stripped_libNvPmApi.Core.so", UE4BuildPath + "/libs/" + NDKArch + "/libNvPmApi.Core.so", true);
+                File.Copy("F:/NVPACK/android-kk-egl-t124-a32/Stripped_libNvidia_gfx_debugger.so", UE4BuildPath + "/libs/" + NDKArch + "/libNvidia_gfx_debugger.so", true);
+                            }
+                */
+                default:
 					break;
 			}
 		}
@@ -2899,7 +2915,17 @@ namespace UnrealBuildTool
 											"\t\t\tLog.debug(\"libMGD.so not loaded.\");\n" +
 											"\t\t}\n";
 					break;
-			}
+                /*case "renderdoc":
+                    LoadLibraryDefaults += "\t\ttry\n" +
+                                            "\t\t{\n" +
+                                            "\t\t\tSystem.loadLibrary(\"VkLayer_RenderDoc\");\n" +
+                                            "\t\t}\n" +
+                                            "\t\tcatch (java.lang.UnsatisfiedLinkError e)\n" +
+                                            "\t\t{\n" +
+                                            "\t\t\tLog.debug(\"libVkLayer_RenderDoc.so not loaded.\");\n" +
+                                            "\t\t}\n";
+                    break;*/
+            }
 			
 			Dictionary<string, string> Replacements = new Dictionary<string, string>{
 				{ "//$${gameActivityImportAdditions}$$", UPL.ProcessPluginNode(NDKArch, "gameActivityImportAdditions", "")},
