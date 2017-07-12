@@ -31,6 +31,7 @@ FSettings::FSettings() :
 	Flags.bPlayerCameraManagerFollowsHmdOrientation = true;
 	Flags.bPlayerCameraManagerFollowsHmdPosition = true;
 	Flags.bDirectMultiview = true;
+	Flags.bIsUsingDirectMultiview = false;
 	EyeRenderViewport[0] = EyeRenderViewport[1] = EyeRenderViewport[2] = FIntRect(0, 0, 0, 0);
 
 	RenderTargetSize = FIntPoint(0, 0);

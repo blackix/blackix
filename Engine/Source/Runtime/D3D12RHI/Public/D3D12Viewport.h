@@ -154,6 +154,7 @@ private:
 	bool bIsFullscreen;
 	EPixelFormat PixelFormat;
 	bool bIsValid;
+	bool bAllowTearing;
 	TRefCountPtr<IDXGISwapChain1> SwapChain1;
 
 	static const uint32 DefaultNumBackBuffers = 3;

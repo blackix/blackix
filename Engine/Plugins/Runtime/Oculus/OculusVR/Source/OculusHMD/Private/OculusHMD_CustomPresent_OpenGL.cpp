@@ -62,7 +62,6 @@ public:
 	virtual bool IsUsingCorrectDisplayAdapter() override;
 	virtual void UpdateMirrorTexture_RenderThread() override;
 
-	virtual void* GetOvrpDevice() const override;
 	virtual EPixelFormat GetDefaultPixelFormat() const override;
 	virtual FTextureSetProxyPtr CreateTextureSet_RenderThread(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, uint32 InArraySize, bool bIsCubemap, const TArray<ovrpTextureHandle>& InTextures) override;
 };
@@ -141,12 +140,6 @@ void FOpenGLCustomPresent::UpdateMirrorTexture_RenderThread()
 				TexCreate_RenderTargetable);
 		}
 	}
-}
-
-
-void* FOpenGLCustomPresent::GetOvrpDevice() const
-{
-	return nullptr;
 }
 
 

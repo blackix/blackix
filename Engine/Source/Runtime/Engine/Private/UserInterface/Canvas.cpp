@@ -225,6 +225,7 @@ FCanvas::FCanvas(FRenderTarget* InRenderTarget, FHitProxyConsumer* InHitProxyCon
 ,	Scene(InWorld ? InWorld->Scene : NULL)
 ,	AllowedModes(0xFFFFFFFF)
 ,	bRenderTargetDirty(false)
+,	bSelfTexture(false)
 ,	CurrentRealTime(0)
 ,	CurrentWorldTime(0)
 ,	CurrentDeltaWorldTime(0)
@@ -249,6 +250,7 @@ FCanvas::FCanvas(FRenderTarget* InRenderTarget,FHitProxyConsumer* InHitProxyCons
 ,	Scene(NULL)
 ,	AllowedModes(0xFFFFFFFF)
 ,	bRenderTargetDirty(false)
+,   bSelfTexture(false)
 ,	CurrentRealTime(InRealTime)
 ,	CurrentWorldTime(InWorldTime)
 ,	CurrentDeltaWorldTime(InWorldDeltaTime)
@@ -548,6 +550,7 @@ FBatchedElements* FCanvas::GetBatchedElements(EElementType InElementType, FBatch
 		checkSlow( SortElement.RenderBatchArray.Last() );
 		RenderBatch = SortElement.RenderBatchArray.Last()->GetCanvasBatchedElementRenderItem();
 	}	
+
 	// if a matching entry for this batch doesn't exist then allocate a new entry
 	if( RenderBatch == NULL ||		
 		!RenderBatch->IsMatch(InBatchedElementParameters, InTexture, InBlendMode, InElementType, TopTransformEntry, GlowInfo) )
@@ -635,6 +638,11 @@ FCanvas::~FCanvas()
 	}
 }
 
+void FCanvas::SetSelfTexture(bool bSelf = true)
+{
+	bSelfTexture = bSelf;
+}
+
 void FCanvas::Flush_RenderThread(FRHICommandListImmediate& RHICmdList, bool bForce)
 {
 	SCOPE_CYCLE_COUNTER(STAT_Canvas_FlushTime);
@@ -675,7 +683,14 @@ void FCanvas::Flush_RenderThread(FRHICommandListImmediate& RHICmdList, bool bFor
 	check(IsValidRef(RenderTargetTexture));
 	
 	// Set the RHI render target.
-	::SetRenderTarget(RHICmdList, RenderTargetTexture, FTexture2DRHIRef());
+	if (IsSelfTexture())
+	{
+		::SetRenderTarget(RHICmdList, RenderTargetTexture, FTexture2DRHIRef(), ESimpleRenderTargetMode::EClearColorAndDepth);
+	}
+	else
+	{
+		::SetRenderTarget(RHICmdList, RenderTargetTexture, FTexture2DRHIRef());
+	}
 
 	FDrawingPolicyRenderState DrawRenderState;
 	// disable depth test & writes
@@ -870,7 +885,6 @@ void FCanvas::SetHitProxy(HHitProxy* HitProxy)
 	}
 }
 
-
 bool FCanvas::HasBatchesToRender() const
 {
 	for( int32 Idx=0; Idx < SortedElements.Num(); Idx++ )
@@ -938,7 +952,9 @@ void FCanvas::DrawTile( float X, float Y, float SizeX,	float SizeY, float U, flo
 	SCOPE_CYCLE_COUNTER(STAT_Canvas_DrawTextureTileTime);
 
 	FCanvasTileItem TileItem(FVector2D(X,Y), Texture ? Texture : GWhiteTexture, FVector2D(SizeX,SizeY), FVector2D(U,V), FVector2D(SizeU,SizeV), Color);
-	TileItem.BlendMode = AlphaBlend ? SE_BLEND_Translucent : SE_BLEND_Opaque;
+	TileItem.BlendMode = AlphaBlend ? 
+		(bSelfTexture ? SE_BLEND_TranslucentAlphaOnlyWriteAlpha : SE_BLEND_Translucent) : 
+		SE_BLEND_Opaque;
 	DrawItem(TileItem);
 }
 
@@ -1338,6 +1354,11 @@ void UCanvas::Update()
 	// Copy size parameters from viewport.
 	ClipX = SizeX;
 	ClipY = SizeY;
+
+	if (Canvas)
+	{
+		Canvas->SetParentCanvasSize(FIntPoint(SizeX, SizeY));
+	}
 }
 
 /*-----------------------------------------------------------------------------
@@ -1770,6 +1791,7 @@ void UCanvas::DrawItem( class FCanvasItem& Item, float X, float Y )
 bool FCanvas::GetOrthoProjectionMatrices(float InDrawDepth, FMatrix OutOrthoProjection[2])
 {
 	bool rv = false;
+
 	if (bStereoRendering)
 	{
 		rv = true;
@@ -1803,10 +1825,13 @@ void FCanvas::DrawItem(FCanvasItem& Item)
 		PushRelativeTransform(OrthoProjection[0]); //apply projection matrix
 		Item.Draw(this);
 		PopTransform();
-		//right eye
-		PushRelativeTransform(OrthoProjection[1]);
-		Item.Draw(this);
-		PopTransform();
+		if (!bSelfTexture)
+		{
+			//right eye
+			PushRelativeTransform(OrthoProjection[1]);
+			Item.Draw(this);
+			PopTransform();
+		}
 	}
 	else
 	{
@@ -1829,10 +1854,13 @@ void FCanvas::DrawItem(FCanvasItem& Item, const FVector2D& InPosition)
 		PushRelativeTransform(OrthoProjection[0]); //apply projection matrix
 		Item.Draw(this, InPosition);
 		PopTransform();
-		//right eye
-		PushRelativeTransform(OrthoProjection[1]);
-		Item.Draw(this , InPosition);
-		PopTransform();
+		if (!bSelfTexture)
+		{
+			//right eye
+			PushRelativeTransform(OrthoProjection[1]);
+			Item.Draw(this, InPosition);
+			PopTransform();
+		}
 	}
 	else
 	{
@@ -1855,10 +1883,13 @@ void FCanvas::DrawItem(FCanvasItem& Item, float X, float Y)
 		PushRelativeTransform(OrthoProjection[0]); //apply projection matrix
 		Item.Draw(this, X, Y);
 		PopTransform();
-		//right eye
-		PushRelativeTransform(OrthoProjection[1]);
-		Item.Draw(this, X, Y);
-		PopTransform();
+		if (!bSelfTexture)
+		{
+			//right eye
+			PushRelativeTransform(OrthoProjection[1]);
+			Item.Draw(this, X, Y);
+			PopTransform();
+		}
 	}
 	else
 	{

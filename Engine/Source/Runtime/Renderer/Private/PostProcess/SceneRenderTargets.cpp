@@ -308,6 +308,11 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 		// Always grow scene render targets in the editor.
 		SceneTargetsSizingMethod = Grow;
 	}	
+	else if (ViewFamily.bIsCasting)
+	{
+		// Always grow scene render targets when casting viewport is used.
+		SceneTargetsSizingMethod = Grow;
+	}
 	else
 	{
 		// Otherwise use the setting specified by the console variable.
@@ -608,6 +613,21 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 
 	if (IsAnyForwardShadingEnabled(GetFeatureLevelShaderPlatform(CurrentFeatureLevel)))
 	{
+		bool bClearColor = ColorLoadAction == ERenderTargetLoadAction::EClear;
+
+		//if the desired clear color doesn't match the bound hwclear value, or there isn't one at all (editor code)
+		//then we need to fall back to a shader clear.
+		const FTextureRHIRef& SceneColorTex = GetSceneColorSurface();
+		bool bShaderClear = false;
+		if (bClearColor)
+		{
+			if (!SceneColorTex->HasClearValue() || (ClearColor != SceneColorTex->GetClearColor()))
+			{
+				ColorLoadAction = ERenderTargetLoadAction::ENoAction;
+				bShaderClear = true;
+			}
+		}
+
 		int32 MRTCount = 0;
 		RenderTargets[MRTCount++] = FRHIRenderTargetView(GetSceneColorSurface(), 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
 
@@ -616,6 +636,17 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 		SetQuadOverdrawUAV(RHICmdList, bBindQuadOverdrawBuffers, Info);
 
 		RHICmdList.SetRenderTargetsAndClear(Info);
+
+		if (bShaderClear)
+		{
+			check(MRTCount == 1);
+			FLinearColor ClearColors[1];
+			FTextureRHIParamRef Textures[1];
+			ClearColors[0] = ClearColor;
+			Textures[0] = RenderTargets[0].Texture;
+			//depth/stencil should have been handled by the fast clear.  only color for RT0 can get changed.
+			DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0);
+		}
 	}
 	else
 	{
