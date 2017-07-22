@@ -22,7 +22,7 @@ namespace OculusHMD
 class FVulkanTextureSetProxy : public FTextureSetProxy
 {
 public:
-	FVulkanTextureSetProxy(FTexture2DRHIParamRef InRHITexture, const TArray<FTexture2DRHIRef>& InRHITextureSwapChain) :
+	FVulkanTextureSetProxy(FTextureRHIParamRef InRHITexture, const TArray<FTextureRHIRef>& InRHITextureSwapChain) :
 		FTextureSetProxy(InRHITexture, InRHITextureSwapChain.Num()),
 		RHITextureSwapChain(InRHITextureSwapChain) {}
 
@@ -47,7 +47,7 @@ protected:
 		CheckInRHIThread();
 
 		FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
-		DynamicRHI->RHIAliasTexture2DResources(RHITexture->GetTexture2D(), RHITextureSwapChain[SwapChainIndex_RHIThread]);
+		DynamicRHI->RHIAliasTextureResources(RHITexture, RHITextureSwapChain[SwapChainIndex_RHIThread]);
 	}
 
 	void ReleaseResources_RHIThread()
@@ -59,7 +59,7 @@ protected:
 	}
 
 protected:
-	TArray<FTexture2DRHIRef> RHITextureSwapChain;
+	TArray<FTextureRHIRef> RHITextureSwapChain;
 };
 
 
@@ -67,7 +67,7 @@ protected:
 // APIs
 //-------------------------------------------------------------------------------------------------
 
-FTextureSetProxyPtr CreateTextureSetProxy_Vulkan(FTexture2DRHIParamRef InRHITexture, const TArray<FTexture2DRHIRef>& InRHITextureSwapChain)
+FTextureSetProxyPtr CreateTextureSetProxy_Vulkan(FTextureRHIParamRef InRHITexture, const TArray<FTextureRHIRef>& InRHITextureSwapChain)
 {
 	return MakeShareable(new FVulkanTextureSetProxy(InRHITexture, InRHITextureSwapChain));
 }

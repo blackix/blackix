@@ -106,13 +106,14 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList, dou
 	CheckInRenderThread();
 
 	// RenderFrame
+	Frame->FrameNumber = OculusHMD->NextFrameNumber++;
+
 	FSettingsPtr XSettings;
 	FGameFramePtr XFrame;
 	TArray<FLayerPtr> XLayers;
 	{
 		FScopeLock ScopeLock(&RenderThreadLock);
 		XSettings = Settings->Clone();
-		Frame->FrameNumber = ++OculusHMD->FrameNumber;
 		XFrame = Frame->Clone();
 
 		if(!bIsBlack)
@@ -182,7 +183,8 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList, dou
 
 	ExecuteOnRHIThread_DoNotWait([this, XSettings, XFrame, XLayers]()
 	{
-		ovrp_BeginFrame2(XFrame->FrameNumber);
+//		UE_LOG(LogHMD, Log, TEXT("Splash ovrp_BeginFrame3 %u"), XFrame->FrameNumber);
+		ovrp_BeginFrame4(XFrame->FrameNumber, CustomPresent->GetOvrpCommandQueue());
 
 		Layers_RHIThread = XLayers;
 		Layers_RHIThread.Sort(FLayerPtr_ComparePriority());
@@ -194,7 +196,8 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList, dou
 			LayerSubmitPtr[LayerIndex] = Layers_RHIThread[LayerIndex]->UpdateLayer_RHIThread(XSettings.Get(), XFrame.Get());
 		}
 
-		ovrp_EndFrame2(XFrame->FrameNumber, LayerSubmitPtr.GetData(), LayerSubmitPtr.Num());
+//		UE_LOG(LogHMD, Log, TEXT("Splash ovrp_EndFrame3 %u"), XFrame->FrameNumber);
+		ovrp_EndFrame4(XFrame->FrameNumber, LayerSubmitPtr.GetData(), LayerSubmitPtr.Num(), CustomPresent->GetOvrpCommandQueue());
 
 		for (int32 LayerIndex = 0; LayerIndex < Layers_RHIThread.Num(); LayerIndex++)
 		{

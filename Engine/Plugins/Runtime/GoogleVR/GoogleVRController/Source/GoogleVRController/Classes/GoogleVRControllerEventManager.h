@@ -31,7 +31,7 @@ class GOOGLEVRCONTROLLER_API UGoogleVRControllerEventManager : public UObject
 public:
 
 	UPROPERTY(BlueprintAssignable)
-	FGoogleVRControllerRecenterDelegate OnControllerRecenteredDelegate;
+	FGoogleVRControllerRecenterDelegate OnControllerRecenteredDelegate_DEPRECATED;
 
 	UPROPERTY(BlueprintAssignable)
 	FGoogleVRControllerStateChangeDelegate OnControllerStateChangedDelegate;

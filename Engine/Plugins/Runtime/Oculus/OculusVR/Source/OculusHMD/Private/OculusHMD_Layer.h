@@ -56,7 +56,7 @@ public:
 	void IncrementSwapChainIndex_RHIThread();
 	void ReleaseResources_RHIThread();
 
-	void DrawPokeAHoleMesh(FRHICommandList& RHICmdList, const FMatrix& InMatrix, float scale, bool invertCoords);
+	void DrawPokeAHoleMesh(FRHICommandList& RHICmdList, FMatrix matrix, float scale, bool invertCoords);
 
 protected:
 	uint32 Id;
@@ -68,6 +68,7 @@ protected:
 	FTextureSetProxyPtr TextureSetProxy;
 	FTextureSetProxyPtr RightTextureSetProxy;
 	bool bUpdateTexture;
+	bool bInvertY;
 };
 
 typedef TSharedPtr<FLayer, ESPMode::ThreadSafe> FLayerPtr;

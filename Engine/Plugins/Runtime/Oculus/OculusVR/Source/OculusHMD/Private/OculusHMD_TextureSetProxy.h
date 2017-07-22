@@ -52,7 +52,7 @@ FTextureSetProxyPtr CreateTextureSetProxy_D3D12(FTexture2DRHIParamRef InRHITextu
 FTextureSetProxyPtr CreateTextureSetProxy_OpenGL(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, uint32 InArraySize, bool bIsCubemap, const TArray<ovrpTextureHandle>& InTextures);
 #endif
 #if OCULUS_HMD_SUPPORTED_PLATFORMS_VULKAN
-FTextureSetProxyPtr CreateTextureSetProxy_Vulkan(FTexture2DRHIParamRef InRHITexture, const TArray<FTexture2DRHIRef>& InRHITextureSwapChain);
+FTextureSetProxyPtr CreateTextureSetProxy_Vulkan(FTextureRHIParamRef InRHITexture, const TArray<FTextureRHIRef>& InRHITextureSwapChain);
 #endif
 
 

@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 15
+#define OVRP_MINOR_VERSION 16
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -56,6 +56,9 @@ limitations under the License.
 #define OVRP_DEFAULTVALUE(Value)
 #endif
 
+#ifndef OVRP_MIXED_REALITY_PRIVATE
+#define OVRP_MIXED_REALITY_PRIVATE 0
+#endif
 
 /// True or false
 enum {
@@ -119,12 +122,12 @@ typedef enum {
   ovrpHand_EnumSize = 0x7fffffff
 } ovrpHand;
 
-/// Identifies a hand.
+/// Identifies a tracked device object.
 typedef enum {
-    ovrpDeviceObject_None = -1,
-    ovrpDeviceObject_Zero = 0,
-    ovrpDeviceObject_Count,
-    ovrpDeviceObject_EnumSize = 0x7fffffff
+  ovrpDeviceObject_None = -1,
+  ovrpDeviceObject_Zero = 0,
+  ovrpDeviceObject_Count,
+  ovrpDeviceObject_EnumSize = 0x7fffffff
 } ovrpDeviceObject;
 
 /// Identifies a tracking sensor.
@@ -197,6 +200,7 @@ typedef enum {
   ovrpSystemHeadset_GearVR_R321, // S6 Innovator
   ovrpSystemHeadset_GearVR_R322, // GearVR Commercial 1
   ovrpSystemHeadset_GearVR_R323, // GearVR Commercial 2 (USB Type C)
+  ovrpSystemHeadset_GearVR_R324, // GearVR Commercial 3 (USB Type C)
 
   ovrpSystemHeadset_Rift_DK1 = 0x1000,
   ovrpSystemHeadset_Rift_DK2,
@@ -438,7 +442,10 @@ typedef struct {
   float HandTrigger[2];
   ovrpVector2f Thumbstick[2];
   ovrpVector2f Touchpad[2];
-} ovrpControllerState2;
+  unsigned char BatteryPercentRemaining[2];
+  unsigned char RecenterCount[2];
+  unsigned char Reserved[28];
+} ovrpControllerState4;
 
 /// Describes Haptics Buffer for use with Oculus Controllers.
 typedef struct {
@@ -496,10 +503,7 @@ typedef struct {
   int PointsCount;
 } ovrpBoundaryGeometry;
 
-typedef enum {
-	ovrpFunctionEndFrame = 0,
-	ovrpFunctionCreateTexture
-} ovrpFunctionType;
+typedef enum { ovrpFunctionEndFrame = 0, ovrpFunctionCreateTexture } ovrpFunctionType;
 
 /// Camera status
 typedef enum {
@@ -532,6 +536,7 @@ typedef struct {
 
 #define OVRP_EXTERNAL_CAMERA_NAME_SIZE 32
 
+#if !OVRP_MIXED_REALITY_PRIVATE
 /// Unified camera device types
 typedef enum {
   ovrpCameraDevice_None = 0,
@@ -539,12 +544,13 @@ typedef enum {
   ovrpCameraDevice_WebCamera0 = ovrpCameraDevice_WebCamera_First + 0,
   ovrpCameraDevice_WebCamera1 = ovrpCameraDevice_WebCamera_First + 1,
   ovrpCameraDevice_WebCamera_Last = ovrpCameraDevice_WebCamera1,
-  ovrpCameraDevice_KinectSensor = 200,
   ovrpCameraDevice_EnumSize = 0x7fffffff
 } ovrpCameraDevice;
+#endif
 
 const static ovrpPosef s_identityPose = {{0, 0, 0, 1}, {0, 0, 0}};
-const static ovrpPoseStatef s_identityPoseState = {{{0, 0, 0, 1}, {0, 0, 0}}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, 0};
+const static ovrpPoseStatef s_identityPoseState =
+    {{{0, 0, 0, 1}, {0, 0, 0}}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, 0};
 const static ovrpFrustum2f s_identityFrustum2 = {0, 0, {0, 0, 0, 0}};
 const static ovrpVector3f s_vec3Zero = {0, 0, 0};
 const static ovrpVector2f s_vec2Zero = {0, 0};

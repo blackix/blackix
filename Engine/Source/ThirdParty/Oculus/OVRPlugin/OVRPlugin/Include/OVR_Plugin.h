@@ -41,10 +41,11 @@ OVRP_EXPORT ovrpBool ovrp_GetInitialized();
 /// Sets up the Oculus runtime, VR tracking, and graphics resources.
 /// You must call this before any other function except ovrp_PreInitialize() or
 /// ovrp_GetInitialized().
-OVRP_EXPORT ovrpResult ovrp_Initialize3(
+OVRP_EXPORT ovrpResult ovrp_Initialize4(
     ovrpRenderAPIType apiType,
     ovrpLogCallback logCallback,
     void* activity,
+    void* instance,
     int initializeFlags,
     OVRP_CONSTREF(ovrpVersion) version OVRP_DEFAULTVALUE({OVRP_VERSION}));
 
@@ -192,12 +193,12 @@ OVRP_EXPORT ovrpResult ovrp_GetHmdToEyeOffset2(int eyeIndex, ovrpVector3f* hmdTo
 OVRP_EXPORT ovrpResult ovrp_Update3(ovrpStep step, int frameIndex, double predictionSeconds);
 
 /// Marks the beginning of a frame. Call this before issuing any graphics commands in a given frame.
-OVRP_EXPORT ovrpResult ovrp_BeginFrame2(int frameIndex);
+OVRP_EXPORT ovrpResult ovrp_BeginFrame4(int frameIndex, void* commandQueue);
 
 /// Marks the end of a frame and performs TimeWarp. Call this before Present or SwapBuffers to
 /// update the VR window.
 OVRP_EXPORT ovrpResult
-ovrp_EndFrame2(int frameIndex, ovrpLayerSubmit const* const* layerSubmitPtrs, int layerSubmitCount);
+ovrp_EndFrame4(int frameIndex, ovrpLayerSubmit const* const* layerSubmitPtrs, int layerSubmitCount, void* commandQueue);
 
 /// If true, the HMD supports orientation tracking.
 OVRP_EXPORT ovrpResult ovrp_GetTrackingOrientationSupported2(ovrpBool* trackingOrientationSupported);
@@ -260,7 +261,7 @@ OVRP_EXPORT ovrpResult ovrp_GetNodePoseState2(ovrpStep step, ovrpNode nodeId, ov
 OVRP_EXPORT ovrpResult ovrp_GetNodeFrustum2(ovrpNode nodeId, ovrpFrustum2f* nodeFrustum);
 
 /// Gets the controller state for the given controllers.
-OVRP_EXPORT ovrpResult ovrp_GetControllerState3(ovrpController controllerMask, ovrpControllerState2* controllerState);
+OVRP_EXPORT ovrpResult ovrp_GetControllerState4(ovrpController controllerMask, ovrpControllerState4* controllerState);
 
 /// Gets the currently active controller type.
 OVRP_EXPORT ovrpResult ovrp_GetActiveController2(ovrpController* activeController);

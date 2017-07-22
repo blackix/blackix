@@ -46,7 +46,8 @@ FLayer::FLayer(uint32 InId, const IStereoLayers::FLayerDesc& InDesc) :
 	Id(InId),
 	Desc(InDesc),
 	OvrpLayerId(0),
-	bUpdateTexture(false)
+	bUpdateTexture(false),
+	bInvertY(true)
 {
 	FMemory::Memzero(OvrpLayerDesc);
 	FMemory::Memzero(OvrpLayerSubmit);
@@ -60,7 +61,8 @@ FLayer::FLayer(const FLayer& Layer) :
 	OvrpLayer(Layer.OvrpLayer),
 	TextureSetProxy(Layer.TextureSetProxy),
 	RightTextureSetProxy(Layer.RightTextureSetProxy),
-	bUpdateTexture(Layer.bUpdateTexture)
+	bUpdateTexture(Layer.bUpdateTexture),
+	bInvertY(Layer.bInvertY)
 {
 	FMemory::Memcpy(&OvrpLayerDesc, &Layer.OvrpLayerDesc, sizeof(OvrpLayerDesc));
 	FMemory::Memcpy(&OvrpLayerSubmit, &Layer.OvrpLayerSubmit, sizeof(OvrpLayerSubmit));
@@ -110,6 +112,12 @@ void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, const FLayer
 	}
 	else if (Desc.Texture.IsValid())
 	{
+		if (Desc.UVRect.Min.Y == 1.0f)
+		{
+			bInvertY = false;
+			Desc.UVRect.Min.Y = 0.0f;
+		}
+
 		FRHITexture2D* Texture2D = Desc.Texture->GetTexture2D();
 		FRHITextureCube* TextureCube = Desc.Texture->GetTextureCube();
 
@@ -292,7 +300,7 @@ void FLayer::UpdateTexture_RenderThread(FCustomPresent* CustomPresent, FRHIComma
 				const ovrpRecti& OvrpViewportRect = OvrpLayerSubmit.ViewportRect[ovrpEye_Left];
 				FIntRect DstRect(OvrpViewportRect.Pos.x, OvrpViewportRect.Pos.y, OvrpViewportRect.Pos.x + OvrpViewportRect.Size.w, OvrpViewportRect.Pos.y + OvrpViewportRect.Size.h);
 
-				CustomPresent->CopyTexture_RenderThread(RHICmdList, DstTexture, SrcTexture, DstRect, FIntRect(), bAlphaPremultiply, bNoAlphaWrite);
+				CustomPresent->CopyTexture_RenderThread(RHICmdList, DstTexture, SrcTexture, DstRect, FIntRect(), bAlphaPremultiply, bNoAlphaWrite, bInvertY);
 			}
 
 			// Right
@@ -304,7 +312,7 @@ void FLayer::UpdateTexture_RenderThread(FCustomPresent* CustomPresent, FRHIComma
 				const ovrpRecti& OvrpViewportRect = OvrpLayerSubmit.ViewportRect[ovrpEye_Right];
 				FIntRect DstRect(OvrpViewportRect.Pos.x, OvrpViewportRect.Pos.y, OvrpViewportRect.Pos.x + OvrpViewportRect.Size.w, OvrpViewportRect.Pos.y + OvrpViewportRect.Size.h);
 
-				CustomPresent->CopyTexture_RenderThread(RHICmdList, DstTexture, SrcTexture, DstRect, FIntRect(), bAlphaPremultiply, bNoAlphaWrite);
+				CustomPresent->CopyTexture_RenderThread(RHICmdList, DstTexture, SrcTexture, DstRect, FIntRect(), bAlphaPremultiply, bNoAlphaWrite, bInvertY);
 			}
 
 			bUpdateTexture = false;
@@ -498,10 +506,8 @@ static void DrawPokeAHoleCylinderMesh(FRHICommandList& RHICmdList, FVector Base,
 	DrawIndexedPrimitiveUP(RHICmdList, PT_TriangleList, 0, 2 * (Sides + 1), 2 * Sides, Indices, sizeof(Indices[0]), Vertices, sizeof(Vertices[0]));
 }
 
-void FLayer::DrawPokeAHoleMesh(FRHICommandList& RHICmdList, const FMatrix& InMatrix, float scale, bool invertCoords)
+void FLayer::DrawPokeAHoleMesh(FRHICommandList& RHICmdList, FMatrix matrix, float scale, bool invertCoords)
 {
-	FMatrix matrix = InMatrix;
-
 	int SizeX = OvrpLayerDesc.TextureSize.w;
 	int SizeY = OvrpLayerDesc.TextureSize.h;
 	float AspectRatio = SizeX ? (float)SizeY / (float)SizeX : 3.0f / 4.0f;

@@ -1831,6 +1831,8 @@ void FSceneViewport::ReleaseDynamicRHI()
 
 	ViewportRHI.SafeRelease();
 
+	DebugCanvasDrawer->ReleaseResources();
+
 	for (int32 i = 0; i < BufferedSlateHandles.Num(); ++i)
 	{
 		if (BufferedSlateHandles[i])

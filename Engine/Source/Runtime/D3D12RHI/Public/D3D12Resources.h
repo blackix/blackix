@@ -374,7 +374,7 @@ public:
 		eStandAlone,
 		eSubAllocation,
 		eFastAllocation,
-		eAliased // Occulus is the only API that uses this
+		eAliased // Oculus is the only API that uses this
 	};
 
 	FD3D12ResourceLocation(FD3D12Device* Parent);
@@ -443,7 +443,7 @@ public:
 		SetGPUVirtualAddress(GPUBase + Offset);
 	}
 
-	// Occulus API Aliases textures so this allows 2+ resource locations to reference the same underlying
+	// Oculus API Aliases textures so this allows 2+ resource locations to reference the same underlying
 	// resource. We should avoid this as much as possible as it requires expensive reference counting and
 	// it complicates the resource ownership model.
 	static void Alias(FD3D12ResourceLocation& Destination, FD3D12ResourceLocation& Source);
