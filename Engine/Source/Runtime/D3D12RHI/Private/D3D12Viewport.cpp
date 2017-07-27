@@ -349,7 +349,12 @@ void FD3D12Viewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
 
 	CalculateSwapChainDepth();
 
-	DXGI_SWAP_CHAIN_FLAG SwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	UINT SwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+	if (bAllowTearing)
+	{
+		SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	}
 
 #if PLATFORM_SUPPORTS_MGPU
 	if (Adapter->AlternateFrameRenderingEnabled())

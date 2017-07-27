@@ -29,7 +29,9 @@ public:
 	virtual bool IsUsingCorrectDisplayAdapter() override;
 	virtual void UpdateMirrorTexture_RenderThread() override;
 
+	virtual void* GetOvrpInstance() const override;
 	virtual void* GetOvrpDevice() const override;
+	virtual void* GetOvrpCommandQueue() const override;
 	virtual EPixelFormat GetDefaultPixelFormat() const override;
 	virtual FTextureSetProxyPtr CreateTextureSet_RenderThread(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, uint32 InArraySize, bool bIsCubemap, const TArray<ovrpTextureHandle>& InTextures) override;
 };
@@ -39,14 +41,6 @@ FVulkanCustomPresent::FVulkanCustomPresent(FOculusHMD* InOculusHMD) :
 	FCustomPresent(InOculusHMD)
 {
 	CheckInGameThread();
-
-#ifdef DISABLE_RHI_THREAD
-	if (GRHISupportsRHIThread && GIsThreadedRendering && GUseRHIThread)
-	{
-		FSuspendRenderingThread SuspendRenderingThread(true);
-		GUseRHIThread = false;
-	}
-#endif
 }
 
 
@@ -115,9 +109,24 @@ void FVulkanCustomPresent::UpdateMirrorTexture_RenderThread()
 }
 
 
+void* FVulkanCustomPresent::GetOvrpInstance() const
+{
+	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+	return DynamicRHI->GetInstance();
+}
+
+
 void* FVulkanCustomPresent::GetOvrpDevice() const
 {
-	return RHIGetNativeDevice();
+	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+	return DynamicRHI->GetDevice()->GetInstanceHandle();
+}
+
+
+void* FVulkanCustomPresent::GetOvrpCommandQueue() const
+{
+	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+	return DynamicRHI->GetDevice()->GetGraphicsQueue()->GetHandle();
 }
 
 
@@ -133,16 +142,16 @@ FTextureSetProxyPtr FVulkanCustomPresent::CreateTextureSet_RenderThread(uint32 I
 
 	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
 
-	FTexture2DRHIRef RHITexture;
+	FTextureRHIRef RHITexture;
 	{
 		RHITexture = DynamicRHI->RHICreateTexture2DFromVkImage(InFormat, InSizeX, InSizeY, (VkImage) InTextures[0], TexCreate_ShaderResource);
 	}
 
-	TArray<FTexture2DRHIRef> RHITextureSwapChain;
+	TArray<FTextureRHIRef> RHITextureSwapChain;
 	{
 		for (int32 TextureIndex = 0; TextureIndex < InTextures.Num(); ++TextureIndex)
 		{
-			RHITextureSwapChain.Add(DynamicRHI->RHICreateTexture2DFromVkImage(InFormat, InSizeX, InSizeY, (VkImage) InTextures[TextureIndex], TexCreate_ShaderResource));
+			RHITextureSwapChain.Add((FTextureRHIRef) DynamicRHI->RHICreateTexture2DFromVkImage(InFormat, InSizeX, InSizeY, (VkImage) InTextures[TextureIndex], TexCreate_ShaderResource));
 		}
 	}
 

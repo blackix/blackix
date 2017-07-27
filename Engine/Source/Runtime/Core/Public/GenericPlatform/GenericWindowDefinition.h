@@ -26,7 +26,9 @@ enum class EWindowType
 	/** Value indicating that this is a window used for a cursor decorator */
 	CursorDecorator,
 	/** Value indicating that this is a game window */
-	GameWindow
+	GameWindow,
+    /** Value indicating that this is a casting window */
+    CastingWindow
 };
 
 

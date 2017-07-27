@@ -377,6 +377,9 @@ static void SetBlendState(FRHICommandList& RHICmdList, FGraphicsPipelineStateIni
 	case SE_BLEND_TranslucentAlphaOnly:
 		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_Zero, BF_One>::GetRHI();
 		break;
+	case SE_BLEND_TranslucentAlphaOnlyWriteAlpha:
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_SourceAlpha, BF_InverseSourceAlpha, BO_Add, BF_InverseDestAlpha, BF_One>::GetRHI();
+		break;
 	case SE_BLEND_Additive:
 		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_One>::GetRHI();
 		break;
@@ -414,6 +417,7 @@ static void SetHitTestingBlendState(FRHICommandList& RHICmdList, FGraphicsPipeli
 	case SE_BLEND_TranslucentDistanceField:
 	case SE_BLEND_TranslucentDistanceFieldShadowed:
 	case SE_BLEND_TranslucentAlphaOnly:
+	case SE_BLEND_TranslucentAlphaOnlyWriteAlpha:
 		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_Zero, BO_Add, BF_One, BF_Zero>::GetRHI();
 		break;
 	case SE_BLEND_Additive:
@@ -463,7 +467,8 @@ static TSimpleElementPixelShader* GetPixelShader(bool bEncoded, ESimpleElementBl
 				return *TShaderMapRef<FEncodedSimpleElement<TSimpleElementPixelShader, SE_BLEND_AlphaBlend> >(GetGlobalShaderMap(FeatureLevel));
 			case SE_BLEND_TranslucentAlphaOnly:
 				return *TShaderMapRef<FEncodedSimpleElement<TSimpleElementPixelShader, SE_BLEND_TranslucentAlphaOnly> >(GetGlobalShaderMap(FeatureLevel));
-
+			case SE_BLEND_TranslucentAlphaOnlyWriteAlpha:
+				return *TShaderMapRef<FEncodedSimpleElement<TSimpleElementPixelShader, SE_BLEND_TranslucentAlphaOnlyWriteAlpha> >(GetGlobalShaderMap(FeatureLevel));
 			default:
 				checkNoEntry();
 		}
@@ -697,7 +702,7 @@ void FBatchedElements::PrepareShaders(
 					BlendMode
 					);
 			}
-			else if(BlendMode == SE_BLEND_TranslucentAlphaOnly)
+			else if(BlendMode == SE_BLEND_TranslucentAlphaOnly || BlendMode == SE_BLEND_TranslucentAlphaOnlyWriteAlpha)
 			{
 				SetBlendState(RHICmdList, GraphicsPSOInit, BlendMode, bEncodedHDR);
 

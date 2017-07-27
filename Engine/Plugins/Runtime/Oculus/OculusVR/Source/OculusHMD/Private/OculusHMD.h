@@ -57,6 +57,7 @@ class FOculusHMD : public FHeadMountedDisplayBase, public IStereoLayers, public 
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+	friend class FOculusRiftSpectatorScreenController;
 
 public:
 	// IStereoRendering interface
@@ -143,6 +144,7 @@ public:
 	virtual bool GetLayerDesc(uint32 LayerId, IStereoLayers::FLayerDesc& OutLayerDesc) override;
 	virtual void MarkTextureForUpdate(uint32 LayerId) override;
 	virtual void UpdateSplashScreen() override;
+	virtual IStereoLayers::FLayerDesc GetDebugCanvasLayerDesc(FTextureRHIRef Texture) override;
 
 
 	// ISceneViewExtension
@@ -174,7 +176,7 @@ protected:
 	void PreShutdown();
 	void Shutdown();
 
-	bool InitializeSession(ovrpRenderAPIType apiType);
+	bool InitializeSession();
 	void ShutdownSession();
 
 	bool InitDevice();
@@ -186,6 +188,7 @@ protected:
 	void SetupOcclusionMeshes();
 	void UpdateStereoRenderingParams();
 	void UpdateHmdRenderInfo();
+	void InitializeEyeLayer_RenderThread();
 	void ApplySystemOverridesOnStereo(bool force = false);
 	bool OnOculusStateChange(bool bIsEnabledNow);
 
@@ -290,11 +293,11 @@ public:
 	FLayer* GetEyeLayer_RHIThread() { CheckInRHIThread(); return EyeLayer_RHIThread.Get(); }
 	const FLayer* GetEyeLayer_RHIThread() const { CheckInRHIThread(); return EyeLayer_RHIThread.Get(); }
 
-	bool StartGameFrame_GameThread(); // Called from OnStartGameFrame
+	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
-	bool StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
+	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
 	void FinishRenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList); // Called from PostRenderViewFamily_RenderThread
-	bool StartRHIFrame_RenderThread(); // Called from PreRenderViewFamily_RenderThread
+	void StartRHIFrame_RenderThread(); // Called from PreRenderViewFamily_RenderThread
 	void FinishRHIFrame_RHIThread(); // Called from FinishRendering_RHIThread
 
 
@@ -375,17 +378,20 @@ protected:
 
 	// Game thread
 	FSettingsPtr Settings;
-	uint32 FrameNumber;
+	uint32 NextFrameNumber;
 	FGameFramePtr Frame; // Valid from OnStartGameFrame to OnEndGameFrame
 	FGameFramePtr NextFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
+	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+    FTexture2DRHIRef CastingViewportRenderTexture;
 
 	// Render thread
 	FSettingsPtr Settings_RenderThread;
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread;
+    FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
 
 	// RHI thread
 	FSettingsPtr Settings_RHIThread;

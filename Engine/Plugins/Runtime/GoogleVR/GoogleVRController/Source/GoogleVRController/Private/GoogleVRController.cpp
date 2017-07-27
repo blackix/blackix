@@ -523,7 +523,11 @@ void FGoogleVRController::ProcessControllerEvents()
 		}
 		BaseEmulatorOrientation.Yaw += LastOrientation.Yaw;
 #endif
-		UGoogleVRControllerFunctionLibrary::GetGoogleVRControllerEventManager()->OnControllerRecenteredDelegate.Broadcast();
+
+		FCoreDelegates::VRControllerRecentered.Broadcast();
+
+		// Deprecate me!
+		UGoogleVRControllerFunctionLibrary::GetGoogleVRControllerEventManager()->OnControllerRecenteredDelegate_DEPRECATED.Broadcast();
 	}
 
 

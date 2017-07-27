@@ -189,7 +189,7 @@ ovrpTextureFormat FCustomPresent::GetOvrpTextureFormat(EPixelFormat Format, bool
 
 
 void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture,
-	FIntRect DstRect, FIntRect SrcRect, bool bAlphaPremultiply, bool bNoAlphaWrite) const
+	FIntRect DstRect, FIntRect SrcRect, bool bAlphaPremultiply, bool bNoAlphaWrite, bool bInvertY) const
 {
 	CheckInRenderThread();
 
@@ -235,8 +235,11 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 	float VSize = SrcRect.Height() / (float) SrcSize.Y;
 
 #if PLATFORM_ANDROID // on android, top-left isn't 0/0 but 1/0.
-	V = 1.0f - V;
-	VSize = -VSize;
+	if (bInvertY)
+	{
+		V = 1.0f - V;
+		VSize = -VSize;
+	}
 #endif
 
 	FRHITexture* SrcTextureRHI = SrcTexture;
@@ -325,9 +328,9 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 			FSamplerStateRHIParamRef SamplerState = DstRect.Size() == SrcRect.Size() ? TStaticSamplerState<SF_Point>::GetRHI() : TStaticSamplerState<SF_Bilinear>::GetRHI();
 			PixelShader->SetParameters(RHICmdList, SamplerState, SrcTextureRHI, FaceIndex);
-			
+
 			RHICmdList.SetViewport(DstRect.Min.X, DstRect.Min.Y, 0.0f, DstRect.Max.X, DstRect.Max.Y, 1.0f);
-			
+
 			RendererModule->DrawRectangle(
 				RHICmdList,
 				0, 0, ViewportWidth, ViewportHeight,
