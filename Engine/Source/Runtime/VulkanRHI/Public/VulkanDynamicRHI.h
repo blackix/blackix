@@ -244,7 +244,7 @@ public:
 
 	// FVulkanDynamicRHI interface
 	virtual FTexture2DRHIRef RHICreateTexture2DFromVkImage(uint8 Format, uint32 SizeX, uint32 SizeY, VkImage vkImage, uint32 Flags);
-	virtual void RHIAliasTexture2DResources(FTexture2DRHIParamRef DestTexture2D, FTexture2DRHIParamRef SrcTexture2D);
+	virtual void RHIAliasTextureResources(FTextureRHIParamRef DestTexture, FTextureRHIParamRef SrcTexture);
 
 
 	inline uint32 GetPresentCount() const

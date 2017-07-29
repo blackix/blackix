@@ -37,14 +37,6 @@ FD3D12CustomPresent::FD3D12CustomPresent(FOculusHMD* InOculusHMD) :
 	FCustomPresent(InOculusHMD)
 {
 	CheckInGameThread();
-
-#ifdef DISABLE_RHI_THREAD
-	if (GRHISupportsRHIThread && GIsThreadedRendering && GUseRHIThread)
-	{
-		FSuspendRenderingThread SuspendRenderingThread(true);
-		GUseRHIThread = false;
-	}
-#endif
 }
 
 

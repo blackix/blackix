@@ -53,7 +53,9 @@ public:
 
 	FTexture2DRHIRef GetMirrorTexture() { return MirrorTextureRHI; }
 
-	virtual void* GetOvrpDevice() const = 0;
+	virtual void* GetOvrpInstance() const { return nullptr; }
+	virtual void* GetOvrpDevice() const { return nullptr; }
+	virtual void* GetOvrpCommandQueue() const { return nullptr; }
 	virtual EPixelFormat GetDefaultPixelFormat() const = 0;
 	EPixelFormat GetPixelFormat(EPixelFormat InFormat) const;
 	EPixelFormat GetPixelFormat(ovrpTextureFormat InFormat) const;
@@ -63,7 +65,7 @@ public:
 	virtual FTextureSetProxyPtr CreateTextureSet_RenderThread(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, uint32 InArraySize, bool bIsCubemap, const TArray<ovrpTextureHandle>& InTextures) = 0;
 
 	// Copies one texture to another
-	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false, bool bNoAlphaWrite = false) const;
+	void CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRHIParamRef DstTexture, FTextureRHIParamRef SrcTexture, FIntRect DstRect = FIntRect(), FIntRect SrcRect = FIntRect(), bool bAlphaPremultiply = false, bool bNoAlphaWrite = false, bool bInvertY = true) const;
 
 protected:
 	FOculusHMD* OculusHMD;

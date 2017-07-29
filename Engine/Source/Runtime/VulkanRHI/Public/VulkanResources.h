@@ -351,6 +351,7 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 	virtual ~FVulkanTextureBase();
 
 	VkImageView CreateRenderTargetView(uint32 MipIndex, uint32 NumMips, uint32 ArraySliceIndex, uint32 NumArraySlices);
+	void AliasTextureResources(const FVulkanTextureBase* SrcTexture);
 
 	FVulkanSurface Surface;
 
@@ -365,7 +366,10 @@ struct FVulkanTextureBase : public FVulkanBaseShaderResource
 	FVulkanTextureView MSAAView;
 #endif
 
+	bool bIsAliased;
+
 private:
+	void DestroyViews();
 };
 
 class FVulkanBackBuffer;
