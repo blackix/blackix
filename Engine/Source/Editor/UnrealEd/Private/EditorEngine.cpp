@@ -88,6 +88,7 @@
 #include "Net/NetworkProfiler.h"
 #include "Interfaces/IPluginManager.h"
 #include "PackageReload.h"
+#include "Engine/CastingViewportClient.h"
 
 // needed for the RemotePropagator
 #include "AudioDevice.h"
@@ -1824,6 +1825,13 @@ void UEditorEngine::Tick( float DeltaSeconds, bool bIdleMode )
 				GameViewport->LayoutPlayers();
 				check(GameViewport->Viewport);
 				GameViewport->Viewport->Draw();
+                for (auto& CastingViewport : PieContext.CastingViewports)
+                {
+                    if (CastingViewport->Viewport != NULL)
+                    {
+                        CastingViewport->Viewport->Draw();
+                    }
+                }
 
 				// Pop the world
 				RestoreEditorWorld( OldGWorld );

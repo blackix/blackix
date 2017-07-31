@@ -52,13 +52,34 @@ void FD3D12Viewport::CalculateSwapChainDepth()
 //Init for a Viewport that will do the presenting
 void FD3D12Viewport::Init(IDXGIFactory* Factory, bool AssociateWindow)
 {
+	bAllowTearing = false;
+	if(Factory)
+	{
+		TRefCountPtr<IDXGIFactory5> Factory5;
+		Factory->QueryInterface(IID_PPV_ARGS(Factory5.GetInitReference()));
+		if (Factory5.IsValid())
+		{
+			BOOL AllowTearing;
+			if(SUCCEEDED(Factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &AllowTearing, sizeof(AllowTearing))) && AllowTearing)
+			{
+				bAllowTearing = true;
+			}
+		}
+	}
+
 	FD3D12Adapter* Adapter = GetParentAdapter();
 
 	Fence.CreateFence();
 
 	CalculateSwapChainDepth();
 
-	DXGI_SWAP_CHAIN_FLAG swapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	UINT swapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+	if (bAllowTearing)
+	{
+		swapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	}
+
 	const DXGI_MODE_DESC BufferDesc = SetupDXGI_MODE_DESC();
 
 	// Create the swapchain.
@@ -107,7 +128,14 @@ void FD3D12Viewport::ConditionalResetSwapChain(bool bIgnoreFocus)
 
 HRESULT FD3D12Viewport::PresentInternal(int32 SyncInterval)
 {
-	return SwapChain1->Present(SyncInterval, 0);
+	UINT Flags = 0;
+
+	if(!SyncInterval && !bIsFullscreen && bAllowTearing)
+	{
+		Flags |= DXGI_PRESENT_ALLOW_TEARING;
+	}
+
+	return SwapChain1->Present(SyncInterval, Flags);
 }
 
 #include "HideWindowsPlatformTypes.h"

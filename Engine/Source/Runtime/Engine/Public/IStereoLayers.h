@@ -47,7 +47,8 @@ public:
 		int32				Priority	 = 0;														// Render order priority, higher priority render on top of lower priority
 		ELayerType			PositionType = ELayerType::FaceLocked;									// Which space the layer is locked within
 		ELayerShape			ShapeType	 = ELayerShape::QuadLayer;                                  // which shape of layer it is
-		FVector2D			CylinderSize = FVector2D(1.0f, 1.0f);
+		float				CylinderRadius = 1.0f;
+		float				CylinderOverlayArc = 1.0f;
 		float				CylinderHeight = 1.0f;
 		FTextureRHIRef		Texture		 = nullptr;													// Texture mapped for right eye (if one texture provided, mono assumed)
 		FTextureRHIRef		LeftTexture  = nullptr;													// Texture mapped for left eye (if one texture provided, mono assumed)
@@ -150,6 +151,18 @@ public:
 			SplashMovie = Texture->GetTexture2D();
 		}
 		UpdateSplashScreen();
+	}
+
+	virtual FLayerDesc GetDebugCanvasLayerDesc(FTextureRHIRef Texture)
+	{
+		IStereoLayers::FLayerDesc StereoLayerDesc;
+		StereoLayerDesc.Transform = FTransform(FVector(80.0, 10.f, -10.f));
+		StereoLayerDesc.QuadSize = FVector2D(150.0f, 150.0f);
+		StereoLayerDesc.PositionType = IStereoLayers::ELayerType::FaceLocked;
+		StereoLayerDesc.Texture = Texture;
+		StereoLayerDesc.Flags = IStereoLayers::ELayerFlags::LAYER_FLAG_TEX_CONTINUOUS_UPDATE;
+		StereoLayerDesc.Flags |= IStereoLayers::ELayerFlags::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO;
+		return StereoLayerDesc;
 	}
 
 protected:

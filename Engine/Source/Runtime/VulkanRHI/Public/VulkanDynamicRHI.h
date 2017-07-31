@@ -165,6 +165,13 @@ public:
 	virtual class IRHICommandContext* RHIGetDefaultContext() final override;
 	virtual class IRHICommandContextContainer* RHIGetCommandContextContainer(int32 Index, int32 Num) final override;
 
+
+	// FVulkanDynamicRHI interface
+	virtual VkCommandBuffer RHIGetVkCommandBuffer();
+	virtual FTexture2DRHIRef RHICreateTexture2DFromVkImage(uint8 Format, uint32 SizeX, uint32 SizeY, VkImage vkImage, uint32 Flags);
+	virtual void RHIAliasTextureResources(FTextureRHIParamRef DestTexture, FTextureRHIParamRef SrcTexture);
+
+
 	inline uint32 GetPresentCount() const
 	{
 		return PresentCount;

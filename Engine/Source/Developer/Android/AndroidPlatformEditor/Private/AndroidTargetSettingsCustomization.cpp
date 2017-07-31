@@ -553,6 +553,23 @@ static FText GetAdrenoProfilerHelpText()
 	return FText::Format(LOCTEXT("AdrenoHelpText","{0}\n{1}"), Args);
 }
 
+static FText GetRenderDocProfilerHelpText()
+{
+	const static FText StartText(LOCTEXT("RenderDocIRunText1", "This is an experimental frame debugger. The RenderDoc installation should be android-compatible, which contains an android/ subfolder in its root path. For now, this is restricted to the RenderDoc nightly builds."));
+	const static FText InstallText(LOCTEXT("RenderDocInstallText", "The RenderDocCmd.apk application must be installed on the target device before debugging. For this, run the following command from the android/apk/32 directory of your RenderDoc install"));
+	const static FString InstallCommand(TEXT("adb install -r RenderDocCmd.apk"));
+	const static FText RunText1(LOCTEXT("RenderDocIRunText2", "If your phone isn't auto-recognized as a Remote server in the Tools/Manage Remote Server section, add it by typing adb:<device-id> in the Add section. Attach to an app by finding it when it runs in Tools/Manage Remote Servers, then capture a frame by clicking on the Trigger Capture button. Save the capture locally, then double-click on it in RenderDoc to replay!"));
+
+	FFormatOrderedArguments Args;
+	Args.Add(StartText);
+	Args.Add(InstallText);
+	Args.Add(FText::FromString(InstallCommand));
+	Args.Add(RunText1);
+
+	return FText::Format(LOCTEXT("RenderDocDebuggerHelpText", "<RichTextBlock.TextHighlight>Installation</>\n{0}\n{1}\n{2}\n\n<RichTextBlock.TextHighlight>Run</>\n{3}\n"),
+		Args);
+}
+
 void FAndroidTargetSettingsCustomization::BuildGraphicsDebuggerSection(IDetailLayoutBuilder& DetailLayout)
 {
 	IDetailCategoryBuilder& GraphicsDebuggerCategory = DetailLayout.EditCategory(TEXT("GraphicsDebugger"));
@@ -645,6 +662,51 @@ void FAndroidTargetSettingsCustomization::BuildGraphicsDebuggerSection(IDetailLa
 				]
 			]
 		];
+	}
+	// RenderDoc settings
+	{
+		TAttribute<EVisibility> RenderDocSettingsVisibility(
+			TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateStatic(GraphicsDebuggerSettingsVisibility, EAndroidGraphicsDebugger::RenderDoc, AndroidGraphicsDebuggerProperty))
+		);
+
+		TSharedPtr<IPropertyHandle> RenderDocPathProperty = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings,RenderDocPath));
+		DetailLayout.HideProperty(RenderDocPathProperty);
+		GraphicsDebuggerCategory.AddProperty(RenderDocPathProperty).Visibility(RenderDocSettingsVisibility);
+
+		FText RenderDocHelpText = GetRenderDocProfilerHelpText();
+
+		GraphicsDebuggerCategory.AddCustomRow(LOCTEXT("RenderDoc info", "RenderDoc info"), false)
+			.Visibility(RenderDocSettingsVisibility)
+			.WholeRowWidget
+			[
+				SNew(SBorder)
+				.Padding(1)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot()
+			.Padding(FMargin(10, 10, 10, 10))
+			.AutoHeight()
+			[
+				SNew(SRichTextBlock)
+				.Text(RenderDocHelpText)
+			.TextStyle(FEditorStyle::Get(), "MessageLog")
+			.DecoratorStyleSet(&FEditorStyle::Get())
+			.AutoWrapText(true)
+			]
+		+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(10, 10, 10, 10))
+			[
+				SNew(SBox)
+				.HAlign(HAlign_Left)
+			[
+				SNew(SHyperlinkLaunchURL, TEXT("https://renderdoc.org/"))
+				.Text(LOCTEXT("RenderDocPage", "RenderDoc home page"))
+			.ToolTipText(LOCTEXT("RenderDocPageTooltip", "Opens the RenderDoc home page"))
+			]
+			]
+			]
+			];
 	}
 }
 
