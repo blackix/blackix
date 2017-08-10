@@ -207,6 +207,7 @@ public:
 		D3D11Bridge(FSteamVRHMD* plugin);
 
 		virtual void OnBackBufferResize() override;
+		virtual bool NeedsNativePresent() override;
 		virtual bool Present(int& SyncInterval) override;
 		virtual void PostPresent() override;
 
@@ -230,6 +231,7 @@ public:
 		VulkanBridge(FSteamVRHMD* plugin);
 
 		virtual void OnBackBufferResize() override;
+		virtual bool NeedsNativePresent() override;
 		virtual bool Present(int& SyncInterval) override;
 		virtual void PostPresent() override;
 
@@ -253,6 +255,7 @@ public:
 		OpenGLBridge(FSteamVRHMD* plugin);
 
 		virtual void OnBackBufferResize() override;
+		virtual bool NeedsNativePresent() override;
 		virtual bool Present(int& SyncInterval) override;
 		virtual void PostPresent() override;
 

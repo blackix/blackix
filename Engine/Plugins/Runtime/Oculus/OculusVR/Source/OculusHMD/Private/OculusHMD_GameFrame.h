@@ -38,6 +38,8 @@ public:
 			uint64			bPlayerControllerFollowsHmd : 1; // (UseImplicitHmdPosition, ApplyHmdRotation)
 			/** True, if splash is shown */
 			uint64			bSplashIsShown : 1;
+			/** True, if spectator screen is active */
+			uint64			bSpectatorScreenActive : 1;
 		};
 		uint64 Raw;
 	} Flags;

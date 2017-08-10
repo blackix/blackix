@@ -88,6 +88,7 @@
 #include "Net/NetworkProfiler.h"
 #include "Interfaces/IPluginManager.h"
 #include "PackageReload.h"
+#include "Engine/CastingViewportClient.h"
 
 // needed for the RemotePropagator
 #include "AudioDevice.h"
@@ -1848,6 +1849,13 @@ void UEditorEngine::Tick( float DeltaSeconds, bool bIdleMode )
 				GameViewport->LayoutPlayers();
 				check(GameViewport->Viewport);
 				GameViewport->Viewport->Draw();
+                for (auto& CastingViewport : PieContext.CastingViewports)
+                {
+                    if (CastingViewport->Viewport != NULL)
+                    {
+                        CastingViewport->Viewport->Draw();
+                    }
+                }
 
 				// Pop the world
 				RestoreEditorWorld( OldGWorld );
@@ -6527,6 +6535,65 @@ void UEditorEngine::UpdateAutoLoadProject()
 			else
 			{
 				UE_LOG(LogEditor, Warning, TEXT("For best performance a Quad-core Intel or AMD processor, 2.5 GHz or faster is recommended."));
+			}
+		}
+
+		extern bool IsSupportedXcodeVersionInstalled();
+		if (FSlateApplication::IsInitialized() && !IsSupportedXcodeVersionInstalled())
+		{
+			/** Utility functions for the notification */
+			struct Local
+			{
+				static ECheckBoxState GetDontAskAgainCheckBoxState()
+				{
+					bool bSuppressNotification = false;
+					GConfig->GetBool(TEXT("MacEditor"), TEXT("SuppressXcodeVersionWarningNotification"), bSuppressNotification, GEditorPerProjectIni);
+					return bSuppressNotification ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}
+
+				static void OnDontAskAgainCheckBoxStateChanged(ECheckBoxState NewState)
+				{
+					const bool bSuppressNotification = (NewState == ECheckBoxState::Checked);
+					GConfig->SetBool(TEXT("MacEditor"), TEXT("SuppressXcodeVersionWarningNotification"), bSuppressNotification, GEditorPerProjectIni);
+				}
+
+				static void OnXcodeWarningNotificationDismissed()
+				{
+					TSharedPtr<SNotificationItem> NotificationItem = GXcodeWarningNotificationPtr.Pin();
+
+					if (NotificationItem.IsValid())
+					{
+						NotificationItem->SetCompletionState(SNotificationItem::CS_Success);
+						NotificationItem->Fadeout();
+
+						GXcodeWarningNotificationPtr.Reset();
+					}
+				}
+			};
+
+			const bool bIsXcodeInstalled = FPlatformMisc::GetXcodePath().Len() > 0;
+
+			const ECheckBoxState DontAskAgainCheckBoxState = Local::GetDontAskAgainCheckBoxState();
+			if (DontAskAgainCheckBoxState == ECheckBoxState::Unchecked)
+			{
+				const FText NoXcodeMessageText = LOCTEXT("XcodeNotInstalledWarningNotification", "Xcode is not installed on this Mac.\nMetal shader compilation will fall back to runtime compiled text shaders, which are slower.\nPlease install latest version of Xcode for best performance.");
+				const FText OldXcodeMessageText = LOCTEXT("OldXcodeVersionWarningNotification", "Xcode installed on this Mac is too old to be used for Metal shader compilation.\nFalling back to runtime compiled text shaders, which are slower.\nPlease update to latest version of Xcode for best performance.");
+
+				FNotificationInfo Info(bIsXcodeInstalled ? OldXcodeMessageText : NoXcodeMessageText);
+				Info.bFireAndForget = false;
+				Info.FadeOutDuration = 3.0f;
+				Info.ExpireDuration = 0.0f;
+				Info.bUseLargeFont = false;
+				Info.bUseThrobber = false;
+
+				Info.ButtonDetails.Add(FNotificationButtonInfo(LOCTEXT("OK", "OK"), FText::GetEmpty(), FSimpleDelegate::CreateStatic(&Local::OnXcodeWarningNotificationDismissed)));
+
+				Info.CheckBoxState = TAttribute<ECheckBoxState>::Create(&Local::GetDontAskAgainCheckBoxState);
+				Info.CheckBoxStateChanged = FOnCheckStateChanged::CreateStatic(&Local::OnDontAskAgainCheckBoxStateChanged);
+				Info.CheckBoxText = NSLOCTEXT("ModalDialogs", "DefaultCheckBoxMessage", "Don't show this again");
+
+				GXcodeWarningNotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
+				GXcodeWarningNotificationPtr.Pin()->SetCompletionState(SNotificationItem::CS_Pending);
 			}
 		}
 	}

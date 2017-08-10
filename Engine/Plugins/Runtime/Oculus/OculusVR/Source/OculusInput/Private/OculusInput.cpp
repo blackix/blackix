@@ -4,6 +4,7 @@
 
 #if OCULUS_INPUT_SUPPORTED_PLATFORMS
 #include "OculusHMD.h"
+#include "Misc/CoreDelegates.h"
 #include "Features/IModularFeatures.h"
 
 #define OVR_DEBUG_LOGGING 0
@@ -175,9 +176,9 @@ void FOculusInput::SendControllerEvents()
 	{
 		if (MessageHandler.IsValid())
 		{
-			ovrpControllerState2 OvrpControllerState;
+			ovrpControllerState4 OvrpControllerState;
 			
-			if (OVRP_SUCCESS(ovrp_GetControllerState3(ovrpController_Remote, &OvrpControllerState)) &&
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Remote, &OvrpControllerState)) &&
 				OvrpControllerState.ConnectedControllerTypes == ovrpController_Remote)
 			{
 				for (int32 ButtonIndex = 0; ButtonIndex < (int32)EOculusRemoteControllerButton::TotalButtonCount; ++ButtonIndex)
@@ -267,7 +268,7 @@ void FOculusInput::SendControllerEvents()
 				}
 			}
 
-			if (OVRP_SUCCESS(ovrp_GetControllerState3((ovrpController)(ovrpController_LTrackedRemote | ovrpController_RTrackedRemote | ovrpController_Touch), &OvrpControllerState)))
+			if (OVRP_SUCCESS(ovrp_GetControllerState4((ovrpController)(ovrpController_LTrackedRemote | ovrpController_RTrackedRemote | ovrpController_Touch), &OvrpControllerState)))
 			{
 				UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ButtonState = 0x%X"), OvrpControllerState.Buttons);
 				UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: Touches = 0x%X"), OvrpControllerState.Touches);
@@ -278,11 +279,11 @@ void FOculusInput::SendControllerEvents()
 					{
 						FOculusTouchControllerState& State = ControllerPair.ControllerStates[ HandIndex ];
 
-						bool bIsMalibuTracked = (OvrpControllerState.ConnectedControllerTypes & ovrpController_LTrackedRemote) != 0 || (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTrackedRemote) != 0;
-						bool bIsTouchTracked = (OvrpControllerState.ConnectedControllerTypes & ovrpController_LTouch) != 0 || (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTouch) != 0;
-						bool bIsCurrentlyTracked = bIsMalibuTracked || bIsTouchTracked;
-
 						bool bIsLeft = (HandIndex == (int32)EControllerHand::Left);
+
+						bool bIsMalibuTracked = bIsLeft ? (OvrpControllerState.ConnectedControllerTypes & ovrpController_LTrackedRemote) != 0 : (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTrackedRemote) != 0;
+						bool bIsTouchTracked = bIsLeft ? (OvrpControllerState.ConnectedControllerTypes & ovrpController_LTouch) != 0 : (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTouch) != 0;
+						bool bIsCurrentlyTracked = bIsMalibuTracked || bIsTouchTracked;
 
 						if (bIsCurrentlyTracked)
 						{
@@ -293,6 +294,8 @@ void FOculusInput::SendControllerEvents()
 							State.bIsPositionTracked = OVRP_SUCCESS(ovrp_GetNodePositionTracked2(OvrpNode, &NodePositionTracked)) && NodePositionTracked;
 							ovrpBool NodeOrientationTracked;
 							State.bIsOrientationTracked = OVRP_SUCCESS(ovrp_GetNodeOrientationTracked2(OvrpNode, &NodeOrientationTracked)) && NodeOrientationTracked;
+							//ovrpBool HasInputFocus;
+							State.bShouldBeDisplayed = true;//OVRP_SUCCESS(ovrp_GetAppHasInputFocus(&HasInputFocus)) && HasInputFocus;
 
 							const float OvrTriggerAxis = OvrpControllerState.IndexTrigger[HandIndex];
 							const float OvrGripAxis = OvrpControllerState.HandTrigger[HandIndex];
@@ -301,6 +304,12 @@ void FOculusInput::SendControllerEvents()
 							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: HandTrigger[%d] = %f"), int(HandIndex), OvrGripAxis);
 							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ThumbStick[%d] = { %f, %f }"), int(HandIndex), OvrpControllerState.Thumbstick[HandIndex].x, OvrpControllerState.Thumbstick[HandIndex].y );
 
+							if (OvrpControllerState.RecenterCount[HandIndex] != State.RecenterCount)
+							{
+								State.RecenterCount = OvrpControllerState.RecenterCount[HandIndex];
+								FCoreDelegates::VRControllerRecentered.Broadcast();
+							}
+							
 							if (OvrTriggerAxis != State.TriggerAxis)
 							{
 								State.TriggerAxis = OvrTriggerAxis;
@@ -313,16 +322,17 @@ void FOculusInput::SendControllerEvents()
 								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Grip1Axis : FGamepadKeyNames::MotionController_Right_Grip1Axis, ControllerPair.UnrealControllerIndex, State.GripAxis);
 							}
 
-							ovrpVector2f ThumbstickValue = bIsMalibuTracked ? OvrpControllerState.Touchpad[HandIndex] : OvrpControllerState.Thumbstick[HandIndex];
-							if (ThumbstickValue.x != State.ThumbstickAxes.X)
+							ovrpVector2f thumbstickValue = bIsMalibuTracked ? OvrpControllerState.Touchpad[HandIndex] : OvrpControllerState.Thumbstick[HandIndex];
+
+							if (thumbstickValue.x != State.ThumbstickAxes.X)
 							{
-								State.ThumbstickAxes.X = ThumbstickValue.x;
+								State.ThumbstickAxes.X = thumbstickValue.x;
 								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_X : FGamepadKeyNames::MotionController_Right_Thumbstick_X, ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.X);
 							}
 
-							if (ThumbstickValue.y != State.ThumbstickAxes.Y)
+							if (thumbstickValue.y != State.ThumbstickAxes.Y)
 							{
-								State.ThumbstickAxes.Y = ThumbstickValue.y;
+								State.ThumbstickAxes.Y = thumbstickValue.y;
 								// we need to negate Y value to match XBox controllers
 								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_Y : FGamepadKeyNames::MotionController_Right_Thumbstick_Y, ControllerPair.UnrealControllerIndex, -State.ThumbstickAxes.Y);
 							}
@@ -361,7 +371,7 @@ void FOculusInput::SendControllerEvents()
 											(bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_LTouchpad) != 0 : (OvrpControllerState.Buttons & ovrpButton_RTouchpad) != 0) :
 											(bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_LThumb) != 0 : (OvrpControllerState.Buttons & ovrpButton_RThumb) != 0);
 									break;
-
+									
 								case EOculusTouchControllerButton::Thumbstick_Up:
 									bButtonPressed = State.Buttons[(int)EOculusTouchControllerButton::Thumbstick].bIsPressed && State.ThumbstickAxes.Y > 0.7;
 									break;
@@ -567,9 +577,9 @@ void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& Contro
 		if(IOculusHMDModule::IsAvailable() && ovrp_GetInitialized() && FApp::HasVRFocus())
 		{
 			// Make sure Touch is the active controller
-			ovrpControllerState2 OvrpControllerState;
+			ovrpControllerState4 OvrpControllerState;
 			
-			if (OVRP_SUCCESS(ovrp_GetControllerState3(ovrpController_Active, &OvrpControllerState)) &&
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Active, &OvrpControllerState)) &&
 				(OvrpControllerState.ConnectedControllerTypes & ovrpController_Touch))
 			{
 				float FreqMin, FreqMax = 0.f;
@@ -647,14 +657,7 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 									OutOrientation = OutPose.Orientation.Rotator();
 								}
 
-								if (bPositionTracked)
-								{
-									OutPosition = OutPose.Position;
-								}
-								else
-								{
-									OutPosition = FVector::ZeroVector;
-								}
+								OutPosition = OutPose.Position;
 
 								return true;
 							}
@@ -685,7 +688,11 @@ ETrackingStatus FOculusInput::GetControllerTrackingStatus(const int32 Controller
 		{
 			const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
 
-			if( ControllerState.bIsOrientationTracked )
+			if ( !ControllerState.bShouldBeDisplayed )
+			{
+				TrackingStatus = ETrackingStatus::NotDisplayed;
+			} 
+			else if( ControllerState.bIsOrientationTracked )
 			{
 				TrackingStatus = ControllerState.bIsPositionTracked ? ETrackingStatus::Tracked : ETrackingStatus::InertialOnly;
 			}
@@ -716,9 +723,9 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 					}
 
 					// Make sure Touch is the active controller
-					ovrpControllerState2 OvrpControllerState;
+					ovrpControllerState4 OvrpControllerState;
 					
-					if (OVRP_SUCCESS(ovrp_GetControllerState3(ovrpController_Active, &OvrpControllerState)) &&
+					if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Active, &OvrpControllerState)) &&
 						(OvrpControllerState.ConnectedControllerTypes & ovrpController_Touch))
 					{
 						FHapticFeedbackBuffer* HapticBuffer = Values.HapticBuffer;

@@ -873,10 +873,10 @@ void USimpleConstructionScript::RemoveNodeAndPromoteChildren(USCS_Node* Node)
 	{
 		USCS_Node* ParentNode = FindParentNode(Node);
 
-		if (!ensure(ParentNode))
+		if (ParentNode == nullptr)
 		{
 #if WITH_EDITOR
-			UE_LOG(LogBlueprint, Error, TEXT("RemoveNodeAndPromoteChildren(%s) failed to find a parent node in Blueprint %s, attaching children to the root"), *Node->GetName(), *GetBlueprint()->GetPathName());
+			UE_LOG(LogBlueprint, Warning, TEXT("RemoveNodeAndPromoteChildren(%s) failed to find a parent node in Blueprint %s, attaching children to the root"), *Node->GetName(), *GetBlueprint()->GetPathName());
 #endif
 			ParentNode = GetDefaultSceneRootNode();
 		}

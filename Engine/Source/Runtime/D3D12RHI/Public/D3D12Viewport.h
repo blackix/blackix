@@ -97,10 +97,8 @@ public:
 
 	// Accessors.
 	FIntPoint GetSizeXY() const { return FIntPoint(SizeX, SizeY); }
-	SIZE_T GetBackBufferIndex() const { return CurrentBackBufferIndex; }
-
-	FD3D12Texture2D* GetBackBuffer() const { return BackBuffer; }
-	FD3D12Texture2D* GetBackBuffer(uint32 Index) const { return BackBuffers[Index % NumBackBuffers].GetReference(); }
+	FD3D12Texture2D* GetBackBuffer_RenderThread() const { return BackBuffer_RenderThread; }
+	FD3D12Texture2D* GetBackBuffer_RHIThread() const { return BackBuffer_RHIThread; }
 
 	void WaitForFrameEventCompletion();
 	void IssueFrameEvent();
@@ -108,8 +106,8 @@ public:
 	IDXGISwapChain1* GetSwapChain() const { return SwapChain1; }
 
 	virtual void* GetNativeSwapChain() const override { return GetSwapChain(); }
-	virtual void* GetNativeBackBufferTexture() const override { return GetBackBuffer()->GetResource(); }
-	virtual void* GetNativeBackBufferRT() const override { return GetBackBuffer()->GetRenderTargetView(0, 0); }
+	virtual void* GetNativeBackBufferTexture() const override { return GetBackBuffer_RHIThread()->GetResource(); }
+	virtual void* GetNativeBackBufferRT() const override { return GetBackBuffer_RHIThread()->GetRenderTargetView(0, 0); }
 
 	virtual void SetCustomPresent(FRHICustomPresent* InCustomPresent) override
 	{
@@ -124,6 +122,8 @@ public:
 	inline const bool IsFullscreen() const { return bIsFullscreen; }
 
 	FD3D12Fence& GetFence() { return Fence; }
+
+	void AdvanceBackBufferFrame_RenderThread();
 
 private:
 
@@ -154,6 +154,7 @@ private:
 	bool bIsFullscreen;
 	EPixelFormat PixelFormat;
 	bool bIsValid;
+	bool bAllowTearing;
 	TRefCountPtr<IDXGISwapChain1> SwapChain1;
 
 	static const uint32 DefaultNumBackBuffers = 3;
@@ -162,8 +163,10 @@ private:
 	TArray<TRefCountPtr<FD3D12Texture2D>> BackBuffers;
 	uint32 NumBackBuffers;
 
-	FD3D12Texture2D* BackBuffer;
-	uint32 CurrentBackBufferIndex;
+	uint32 CurrentBackBufferIndex_RenderThread;
+	FD3D12Texture2D* BackBuffer_RenderThread;
+	uint32 CurrentBackBufferIndex_RHIThread;
+	FD3D12Texture2D* BackBuffer_RHIThread;
 
 	/** A fence value used to track the GPU's progress. */
 	FD3D12Fence Fence;

@@ -3924,7 +3924,7 @@ void FEngineLoop::PreInitHMDDevice()
 		// Check whether the user passed in an explicit HMD module on the command line
 		FString ExplicitHMDName;
 		bool bUseExplicitHMDName = FParse::Value(FCommandLine::Get(), TEXT("hmd="), ExplicitHMDName);
-		
+
 		// Iterate over modules, checking ExplicitHMDName and calling PreInit
 		for (auto HMDModuleIt = HMDModules.CreateIterator(); HMDModuleIt; ++HMDModuleIt)
 		{

@@ -148,6 +148,18 @@ void FSteamVRHMD::D3D11Bridge::OnBackBufferResize()
 {
 }
 
+bool FSteamVRHMD::D3D11Bridge::NeedsNativePresent()
+{
+	check(IsInRenderingThread());
+
+	if (Plugin->VRCompositor == nullptr)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool FSteamVRHMD::D3D11Bridge::Present(int& SyncInterval)
 {
 	check(IsInRenderingThread());
@@ -247,6 +259,16 @@ void FSteamVRHMD::VulkanBridge::OnBackBufferResize()
 {
 }
 
+bool FSteamVRHMD::VulkanBridge::NeedsNativePresent()
+{
+	if (Plugin->VRCompositor == nullptr)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool FSteamVRHMD::VulkanBridge::Present(int& SyncInterval)
 {
 	if (Plugin->VRCompositor == nullptr)
@@ -332,6 +354,18 @@ void FSteamVRHMD::OpenGLBridge::UpdateViewport(const FViewport& Viewport, FRHIVi
 
 void FSteamVRHMD::OpenGLBridge::OnBackBufferResize()
 {
+}
+
+bool FSteamVRHMD::OpenGLBridge::NeedsNativePresent()
+{
+	check(IsInRenderingThread());
+
+	if (Plugin->VRCompositor == nullptr)
+	{
+		return false;
+	}
+
+	return true;
 }
 
 bool FSteamVRHMD::OpenGLBridge::Present(int& SyncInterval)
