@@ -112,8 +112,8 @@ bool FCustomPresent::Present(int32& SyncInterval)
 
 		if (Frame_RHIThread)
 		{
-			FinishRendering_RHIThread();
 			bNeedsNativePresent = Frame_RHIThread->Flags.bSpectatorScreenActive;
+			FinishRendering_RHIThread();
 		}
 	}
 
