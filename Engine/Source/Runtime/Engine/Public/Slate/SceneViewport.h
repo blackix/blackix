@@ -265,7 +265,7 @@ public:
 		ViewportGammaOverride = InGammaOverride;
 	};
 
-private:
+protected:
 	/**
 	 * Called when this viewport is destroyed
 	 */
@@ -365,7 +365,7 @@ private:
 	 */
 	void OnPostResizeWindowBackbuffer(void* Backbuffer);
 
-private:
+protected:
 	/** An intermediate reply state that is reset whenever an input event is generated */
 	FReply CurrentReplyState;
 	/** A mapping of key names to their pressed state */

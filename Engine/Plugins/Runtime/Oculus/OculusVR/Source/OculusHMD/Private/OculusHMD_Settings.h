@@ -60,9 +60,14 @@ public:
 			/** HQ Distortion */
 			uint64				bHQDistortion : 1;
 
-			/* plugin-allocated multiview buffer (GL_TEXTURE_2D_ARRAY) for mobile */
+			/* plugin-allocated multiview buffer (GL_TEXTURE_2D_ARRAY) for mobile is required */
 			uint64				bDirectMultiview : 1; 
 
+			/* eye buffer is currently a multiview buffer */
+			uint64				bIsUsingDirectMultiview : 1;
+
+			/** Send the depth buffer to the compositor */
+			uint64				bCompositeDepth : 1;
 #if !UE_BUILD_SHIPPING
 			/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
 			uint64				bDoNotUpdateOnGT : 1;

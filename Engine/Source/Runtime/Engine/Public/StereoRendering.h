@@ -79,6 +79,11 @@ public:
 	 */
 	virtual bool NeedReAllocateViewportRenderTarget(const class FViewport& Viewport) { return false; }
 
+	/**
+	* Returns true, if render target texture must be re-calculated.
+	*/
+	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<struct IPooledRenderTarget>& DepthTarget) { return false; }
+
 	// Whether separate render target should be used or not.
 	virtual bool ShouldUseSeparateRenderTarget() const { return false; }
 
@@ -145,6 +150,17 @@ public:
 	 * @return				true, if texture was allocated; false, if the default texture allocation should be used.
 	 */
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1)
+	{
+		return false;
+	}
+
+	/**
+	* Allocates a render target texture.
+	*
+	* @param Index			(in) index of the buffer, changing from 0 to GetNumberOfBufferedFrames()
+	* @return				true, if texture was allocated; false, if the default texture allocation should be used.
+	*/
+	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1)
 	{
 		return false;
 	}
