@@ -487,8 +487,8 @@ void SWindow::ConstructWindowInternals()
 			SNullWidget::NullWidget
 		];
 
-	// create window
-	if (Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator && !bIsPopupWindow && !bHasOSWindowBorder)
+    // create window
+    if (Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator && Type != EWindowType::CastingWindow && !bIsPopupWindow && !bHasOSWindowBorder)
 	{
 		TAttribute<EVisibility> WindowContentVisibility(this, &SWindow::GetWindowContentVisibility);
 		TAttribute<const FSlateBrush*> WindowBackgroundAttr(this, &SWindow::GetWindowBackground);
@@ -1370,7 +1370,7 @@ EWindowActivationPolicy SWindow::ActivationPolicy() const
 /** @return true if the window accepts input; false if the window is non-interactive */
 bool SWindow::AcceptsInput() const
 {
-	return Type != EWindowType::CursorDecorator && Type != EWindowType::ToolTip;
+	return Type != EWindowType::CursorDecorator && Type != EWindowType::ToolTip && Type != EWindowType::CastingWindow;
 }
 
 /** @return true if the user decides the size of the window; false if the content determines the size of the window */
@@ -1559,7 +1559,7 @@ int32 SWindow::GetCornerRadius()
 
 bool SWindow::SupportsKeyboardFocus() const
 {
-	return Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator;
+	return Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator && Type != EWindowType::CastingWindow;
 }
 
 FReply SWindow::OnFocusReceived(const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent)

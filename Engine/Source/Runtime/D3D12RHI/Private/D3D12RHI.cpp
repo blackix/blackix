@@ -33,7 +33,6 @@ using namespace D3D12RHI;
 
 FD3D12DynamicRHI::FD3D12DynamicRHI(TArray<FD3D12Adapter*>& ChosenAdaptersIn) :
 	NumThreadDynamicHeapAllocators(0),
-	ViewportFrameCounter(0),
 	ChosenAdapters(ChosenAdaptersIn)
 {
 	FMemory::Memzero(ThreadDynamicHeapAllocatorArray, sizeof(ThreadDynamicHeapAllocatorArray));
@@ -336,7 +335,7 @@ void FD3D12DynamicRHI::IssueLongGPUTask()
 
 			FRHICommandList_RecursiveHazardous RHICmdList(RHIGetDefaultContext());
 
-			SetRenderTarget(RHICmdList, Viewport->GetBackBuffer(), FTextureRHIRef());
+			SetRenderTarget(RHICmdList, Viewport->GetBackBuffer_RHIThread(), FTextureRHIRef());
 
 			FGraphicsPipelineStateInitializer GraphicsPSOInit;
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);

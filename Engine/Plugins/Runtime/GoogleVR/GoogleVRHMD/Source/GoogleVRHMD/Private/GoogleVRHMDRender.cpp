@@ -658,6 +658,18 @@ void FGoogleVRHMDCustomPresent::FinishRendering()
 	}
 }
 
+bool FGoogleVRHMDCustomPresent::NeedsNativePresent()
+{
+	if(SwapChain)
+	{
+		return false;
+	}
+	else
+	{
+		return true;
+	}
+}
+
 bool FGoogleVRHMDCustomPresent::Present(int32& InOutSyncInterval)
 {
 	if (!bSkipPresent)

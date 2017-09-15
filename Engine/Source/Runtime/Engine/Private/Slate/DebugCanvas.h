@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RenderResource.h"
+#include "RendererInterface.h"
 #include "Rendering/RenderingCommon.h"
 
 class FCanvas;
@@ -31,6 +33,8 @@ public:
 	 */
 	void InitDebugCanvas(UWorld* InWorld);
 
+	void ReleaseResources();
+
 private:
 	/**
 	 * ICustomSlateElement interface 
@@ -52,6 +56,8 @@ private:
 	 */
 	void SetRenderThreadCanvas( const FIntRect& InCanvasRect, FCanvasProxy* Canvas );
 
+	void ReleaseTexture();
+
 private:
 	/** The canvas that can be used by the game thread */
 	FCanvasProxy* GameThreadCanvas;
@@ -59,4 +65,10 @@ private:
 	FCanvasProxy* RenderThreadCanvas;
 	/** Render target that the canvas renders to */
 	class FSlateCanvasRenderTarget* RenderTarget;
+	/** Rendertarget used in case of self textured canvas */
+	TRefCountPtr<IPooledRenderTarget> LayerTexture;
+	/** HMD layer ID */
+	uint32 layerID;
+	/** true if the RenderThreadCanvas rendered elements last frame */
+	bool bCanvasRenderedLastFrame;
 };

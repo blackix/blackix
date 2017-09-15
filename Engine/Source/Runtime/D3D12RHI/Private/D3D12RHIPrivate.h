@@ -286,7 +286,7 @@ public:
 	virtual FRenderQueryRHIRef RHICreateRenderQuery(ERenderQueryType QueryType) final override;
 	virtual bool RHIGetRenderQueryResult(FRenderQueryRHIParamRef RenderQuery, uint64& OutResult, bool bWait) final override;
 	virtual FTexture2DRHIRef RHIGetViewportBackBuffer(FViewportRHIParamRef Viewport) final override;
-	virtual void RHIAdvanceFrameForGetViewportBackBuffer() final override;
+	virtual void RHIAdvanceFrameForGetViewportBackBuffer(FViewportRHIParamRef Viewport) final override;
 	virtual void RHIAcquireThreadOwnership() final override;
 	virtual void RHIReleaseThreadOwnership() final override;
 	virtual void RHIFlushResources() final override;
@@ -311,8 +311,9 @@ public:
 	// FD3D12DynamicRHI interface.
 	virtual uint32 GetDebugFlags();
 	virtual ID3D12CommandQueue* RHIGetD3DCommandQueue();
-	virtual FTexture2DRHIRef RHICreateTexture2DFromD3D12Resource(uint8 Format, uint32 Flags, const FClearValueBinding& ClearValueBinding, ID3D12Resource* Resource);
-	virtual void RHIAliasTexture2DResources(FTexture2DRHIParamRef DestTexture2D, FTexture2DRHIParamRef SrcTexture2D);
+	virtual FTexture2DRHIRef RHICreateTexture2DFromResource(EPixelFormat Format, uint32 TexCreateFlags, const FClearValueBinding& ClearValueBinding, ID3D12Resource* Resource);
+	virtual FTextureCubeRHIRef RHICreateTextureCubeFromResource(EPixelFormat Format, uint32 TexCreateFlags, const FClearValueBinding& ClearValueBinding, ID3D12Resource* Resource);
+	virtual void RHIAliasTextureResources(FTextureRHIParamRef DestTexture, FTextureRHIParamRef SrcTexture);
 
 	//
 	// The Following functions are the _RenderThread version of the above functions. They allow the RHI to control the thread synchronization for greater efficiency.
@@ -797,8 +798,6 @@ public:
 	/** Consumes about 100ms of GPU time (depending on resolution and GPU), useful for making sure we're not CPU bound when GPU profiling. */
 	void IssueLongGPUTask();
 
-	void ResetViewportFrameCounter() { ViewportFrameCounter = 0; }
-
 	FD3D12Adapter& GetAdapter(uint32_t Index = 0) { return *ChosenAdapters[Index]; }
 
 protected:
@@ -811,8 +810,6 @@ protected:
 	/** A buffer in system memory containing all zeroes of the specified size. */
 	void* ZeroBuffer;
 	uint32 ZeroBufferSize;
-
-	uint32 ViewportFrameCounter;
 
 	template<typename BaseResourceType>
 	TD3D12Texture2D<BaseResourceType>* CreateD3D12Texture2D(uint32 SizeX, uint32 SizeY, uint32 SizeZ, bool bTextureArray, bool CubeTexture, uint8 Format,

@@ -16,7 +16,6 @@
 #include "HeadMountedDisplay.h"
 #include "Stats.h"
 #include "SceneViewExtension.h"
-#include "ScenePrivate.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMeshActor.h"
 
@@ -57,6 +56,7 @@ class FOculusHMD : public FHeadMountedDisplayBase, public IStereoLayers, public 
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+	friend class FOculusRiftSpectatorScreenController;
 
 public:
 	// IStereoRendering interface
@@ -70,14 +70,15 @@ public:
 	virtual void UpdateViewport(bool bUseSeparateRenderTarget, const FViewport& Viewport, SViewport*) override;
 	virtual void CalculateRenderTargetSize(const FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) override;
 	virtual bool NeedReAllocateViewportRenderTarget(const FViewport& Viewport) override;
+	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
 	virtual bool ShouldUseSeparateRenderTarget() const override;
 	virtual void RenderTexture_RenderThread(class FRHICommandListImmediate& RHICmdList, class FRHITexture2D* BackBuffer, class FRHITexture2D* SrcTexture) const override;
 	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const override;
-	virtual void SetClippingPlanes(float NCP, float FCP) override;
 	virtual FRHICustomPresent* GetCustomPresent() override { return CustomPresent; }
 	virtual uint32 GetNumberOfBufferedFrames() const override { return 1; }
 	virtual IStereoLayers* GetStereoLayers() override { return this; }
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual void UseImplicitHmdPosition(bool bInImplicitHmdPosition) override;
 
 
@@ -143,6 +144,7 @@ public:
 	virtual bool GetLayerDesc(uint32 LayerId, IStereoLayers::FLayerDesc& OutLayerDesc) override;
 	virtual void MarkTextureForUpdate(uint32 LayerId) override;
 	virtual void UpdateSplashScreen() override;
+	virtual IStereoLayers::FLayerDesc GetDebugCanvasLayerDesc(FTextureRHIRef Texture) override;
 
 
 	// ISceneViewExtension
@@ -174,7 +176,7 @@ protected:
 	void PreShutdown();
 	void Shutdown();
 
-	bool InitializeSession(ovrpRenderAPIType apiType);
+	bool InitializeSession();
 	void ShutdownSession();
 
 	bool InitDevice();
@@ -186,6 +188,7 @@ protected:
 	void SetupOcclusionMeshes();
 	void UpdateStereoRenderingParams();
 	void UpdateHmdRenderInfo();
+	void InitializeEyeLayer_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void ApplySystemOverridesOnStereo(bool force = false);
 	bool OnOculusStateChange(bool bIsEnabledNow);
 
@@ -264,7 +267,6 @@ public:
 	FPerformanceStats GetPerformanceStats() const;
 	void SetPixelDensity(float NewPD);
 	bool DoEnableStereo(bool bStereo);
-	void ResetStereoRenderingParams();
 	void ResetControlRotation() const;
 
 
@@ -285,16 +287,11 @@ public:
 	FSettings* GetSettings_RHIThread() { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 	const FSettings* GetSettings_RHIThread() const { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 
-	FLayer* GetEyeLayer_RenderThread() { CheckInRenderThread(); return EyeLayer_RenderThread.Get(); }
-	const FLayer* GetEyeLayer_RenderThread() const { CheckInRenderThread(); return EyeLayer_RenderThread.Get(); }
-	FLayer* GetEyeLayer_RHIThread() { CheckInRHIThread(); return EyeLayer_RHIThread.Get(); }
-	const FLayer* GetEyeLayer_RHIThread() const { CheckInRHIThread(); return EyeLayer_RHIThread.Get(); }
-
-	bool StartGameFrame_GameThread(); // Called from OnStartGameFrame
+	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
-	bool StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
+	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
 	void FinishRenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList); // Called from PostRenderViewFamily_RenderThread
-	bool StartRHIFrame_RenderThread(); // Called from PreRenderViewFamily_RenderThread
+	void StartRHIFrame_RenderThread(); // Called from PreRenderViewFamily_RenderThread
 	void FinishRHIFrame_RHIThread(); // Called from FinishRendering_RHIThread
 
 
@@ -317,8 +314,6 @@ protected:
 	void GridCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 	void ShowSettingsCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 	void IPDCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
-	void FCPCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
-	void NCPCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 #endif
 	static void CVarSinkHandler();
 	static FAutoConsoleVariableSink CVarSink;
@@ -378,23 +373,27 @@ protected:
 
 	// Game thread
 	FSettingsPtr Settings;
-	uint32 FrameNumber;
+	uint32 NextFrameNumber;
 	FGameFramePtr Frame; // Valid from OnStartGameFrame to OnEndGameFrame
 	FGameFramePtr NextFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
+	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+	FTexture2DRHIRef CastingViewportRenderTexture;
+	bool bNeedReAllocateViewportRenderTarget;
 
 	// Render thread
 	FSettingsPtr Settings_RenderThread;
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
-	FLayerPtr EyeLayer_RenderThread;
+	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
+	FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
+	bool bNeedReAllocateDepthTexture_RenderThread;
 
 	// RHI thread
 	FSettingsPtr Settings_RHIThread;
 	FGameFramePtr Frame_RHIThread; // Valid from PreRenderViewFamily_RenderThread to FinishRendering_RHIThread
 	TArray<FLayerPtr> Layers_RHIThread;
-	FLayerPtr EyeLayer_RHIThread;
 
 
 	FHMDViewMesh HiddenAreaMeshes[2];

@@ -1516,8 +1516,8 @@ int MessageBoxExtInternal( EAppMsgType::Type MsgType, HWND HandleWnd, const TCHA
 		case EAppMsgType::YesNoYesAll:
 		{
 			GCancelButtonEnabled = false;
-			return DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_YESNOYESTOALL), HandleWnd, MessageBoxDlgProc);
-		}
+			return DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_YESNO2ALL /*IDD_YESNOYESTOALL undefined*/), HandleWnd, MessageBoxDlgProc);
+			}
 	}
 
 	return -1;

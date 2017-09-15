@@ -45,9 +45,6 @@ public:
 			/** Allocate an high quality OVR_FORMAT_R11G11B10_FLOAT buffer for Rift */
 			uint64 bHQBuffer : 1;
 
-			/** True, if Far/Mear clipping planes got overriden */
-			uint64				bClippingPlanesOverride : 1;
-
 			/** True, if PlayerCameraManager should follow HMD orientation */
 			uint64				bPlayerCameraManagerFollowsHmdOrientation : 1;
 
@@ -60,9 +57,14 @@ public:
 			/** HQ Distortion */
 			uint64				bHQDistortion : 1;
 
-			/* plugin-allocated multiview buffer (GL_TEXTURE_2D_ARRAY) for mobile */
+			/* plugin-allocated multiview buffer (GL_TEXTURE_2D_ARRAY) for mobile is required */
 			uint64				bDirectMultiview : 1; 
 
+			/* eye buffer is currently a multiview buffer */
+			uint64				bIsUsingDirectMultiview : 1;
+
+			/** Send the depth buffer to the compositor */
+			uint64				bCompositeDepth : 1;
 #if !UE_BUILD_SHIPPING
 			/** Turns off updating of orientation/position on game thread. See 'hmd updateongt' cmd */
 			uint64				bDoNotUpdateOnGT : 1;
@@ -76,12 +78,6 @@ public:
 		};
 		uint64 Raw;
 	} Flags;
-
-	/** Optional far clipping plane for projection matrix */
-	float NearClippingPlane;
-
-	/** Optional far clipping plane for projection matrix */
-	float FarClippingPlane;
 
 	/** HMD base values, specify forward orientation and zero pos offset */
 	FVector BaseOffset; // base position, in meters, relatively to the sensor //@todo hmd: clients need to stop using oculus space

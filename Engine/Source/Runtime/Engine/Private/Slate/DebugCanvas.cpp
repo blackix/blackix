@@ -4,7 +4,11 @@
 #include "RenderingThread.h"
 #include "UnrealClient.h"
 #include "CanvasTypes.h"
+#include "Engine/Engine.h"
+#include "EngineModule.h"
 #include "Framework/Application/SlateApplication.h"
+#include "IStereoLayers.h"
+#include "StereoRendering.h"
 
 /** Checks that all FCanvasProxy allocations were deleted */
 class FProxyCounter
@@ -92,19 +96,40 @@ FDebugCanvasDrawer::FDebugCanvasDrawer()
 	: GameThreadCanvas( NULL )
 	, RenderThreadCanvas( NULL )
 	, RenderTarget( new FSlateCanvasRenderTarget )
+	, layerID(0)
 {}
+
+void FDebugCanvasDrawer::ReleaseTexture()
+{
+	LayerTexture.SafeRelease();
+}
+
+void FDebugCanvasDrawer::ReleaseResources()
+{
+	FDebugCanvasDrawer *t = this;
+	
+	// Send the release message.
+	ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
+		ReleaseCommand,
+		FDebugCanvasDrawer*, t, t,
+		{
+			t->ReleaseTexture();
+		});
+
+	FlushRenderingCommands();
+}
 
 FDebugCanvasDrawer::~FDebugCanvasDrawer()
 {
 	delete RenderTarget;
 
 	// We assume that the render thread is no longer utilizing any canvases
-	if( GameThreadCanvas && RenderThreadCanvas != GameThreadCanvas )
+	if (GameThreadCanvas && RenderThreadCanvas != GameThreadCanvas)
 	{
 		delete GameThreadCanvas;
 	}
 
-	if( RenderThreadCanvas )
+	if (RenderThreadCanvas)
 	{
 		FCanvasProxy* RTCanvas = RenderThreadCanvas;
 		ENQUEUE_RENDER_COMMAND(DeleteDebugRenderThreadCanvas)(
@@ -171,6 +196,24 @@ void FDebugCanvasDrawer::InitDebugCanvas(UWorld* InWorld)
 
 		GameThreadCanvas = new FCanvasProxy( RenderTarget, InWorld );
 	}
+
+	if (RenderThreadCanvas)
+	{
+		if (RenderThreadCanvas->Canvas.IsSelfTexture() && LayerTexture && layerID == 0 && bCanvasRenderedLastFrame)
+		{
+			if (GEngine && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->GetStereoLayers() && LayerTexture && layerID == 0)
+			{
+				IStereoLayers::FLayerDesc StereoLayerDesc = GEngine->StereoRenderingDevice->GetStereoLayers()->GetDebugCanvasLayerDesc(LayerTexture->GetRenderTargetItem().ShaderResourceTexture);
+				layerID = GEngine->StereoRenderingDevice->GetStereoLayers()->CreateLayer(StereoLayerDesc);
+			}
+		}
+
+		if (layerID != 0 && (!RenderThreadCanvas->Canvas.IsSelfTexture() || !bCanvasRenderedLastFrame))
+		{
+			GEngine->StereoRenderingDevice->GetStereoLayers()->DestroyLayer(layerID);
+			layerID = 0;
+		}
+	}
 }
 
 void FDebugCanvasDrawer::DrawRenderThread(FRHICommandListImmediate& RHICmdList, const void* InWindowBackBuffer)
@@ -180,7 +223,23 @@ void FDebugCanvasDrawer::DrawRenderThread(FRHICommandListImmediate& RHICmdList, 
 	if( RenderThreadCanvas )
 	{
 		FTexture2DRHIRef& RT = *(FTexture2DRHIRef*)InWindowBackBuffer;
-		RenderTarget->SetRenderTargetTexture( RT );
+		if (RenderThreadCanvas->Canvas.IsSelfTexture())
+		{
+			if (!LayerTexture)
+			{
+				FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(RenderThreadCanvas->Canvas.GetParentCanvasSize(), PF_B8G8R8A8, FClearValueBinding(), TexCreate_SRGB, TexCreate_RenderTargetable, false));
+				GetRendererModule().RenderTargetPoolFindFreeElement(RHICmdList, Desc, LayerTexture, TEXT("DebugCanvasLayerTexture"));
+				UE_LOG(LogProfilingDebugging, Log, TEXT("Allocated a %d x %d texture for HMD canvas layer"), RenderThreadCanvas->Canvas.GetParentCanvasSize().X, RenderThreadCanvas->Canvas.GetParentCanvasSize().Y);
+			}
+			FTexture2DRHIRef *ref2d = (FTexture2DRHIRef*)&LayerTexture->GetRenderTargetItem().ShaderResourceTexture;
+			FTexture2DRHIRef& tex = *ref2d;
+			RenderTarget->SetRenderTargetTexture(tex);
+		}
+		else
+		{
+			RenderTarget->SetRenderTargetTexture(RT);
+		}
+
 		bool bNeedToFlipVertical = RenderThreadCanvas->Canvas.GetAllowSwitchVerticalAxis();
 		// Do not flip when rendering to the back buffer
 		RenderThreadCanvas->Canvas.SetAllowSwitchVerticalAxis(false);
@@ -192,6 +251,8 @@ void FDebugCanvasDrawer::DrawRenderThread(FRHICommandListImmediate& RHICmdList, 
 		{
 			RenderThreadCanvas->Canvas.SetRenderTargetRect( RenderTarget->GetViewRect() );
 		}
+
+		bCanvasRenderedLastFrame = RenderThreadCanvas->Canvas.HasBatchesToRender();
 		RenderThreadCanvas->Canvas.Flush_RenderThread(RHICmdList, true);
 		RenderThreadCanvas->Canvas.SetAllowSwitchVerticalAxis(bNeedToFlipVertical);
 		RenderTarget->ClearRenderTargetTexture();

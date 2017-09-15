@@ -40,10 +40,7 @@ private:
 	FAutoConsoleCommand GridCommand;
 	FAutoConsoleCommand CubemapCommand;
 	FAutoConsoleCommand ShowSettingsCommand;
-	FAutoConsoleCommand ResetSettingsCommand;
 	FAutoConsoleCommand IPDCommand;
-	FAutoConsoleCommand FCPCommand;
-	FAutoConsoleCommand NCPCommand;
 #endif // !UE_BUILD_SHIPPING
 };
 

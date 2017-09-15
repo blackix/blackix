@@ -12,9 +12,7 @@ namespace OculusHMD
 //-------------------------------------------------------------------------------------------------
 
 FSettings::FSettings() :
-	  NearClippingPlane(0)
-	, FarClippingPlane(0)
-	, BaseOffset(0, 0, 0)
+	BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
 	, PositionOffset(FVector::ZeroVector)
 	, PixelDensity(1.0f)
@@ -31,6 +29,12 @@ FSettings::FSettings() :
 	Flags.bPlayerCameraManagerFollowsHmdOrientation = true;
 	Flags.bPlayerCameraManagerFollowsHmdPosition = true;
 	Flags.bDirectMultiview = true;
+	Flags.bIsUsingDirectMultiview = false;
+#if PLATFORM_ANDROID
+	Flags.bCompositeDepth = false;
+#else
+	Flags.bCompositeDepth = true;
+#endif
 	EyeRenderViewport[0] = EyeRenderViewport[1] = EyeRenderViewport[2] = FIntRect(0, 0, 0, 0);
 
 	RenderTargetSize = FIntPoint(0, 0);
