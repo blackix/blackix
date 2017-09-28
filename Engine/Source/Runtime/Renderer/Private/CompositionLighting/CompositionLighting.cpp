@@ -121,6 +121,11 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 			&& !IsAnyForwardShadingEnabled(View.GetShaderPlatform());
 	}
 
+    if (View.CastingLayer != ECastingLayer::Full)
+    {
+        bEnabled = false;
+    }
+
 	return bEnabled;
 }
 

@@ -407,6 +407,46 @@ void UOculusFunctionLibrary::GetLoadingSplashParams(FString& TexturePath, FVecto
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 }
 
+bool UOculusFunctionLibrary::HasInputFocus()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
+	{
+		ovrpBool focus;
+		if (OVRP_SUCCESS(ovrp_GetAppHasInputFocus(&focus)))
+		{
+			return focus == ovrpBool_True;
+		}
+		else
+		{
+			return false;
+		}
+	}
+#endif // OCULUS_HMD_SUPPORTED_PLATFORMS
+	return false;
+}
+
+bool UOculusFunctionLibrary::HasSystemOverlayPresent()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
+	{
+		ovrpBool present;
+		if (OVRP_SUCCESS(ovrp_GetAppHasSystemOverlayPresent(&present)))
+		{
+			return present == ovrpBool_True;
+		}
+		else
+		{
+			return false;
+		}
+	}
+#endif // OCULUS_HMD_SUPPORTED_PLATFORMS
+	return false;
+}
+
 class IStereoLayers* UOculusFunctionLibrary::GetStereoLayers()
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS

@@ -95,6 +95,11 @@ public:
 	static jfieldID LaunchNotificationEvent;
 	static jfieldID LaunchNotificationFireDate;
 
+	// method and classes for thread name change
+	static jclass ThreadClass;
+	static jmethodID CurrentThreadMethod;
+	static jmethodID SetNameMethod;
+
 	/**
 	 * Find all known classes and methods
 	 */

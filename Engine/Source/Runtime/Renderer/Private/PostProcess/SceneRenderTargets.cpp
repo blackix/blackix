@@ -16,6 +16,9 @@
 #include "ClearQuad.h"
 #include "RenderUtils.h"
 #include "PipelineStateCache.h"
+#include "EngineGlobals.h"
+#include "UnrealEngine.h"
+#include "StereoRendering.h"
 
 IMPLEMENT_UNIFORM_BUFFER_STRUCT(FGBufferResourceStruct,TEXT("GBuffers"));
 
@@ -303,11 +306,21 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 		// Force ScreenRes on non windowed platforms.
 		SceneTargetsSizingMethod = RequestedSize;
 	}
-	else if (GIsEditor)
+	else if (GIsEditor && ViewFamily.Scene->GetWorld()->WorldType == EWorldType::Editor)
 	{
 		// Always grow scene render targets in the editor.
 		SceneTargetsSizingMethod = Grow;
 	}	
+	else if (ViewFamily.bIsCasting)
+	{
+		// Always grow scene render targets when casting viewport is used.
+		SceneTargetsSizingMethod = Grow;
+	}
+	else if (bIsSceneCapture || bIsReflectionCapture)
+	{
+		// Always grow scene render targets if it's a SceneCapture or ReflectionCapture.
+		SceneTargetsSizingMethod = Grow;
+	}
 	else
 	{
 		// Otherwise use the setting specified by the console variable.
@@ -608,6 +621,21 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 
 	if (IsAnyForwardShadingEnabled(GetFeatureLevelShaderPlatform(CurrentFeatureLevel)))
 	{
+		bool bClearColor = ColorLoadAction == ERenderTargetLoadAction::EClear;
+
+		//if the desired clear color doesn't match the bound hwclear value, or there isn't one at all (editor code)
+		//then we need to fall back to a shader clear.
+		const FTextureRHIRef& SceneColorTex = GetSceneColorSurface();
+		bool bShaderClear = false;
+		if (bClearColor)
+		{
+			if (!SceneColorTex->HasClearValue() || (ClearColor != SceneColorTex->GetClearColor()))
+			{
+				ColorLoadAction = ERenderTargetLoadAction::ENoAction;
+				bShaderClear = true;
+			}
+		}
+
 		int32 MRTCount = 0;
 		RenderTargets[MRTCount++] = FRHIRenderTargetView(GetSceneColorSurface(), 0, -1, ColorLoadAction, ERenderTargetStoreAction::EStore);
 
@@ -616,6 +644,17 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 		SetQuadOverdrawUAV(RHICmdList, bBindQuadOverdrawBuffers, Info);
 
 		RHICmdList.SetRenderTargetsAndClear(Info);
+
+		if (bShaderClear)
+		{
+			check(MRTCount == 1);
+			FLinearColor ClearColors[1];
+			FTextureRHIParamRef Textures[1];
+			ClearColors[0] = ClearColor;
+			Textures[0] = RenderTargets[0].Texture;
+			//depth/stencil should have been handled by the fast clear.  only color for RT0 can get changed.
+			DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0);
+		}
 	}
 	else
 	{
@@ -1705,7 +1744,8 @@ void FSceneRenderTargets::AllocateDebugViewModeTargets(FRHICommandList& RHICmdLi
 
 void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList)
 {
-	if (SceneDepthZ && !(SceneDepthZ->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultDepthClear))
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	if (SceneDepthZ && (!(SceneDepthZ->GetRenderTargetItem().TargetableTexture->GetClearBinding() == DefaultDepthClear) || (bStereo && GEngine->StereoRenderingDevice->NeedReAllocateDepthTexture(SceneDepthZ))))
 	{
 		uint32 StencilCurrent, StencilNew;
 		float DepthCurrent, DepthNew;
@@ -1717,6 +1757,9 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 
 	if (!SceneDepthZ)
 	{
+		FTexture2DRHIRef DepthTex, SRTex;
+		bool bHMDAllocated = bStereo && GEngine->StereoRenderingDevice->AllocateDepthTexture(0, BufferSize.X, BufferSize.Y, PF_X24_G8, 0, TexCreate_None, TexCreate_DepthStencilTargetable, DepthTex, SRTex, GetNumSceneColorMSAASamples(CurrentFeatureLevel));
+
 		// Create a texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
 		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_DepthStencil, DefaultDepthClear, TexCreate_None, TexCreate_DepthStencilTargetable, false));
 		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
@@ -1725,6 +1768,20 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 			Desc.Flags |= TexCreate_FastVRAM;
 		}
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneDepthZ, TEXT("SceneDepthZ"));
+
+		if (bHMDAllocated)
+		{
+			// If SRT and texture are different (MSAA), only modify the resolve render target, to avoid creating a swapchain of MSAA textures
+			if (SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture == SceneDepthZ->GetRenderTargetItem().TargetableTexture)
+			{
+				SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture = SceneDepthZ->GetRenderTargetItem().TargetableTexture = SRTex;
+			}
+			else
+			{
+				SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture = SRTex;
+			}
+		}
+
 		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
 	}
 

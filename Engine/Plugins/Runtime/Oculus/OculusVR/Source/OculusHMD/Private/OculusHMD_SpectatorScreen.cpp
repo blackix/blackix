@@ -15,10 +15,34 @@ namespace OculusHMD
 	class FOculusRiftSpectatorScreenController : public FDefaultSpectatorScreenController
 	{
 	public:
+		typedef FDefaultSpectatorScreenController SuperClass;
+
 		FOculusRiftSpectatorScreenController(FOculusHMD* InOculusHMDDevice)
 			: FDefaultSpectatorScreenController(InOculusHMDDevice)
 			, OculusHMDDevice(InOculusHMDDevice)
 		{
+		}
+
+		virtual void UpdateSpectatorScreenMode_RenderThread() override
+		{
+			// when there is a casting viewport projecting to mirror window, we need to bind the Distorted function
+			if ((!IsInRenderingThread() && OculusHMDDevice->CastingViewportRenderTexture) ||
+				(IsInRenderingThread() && OculusHMDDevice->CastingViewportRenderTexture_RenderThread))
+			{
+				ESpectatorScreenMode OldNewMode;
+				{
+					FScopeLock FrameLock(&NewSpectatorScreenModeLock);
+
+					OldNewMode = NewSpectatorScreenMode;
+					NewSpectatorScreenMode = ESpectatorScreenMode::Undistorted;
+					SuperClass::UpdateSpectatorScreenMode_RenderThread();
+					NewSpectatorScreenMode = OldNewMode;
+				}
+			}
+			else
+			{
+				SuperClass::UpdateSpectatorScreenMode_RenderThread();
+			}
 		}
 
 		void RenderSpectatorScreen_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* BackBuffer, FTexture2DRHIRef SrcTexture) const
@@ -34,14 +58,26 @@ namespace OculusHMD
 
 		void RenderSpectatorModeUndistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture)
 		{
-			FSettings* Settings = OculusHMDDevice->GetSettings_RenderThread();
-			check(Settings);
-			FIntRect DestRect(0, 0, TargetTexture->GetSizeX() / 2, TargetTexture->GetSizeY());
-			for (int i = 0; i < 2; ++i)
+			if ((!IsInRenderingThread() && OculusHMDDevice->CastingViewportRenderTexture) ||
+				(IsInRenderingThread() && OculusHMDDevice->CastingViewportRenderTexture_RenderThread))
 			{
-				OculusHMDDevice->CopyTexture_RenderThread(RHICmdList, EyeTexture, Settings->EyeRenderViewport[i], TargetTexture, DestRect, false);
-				DestRect.Min.X += TargetTexture->GetSizeX() / 2;
-				DestRect.Max.X += TargetTexture->GetSizeX() / 2;
+				// when there is a casting viewport projecting to mirror window, stretch the output to use all pixels efficiently
+				const FIntRect SrcRect(0, 0, EyeTexture->GetSizeX(), EyeTexture->GetSizeY());
+				const FIntRect DstRect(0, 0, TargetTexture->GetSizeX(), TargetTexture->GetSizeY());
+
+				OculusHMDDevice->CopyTexture_RenderThread(RHICmdList, EyeTexture, SrcRect, TargetTexture, DstRect, false);
+			}
+			else
+			{
+				FSettings* Settings = OculusHMDDevice->GetSettings_RenderThread();
+				check(Settings);
+				FIntRect DestRect(0, 0, TargetTexture->GetSizeX() / 2, TargetTexture->GetSizeY());
+				for (int i = 0; i < 2; ++i)
+				{
+					OculusHMDDevice->CopyTexture_RenderThread(RHICmdList, EyeTexture, Settings->EyeRenderViewport[i], TargetTexture, DestRect, false);
+					DestRect.Min.X += TargetTexture->GetSizeX() / 2;
+					DestRect.Max.X += TargetTexture->GetSizeX() / 2;
+				}
 			}
 		}
 

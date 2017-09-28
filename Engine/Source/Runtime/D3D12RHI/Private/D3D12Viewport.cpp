@@ -349,7 +349,12 @@ void FD3D12Viewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
 
 	CalculateSwapChainDepth();
 
-	DXGI_SWAP_CHAIN_FLAG SwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+	UINT SwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+	if (bAllowTearing)
+	{
+		SwapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	}
 
 #if PLATFORM_SUPPORTS_MGPU
 	if (Adapter->AlternateFrameRenderingEnabled())
@@ -399,11 +404,10 @@ void FD3D12Viewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
 			BackBuffers[i] = GetSwapChainSurface(Device, PixelFormat, SwapChain1, i);
 		}
 	}
-	CurrentBackBufferIndex = 0;
-	BackBuffer = BackBuffers[CurrentBackBufferIndex].GetReference();
-
-	// Reset the viewport frame counter to get the correct back buffer after the resize.
-	Adapter->GetOwningRHI()->ResetViewportFrameCounter();
+	CurrentBackBufferIndex_RenderThread = 0;
+	BackBuffer_RenderThread = BackBuffers[CurrentBackBufferIndex_RenderThread].GetReference();
+	CurrentBackBufferIndex_RHIThread = 0;
+	BackBuffer_RHIThread = BackBuffers[CurrentBackBufferIndex_RHIThread].GetReference();
 }
 
 /** Returns true if desktop composition is enabled. */
@@ -438,7 +442,7 @@ bool FD3D12Viewport::PresentChecked(int32 SyncInterval)
 
 #if LOG_PRESENT
 		const FString ThreadName(FThreadManager::Get().GetThreadName(FPlatformTLS::GetCurrentThreadId()));
-		UE_LOG(LogD3D12RHI, Log, TEXT("*** PRESENT: Thread %s: Viewport %#016llx: BackBuffer %#016llx (SyncInterval %u) ***"), ThreadName.GetCharArray().GetData(), this, GetBackBuffer(), SyncInterval);
+		UE_LOG(LogD3D12RHI, Log, TEXT("*** PRESENT: Thread %s: Viewport %#016llx: BackBuffer %#016llx (SyncInterval %u) ***"), ThreadName.GetCharArray().GetData(), this, GetBackBuffer_RHIThread(), SyncInterval);
 #endif
 
 	}
@@ -594,7 +598,7 @@ bool FD3D12Viewport::Present(bool bLockToVsync)
 
 	FD3D12CommandContext& DefaultContext = Device->GetDefaultCommandContext();
 
-	FD3D12DynamicRHI::TransitionResource(DefaultContext.CommandListHandle, GetBackBuffer()->GetShaderResourceView(), D3D12_RESOURCE_STATE_PRESENT);
+	FD3D12DynamicRHI::TransitionResource(DefaultContext.CommandListHandle, GetBackBuffer_RHIThread()->GetShaderResourceView(), D3D12_RESOURCE_STATE_PRESENT);
 	DefaultContext.CommandListHandle.FlushResourceBarriers();
 
 	// Stop Timing at the very last moment
@@ -652,9 +656,9 @@ bool FD3D12Viewport::Present(bool bLockToVsync)
 	if (bNativelyPresented)
 	{
 		// Increment back buffer
-		CurrentBackBufferIndex++;
-		CurrentBackBufferIndex = CurrentBackBufferIndex % NumBackBuffers;
-		BackBuffer = BackBuffers[CurrentBackBufferIndex].GetReference();
+		CurrentBackBufferIndex_RHIThread++;
+		CurrentBackBufferIndex_RHIThread = CurrentBackBufferIndex_RHIThread % NumBackBuffers;
+		BackBuffer_RHIThread = BackBuffers[CurrentBackBufferIndex_RHIThread].GetReference();
 	}
 
 	return bNativelyPresented;
@@ -671,6 +675,19 @@ void FD3D12Viewport::IssueFrameEvent()
 	// Signal the fence.
 	LastSignaledValue = Fence.Signal(pCommandQueue);
 }
+
+void FD3D12Viewport::AdvanceBackBufferFrame_RenderThread()
+{
+	bool bNeedsNativePresent = IsValidRef(CustomPresent) ? CustomPresent->NeedsNativePresent() : true;
+
+	if (bNeedsNativePresent)
+	{
+		CurrentBackBufferIndex_RenderThread++;
+		CurrentBackBufferIndex_RenderThread = CurrentBackBufferIndex_RenderThread % NumBackBuffers;
+		BackBuffer_RenderThread = BackBuffers[CurrentBackBufferIndex_RenderThread].GetReference();
+	}
+}
+
 
 /*=============================================================================
  *	The following RHI functions must be called from the main thread.
@@ -729,7 +746,7 @@ void FD3D12CommandContext::RHIBeginDrawingViewport(FViewportRHIParamRef Viewport
 
 	if (RenderTargetRHI == nullptr)
 	{
-		RenderTargetRHI = Viewport->GetBackBuffer();
+		RenderTargetRHI = Viewport->GetBackBuffer_RHIThread();
 	}
 
 #if LOG_VIEWPORT_EVENTS
@@ -751,7 +768,7 @@ void FD3D12CommandContext::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRH
 
 #if LOG_VIEWPORT_EVENTS
 	const FString ThreadName(FThreadManager::Get().GetThreadName(FPlatformTLS::GetCurrentThreadId()));
-	UE_LOG(LogD3D12RHI, Log, TEXT("Thread %s: RHIEndDrawingViewport (Viewport %#016llx: BackBuffer %#016llx: CmdList: %016llx)"), ThreadName.GetCharArray().GetData(), Viewport, Viewport->GetBackBuffer(), CommandListHandle.CommandList());
+	UE_LOG(LogD3D12RHI, Log, TEXT("Thread %s: RHIEndDrawingViewport (Viewport %#016llx: BackBuffer %#016llx: CmdList: %016llx)"), ThreadName.GetCharArray().GetData(), Viewport, Viewport->GetBackBuffer_RHIThread(), CommandListHandle.CommandList());
 
 #endif
 
@@ -798,7 +815,7 @@ void FD3D12CommandContext::RHIEndDrawingViewport(FViewportRHIParamRef ViewportRH
 	}
 }
 
-void FD3D12DynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer()
+void FD3D12DynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer(FViewportRHIParamRef ViewportRHI)
 {
 	check(IsInRenderingThread());
 
@@ -816,8 +833,9 @@ void FD3D12DynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer()
 		Adapter->SignalFrameFence_RenderThread(RHICmdList);
 	}
 
-	// Increment counter so the next call to RHIGetViewportBackBuffer returns the next buffer in the swap chain.
-	ViewportFrameCounter++;
+	// Advance frame so the next call to RHIGetViewportBackBuffer returns the next buffer in the swap chain.
+	FD3D12Viewport* Viewport = FD3D12DynamicRHI::ResourceCast(ViewportRHI);
+	Viewport->AdvanceBackBufferFrame_RenderThread();
 }
 
 FTexture2DRHIRef FD3D12DynamicRHI::RHIGetViewportBackBuffer(FViewportRHIParamRef ViewportRHI)
@@ -825,7 +843,7 @@ FTexture2DRHIRef FD3D12DynamicRHI::RHIGetViewportBackBuffer(FViewportRHIParamRef
 	check(IsInRenderingThread());
 
 	const FD3D12Viewport* const Viewport = FD3D12DynamicRHI::ResourceCast(ViewportRHI);
-	FRHITexture2D* const BackBuffer = GRHISupportsRHIThread ? Viewport->GetBackBuffer(ViewportFrameCounter) : Viewport->GetBackBuffer();
+	FRHITexture2D* const BackBuffer = Viewport->GetBackBuffer_RenderThread();
 	
 #if LOG_VIEWPORT_EVENTS
 	const FString ThreadName(FThreadManager::Get().GetThreadName(FPlatformTLS::GetCurrentThreadId()));

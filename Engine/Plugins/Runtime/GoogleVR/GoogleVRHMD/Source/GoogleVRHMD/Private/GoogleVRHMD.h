@@ -145,9 +145,16 @@ public:
 	// Called when viewport is resized.
 	virtual void OnBackBufferResize() override;
 
+	// Called from render thread to see if a native present will be requested for this frame.
+	// @return	true if native Present will be requested for this frame; false otherwise.  Must
+	// match value subsequently returned by Present for this frame.
+	virtual bool NeedsNativePresent() override;
+
+	// Called from RHI thread to perform custom present.
 	// @param InOutSyncInterval - in out param, indicates if vsync is on (>0) or off (==0).
-	// @return	true if normal Present should be performed; false otherwise. If it returns
-	// true, then InOutSyncInterval could be modified to switch between VSync/NoVSync for the normal Present.
+	// @return	true if native Present should be also be performed; false otherwise. If it returns
+	// true, then InOutSyncInterval could be modified to switch between VSync/NoVSync for the normal 
+	// Present.  Must match value previously returned by NeedsNormalPresent for this frame.
 	virtual bool Present(int32& InOutSyncInterval) override;
 
 	//// Called when rendering thread is acquired

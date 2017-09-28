@@ -12,6 +12,7 @@
 #include "ShowFlags.h"
 #include "ConvexVolume.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/CastingViewportClient.h"
 #include "SceneInterface.h"
 #include "FinalPostProcessSettings.h"
 #include "GlobalDistanceFieldParameters.h"
@@ -151,6 +152,9 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 	/** For stereoscopic rendering, whether or not this is a full pass, or a left / right eye pass */
 	EStereoscopicPass StereoPass;
 
+    /** For use in casting viewport, if it's a full view, or background / foreground / foreground_mask */
+    ECastingLayer CastingLayer;
+
 	/** Conversion from world units (uu) to meters, so we can scale motion to the world appropriately */
 	float WorldToMetersScale;
 
@@ -197,6 +201,7 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 		, OverlayColor(FLinearColor::Transparent)
 		, ColorScale(FLinearColor::White)
 		, StereoPass(eSSP_FULL)
+        , CastingLayer(ECastingLayer::Full)
 		, WorldToMetersScale(100.f)
 		, CursorPos(-1, -1)
 		, LODDistanceFactor(1.0f)
@@ -830,6 +835,9 @@ public:
 	/** For stereoscopic rendering, whether or not this is a full pass, or a left / right eye pass */
 	EStereoscopicPass StereoPass;
 
+    /** For use in casting viewport, if it's a full view, or background / foreground / foreground_mask */
+    ECastingLayer CastingLayer;
+
 	/** Whether this view should render the first instance only of any meshes using instancing. */
 	bool bRenderFirstInstanceOnly;
 
@@ -1222,6 +1230,7 @@ public:
 		,	bDeferClear(false)
 		,	bResolveScene(true)			
 		,	bTimesSet(false)
+        ,   bIsCasting(false)
 		{
 			if( InScene != NULL )			
 			{
@@ -1278,6 +1287,9 @@ public:
 		/** Safety check to ensure valid times are set either from a valid world/scene pointer or via the SetWorldTimes function */
 		uint32 bTimesSet:1;
 
+        /** Use in CastingViewport */
+        uint32 bIsCasting:1;
+
 		/** Set the world time ,difference between the last world time and CurrentWorldTime and current real time. */
 		ConstructionValues& SetWorldTimes(const float InCurrentWorldTime,const float InDeltaWorldTime,const float InCurrentRealTime) { CurrentWorldTime = InCurrentWorldTime; DeltaWorldTime = InDeltaWorldTime; CurrentRealTime = InCurrentRealTime;bTimesSet = true;return *this; }
 		
@@ -1295,6 +1307,9 @@ public:
 
 		/** Set the view param. */
 		ConstructionValues& SetViewModeParam(const int InViewModeParam, const FName& InViewModeParamName) { ViewModeParam = InViewModeParam; ViewModeParamName = InViewModeParamName; return *this; }		
+
+        /** Set the casting param. */
+        ConstructionValues& SetIsCasting(const bool Value) { bIsCasting = Value; return *this; }
 	};
 	
 	/** The views which make up the family. */
@@ -1351,6 +1366,9 @@ public:
 
 	/** if true then results of scene rendering are copied/resolved to the RenderTarget. */
 	bool bResolveScene;
+
+    /** Use in CastingViewport */
+    bool bIsCasting;
 
 	/** 
 	 * Which component of the scene rendering should be output to the final render target.

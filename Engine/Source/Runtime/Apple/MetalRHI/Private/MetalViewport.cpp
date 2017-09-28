@@ -361,6 +361,6 @@ FTexture2DRHIRef FMetalDynamicRHI::RHIGetViewportBackBuffer(FViewportRHIParamRef
 	}
 }
 
-void FMetalDynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer()
+void FMetalDynamicRHI::RHIAdvanceFrameForGetViewportBackBuffer(FViewportRHIParamRef Viewport)
 {
 }

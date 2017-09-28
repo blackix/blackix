@@ -14,6 +14,7 @@
 #include "EngineGlobals.h"
 #include "RenderingThread.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/CastingViewportClient.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/PlatformInterfaceBase.h"
 #include "ContentStreaming.h"
@@ -496,6 +497,14 @@ void UGameEngine::RedrawViewports( bool bShouldPresent /*= true*/ )
 			GameViewport->Viewport->Draw(bShouldPresent);
 		}
 	}
+
+    for (auto& CastingViewport : GameInstance->GetWorldContext()->CastingViewports)
+    {
+        if (CastingViewport->Viewport != NULL)
+        {
+            CastingViewport->Viewport->Draw(bShouldPresent);
+        }
+    }
 }
 
 /*-----------------------------------------------------------------------------
