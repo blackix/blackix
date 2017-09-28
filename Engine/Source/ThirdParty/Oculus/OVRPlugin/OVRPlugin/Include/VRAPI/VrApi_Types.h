@@ -135,6 +135,13 @@ typedef enum
 	VRAPI_TRUE
 } ovrBooleanResult;
 
+typedef enum
+{
+	VRAPI_EYE_LEFT,
+	VRAPI_EYE_RIGHT,
+	VRAPI_EYE_COUNT
+} ovrEye;
+
 //-----------------------------------------------------------------
 // Structure Types
 //-----------------------------------------------------------------
@@ -152,27 +159,55 @@ typedef enum
 
 typedef enum
 {
-	VRAPI_DEVICE_TYPE_NOTE4,
-	VRAPI_DEVICE_TYPE_NOTE5,
-	VRAPI_DEVICE_TYPE_S6,
-	VRAPI_DEVICE_TYPE_S7,
-	VRAPI_DEVICE_TYPE_NOTE7,			// No longer supported.
-	VRAPI_DEVICE_TYPE_S8,
-	VRAPI_MAX_DEVICE_TYPES,
+	VRAPI_DEVICE_TYPE_GEARVR_START			= 0,
+
+	VRAPI_DEVICE_TYPE_NOTE4					= VRAPI_DEVICE_TYPE_GEARVR_START,
+	VRAPI_DEVICE_TYPE_NOTE5					= 1,
+	VRAPI_DEVICE_TYPE_S6					= 2,
+	VRAPI_DEVICE_TYPE_S7					= 3,
+	VRAPI_DEVICE_TYPE_NOTE7					= 4,			// No longer supported.
+	VRAPI_DEVICE_TYPE_S8					= 5,
+	VRAPI_DEVICE_TYPE_NOTE8					= 6,
+	VRAPI_DEVICE_TYPE_NOTE7_FE				= 7,			// Fan Edition
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_DEVICE_TYPE_DAWN_PROTO0
+	VRAPI_DEVICE_TYPE_GEARVR_PLUS			= 32,
 ///--END_SDK_REMOVE
+	VRAPI_DEVICE_GEARVR_END					= 63,
+
+///--BEGIN_SDK_REMOVE
+	VRAPI_DEVICE_TYPE_PACIFIC_START			= 64,
+	VRAPI_DEVICE_TYPE_PACIFIC				= VRAPI_DEVICE_TYPE_PACIFIC_START,
+	VRAPI_DEVICE_TYPE_PACIFIC_END			= 127,	
+
+	VRAPI_DEVICE_TYPE_MONTEREY_START		= 256,
+	VRAPI_DEVICE_TYPE_DAWN_PROTO0			= VRAPI_DEVICE_TYPE_MONTEREY_START,
+	VRAPI_DEVICE_TYPE_MONTEREY_PROTO1_SDC,
+	VRAPI_DEVICE_TYPE_MONTEREY_PROTO1_AUO,	
+	VRAPI_DEVICE_TYPE_MONTEREY_END			= 319,
+///--END_SDK_REMOVE
+
+	VRAPI_DEVICE_TYPE_UNKNOWN				= -1,
 } ovrDeviceType;
 
 typedef enum
 {
-	VRAPI_HEADSET_TYPE_R320,			// Note4 Innovator
-	VRAPI_HEADSET_TYPE_R321,			// S6 Innovator
-	VRAPI_HEADSET_TYPE_R322,			// Commercial 1
-	VRAPI_HEADSET_TYPE_R323,			// Commercial 2 (USB Type C)
-	VRAPI_HEADSET_TYPE_R324,			// Commercial 3 (USB Type C)
-	VRAPI_MAX_HEADSET_TYPES
+	VRAPI_HEADSET_TYPE_R320					= 0,			// Note4 Innovator
+	VRAPI_HEADSET_TYPE_R321					= 1,			// S6 Innovator
+	VRAPI_HEADSET_TYPE_R322					= 2,			// Commercial 1
+	VRAPI_HEADSET_TYPE_R323					= 3,			// Commercial 2 (USB Type C)
+	VRAPI_HEADSET_TYPE_R324					= 4,			// Commercial 3 (USB Type C)
+	VRAPI_HEADSET_TYPE_R325					= 5,			// Commercial 4 2017 (USB Type C)
+
+///--BEGIN_SDK_REMOVE
+	// Unannounced devices.
+	VRAPI_HEADSET_TYPE_PACIFIC				= 64,
+
+	// Prototype headsets.
+	VRAPI_HEADSET_TYPE_MONTEREY_PROTO1		= 256,
+///--END_SDK_REMOVE
+
+	VRAPI_HEADSET_TYPE_UNKNOWN				= -1,
 } ovrHeadsetType;
 
 typedef enum
@@ -180,7 +215,6 @@ typedef enum
 	VRAPI_DEVICE_REGION_UNSPECIFIED,
 	VRAPI_DEVICE_REGION_JAPAN,
 	VRAPI_DEVICE_REGION_CHINA,
-	VRAPI_MAX_DEVICE_REGIONS
 } ovrDeviceRegion;
 
 typedef enum
@@ -238,6 +272,8 @@ typedef enum
 	// Pressing the back button twice within this time is considered a 'double tap'.
 	VRAPI_SYS_PROP_BACK_BUTTON_DOUBLETAP_TIME,		// in seconds
 
+	VRAPI_SYS_PROP_DOMINANT_HAND,					// returns an ovrHandedness enum for left or right hand
+
 	// Returns VRAPI_TRUE if Multiview rendering support is available for this system,
 	// otherwise VRAPI_FALSE.
 	VRAPI_SYS_PROP_MULTIVIEW_AVAILABLE = 128,
@@ -249,28 +285,20 @@ typedef enum
 ///--BEGIN_SDK_REMOVE
 typedef enum
 {
-	//-- DEPRECATED--
-	VRAPI_OIT_MODE,
-	VRAPI_OIT_EYE2IMU_X,
-	VRAPI_OIT_EYE2IMU_Y,
-	VRAPI_OIT_EYE2IMU_Z,
-	//-- DEPRECATED--
-	VRAPI_TUTORIAL_COMPLETED,						// Used by Oculus Home application for marking Tutorial Completed for China flow.
+	// enum 0-3 have been deprecated.
+
+	VRAPI_TUTORIAL_COMPLETED = 4,					// Used by Oculus Home application for marking Tutorial Completed for China flow.
 	VRAPI_INHIBIT_HANDLE_LONGPRESS,					// Used by First Party Native Social apps which need to disable Long Press to UM handling.
 	VRAPI_DO_NOT_DISTURB_MODE,						// Used by System Activities application for setting the Do-Not-Disturb Mode.
 	VRAPI_SYSTEM_BRIGHTNESS,						// Used by System Activities application for setting the System Brightness.
 	VRAPI_REMOTE_HANDEDNESS,						// Used by System Activities application for setting the Remote Handedness.
 	VRAPI_INHIBIT_HANDLE_HOMEKEY,					// Used by First Party Apps which need to disable Home Button handling.
 	VRAPI_INHIBIT_CONFIRM_QUIT_MENU,				// Used by specific First Party Apps which should go straight to Home instead of Confirm-Quit.
-	VRAPI_INHIBIT_SCREEN_CAPTURE					// Used by System Activities to decide whether to allow screen capture or not
+	VRAPI_INHIBIT_SCREEN_CAPTURE,					// Used by System Activities to decide whether to allow screen capture or not
+	VRAPI_RECENTER_REMOTE_POSE,						// One time Manual recenter of Remote
+	VRAPI_SHELL_SYSTEM_UTILS,						// Used by System Activities to query the cached value of Shell System Utils GK ( This enum can be removed once sysUtils is 100% )
+	VRAPI_TRANSCRIBE_AVAILABLE,						// Used by System Activities to query the cached value of Transcribe enabled GK ( This enum can be removed once transcribe is 100% )
 } ovrProperty;
-
-typedef enum
-{
-	VRAPI_HAND_UNKNOWN	= 0,
-	VRAPI_HAND_LEFT		= 1,
-	VRAPI_HAND_RIGHT	= 2
-} ovrHandedness;
 
 typedef enum
 {
@@ -282,13 +310,22 @@ typedef enum
 
 typedef enum
 {
+	VRAPI_HAND_UNKNOWN	= 0,
+	VRAPI_HAND_LEFT		= 1,
+	VRAPI_HAND_RIGHT	= 2
+} ovrHandedness;
+
+typedef enum
+{
 	VRAPI_SYS_STATUS_DOCKED,						// Device is docked.
 	VRAPI_SYS_STATUS_MOUNTED,						// Device is mounted.
 	VRAPI_SYS_STATUS_THROTTLED,						// Device is in powersave mode.
-	VRAPI_SYS_STATUS_THROTTLED2,					// Device is in extreme powersave mode.
-	VRAPI_SYS_STATUS_THROTTLED_WARNING_LEVEL,		// Powersave mode warning required.
 
-	VRAPI_SYS_STATUS_RENDER_LATENCY_MILLISECONDS,	// Average time between render tracking sample and scanout.
+	// enum  3 used to be VRAPI_SYS_STATUS_THROTTLED2.
+
+	// enum  4 used to be VRAPI_SYS_STATUS_THROTTLED_WARNING_LEVEL.
+
+	VRAPI_SYS_STATUS_RENDER_LATENCY_MILLISECONDS = 5,// Average time between render tracking sample and scanout.
 	VRAPI_SYS_STATUS_TIMEWARP_LATENCY_MILLISECONDS,	// Average time between timewarp tracking sample and scanout.
 	VRAPI_SYS_STATUS_SCANOUT_LATENCY_MILLISECONDS,	// Average time between Vsync and scanout.
 	VRAPI_SYS_STATUS_APP_FRAMES_PER_SECOND,			// Number of frames per second delivered through vrapi_SubmitFrame.
@@ -298,15 +335,16 @@ typedef enum
 
 	VRAPI_SYS_STATUS_HEADPHONES_PLUGGED_IN,			// Returns VRAPI_TRUE if headphones are plugged into the device.
 	VRAPI_SYS_STATUS_RECENTER_COUNT,				// Returns the current HMD recenter count. Defaults to 0.
+	VRAPI_SYS_STATUS_SYSTEM_UX_ACTIVE,				// Returns VRAPI_TRUE if a system UX layer is active
 
 	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED	= 128,	// True if the front buffer is allocated in TrustZone memory.
 	VRAPI_SYS_STATUS_FRONT_BUFFER_565,				// True if the front buffer is 16-bit 5:6:5
 	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB,				// True if the front buffer uses the sRGB color space.
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_SYS_STATUS_SHOULD_QUIT = 256,				// True if the app should terminate. (PC only)
-	VRAPI_SYS_STATUS_HAS_FOCUS,						// True if the app has focus and is therefore visible on the HMD. (PC only)
-	VRAPI_SYS_STATUS_HDCP_FAILURE,					// True if the HDCP link is broken. (PC only)
+	VRAPI_SYS_STATUS_SHOULD_QUIT = 256,				// True if the app should terminate. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HAS_FOCUS,						// True if the app has focus and is therefore visible on the HMD. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HDCP_FAILURE,					// True if the HDCP link is broken. (VrApi->CAPI Shim only)
 
 	VRAPI_SYS_STATUS_DO_NOT_DISTURB_MODE,			// Returns VRAPI_TRUE if DND Mode is active. (SA only)
 	VRAPI_SYS_STATUS_SYSTEM_BRIGHTNESS,				// Returns the current System Brightness. (SA only)
@@ -453,6 +491,25 @@ typedef enum
 } ovrTrackingStatus;
 
 // Tracking state at a given absolute time.
+typedef struct ovrTracking2_
+{
+	// Sensor status described by ovrTrackingStatus flags.
+	unsigned int		Status;
+
+	OVR_VRAPI_PADDING( 4 );
+
+	// Predicted head configuration at the requested absolute time.
+	// The pose describes the head orientation and center eye position.
+	ovrRigidBodyPosef	HeadPose;
+	struct
+	{
+		ovrMatrix4f			ProjectionMatrix;
+		ovrMatrix4f			ViewMatrix;
+	} Eye[ VRAPI_EYE_COUNT ];
+} ovrTracking2;
+
+OVR_VRAPI_ASSERT_TYPE_SIZE( ovrTracking2, 360 );
+
 typedef struct ovrTracking_
 {
 	// Sensor status described by ovrTrackingStatus flags.
@@ -498,8 +555,8 @@ typedef enum
 	VRAPI_TEXTURE_FORMAT_DEPTH_24_STENCIL_8,
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_TEXTURE_FORMAT_8888_HDCP = 128,	// PC only
-	VRAPI_TEXTURE_FORMAT_8888_sRGB_HDCP,	// PC only
+	VRAPI_TEXTURE_FORMAT_8888_HDCP = 128,	// VrApi->CAPI Shim only
+	VRAPI_TEXTURE_FORMAT_8888_sRGB_HDCP,	// VrApi->CAPI Shim only
 ///--END_SDK_REMOVE
 } ovrTextureFormat;
 
@@ -552,11 +609,18 @@ typedef enum
 	// enum 128 used to be VRAPI_FRAME_FLAG_SHOW_LAYER_COMPLEXITY.
 
 	// enum 256 used to be VRAPI_FRAME_FLAG_SHOW_TEXTURE_DENSITY.
+
+///--BEGIN_SDK_REMOVE
+	VRAPI_FRAME_FLAG_IGNORE_FENCES								= 512,
+///--END_SDK_REMOVE
+
 } ovrFrameFlags;
 
 typedef enum
 {
 	// Enable writing to the alpha channel
+	// NOTE: *_WRITE_ALPHA is DEPRECATED. Please do not write any new code which
+	// relies on it's use.
 	VRAPI_FRAME_LAYER_FLAG_WRITE_ALPHA								= 1,
 	// Correct for chromatic aberration. Quality/perf trade-off.
 	VRAPI_FRAME_LAYER_FLAG_CHROMATIC_ABERRATION_CORRECTION			= 2,
@@ -580,6 +644,12 @@ typedef enum
 	// 24 fps update rate across "five eyes".
 	VRAPI_FRAME_LAYER_FLAG_INHIBIT_LEFT_UPDATE						= 512,
 	VRAPI_FRAME_LAYER_FLAG_INHIBIT_RIGHT_UPDATE						= 1024,
+
+	// If you set this flag, vrapi will use this layer to draw
+	// the pass-through camera feed.
+	// It is basically a dummy layer that allows fine control of when
+	// the pass-through camera will draw in relation to other layers.
+	VRAPI_FRAME_LAYER_FLAG_PASS_THROUGH_CAMERA						= 2048,
 ///--END_SDK_REMOVE
 
 } ovrFrameLayerFlags;
@@ -596,6 +666,8 @@ typedef enum
 	VRAPI_FRAME_LAYER_BLEND_ZERO,
 	VRAPI_FRAME_LAYER_BLEND_ONE,
 	VRAPI_FRAME_LAYER_BLEND_SRC_ALPHA,
+	// NOTE: *_DST_ALPHA blend modes are DEPRECATED. Please do not
+	// write any new code which relies on it's use.
 	VRAPI_FRAME_LAYER_BLEND_DST_ALPHA,
 	VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_DST_ALPHA,
 	VRAPI_FRAME_LAYER_BLEND_ONE_MINUS_SRC_ALPHA
@@ -1023,7 +1095,7 @@ typedef union
 	ovrLayerCube				Cube;
 	ovrLayerEquirect			Equirect;
 	ovrLayerCylinder			Cylinder;
-	ovrLayerSurfaceTextureProjection	SurfaceTextureProjection;
+	ovrLayerSurfaceTextureProjection SurfaceTextureProjection;
 	ovrLayerSurfaceTextureEquirect	SurfaceTextureEquirect;
 	ovrLayerSurfaceTextureCylinder	SurfaceTextureCylinder;
 	ovrLayerSurfaceTextureFisheye	SurfaceTextureFisheye;
@@ -1043,17 +1115,5 @@ typedef struct
 } ovrHeadModelParms;
 
 OVR_VRAPI_ASSERT_TYPE_SIZE( ovrHeadModelParms, 16 );
-
-//-----------------------------------------------------------------
-// FIXME:VRAPI remove this once all simulation code uses ovrFrameInput::PredictedDisplayTimeInSeconds and perf timing uses LOGCPUTIME
-//-----------------------------------------------------------------
-
-#if defined( __cplusplus )
-extern "C" {
-#endif
-OVR_VRAPI_EXPORT double vrapi_GetTimeInSeconds();
-#if defined( __cplusplus )
-}	// extern "C"
-#endif
 
 #endif	// OVR_VrApi_Types_h

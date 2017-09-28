@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 17
+#define OVRP_MINOR_VERSION 18
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -201,6 +201,7 @@ typedef enum {
   ovrpSystemHeadset_GearVR_R322, // GearVR Commercial 1
   ovrpSystemHeadset_GearVR_R323, // GearVR Commercial 2 (USB Type C)
   ovrpSystemHeadset_GearVR_R324, // GearVR Commercial 3 (USB Type C)
+  ovrpSystemHeadset_GearVR_R325, // GearVR Commercial 4 (USB Type C)
 
   ovrpSystemHeadset_Rift_DK1 = 0x1000,
   ovrpSystemHeadset_Rift_DK2,
@@ -430,6 +431,17 @@ typedef struct {
   ovrpSizef Size;
 } ovrpRectf;
 
+typedef struct {
+	float WarpLeft;
+	float WarpRight;
+	float WarpUp;
+	float WarpDown;
+	float SizeLeft;
+	float SizeRight;
+	float SizeUp;
+	float SizeDown;
+} ovrpOctilinearLayout;
+
 typedef struct { float r, g, b, a; } ovrpColorf;
 
 /// Describes Input State for use with Gamepads and Oculus Controllers.
@@ -544,6 +556,7 @@ typedef enum {
   ovrpCameraDevice_WebCamera0 = ovrpCameraDevice_WebCamera_First + 0,
   ovrpCameraDevice_WebCamera1 = ovrpCameraDevice_WebCamera_First + 1,
   ovrpCameraDevice_WebCamera_Last = ovrpCameraDevice_WebCamera1,
+  ovrpCameraDevice_ZEDStereoCamera = 300,
   ovrpCameraDevice_EnumSize = 0x7fffffff
 } ovrpCameraDevice;
 #endif
@@ -692,8 +705,8 @@ typedef struct {
   ovrpFovf Fov[ovrpEye_Count];
   ovrpRectf VisibleRect[ovrpEye_Count];
   ovrpSizei MaxViewportSize;
+  //added for 1.17
   ovrpTextureFormat DepthFormat;
-  ovrpFrustum2f DepthFrustum;
 } ovrpLayerDesc_EyeFov;
 
 typedef OVRP_LAYER_DESC_TYPE ovrpLayerDesc_OffcenterCubemap;
@@ -714,6 +727,10 @@ typedef union {
 typedef enum {
   /// Pose relative to head
   ovrpLayerSubmitFlag_HeadLocked = (1 << 0),
+  /// Layer is octilinear (LMS)
+  ovrpLayerSubmitFlag_Octilinear = (1 << 1),
+  /// Use reverse Z
+  ovrpLayerSubmitFlag_ReverseZ = (1 << 2),
 } ovrpLayerSubmitFlags;
 
 /// Layer state to submit to ovrp_EndFrame
@@ -747,7 +764,15 @@ typedef struct {
 } ovrpLayerSubmit_Cylinder;
 
 typedef OVRP_LAYER_SUBMIT_TYPE ovrpLayerSubmit_Cubemap;
-typedef OVRP_LAYER_SUBMIT_TYPE ovrpLayerSubmit_EyeFov;
+
+typedef struct {
+	OVRP_LAYER_SUBMIT_TYPE;
+	// added in 1.18
+	ovrpOctilinearLayout OctilinearLayout[ovrpEye_Count];
+	float DepthNear;
+	float DepthFar;
+} ovrpLayerSubmit_EyeFov;
+
 typedef OVRP_LAYER_SUBMIT_TYPE ovrpLayerSubmit_OffcenterCubemap;
 
 typedef union {

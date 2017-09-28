@@ -462,14 +462,16 @@ static inline ovrPerformanceParms vrapi_DefaultPerformanceParms()
 
 typedef enum
 {
-	VRAPI_FRAME_INIT_DEFAULT,
-	VRAPI_FRAME_INIT_BLACK,
-	VRAPI_FRAME_INIT_BLACK_FLUSH,
-	VRAPI_FRAME_INIT_BLACK_FINAL,
-	VRAPI_FRAME_INIT_LOADING_ICON,
-	VRAPI_FRAME_INIT_LOADING_ICON_FLUSH,
-	VRAPI_FRAME_INIT_MESSAGE,
-	VRAPI_FRAME_INIT_MESSAGE_FLUSH
+	VRAPI_FRAME_INIT_DEFAULT			= 0,
+	VRAPI_FRAME_INIT_BLACK				= 1,
+	VRAPI_FRAME_INIT_BLACK_FLUSH		= 2,
+	VRAPI_FRAME_INIT_BLACK_FINAL		= 3,
+	VRAPI_FRAME_INIT_LOADING_ICON		= 4,
+	VRAPI_FRAME_INIT_LOADING_ICON_FLUSH = 5,
+
+	// enum 6 used to be VRAPI_FRAME_INIT_MESSAGE
+
+	// enum 7 used to be VRAPI_FRAME_INIT_MESSAGE_FLUSH
 } ovrFrameInit;
 
 // Utility function to default initialize the ovrFrameParms.
@@ -545,23 +547,9 @@ static inline ovrFrameParms vrapi_DefaultFrameParms( const ovrJava * java, const
 			}
 			break;
 		}
-		case VRAPI_FRAME_INIT_MESSAGE:
-		case VRAPI_FRAME_INIT_MESSAGE_FLUSH:
-		{
-			parms.LayerCount = 2;
-			parms.Flags = VRAPI_FRAME_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
-			parms.Layers[1].SpinSpeed = 0.0f;		// rotation in radians per second
-			parms.Layers[1].SpinScale = 2.0f;		// message size factor smaller than fullscreen
-			for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
-			{
-				parms.Layers[0].Textures[eye].ColorTextureSwapChain = (ovrTextureSwapChain *)VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_BLACK;
-				parms.Layers[1].Textures[eye].ColorTextureSwapChain = ( textureSwapChain != NULL ) ? textureSwapChain : (ovrTextureSwapChain *)VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_LOADING_ICON;
-			}
-			break;
-		}
 	}
 
-	if ( init == VRAPI_FRAME_INIT_BLACK_FLUSH || init == VRAPI_FRAME_INIT_LOADING_ICON_FLUSH || init == VRAPI_FRAME_INIT_MESSAGE_FLUSH )
+	if ( init == VRAPI_FRAME_INIT_BLACK_FLUSH || init == VRAPI_FRAME_INIT_LOADING_ICON_FLUSH )
 	{
 		parms.Flags |= VRAPI_FRAME_FLAG_FLUSH;
 	}
@@ -873,38 +861,24 @@ static inline ovrTracking vrapi_ApplyHeadModel( const ovrHeadModelParms * headMo
 		const ovrMatrix4f m = ovrMatrix4f_CreateFromQuaternion( &tracking->HeadPose.Pose.Orientation );
 		ovrTracking newTracking = *tracking;
 		newTracking.HeadPose.Pose.Position.x = m.M[0][1] * p->HeadModelHeight - m.M[0][2] * p->HeadModelDepth;
-		newTracking.HeadPose.Pose.Position.y = m.M[1][1] * p->HeadModelHeight - m.M[1][2] * p->HeadModelDepth - p->HeadModelHeight;
+        newTracking.HeadPose.Pose.Position.y = m.M[1][1] * p->HeadModelHeight - m.M[1][2] * p->HeadModelDepth - p->HeadModelHeight; // + p->EyeHeight;
 		newTracking.HeadPose.Pose.Position.z = m.M[2][1] * p->HeadModelHeight - m.M[2][2] * p->HeadModelDepth;
 		return newTracking;
 	}
 	return *tracking;
 }
 
-// Utility function to get the center eye transform.
-// Pass in NULL for 'input' if there is no additional controller input.
-static inline ovrMatrix4f vrapi_GetCenterEyeTransform(	const ovrHeadModelParms * headModelParms,
-														const ovrTracking * tracking,
-														const ovrMatrix4f * input )
+static inline ovrMatrix4f vrapi_GetTransformFromPose( const ovrPosef * pose )
 {
-	VRAPI_UNUSED( headModelParms );
-
-	// Controller input is expected to be applied relative to the head in neutral position, which means
-	// ovrTracking::HeadPose.Pose.Translation should be relative to the center of the head in neutral position.
-	const ovrMatrix4f centerEyeRotation = ovrMatrix4f_CreateFromQuaternion( &tracking->HeadPose.Pose.Orientation );
-	const ovrVector3f centerEyeOffset = tracking->HeadPose.Pose.Position;
-	const ovrMatrix4f centerEyeTranslation = ovrMatrix4f_CreateTranslation( centerEyeOffset.x, centerEyeOffset.y, centerEyeOffset.z );
-	const ovrMatrix4f centerEyeTransform = ovrMatrix4f_Multiply( &centerEyeTranslation, &centerEyeRotation );
-	return ( input == NULL ) ? centerEyeTransform : ovrMatrix4f_Multiply( input, &centerEyeTransform );
+	const ovrMatrix4f rotation = ovrMatrix4f_CreateFromQuaternion( &pose->Orientation );
+	const ovrMatrix4f translation = ovrMatrix4f_CreateTranslation( pose->Position.x, pose->Position.y, pose->Position.z );
+	return ovrMatrix4f_Multiply( &translation, &rotation );
 }
 
-// Utility function to get the center eye view matrix.
-// Pass in NULL for 'input' if there is no additional controller input.
-static inline ovrMatrix4f vrapi_GetCenterEyeViewMatrix(	const ovrHeadModelParms * headModelParms,
-														const ovrTracking * tracking,
-														const ovrMatrix4f * input )
+static inline ovrMatrix4f vrapi_GetViewMatrixFromPose( const ovrPosef * pose )
 {
-	const ovrMatrix4f centerEyeTransform = vrapi_GetCenterEyeTransform( headModelParms, tracking, input );
-	return ovrMatrix4f_Inverse( &centerEyeTransform );
+	const ovrMatrix4f transform = vrapi_GetTransformFromPose( pose );
+	return ovrMatrix4f_Inverse( &transform );
 }
 
 // Utility function to get the eye view matrix based on the center eye view matrix and the IPD.

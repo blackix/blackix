@@ -29,7 +29,8 @@ typedef enum
 
 ///--BEGIN_SDK_REMOVE
 	VRAPI_SYS_UI_GLOBAL_MENU_TUTORIAL = 128,	// Display the Universal Menu Tutorial within Home.
-	VRAPI_SYS_UI_GLOBAL_MENU_PARTY,				// Display the Parties Menu.
+
+	// enum  129 used to be VRAPI_SYS_UI_GLOBAL_MENU_PARTY.
 ///--END_SDK_REMOVE
 } ovrSystemUIType;
 

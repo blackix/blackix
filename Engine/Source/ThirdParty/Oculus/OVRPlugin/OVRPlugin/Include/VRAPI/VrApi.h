@@ -101,16 +101,6 @@ for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 																1, true );
 }
 
-// Get the suggested FOV to setup a projection matrix.
-const float suggestedEyeFovDegreesX = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_X );
-const float suggestedEyeFovDegreesY = vrapi_GetSystemPropertyFloat( &java, VRAPI_SYS_PROP_SUGGESTED_EYE_FOV_DEGREES_Y );
-
-// Setup a projection matrix based on the suggested FOV.
-// Note that this is an infinite projection matrix for the best precision.
-const ovrMatrix4f eyeProjectionMatrix = ovrMatrix4f_CreateProjectionFov( suggestedEyeFovDegreesX,
-																		suggestedEyeFovDegreesY,
-																		0.0f, 0.0f, VRAPI_ZNEAR, 0.0f );
-
 // Android Activity/Surface life cycle loop.
 while ( !exit )
 {
@@ -137,32 +127,25 @@ while ( !exit )
 			// depends on the pipeline depth of the engine and the synthesis rate.
 			// The better the prediction, the less black will be pulled in at the edges.
 			const double predictedDisplayTime = vrapi_GetPredictedDisplayTime( ovr, frameIndex );
-			const ovrTracking baseTracking = vrapi_GetPredictedTracking( ovr, predictedDisplayTime );
-
-			// Apply the head-on-a-stick model if there is no positional tracking.
-			const ovrHeadModelParms headModelParms = vrapi_DefaultHeadModelParms();
-			const ovrTracking tracking = vrapi_ApplyHeadModel( &headModelParms, &baseTracking );
+			const ovrTracking2 tracking = vrapi_GetPredictedTracking2( ovr, predictedDisplayTime );
 
 			// Advance the simulation based on the predicted display time.
 
-			// Render eye images and setup ovrFrameParms using 'ovrTracking'.
+			// Render eye images and setup ovrFrameParms using 'ovrTracking2'.
 			ovrFrameParms frameParms = vrapi_DefaultFrameParms( &java, VRAPI_FRAME_INIT_DEFAULT, predictedDisplayTime, NULL );
 			frameParms.FrameIndex = frameIndex;
 
-			const ovrMatrix4f centerEyeViewMatrix = vrapi_GetCenterEyeViewMatrix( &headModelParms, &tracking, NULL );
 			for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
 			{
-				const ovrMatrix4f eyeViewMatrix = vrapi_GetEyeViewMatrix( &headModelParms, &centerEyeViewMatrix, eye );
-
 				const int colorTextureSwapChainIndex = frameIndex % vrapi_GetTextureSwapChainLength( colorTextureSwapChain[eye] );
 				const unsigned int textureId = vrapi_GetTextureSwapChainHandle( colorTextureSwapChain[eye], colorTextureSwapChainIndex );
 
-				// Render to 'textureId' using the 'eyeViewMatrix' and 'eyeProjectionMatrix'.
+				// Render to 'textureId' using the 'ProjectionMatrix' from 'ovrTracking2'.
 				// Insert 'fence' using eglCreateSyncKHR.
 
 				frameParms.Layers[0].Textures[eye].ColorTextureSwapChain = colorTextureSwapChain[eye];
 				frameParms.Layers[0].Textures[eye].TextureSwapChainIndex = colorTextureSwapChainIndex;
-				frameParms.Layers[0].Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection( &eyeProjectionMatrix );
+				frameParms.Layers[0].Textures[eye].TexCoordsFromTanAngles = ovrMatrix4f_TanAngleMatrixFromProjection( &tracking.Eye[eye].ProjectionMatrix );
 				frameParms.Layers[0].Textures[eye].HeadPose = tracking.HeadPose;
 				frameParms.Layers[0].Textures[eye].CompletionFence = fence;
 			}
@@ -565,6 +548,8 @@ OVR_VRAPI_EXPORT double vrapi_GetPredictedDisplayTime( ovrMobile * ovr, long lon
 // in seconds. Pass absTime value of 0.0 to request the most recent sensor reading.
 //
 // Can be called from any thread while in VR mode.
+OVR_VRAPI_EXPORT ovrTracking2 vrapi_GetPredictedTracking2( ovrMobile * ovr, double absTimeInSeconds );
+
 OVR_VRAPI_EXPORT ovrTracking vrapi_GetPredictedTracking( ovrMobile * ovr, double absTimeInSeconds );
 
 // Recenters the orientation on the yaw axis and will recenter the position
