@@ -45,23 +45,23 @@ public:
 			/** Allocate an high quality OVR_FORMAT_R11G11B10_FLOAT buffer for Rift */
 			uint64 bHQBuffer : 1;
 
-			/** True, if Far/Mear clipping planes got overriden */
-			uint64	bClippingPlanesOverride : 1;
-
 			/** Rendering should be (could be) paused */
-			uint64	bPauseRendering : 1;
+			uint64				bPauseRendering : 1;
 
 			/** HQ Distortion */
-			uint64	bHQDistortion : 1;
+			uint64				bHQDistortion : 1;
 
 			/* plugin-allocated multiview buffer (GL_TEXTURE_2D_ARRAY) for mobile is required */
-			uint64	bDirectMultiview : 1; 
+			uint64				bDirectMultiview : 1;
 
 			/* eye buffer is currently a multiview buffer */
-			uint64	bIsUsingDirectMultiview : 1;
+			uint64				bIsUsingDirectMultiview : 1;
 
 			/** Send the depth buffer to the compositor */
 			uint64				bCompositeDepth : 1;
+
+			/** Send the depth buffer to the compositor */
+			uint64				bSupportsDash : 1;
 #if !UE_BUILD_SHIPPING
 			/** Show status / statistics on screen. See 'hmd stats' cmd */
 			uint64				bShowStats : 1;
@@ -69,11 +69,6 @@ public:
 		};
 		uint64 Raw;
 	} Flags;
-
-	/** Optional far clipping plane for projection matrix */
-	float NearClippingPlane;
-	/** Optional far clipping plane for projection matrix */
-	float FarClippingPlane;
 
 	/** HMD base values, specify forward orientation and zero pos offset */
 	FVector BaseOffset; // base position, in meters, relatively to the sensor //@todo hmd: clients need to stop using oculus space
@@ -103,7 +98,8 @@ public:
 
 	bool IsStereoEnabled() const { return Flags.bStereoEnabled && Flags.bHMDEnabled; }
 
-	bool UpdatePixelDensityFromScreenPercentage();
+	void UpdatePixelDensity(float InPixelDensity);
+	void UpdatePixelDensityFromScreenPercentage();
 
 	TSharedPtr<FSettings, ESPMode::ThreadSafe> Clone() const;
 };

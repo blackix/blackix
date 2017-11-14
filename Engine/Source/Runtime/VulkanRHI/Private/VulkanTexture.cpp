@@ -1623,10 +1623,12 @@ void FVulkanTextureBase::AliasTextureResources(const FVulkanTextureBase* SrcText
 	check(!Surface.bIsImageOwner);
 	Surface.Image = SrcTexture->Surface.Image;
 	DefaultView.View = SrcTexture->DefaultView.View;
+	DefaultView.Image = SrcTexture->DefaultView.Image;
 
 	if (PartialView != &DefaultView)
 	{
 		PartialView->View = SrcTexture->PartialView->View;
+		PartialView->Image = SrcTexture->PartialView->Image;
 	}
 
 #if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
@@ -1635,6 +1637,7 @@ void FVulkanTextureBase::AliasTextureResources(const FVulkanTextureBase* SrcText
 		check(!MSAASurface->bIsImageOwner);
 		MSAASurface->Image = SrcTexture->MSAASurface->Image;
 		MSAAView.View = SrcTexture->MSAAView.View;
+		MSAAView.Image = SrcTexture->MSAAView.Image;
 	}
 #endif
 

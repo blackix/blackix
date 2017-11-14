@@ -236,7 +236,7 @@ void UOculusFunctionLibrary::ShowLoadingSplashScreen()
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)
@@ -302,7 +302,7 @@ void UOculusFunctionLibrary::ShowLoadingIcon(class UTexture2D* Texture)
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)
@@ -432,7 +432,7 @@ bool UOculusFunctionLibrary::HasSystemOverlayPresent()
 	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
 	{
 		ovrpBool IsPresent = ovrpBool_False;
-		if (OVRP_SUCCESS(ovrp_GetAppHasOverlayPresent(&IsPresent)))
+		if (OVRP_SUCCESS(ovrp_GetAppHasSystemOverlayPresent(&IsPresent)))
 		{
 			return IsPresent == ovrpBool_True;
 		}
