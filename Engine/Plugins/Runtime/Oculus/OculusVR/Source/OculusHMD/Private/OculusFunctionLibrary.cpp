@@ -236,7 +236,7 @@ void UOculusFunctionLibrary::ShowLoadingSplashScreen()
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)
@@ -302,7 +302,7 @@ void UOculusFunctionLibrary::ShowLoadingIcon(class UTexture2D* Texture)
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)

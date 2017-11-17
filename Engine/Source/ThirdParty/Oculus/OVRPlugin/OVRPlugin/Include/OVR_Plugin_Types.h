@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 19
+#define OVRP_MINOR_VERSION 20
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -320,6 +320,15 @@ typedef enum {
   ovrpLogLevel_Error = 2,
   ovrpLogLevel_EnumSize = 0x7fffffff
 } ovrpLogLevel;
+
+/// Foveation levels
+typedef enum {
+  ovrpTiledMultiResLevel_Off = 0,
+  ovrpTiledMultiResLevel_LMSLow = 1,
+  ovrpTiledMultiResLevel_LMSMedium = 2,
+  ovrpTiledMultiResLevel_LMSHigh = 3,
+  ovrpTiledMultiResLevel_EnumSize = 0x7fffffff
+} ovrpTiledMultiResLevel;
 
 typedef void(__cdecl* ovrpLogCallback)(ovrpLogLevel, const char*);
 
