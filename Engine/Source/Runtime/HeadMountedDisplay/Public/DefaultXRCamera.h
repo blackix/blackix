@@ -44,6 +44,8 @@ public:
 		bUseImplicitHMDPosition = bInImplicitHMDPosition;
 	}
 
+	virtual bool GetUseImplicitHMDPosition() override { return bUseImplicitHMDPosition; }
+
 	/**
 	 * Optionally called by APlayerController to apply the orientation of the
 	 * headset to the PC's rotation. If this is not done then the PC will face

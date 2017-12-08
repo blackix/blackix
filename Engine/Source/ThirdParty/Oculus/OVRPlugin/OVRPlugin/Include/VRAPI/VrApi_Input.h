@@ -262,8 +262,10 @@ typedef enum ovrButton_
 ///--END_SDK_REMOVE
 
 ///--BEGIN_SDK_REMOVE
-	ovrButton_CapTrigger = 0x02000000,	// capacitive trigger on the Controller that has capacitive trigger
-	ovrButton_GripTrigger = 0x04000000,	// grip trigger on controllers that have a grip trigger
+	ovrButton_CapTrigger = 0x02000000,		// capacitive trigger on the controllers that have capacitive trigger
+	ovrButton_GripTrigger = 0x04000000,		// grip trigger on controllers that have a grip trigger
+	ovrButton_IndexPointing = 0x08000000,	// Index finger is pointing
+	ovrButton_ThumbUp = 0x10000000,			// Thumb is up
 ///--END_SDK_REMOVE
 
 	ovrButton_EnumSize  = 0x7fffffff
@@ -312,6 +314,9 @@ typedef enum ovrControllerCapabilities_
 	ovrControllerCaps_ModelPacific				= 0x00000010,	// Controller for Pacific devices
 	ovrControllerCaps_ModelMonterey				= 0x00000020,	// controller for Monterey devices
 ///--END_SDK_REMOVE
+
+	ovrControllerCaps_HasAnalogIndexTrigger 	= 0x00000040,	// controller has an analog index trigger vs. a binary one
+	ovrControllerCaps_HasAnalogHandTrigger		= 0x00000080,	// controller has an analog hand trigger vs. a binary one
 
 	ovrControllerCaps_EnumSize 					= 0x7fffffff
 } ovrControllerCapabilties;
@@ -423,7 +428,8 @@ typedef struct ovrInputStateHeader2_
 	double				TimeInSeconds;
 } ovrInputStateHeader2;
 
-typedef struct ovrInputStateTrackedRemote2_ {
+typedef struct ovrInputStateTrackedRemote2_
+{
 	ovrInputStateHeader2	Header;
 
 	// Values for buttons described by ovrButton.
@@ -445,11 +451,11 @@ typedef struct ovrInputStateTrackedRemote2_ {
 	uint16_t			Reserved;
 
 	// Analog value from 0.0 - 1.0 of the pull of the Index Trigger
-	float					IndexTrigger;
+	float				IndexTrigger;
 	// Analog value from 0.0 - 1.0 of the pull of the Grip Trigger
-	float					GripTrigger;
+	float				GripTrigger;
 	// Reserved for future use.
-	uint64_t				Reserved2;
+	uint64_t			Reserved2;
 } ovrInputStateTrackedRemote2;
 ///--END_SDK_REMOVE
 

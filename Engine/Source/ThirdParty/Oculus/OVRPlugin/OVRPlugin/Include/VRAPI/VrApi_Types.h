@@ -152,6 +152,7 @@ typedef enum
 	VRAPI_STRUCTURE_TYPE_INIT_PARMS		= 1,
 	VRAPI_STRUCTURE_TYPE_MODE_PARMS		= 2,
 	VRAPI_STRUCTURE_TYPE_FRAME_PARMS	= 3,
+	VRAPI_STRUCTURE_TYPE_INIT_PARMS_EXT = 4,
 } ovrStructureType;
 
 //-----------------------------------------------------------------
@@ -175,11 +176,12 @@ typedef enum
 	VRAPI_DEVICE_TYPE_A5_2018				= 8,			// A series
 	VRAPI_DEVICE_TYPE_GEARVR_PLUS			= 32,
 ///--END_SDK_REMOVE
-	VRAPI_DEVICE_GEARVR_END					= 63,
+	VRAPI_DEVICE_TYPE_GEARVR_END			= 63,
 
 ///--BEGIN_SDK_REMOVE
 	VRAPI_DEVICE_TYPE_PACIFIC_START			= 64,
 	VRAPI_DEVICE_TYPE_PACIFIC				= VRAPI_DEVICE_TYPE_PACIFIC_START,
+	VRAPI_DEVICE_TYPE_PACIFIC_V1O			= VRAPI_DEVICE_TYPE_PACIFIC_START + 1,	// Xiaomi's version released in China only
 	VRAPI_DEVICE_TYPE_PACIFIC_END			= 127,
 
 	VRAPI_DEVICE_TYPE_MONTEREY_START		= 256,
@@ -292,6 +294,9 @@ typedef enum
 	// Returns VRAPI_TRUE if gpu utilization functionality is supported for this system,
 	// otherwise VRAPI_FALSE.
 	VRAPI_SYS_PROP_GPU_UTIL_AVAILABLE						= 131,
+	// Returns VRAPI_TRUE if cpu utilization functionality is supported for this system,
+	// otherwise VRAPI_FALSE.
+	VRAPI_SYS_PROP_CPU_UTIL_AVAILABLE						= 132,
 ///--END_SDK_REMOVE
 } ovrSystemProperty;
 
@@ -310,8 +315,7 @@ typedef enum
 	VRAPI_INHIBIT_SCREEN_CAPTURE		= 11,		// Used by System Activities to decide whether to allow screen capture or not
 
 	// enum 12 used to be VRAPI_RECENTER_REMOTE_POSE.
-
-	VRAPI_SHELL_SYSTEM_UTILS			= 13,		// Used by System Activities to query the cached value of Shell System Utils GK ( This enum can be removed once sysUtils is 100% )
+	// enum 13 used to be VRAPI_SHELL_SYSTEM_UTILS.
 	VRAPI_TRANSCRIBE_AVAILABLE			= 14,		// Used by System Activities to query the cached value of Transcribe enabled GK ( This enum can be removed once transcribe is 100% )
 	VRAPI_FOVEATION_LEVEL				= 15,		// Used by apps that want to control swapchain foveation levels
 } ovrProperty;
@@ -354,20 +358,21 @@ typedef enum
 	VRAPI_SYS_STATUS_RECENTER_COUNT					= 13,	// Returns the current HMD recenter count. Defaults to 0.
 	VRAPI_SYS_STATUS_SYSTEM_UX_ACTIVE				= 14,	// Returns VRAPI_TRUE if a system UX layer is active
 
-	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED			= 128,	// True if the front buffer is allocated in TrustZone memory.
-	VRAPI_SYS_STATUS_FRONT_BUFFER_565				= 129,	// True if the front buffer is 16-bit 5:6:5
-	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB				= 130,	// True if the front buffer uses the sRGB color space.
+	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED			= 128,	// VRAPI_TRUE if the front buffer is allocated in TrustZone memory.
+	VRAPI_SYS_STATUS_FRONT_BUFFER_565				= 129,	// VRAPI_TRUE if the front buffer is 16-bit 5:6:5
+	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB				= 130,	// VRAPI_TRUE if the front buffer uses the sRGB color space.
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_SYS_STATUS_SHOULD_QUIT					= 256,	// True if the app should terminate. (VrApi->CAPI Shim only)
-	VRAPI_SYS_STATUS_HAS_FOCUS						= 257,	// True if the app has focus and is therefore visible on the HMD. (VrApi->CAPI Shim only)
-	VRAPI_SYS_STATUS_HDCP_FAILURE					= 258,	// True if the HDCP link is broken. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_SHOULD_QUIT					= 256,	// VRAPI_TRUE if the app should terminate. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HAS_FOCUS						= 257,	// VRAPI_TRUE if the app has focus and is therefore visible on the HMD. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HDCP_FAILURE					= 258,	// VRAPI_TRUE if the HDCP link is broken. (VrApi->CAPI Shim only)
 
 	VRAPI_SYS_STATUS_DO_NOT_DISTURB_MODE			= 259,	// Returns VRAPI_TRUE if DND Mode is active. (SA only)
 	VRAPI_SYS_STATUS_SYSTEM_BRIGHTNESS				= 260,	// Returns the current System Brightness. (SA only)
 
 	VRAPI_SYS_STATUS_TOTAL_STALE_FRAMES				= 261,	// Returns the total stale frames starting from when VR mode is entered
 	VRAPI_SYS_STATUS_GPU_UTIL						= 262,	// Returns the current GPU Utilization, from 0.0 to 1.0
+	VRAPI_SYS_STATUS_CPU_UTIL						= 263,	// Returns the current CPU Utilization, from 0.0 to 1.0
 ///--END_SDK_REMOVE
 } ovrSystemStatus;
 
@@ -441,7 +446,13 @@ typedef enum
 	VRAPI_MODE_FLAG_FRONT_BUFFER_565			= 0x00040000,
 
 	// Create a front buffer using the sRGB color space.
-	VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB			= 0x00080000
+	VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB			= 0x00080000,
+
+	// If set, indicates the OpenGL ES Context was created with EGL_CONTEXT_OPENGL_NO_ERROR_KHR attribute.
+	// The same attribute would be applied when TimeWrap creates the shared context.
+	// More information could be found at:
+	// https://www.khronos.org/registry/EGL/extensions/KHR/EGL_KHR_create_context_no_error.txt
+	VRAPI_MODE_FLAG_CREATE_CONTEXT_NO_ERROR		= 0x00100000
 } ovrModeFlags;
 
 typedef struct
@@ -593,11 +604,6 @@ typedef enum
 	VRAPI_DEFAULT_TEXTURE_SWAPCHAIN					= 0x1,
 	VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_LOADING_ICON	= 0x2
 } ovrDefaultTextureSwapChain;
-
-typedef enum
-{
-	VRAPI_TEXTURE_SWAPCHAIN_FULL_MIP_CHAIN	= -1
-} ovrTextureSwapChainSettings;
 
 typedef struct ovrTextureSwapChain ovrTextureSwapChain;
 

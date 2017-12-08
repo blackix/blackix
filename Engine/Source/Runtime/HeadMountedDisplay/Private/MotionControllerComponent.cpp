@@ -40,6 +40,7 @@ RenderThreadComponentScale(1.0f,1.0f,1.0f)
 	PlayerIndex = 0;
 	Hand = EControllerHand::Left;
 	bDisableLowLatencyUpdate = false;
+	bHideWhenUntracked = false;
 	bHasAuthority = false;
 	bAutoActivate = true;
 }
@@ -87,6 +88,12 @@ void UMotionControllerComponent::TickComponent(float DeltaTime, enum ELevelTick 
 		{
 			ViewExtension = FSceneViewExtensions::NewExtension<FViewExtension>(this);
 		}
+
+		bool bShouldBeHidden = CurrentTrackingStatus == ETrackingStatus::NotDisplayed || (bHideWhenUntracked && CurrentTrackingStatus == ETrackingStatus::NotTracked);
+		if (bHiddenInGame != bShouldBeHidden)
+		{
+			SetHiddenInGame(bShouldBeHidden, true);
+		}
 	}
 }
 
@@ -112,17 +119,20 @@ bool UMotionControllerComponent::PollControllerState(FVector& Position, FRotator
 			}
 
 			EControllerHand QueryHand = (Hand == EControllerHand::AnyHand) ? EControllerHand::Left : Hand;
+			CurrentTrackingStatus = MotionController->GetControllerTrackingStatus(PlayerIndex, QueryHand);
 			if (MotionController->GetControllerOrientationAndPosition(PlayerIndex, QueryHand, Orientation, Position, WorldToMetersScale))
 			{
-				CurrentTrackingStatus = MotionController->GetControllerTrackingStatus(PlayerIndex, Hand);
 				return true;
 			}
 			
 			// If we've made it here, we need to see if there's a right hand controller that reports back the position
-			if (Hand == EControllerHand::AnyHand && MotionController->GetControllerOrientationAndPosition(PlayerIndex, EControllerHand::Right, Orientation, Position, WorldToMetersScale))
+			if (Hand == EControllerHand::AnyHand)
 			{
 				CurrentTrackingStatus = MotionController->GetControllerTrackingStatus(PlayerIndex, EControllerHand::Right);
-				return true;
+				if (MotionController->GetControllerOrientationAndPosition(PlayerIndex, EControllerHand::Right, Orientation, Position, WorldToMetersScale))
+				{
+					return true;
+				}
 			}
 		}
 	}

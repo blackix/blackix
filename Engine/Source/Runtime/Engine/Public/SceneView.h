@@ -12,6 +12,9 @@
 #include "ShowFlags.h"
 #include "ConvexVolume.h"
 #include "Engine/GameViewportClient.h"
+#if WITH_OCULUS_PRIVATE_CODE
+#include "Engine/CastingViewportClient.h"
+#endif
 #include "SceneInterface.h"
 #include "FinalPostProcessSettings.h"
 #include "GlobalDistanceFieldParameters.h"
@@ -91,7 +94,7 @@ enum EMonoscopicFarFieldMode
 	StereoOnly = 2,
 
 	// Render only the stereo views, but without the far field clipping plane enabled.
-	// This is useful for finding meshes that pass the culling test, but aren't 
+	// This is useful for finding meshes that pass the culling test, but aren't
 	// actually visible in the stereo view and should be explicitly set to far field.
 	// Like a sky box.
 	StereoNoClipping = 3,
@@ -126,7 +129,7 @@ struct FMonoscopicFarFieldParameters
 	FMonoscopicFarFieldParameters() :
 		CullingDistance(0.0f),
 		StereoDepthClip(0.0f),
-		MonoDepthClip(0.0f), 
+		MonoDepthClip(0.0f),
 		LateralOffset(0.0f),
 		OverlapDistance(50.0f),
 		Mode(EMonoscopicFarFieldMode::Off),
@@ -150,6 +153,11 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 
 	/** For stereoscopic rendering, whether or not this is a full pass, or a left / right eye pass */
 	EStereoscopicPass StereoPass;
+
+#if WITH_OCULUS_PRIVATE_CODE
+    /** For use in casting viewport, if it's a full view, or background / foreground / foreground_mask */
+    ECastingLayer CastingLayer;
+#endif
 
 	/** Conversion from world units (uu) to meters, so we can scale motion to the world appropriately */
 	float WorldToMetersScale;
@@ -203,6 +211,9 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 		, OverlayColor(FLinearColor::Transparent)
 		, ColorScale(FLinearColor::White)
 		, StereoPass(eSSP_FULL)
+#if WITH_OCULUS_PRIVATE_CODE
+        , CastingLayer(ECastingLayer::Full)
+#endif
 		, WorldToMetersScale(100.f)
 		, CursorPos(-1, -1)
 		, LODDistanceFactor(1.0f)
@@ -282,7 +293,7 @@ private:
 
 	/**
 	 * Scale factor to use when computing the size of a sphere in pixels.
-	 * 
+	 *
 	 * A common calculation is to determine the size of a sphere in pixels when projected on the screen:
 	 *		ScreenRadius = max(0.5 * ViewSizeX * ProjMatrix[0][0], 0.5 * ViewSizeY * ProjMatrix[1][1]) * SphereRadius / ProjectedSpherePosition.W
 	 * Instead you can now simply use:
@@ -293,7 +304,7 @@ private:
 	//
 	// World = TranslatedWorld - PreViewTranslation
 	// TranslatedWorld = World + PreViewTranslation
-	// 
+	//
 
 	// ----------------
 
@@ -331,12 +342,12 @@ public:
 	{
 		return InvViewProjectionMatrix;
 	}
-	
+
 	inline const FMatrix& GetHMDViewMatrixNoRoll() const
 	{
 		return HMDViewMatrixNoRoll;
 	}
-	
+
 	inline const FMatrix& GetTranslatedViewMatrix() const
 	{
 		return TranslatedViewMatrix;
@@ -371,7 +382,7 @@ public:
 	{
 		return PreViewTranslation;
 	}
-	
+
 	inline const FVector& GetViewOrigin() const
 	{
 		return ViewOrigin;
@@ -385,7 +396,7 @@ public:
 	inline const FVector2D& GetProjectionScale() const
 	{
 		return ProjectionScale;
-	} 
+	}
 
 	/** @return true:perspective, false:orthographic */
 	inline bool IsPerspectiveProjection() const
@@ -440,7 +451,7 @@ public:
 	{
 		return ViewMatrix.RemoveTranslation() * ProjectionMatrix;
 	}
-	
+
 	const FMatrix ComputeInvProjectionNoAAMatrix() const
 	{
 		return InvertProjectionMatrix( ComputeProjectionNoAAMatrix() );
@@ -466,7 +477,7 @@ public:
 	{
 		ViewOrigin+= InOffset;
 		PreViewTranslation-= InOffset;
-	
+
 		ViewMatrix.SetOrigin(ViewMatrix.GetOrigin() + ViewMatrix.TransformVector(-InOffset));
 		InvViewMatrix.SetOrigin(ViewOrigin);
 		RecomputeDerivedMatrices();
@@ -499,7 +510,7 @@ private:
 		{
 			// Solve the common case directly with very high precision.
 			/*
-			M = 
+			M =
 			| a | 0 | 0 | 0 |
 			| 0 | b | 0 | 0 |
 			| s | t | c | 1 |
@@ -547,8 +558,8 @@ END_UNIFORM_BUFFER_STRUCT(FMobileDirectionalLightShaderParameters)
 
 //////////////////////////////////////////////////////////////////////////
 
-/** 
- * Enumeration for currently used translucent lighting volume cascades 
+/**
+ * Enumeration for currently used translucent lighting volume cascades
  */
 enum ETranslucencyVolumeCascade
 {
@@ -781,7 +792,7 @@ public:
 };
 
 #define USE_GBuiltinSamplersUniformBuffer (0)
-extern ENGINE_API TGlobalResource<FBuiltinSamplersUniformBuffer> GBuiltinSamplersUniformBuffer;	
+extern ENGINE_API TGlobalResource<FBuiltinSamplersUniformBuffer> GBuiltinSamplersUniformBuffer;
 
 namespace EDrawDynamicFlags
 {
@@ -806,7 +817,7 @@ public:
 	TUniformBufferRef<FViewUniformShaderParameters> ViewUniformBuffer;
 	TUniformBufferRef<FViewUniformShaderParameters> DownsampledTranslucencyViewUniformBuffer;
 
-	/** Mobile Directional Lighting uniform buffers, one for each lighting channel 
+	/** Mobile Directional Lighting uniform buffers, one for each lighting channel
 	  * The first is used for primitives with no lighting channels set.
 	  * Only initialized in the rendering thread's copies of the FSceneView.
 	  */
@@ -821,7 +832,7 @@ private:
 public:
 	/** The actor which is being viewed from. */
 	const AActor* ViewActor;
-	 
+
 	/** Player index this view is associated with or INDEX_NONE. */
 	int32 PlayerIndex;
 
@@ -865,6 +876,11 @@ public:
 
 	/** For stereoscopic rendering, whether or not this is a full pass, or a left / right eye pass */
 	EStereoscopicPass StereoPass;
+
+#if WITH_OCULUS_PRIVATE_CODE
+    /** For use in casting viewport, if it's a full view, or background / foreground */
+    ECastingLayer CastingLayer;
+#endif
 
 	/** Whether this view should render the first instance only of any meshes using instancing. */
 	bool bRenderFirstInstanceOnly;
@@ -928,7 +944,7 @@ public:
 
 	/** Whether we did a camera cut for this view this frame. */
 	bool bCameraCut;
-	
+
 	// -1,-1 if not setup
 	FIntPoint CursorPos;
 
@@ -953,9 +969,9 @@ public:
 	/** Whether this view was created from a locked viewpoint. */
 	bool bIsLocked;
 
-	/** 
-	 * Whether to only render static lights and objects.  
-	 * This is used when capturing the scene for reflection captures, which aren't updated at runtime. 
+	/**
+	 * Whether to only render static lights and objects.
+	 * This is used when capturing the scene for reflection captures, which aren't updated at runtime.
 	 */
 	bool bStaticSceneOnly;
 
@@ -977,7 +993,7 @@ public:
 	/** Global clipping plane being applied to the scene, or all 0's if disabled.  This is used when rendering the planar reflection pass. */
 	FPlane GlobalClippingPlane;
 
-	/** Aspect ratio constrained view rect. In the editor, when attached to a camera actor and the camera black bar showflag is enabled, the normal viewrect 
+	/** Aspect ratio constrained view rect. In the editor, when attached to a camera actor and the camera black bar showflag is enabled, the normal viewrect
 	  * remains as the full viewport, and the black bars are just simulated by drawing black bars. This member stores the effective constrained area within the
 	  * bars.
 	 **/
@@ -988,7 +1004,7 @@ public:
 
 	/** Translucent sort mode */
 	TEnumAsByte<ETranslucentSortPolicy::Type> TranslucentSortPolicy;
-	
+
 #if WITH_EDITOR
 	/** The set of (the first 64) groups' visibility info for this view */
 	uint64 EditorViewBitflag;
@@ -1054,28 +1070,28 @@ public:
 	/** Transforms a point from pixel coordinates relative to the view's X,Y (left, top) into the view's world-space. */
 	FVector4 PixelToWorld(float X,float Y,float Z) const;
 
-	/** 
-	 * Transforms a point from the view's world-space into the view's screen-space. 
-	 * Divides the resulting X, Y, Z by W before returning. 
+	/**
+	 * Transforms a point from the view's world-space into the view's screen-space.
+	 * Divides the resulting X, Y, Z by W before returning.
 	 */
 	FPlane Project(const FVector& WorldPoint) const;
 
-	/** 
+	/**
 	 * Transforms a point from the view's screen-space into world coordinates
-	 * multiplies X, Y, Z by W before transforming. 
+	 * multiplies X, Y, Z by W before transforming.
 	 */
 	FVector Deproject(const FPlane& ScreenPoint) const;
 
-	/** 
-	 * Transforms 2D screen coordinates into a 3D world-space origin and direction 
+	/**
+	 * Transforms 2D screen coordinates into a 3D world-space origin and direction
 	 * @param ScreenPos - screen coordinates in pixels
 	 * @param out_WorldOrigin (out) - world-space origin vector
 	 * @param out_WorldDirection (out) - world-space direction vector
 	 */
 	void DeprojectFVector2D(const FVector2D& ScreenPos, FVector& out_WorldOrigin, FVector& out_WorldDirection) const;
 
-	/** 
-	 * Transforms 2D screen coordinates into a 3D world-space origin and direction 
+	/**
+	 * Transforms 2D screen coordinates into a 3D world-space origin and direction
 	 * @param ScreenPos - screen coordinates in pixels
 	 * @param ViewRect - view rectangle
 	 * @param InvViewMatrix - inverse view matrix
@@ -1088,7 +1104,7 @@ public:
 	/** Overload to take a single combined view projection matrix. */
 	static void DeprojectScreenToWorld(const FVector2D& ScreenPos, const FIntRect& ViewRect, const FMatrix& InvViewProjMatrix, FVector& out_WorldOrigin, FVector& out_WorldDirection);
 
-	/** 
+	/**
 	 * Transforms 3D world-space origin into 2D screen coordinates
 	 * @param WorldPosition - the 3d world point to transform
 	 * @param ViewRect - view rectangle
@@ -1127,17 +1143,17 @@ public:
 	 */
 	float GetTemporalLODDistanceFactor(int32 Index, bool bUseLaggedLODTransition = true) const;
 
-	/** 
+	/**
 	 * Returns the blend factor between the last two LOD samples
 	 */
 	float GetTemporalLODTransition() const;
 
-	/** 
+	/**
 	 * returns a unique key for the view state if one exists, otherwise returns zero
 	 */
 	uint32 GetViewKey() const;
 
-	/** 
+	/**
 	 * returns a the occlusion frame counter or MAX_uint32 if there is no view state
 	 */
 	uint32 GetOcclusionFrameCounter() const;
@@ -1175,16 +1191,16 @@ public:
 	bool IsInstancedStereoPass() const { return bIsInstancedStereoEnabled && StereoPass == eSSP_LEFT_EYE; }
 
 	/** Sets up the view rect parameters in the view's uniform shader parameters */
-	void SetupViewRectUniformBufferParameters(FViewUniformShaderParameters& ViewUniformShaderParameters, 
+	void SetupViewRectUniformBufferParameters(FViewUniformShaderParameters& ViewUniformShaderParameters,
 		const FIntPoint& InBufferSize,
 		const FIntRect& InEffectiveViewRect,
 		const FViewMatrices& InViewMatrices,
 		const FViewMatrices& InPrevViewMatrice) const;
 
-	/** 
+	/**
 	 * Populates the uniform buffer prameters common to all scene view use cases
 	 * View parameters should be set up in this method if they are required for the view to render properly.
-	 * This is to avoid code duplication and uninitialized parameters in other places that create view uniform parameters (e.g Slate) 
+	 * This is to avoid code duplication and uninitialized parameters in other places that create view uniform parameters (e.g Slate)
 	 */
 	void SetupCommonViewUniformBufferParameters(FViewUniformShaderParameters& ViewUniformShaderParameters,
 		const FIntPoint& InBufferSize,
@@ -1232,7 +1248,7 @@ public:
 	/**
 	* Helper struct for creating FSceneViewFamily instances
 	* If created with specifying a time it will retrieve them from the world in the given scene.
-	* 
+	*
 	* @param InRenderTarget		The render target which the views are being rendered to.
 	* @param InScene			The scene being viewed.
 	* @param InShowFlags		The show flags for the views.
@@ -1256,15 +1272,18 @@ public:
 		,	MonoFarFieldCullingDistance(0.0f)
 		,	bRealtimeUpdate(false)
 		,	bDeferClear(false)
-		,	bResolveScene(true)			
+		,	bResolveScene(true)
 		,	bTimesSet(false)
+#if WITH_OCULUS_PRIVATE_CODE
+        ,   bIsCasting(false)
+#endif
 		{
-			if( InScene != NULL )			
+			if( InScene != NULL )
 			{
 				UWorld* World = InScene->GetWorld();
 				// Ensure the world is valid and that we are being called from a game thread (GetRealTimeSeconds requires this)
 				if( World && IsInGameThread() )
-				{					
+				{
 					CurrentWorldTime = World->GetTimeSeconds();
 					DeltaWorldTime = World->GetDeltaSeconds();
 					CurrentRealTime = World->GetRealTimeSeconds();
@@ -1292,7 +1311,7 @@ public:
 
 		/** The difference between the last world time and CurrentWorldTime. */
 		float DeltaWorldTime;
-		
+
 		/** The current real time. */
 		float CurrentRealTime;
 
@@ -1304,35 +1323,45 @@ public:
 
 		/** Indicates whether the view family is updated in real-time. */
 		uint32 bRealtimeUpdate:1;
-		
+
 		/** Used to defer the back buffer clearing to just before the back buffer is drawn to */
 		uint32 bDeferClear:1;
-		
+
 		/** If true then results of scene rendering are copied/resolved to the RenderTarget. */
-		uint32 bResolveScene:1;		
-		
+		uint32 bResolveScene:1;
+
 		/** Safety check to ensure valid times are set either from a valid world/scene pointer or via the SetWorldTimes function */
 		uint32 bTimesSet:1;
 
+#if WITH_OCULUS_PRIVATE_CODE
+        /** Use in CastingViewport */
+        uint32 bIsCasting:1;
+#endif
+
 		/** Set the world time ,difference between the last world time and CurrentWorldTime and current real time. */
 		ConstructionValues& SetWorldTimes(const float InCurrentWorldTime,const float InDeltaWorldTime,const float InCurrentRealTime) { CurrentWorldTime = InCurrentWorldTime; DeltaWorldTime = InDeltaWorldTime; CurrentRealTime = InCurrentRealTime;bTimesSet = true;return *this; }
-		
+
 		/** Set  whether the view family is updated in real-time. */
 		ConstructionValues& SetRealtimeUpdate(const bool Value) { bRealtimeUpdate = Value; return *this; }
-		
+
 		/** Set whether to defer the back buffer clearing to just before the back buffer is drawn to */
 		ConstructionValues& SetDeferClear(const bool Value) { bDeferClear = Value; return *this; }
-		
+
 		/** Setting to if true then results of scene rendering are copied/resolved to the RenderTarget. */
 		ConstructionValues& SetResolveScene(const bool Value) { bResolveScene = Value; return *this; }
-		
+
 		/** Set Gamma correction used when rendering this family. */
-		ConstructionValues& SetGammaCorrection(const float Value) { GammaCorrection = Value; return *this; }		
+		ConstructionValues& SetGammaCorrection(const float Value) { GammaCorrection = Value; return *this; }
 
 		/** Set the view param. */
-		ConstructionValues& SetViewModeParam(const int InViewModeParam, const FName& InViewModeParamName) { ViewModeParam = InViewModeParam; ViewModeParamName = InViewModeParamName; return *this; }		
+		ConstructionValues& SetViewModeParam(const int InViewModeParam, const FName& InViewModeParamName) { ViewModeParam = InViewModeParam; ViewModeParamName = InViewModeParamName; return *this; }
+
+#if WITH_OCULUS_PRIVATE_CODE
+        /** Set the casting param. */
+        ConstructionValues& SetIsCasting(const bool Value) { bIsCasting = Value; return *this; }
+#endif
 	};
-	
+
 	/** The views which make up the family. */
 	TArray<const FSceneView*> Views;
 
@@ -1345,9 +1374,9 @@ public:
 	/** The height in screen pixels of the view family being rendered (maximum y of all viewports). */
 	uint32 FamilySizeY;
 
-	/** 
+	/**
 		The width in pixels of the stereo view family being rendered. This may be different than FamilySizeX if
-		we're using adaptive resolution stereo rendering. In that case, FamilySizeX represents the maximum size of 
+		we're using adaptive resolution stereo rendering. In that case, FamilySizeX represents the maximum size of
 		the family to ensure the backing render targets don't change between frames as the view size varies.
 	*/
 	uint32 InstancedStereoWidth;
@@ -1388,12 +1417,17 @@ public:
 	/** if true then results of scene rendering are copied/resolved to the RenderTarget. */
 	bool bResolveScene;
 
-	/** 
+#if WITH_OCULUS_PRIVATE_CODE
+    /** Use in CastingViewport */
+    bool bIsCasting;
+#endif
+
+	/**
 	 * Which component of the scene rendering should be output to the final render target.
 	 * If SCS_FinalColorLDR this indicates do nothing.
 	 */
 	ESceneCaptureSource SceneCaptureSource;
-	
+
 
 	/** When enabled, the scene capture will composite into the render target instead of overwriting its contents. */
 	ESceneCaptureCompositeMode SceneCaptureCompositeMode;
@@ -1406,7 +1440,7 @@ public:
 
 	/** Gamma correction used when rendering this family. Default is 1.0 */
 	float GammaCorrection;
-	
+
 	/** Editor setting to allow designers to override the automatic expose. 0:Automatic, following indices: -4 .. +4 */
 	FExposureSettings ExposureSettings;
 

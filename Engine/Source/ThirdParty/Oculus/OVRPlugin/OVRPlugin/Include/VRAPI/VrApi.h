@@ -632,9 +632,6 @@ OVR_VRAPI_EXPORT void vrapi_SetTrackingTransform( ovrMobile * ovr, ovrPosef pose
 // Specifying 0 levels allows the individual texture ids to be set with
 // vrapi_SetTextureSwapChainHandle().
 //
-// Specifying VRAPI_TEXTURE_SWAPCHAIN_FULL_MIP_CHAIN levels will calculate
-// the levels based on width and height.
-//
 // Buffers used to be a bool that selected either a single texture index
 // or a triple buffered index, but the new entry point allows up to 16 buffers
 // to be allocated, which is useful for maintaining a deep video buffer queue

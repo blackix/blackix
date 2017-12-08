@@ -661,6 +661,31 @@ static inline ovrLayerProjection2 vrapi_DefaultLayerBlackProjection2()
 	return layer;
 }
 
+static inline ovrLayerProjection2 vrapi_DefaultLayerSolidColorProjection2( const ovrVector4f * colorScale )
+{
+	ovrLayerProjection2 layer = {};
+
+	layer.Header.Type	= VRAPI_LAYER_TYPE_PROJECTION2;
+	layer.Header.Flags  = 0;
+	layer.Header.ColorScale.x	= colorScale->x;
+	layer.Header.ColorScale.y	= colorScale->y;
+	layer.Header.ColorScale.z	= colorScale->z;
+	layer.Header.ColorScale.w	= colorScale->w;
+	layer.Header.SrcBlend		= VRAPI_FRAME_LAYER_BLEND_ONE;
+	layer.Header.DstBlend		= VRAPI_FRAME_LAYER_BLEND_ZERO;
+	layer.Header.SurfaceTextureObject = NULL;
+
+	layer.HeadPose.Pose.Orientation.w = 1.0f;
+
+	for ( int eye = 0; eye < VRAPI_FRAME_LAYER_EYE_MAX; eye++ )
+	{
+		layer.Textures[eye].SwapChainIndex = 0;
+		layer.Textures[eye].ColorSwapChain = (ovrTextureSwapChain *)VRAPI_DEFAULT_TEXTURE_SWAPCHAIN;
+	}
+
+	return layer;
+}
+
 static inline ovrLayerCylinder2 vrapi_DefaultLayerCylinder2()
 {
 	ovrLayerCylinder2 layer = {};
