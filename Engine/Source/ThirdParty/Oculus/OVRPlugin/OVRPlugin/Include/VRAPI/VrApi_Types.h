@@ -149,9 +149,13 @@ typedef enum
 
 typedef enum
 {
-	VRAPI_STRUCTURE_TYPE_INIT_PARMS		= 1,
-	VRAPI_STRUCTURE_TYPE_MODE_PARMS		= 2,
-	VRAPI_STRUCTURE_TYPE_FRAME_PARMS	= 3,
+	VRAPI_STRUCTURE_TYPE_INIT_PARMS			= 1,
+	VRAPI_STRUCTURE_TYPE_MODE_PARMS			= 2,
+	VRAPI_STRUCTURE_TYPE_FRAME_PARMS		= 3,
+///--BEGIN_SDK_REMOVE
+	VRAPI_STRUCTURE_TYPE_INIT_PARMS_EXT		= 4,
+	VRAPI_STRUCTURE_TYPE_MODE_PARMS_VULKAN	= 5,
+///--END_SDK_REMOVE
 } ovrStructureType;
 
 //-----------------------------------------------------------------
@@ -172,20 +176,27 @@ typedef enum
 	VRAPI_DEVICE_TYPE_NOTE7_FE				= 7,			// Fan Edition
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_DEVICE_TYPE_A5_2018				= 8,			// A series
+	VRAPI_DEVICE_TYPE_A5_2018				= 8,			// A8 
+	VRAPI_DEVICE_TYPE_A7_2018				= 9,			// A8 Plus
+	VRAPI_DEVICE_TYPE_S9					= 10,
+	VRAPI_DEVICE_TYPE_S9_PLUS				= 11,
 	VRAPI_DEVICE_TYPE_GEARVR_PLUS			= 32,
 ///--END_SDK_REMOVE
-	VRAPI_DEVICE_GEARVR_END					= 63,
+	VRAPI_DEVICE_TYPE_GEARVR_END			= 63,
+
+	VRAPI_DEVICE_TYPE_OCULUSGO_START		= 64,
+	VRAPI_DEVICE_TYPE_OCULUSGO				= VRAPI_DEVICE_TYPE_OCULUSGO_START,
+///--BEGIN_SDK_REMOVE
+	VRAPI_DEVICE_TYPE_OCULUSGO_V1O			= VRAPI_DEVICE_TYPE_OCULUSGO_START + 1,	// Xiaomi's version released in China only
+///--END_SDK_REMOVE
+	VRAPI_DEVICE_TYPE_OCULUSGO_END			= 127,
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_DEVICE_TYPE_PACIFIC_START			= 64,
-	VRAPI_DEVICE_TYPE_PACIFIC				= VRAPI_DEVICE_TYPE_PACIFIC_START,
-	VRAPI_DEVICE_TYPE_PACIFIC_END			= 127,
-
 	VRAPI_DEVICE_TYPE_MONTEREY_START		= 256,
 	VRAPI_DEVICE_TYPE_DAWN_PROTO0			= VRAPI_DEVICE_TYPE_MONTEREY_START,
 	VRAPI_DEVICE_TYPE_MONTEREY_PROTO1_SDC,
 	VRAPI_DEVICE_TYPE_MONTEREY_PROTO1_AUO,
+	VRAPI_DEVICE_TYPE_MONTEREY,
 	VRAPI_DEVICE_TYPE_MONTEREY_END			= 319,
 ///--END_SDK_REMOVE
 
@@ -201,9 +212,10 @@ typedef enum
 	VRAPI_HEADSET_TYPE_R324					= 4,			// Commercial 3 (USB Type C)
 	VRAPI_HEADSET_TYPE_R325					= 5,			// Commercial 4 2017 (USB Type C)
 
+	VRAPI_HEADSET_TYPE_OCULUSGO				= 64,			// Oculus Go
+
 ///--BEGIN_SDK_REMOVE
 	// Unannounced devices.
-	VRAPI_HEADSET_TYPE_PACIFIC				= 64,
 
 	// Prototype headsets.
 	VRAPI_HEADSET_TYPE_MONTEREY_PROTO1		= 256,
@@ -232,8 +244,7 @@ typedef enum
 	// Physical width and height of the display in pixels.
 	VRAPI_SYS_PROP_DISPLAY_PIXELS_WIDE						= 2,
 	VRAPI_SYS_PROP_DISPLAY_PIXELS_HIGH						= 3,
-	// Refresh rate of the display in cycles per second.
-	// Currently 60Hz.
+	// Returns the refresh rate of the display in cycles per second.
 	VRAPI_SYS_PROP_DISPLAY_REFRESH_RATE						= 4,
 	// With a display resolution of 2560x1440, the pixels at the center
 	// of each eye cover about 0.06 degrees of visual arc. To wrap a
@@ -279,6 +290,13 @@ typedef enum
 	// Returns an ovrHandedness enum indicating left or right hand.
 	VRAPI_SYS_PROP_DOMINANT_HAND							= 15,
 
+///--BEGIN_SDK_REMOVE
+	// Returns the number of display refresh rates supported by the system.
+	VRAPI_SYS_PROP_NUM_SUPPORTED_DISPLAY_REFRESH_RATES		= 64,
+	// Returns an array of the supported display refresh rates.
+	VRAPI_SYS_PROP_SUPPORTED_DISPLAY_REFRESH_RATES			= 65,
+///--END_SDK_REMOVE
+
 	// Returns VRAPI_TRUE if Multiview rendering support is available for this system,
 	// otherwise VRAPI_FALSE.
 	VRAPI_SYS_PROP_MULTIVIEW_AVAILABLE						= 128,
@@ -292,6 +310,9 @@ typedef enum
 	// Returns VRAPI_TRUE if gpu utilization functionality is supported for this system,
 	// otherwise VRAPI_FALSE.
 	VRAPI_SYS_PROP_GPU_UTIL_AVAILABLE						= 131,
+	// Returns VRAPI_TRUE if cpu utilization functionality is supported for this system,
+	// otherwise VRAPI_FALSE.
+	VRAPI_SYS_PROP_CPU_UTIL_AVAILABLE						= 132,
 ///--END_SDK_REMOVE
 } ovrSystemProperty;
 
@@ -314,6 +335,7 @@ typedef enum
 	VRAPI_SHELL_SYSTEM_UTILS			= 13,		// Used by System Activities to query the cached value of Shell System Utils GK ( This enum can be removed once sysUtils is 100% )
 	VRAPI_TRANSCRIBE_AVAILABLE			= 14,		// Used by System Activities to query the cached value of Transcribe enabled GK ( This enum can be removed once transcribe is 100% )
 	VRAPI_FOVEATION_LEVEL				= 15,		// Used by apps that want to control swapchain foveation levels
+	VRAPI_ANYTIMEUI						= 16,		// Used by System Acitivites to query if the anytime UI is valid
 } ovrProperty;
 
 typedef enum
@@ -354,20 +376,22 @@ typedef enum
 	VRAPI_SYS_STATUS_RECENTER_COUNT					= 13,	// Returns the current HMD recenter count. Defaults to 0.
 	VRAPI_SYS_STATUS_SYSTEM_UX_ACTIVE				= 14,	// Returns VRAPI_TRUE if a system UX layer is active
 
-	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED			= 128,	// True if the front buffer is allocated in TrustZone memory.
-	VRAPI_SYS_STATUS_FRONT_BUFFER_565				= 129,	// True if the front buffer is 16-bit 5:6:5
-	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB				= 130,	// True if the front buffer uses the sRGB color space.
+	VRAPI_SYS_STATUS_FRONT_BUFFER_PROTECTED			= 128,	// VRAPI_TRUE if the front buffer is allocated in TrustZone memory.
+	VRAPI_SYS_STATUS_FRONT_BUFFER_565				= 129,	// VRAPI_TRUE if the front buffer is 16-bit 5:6:5
+	VRAPI_SYS_STATUS_FRONT_BUFFER_SRGB				= 130,	// VRAPI_TRUE if the front buffer uses the sRGB color space.
 
 ///--BEGIN_SDK_REMOVE
-	VRAPI_SYS_STATUS_SHOULD_QUIT					= 256,	// True if the app should terminate. (VrApi->CAPI Shim only)
-	VRAPI_SYS_STATUS_HAS_FOCUS						= 257,	// True if the app has focus and is therefore visible on the HMD. (VrApi->CAPI Shim only)
-	VRAPI_SYS_STATUS_HDCP_FAILURE					= 258,	// True if the HDCP link is broken. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_SHOULD_QUIT					= 256,	// VRAPI_TRUE if the app should terminate. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HAS_FOCUS						= 257,	// VRAPI_TRUE if the app has focus and is therefore visible on the HMD. (VrApi->CAPI Shim only)
+	VRAPI_SYS_STATUS_HDCP_FAILURE					= 258,	// VRAPI_TRUE if the HDCP link is broken. (VrApi->CAPI Shim only)
 
 	VRAPI_SYS_STATUS_DO_NOT_DISTURB_MODE			= 259,	// Returns VRAPI_TRUE if DND Mode is active. (SA only)
 	VRAPI_SYS_STATUS_SYSTEM_BRIGHTNESS				= 260,	// Returns the current System Brightness. (SA only)
 
 	VRAPI_SYS_STATUS_TOTAL_STALE_FRAMES				= 261,	// Returns the total stale frames starting from when VR mode is entered
 	VRAPI_SYS_STATUS_GPU_UTIL						= 262,	// Returns the current GPU Utilization, from 0.0 to 1.0
+	VRAPI_SYS_STATUS_CPU_UTIL						= 263,	// Returns the current CPU Utilization, from 0.0 to 1.0
+	VRAPI_SYS_STATUS_CPU_UTIL_AVG					= 264,	// Returns the current CPU Utilization averaged across all cores, from 0.0 to 1.0
 ///--END_SDK_REMOVE
 } ovrSystemStatus;
 
@@ -384,11 +408,19 @@ typedef enum
 
 typedef enum
 {
-	VRAPI_GRAPHICS_API_OPENGL_ES_2   = ( 0x10000 | 0x0200 ), // OpenGL ES 2.x context
-	VRAPI_GRAPHICS_API_OPENGL_ES_3   = ( 0x10000 | 0x0300 ), // OpenGL ES 3.x context
-	VRAPI_GRAPHICS_API_OPENGL_COMPAT = ( 0x20000 | 0x0100 ), // OpenGL Compatibility Profile
-	VRAPI_GRAPHICS_API_OPENGL_CORE_3 = ( 0x20000 | 0x0300 ), // OpenGL Core Profile 3.x
-	VRAPI_GRAPHICS_API_OPENGL_CORE_4 = ( 0x20000 | 0x0400 ), // OpenGL Core Profile 4.x
+	VRAPI_GRAPHICS_API_TYPE_ES		 = 0x10000,
+	VRAPI_GRAPHICS_API_OPENGL_ES_2   = ( VRAPI_GRAPHICS_API_TYPE_ES | 0x0200 ),		// OpenGL ES 2.x context
+	VRAPI_GRAPHICS_API_OPENGL_ES_3   = ( VRAPI_GRAPHICS_API_TYPE_ES | 0x0300 ),		// OpenGL ES 3.x context
+
+	VRAPI_GRAPHICS_API_TYPE_OPENGL	 = 0x20000,
+	VRAPI_GRAPHICS_API_OPENGL_COMPAT = ( VRAPI_GRAPHICS_API_TYPE_OPENGL | 0x0100 ), // OpenGL Compatibility Profile
+	VRAPI_GRAPHICS_API_OPENGL_CORE_3 = ( VRAPI_GRAPHICS_API_TYPE_OPENGL | 0x0300 ), // OpenGL Core Profile 3.x
+	VRAPI_GRAPHICS_API_OPENGL_CORE_4 = ( VRAPI_GRAPHICS_API_TYPE_OPENGL | 0x0400 ), // OpenGL Core Profile 4.x
+
+///--BEGIN_SDK_REMOVE
+	VRAPI_GRAPHICS_API_TYPE_VULKAN	 = 0x40000,
+	VRAPI_GRAPHICS_API_VULKAN_1		 = ( VRAPI_GRAPHICS_API_TYPE_VULKAN | 0x0100 ), // Vulkan 1.x
+///--END_SDK_REMOVE
 } ovrGraphicsAPI;
 
 typedef struct
@@ -441,7 +473,13 @@ typedef enum
 	VRAPI_MODE_FLAG_FRONT_BUFFER_565			= 0x00040000,
 
 	// Create a front buffer using the sRGB color space.
-	VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB			= 0x00080000
+	VRAPI_MODE_FLAG_FRONT_BUFFER_SRGB			= 0x00080000,
+
+	// If set, indicates the OpenGL ES Context was created with EGL_CONTEXT_OPENGL_NO_ERROR_KHR attribute.
+	// The same attribute would be applied when TimeWrap creates the shared context.
+	// More information could be found at:
+	// https://www.khronos.org/registry/EGL/extensions/KHR/EGL_KHR_create_context_no_error.txt
+	VRAPI_MODE_FLAG_CREATE_CONTEXT_NO_ERROR		= 0x00100000
 } ovrModeFlags;
 
 typedef struct
@@ -460,22 +498,37 @@ typedef struct
 
 	OVR_VRAPI_PADDING_32_BIT( 4 );
 
-	// If not zero, then use this display for asynchronous time warp rendering.
+	// Display to use for asynchronous time warp rendering.
 	// Using EGL this is an EGLDisplay.
 	unsigned long long	Display;
 
-	// If not zero, then use this window surface for asynchronous time warp rendering.
+	// The window surface to use for asynchronous time warp rendering.
 	// Using EGL this can be the EGLSurface created by the application for the ANativeWindow.
-	// Preferrably this is the ANativeWIndow itself (requires VRAPI_MODE_FLAG_NATIVE_WINDOW).
+	// This should be the ANativeWIndow itself (requires VRAPI_MODE_FLAG_NATIVE_WINDOW).
 	unsigned long long	WindowSurface;
 
-	// If not zero, then resources from this context will be shared with the asynchronous time warp.
+	// The resources from this context will be shared with the asynchronous time warp.
 	// Using EGL this is an EGLContext.
 	unsigned long long	ShareContext;
 } ovrModeParms;
 
 OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT( ovrModeParms, 48 );
 OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrModeParms, 56 );
+
+///--BEGIN_SDK_REMOVE
+typedef struct
+{
+	ovrModeParms		ModeParms;
+
+	// For Vulkan, this should be the VkQueue created on the same Device as specified
+	// by vrapi_CreateSystemVulkan. An internally created VkFence object will be signaled
+	// by the completion of commands on the queue.
+	unsigned long long	SynchronizationQueue;
+} ovrModeParmsVulkan;
+
+OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT( ovrModeParmsVulkan, 56 );
+OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrModeParmsVulkan, 64 );
+///--END_SDK_REMOVE
 
 // VR context
 // To allow multiple Android activities that live in the same address space
@@ -593,11 +646,6 @@ typedef enum
 	VRAPI_DEFAULT_TEXTURE_SWAPCHAIN					= 0x1,
 	VRAPI_DEFAULT_TEXTURE_SWAPCHAIN_LOADING_ICON	= 0x2
 } ovrDefaultTextureSwapChain;
-
-typedef enum
-{
-	VRAPI_TEXTURE_SWAPCHAIN_FULL_MIP_CHAIN	= -1
-} ovrTextureSwapChainSettings;
 
 typedef struct ovrTextureSwapChain ovrTextureSwapChain;
 

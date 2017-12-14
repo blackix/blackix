@@ -467,6 +467,10 @@ OVR_VRAPI_EXPORT bool vrapi_GetPropertyInt( const ovrJava * java, const ovrPrope
 // This function can be called any time from any thread once the VrApi is initialized.
 OVR_VRAPI_EXPORT int vrapi_GetSystemPropertyInt( const ovrJava * java, const ovrSystemProperty propType );
 OVR_VRAPI_EXPORT float vrapi_GetSystemPropertyFloat( const ovrJava * java, const ovrSystemProperty propType );
+// Returns the number of elements written to values array.
+OVR_VRAPI_EXPORT int vrapi_GetSystemPropertyFloatArray( const ovrJava * java, const ovrSystemProperty propType,
+														float * values, int numArrayValues );
+
 // The return memory is guaranteed to be valid until the next call to vrapi_GetSystemPropertyString.
 OVR_VRAPI_EXPORT const char * vrapi_GetSystemPropertyString( const ovrJava * java, const ovrSystemProperty propType );
 
@@ -512,9 +516,8 @@ OVR_VRAPI_EXPORT float vrapi_GetSystemStatusFloat( const ovrJava * java, const o
 // time warp takes ownership of the Android window surface. Note that this requires
 // the config used by the calling thread to have an EGL_SURFACE_TYPE with EGL_PBUFFER_BIT.
 //
-// New applications should always explicitly pass in the EGLDisplay, EGLContext
-// and ANativeWindow. The other paths are still available to support old applications
-// but they will be deprecated.
+// New applications must always explicitly pass in the EGLDisplay, EGLContext
+// and ANativeWindow, otherwise vrapi_EnterVrMode will fail.
 //
 // This function will return NULL when entering VR mode failed because the ANativeWindow
 // was not valid. If the ANativeWindow's buffer queue is abandoned
@@ -577,7 +580,6 @@ OVR_VRAPI_EXPORT ovrTracking vrapi_GetPredictedTracking( ovrMobile * ovr, double
 // Can be called from any thread while in VR mode.
 OVR_VRAPI_EXPORT void vrapi_RecenterPose( ovrMobile * ovr );
 
-
 //-----------------------------------------------------------------
 // Tracking Transform
 //
@@ -605,7 +607,6 @@ OVR_VRAPI_EXPORT void vrapi_RecenterPose( ovrMobile * ovr );
 //
 // The default Tracking Transform is VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL.
 
-
 // Returns a pose suitable to use as a tracking transform.
 // Applications that want to use an eye-level based coordinate system can fetch
 // the VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL transform.
@@ -620,7 +621,6 @@ OVR_VRAPI_EXPORT ovrPosef  vrapi_GetTrackingTransform( ovrMobile * ovr, ovrTrack
 // Only the yaw component of the orientation is used.
 OVR_VRAPI_EXPORT void vrapi_SetTrackingTransform( ovrMobile * ovr, ovrPosef pose );
 
-
 //-----------------------------------------------------------------
 // Texture Swap Chains
 //
@@ -631,9 +631,6 @@ OVR_VRAPI_EXPORT void vrapi_SetTrackingTransform( ovrMobile * ovr, ovrPosef pose
 //
 // Specifying 0 levels allows the individual texture ids to be set with
 // vrapi_SetTextureSwapChainHandle().
-//
-// Specifying VRAPI_TEXTURE_SWAPCHAIN_FULL_MIP_CHAIN levels will calculate
-// the levels based on width and height.
 //
 // Buffers used to be a bool that selected either a single texture index
 // or a triple buffered index, but the new entry point allows up to 16 buffers
@@ -718,6 +715,19 @@ OVR_VRAPI_EXPORT ovrResult vrapi_SetPerfThread( ovrMobile * ovr, const ovrPerfTh
 // 
 // The latency mode specified will be applied on the next call to vrapi_SubmitFrame(2).
 OVR_VRAPI_EXPORT ovrResult vrapi_SetExtraLatencyMode( ovrMobile * ovr, const ovrExtraLatencyMode mode );
+
+///--BEGIN_SDK_REMOVE
+//-----------------------------------------------------------------
+// Display Refresh Rate
+//-----------------------------------------------------------------
+
+// Set the Display Refresh Rate.
+// Returns ovrSuccess or an ovrError code.
+// Returns 'ovrError_InvalidParameter' if requested refresh rate is not supported by the device.
+// Returns 'ovrError_InvalidOperation' if setting the display refresh rate was not successful.
+OVR_VRAPI_EXPORT ovrResult vrapi_SetDisplayRefreshRate( ovrMobile * ovr, const float refreshRate );
+
+///--END_SDK_REMOVE
 
 #if defined( __cplusplus )
 }	// extern "C"

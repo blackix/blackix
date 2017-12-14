@@ -236,7 +236,7 @@ void UOculusFunctionLibrary::ShowLoadingSplashScreen()
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)
@@ -302,7 +302,7 @@ void UOculusFunctionLibrary::ShowLoadingIcon(class UTexture2D* Texture)
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
-	if (OculusHMD != nullptr)
+	if (OculusHMD != nullptr && OculusHMD->IsStereoEnabledOnNextFrame())
 	{
 		OculusHMD::FSplash* Splash = OculusHMD->GetSplash();
 		if (Splash)
@@ -444,6 +444,106 @@ bool UOculusFunctionLibrary::HasSystemOverlayPresent()
 	}
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 	return false;
+}
+
+void UOculusFunctionLibrary::GetGPUUtilization(bool& IsGPUAvailable, float& GPUUtilization)
+{
+	IsGPUAvailable = false;
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	const OculusHMD::FOculusHMD* const OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		ovrpBool GPUAvailable;
+		if (OVRP_SUCCESS(ovrp_GetGPUUtilSupported(&GPUAvailable)))
+		{
+			IsGPUAvailable = (GPUAvailable == ovrpBool_True);
+
+			ovrp_GetGPUUtilLevel(&GPUUtilization);
+		}
+	}
+#endif // OCULUS_HMD_SUPPORTED_PLATFORMS
+}
+
+void UOculusFunctionLibrary::SetTiledMultiresLevel(ETiledMultiResLevel level)
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		OculusHMD->SetTiledMultiResLevel(level);
+	}
+#endif // OCULUS_HMD_SUPPORTED_PLATFORMS
+}
+
+ETiledMultiResLevel UOculusFunctionLibrary::GetTiledMultiresLevel()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		ovrpTiledMultiResLevel lvl;
+		ovrp_GetTiledMultiResLevel(&lvl);
+		return (ETiledMultiResLevel)lvl;
+	}
+#endif // OCULUS_HMD_SUPPORTED_PLATFORMS
+	return ETiledMultiResLevel::ETiledMultiResLevel_Off;
+}
+
+FString UOculusFunctionLibrary::GetDeviceName()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		const char *nameString;
+		ovrp_GetSystemProductName2(&nameString);
+		return FString(nameString);
+	}
+#endif
+	return FString();
+}
+
+TArray<float> UOculusFunctionLibrary::GetAvailableDisplayFrequencies()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		int numberOfFrequencies;
+		ovrp_GetSystemDisplayAvailableFrequencies(NULL, &numberOfFrequencies);
+
+		TArray<float> freqArray;
+		freqArray.SetNum(numberOfFrequencies);
+		ovrp_GetSystemDisplayAvailableFrequencies(freqArray.GetData(), &numberOfFrequencies);
+		return freqArray;
+	}
+#endif
+	return TArray<float>();
+}
+
+float UOculusFunctionLibrary::GetCurrentDisplayFrequency()
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		float frequency;
+		ovrp_GetSystemDisplayFrequency2(&frequency);
+		return frequency;
+	}
+#endif
+	return 0.0f;
+}
+
+void UOculusFunctionLibrary::SetDisplayFrequency(float RequestedFrequency)
+{
+#if OCULUS_HMD_SUPPORTED_PLATFORMS
+	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
+	if (OculusHMD != nullptr)
+	{
+		ovrp_SetSystemDisplayFrequency(RequestedFrequency);
+	}
+#endif
 }
 
 class IStereoLayers* UOculusFunctionLibrary::GetStereoLayers()

@@ -28,6 +28,11 @@
 			"WhitelistPlatforms" : [ "Win64", "Win32", "Android" ]
 		},
 		{
+			"Name" : "OculusMR",
+			"Type" : "Runtime",
+			"WhitelistPlatforms" : [ "Win64", "Win32" ]
+		},
+		{
 			"Name" : "OculusEditor",
 			"Type" : "Editor",
 			"LoadingPhase" : "PreDefault",
