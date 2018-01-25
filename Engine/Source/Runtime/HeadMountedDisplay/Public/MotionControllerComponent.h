@@ -34,6 +34,10 @@ class HEADMOUNTEDDISPLAY_API UMotionControllerComponent : public UPrimitiveCompo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MotionController")
 	uint32 bDisableLowLatencyUpdate:1;
 
+	/** If false, the motioncontroller and its children will still be rendered even when its current tracking status is NotTracked */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MotionController")
+	uint32 bHideWhenUntracked : 1;
+
 	/** The tracking status for the device (e.g. full tracking, inertial tracking only, no tracking) */
 	UPROPERTY(BlueprintReadOnly, Category = "MotionController")
 	ETrackingStatus CurrentTrackingStatus;

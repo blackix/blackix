@@ -13,9 +13,9 @@ FDefaultXRCamera::FDefaultXRCamera(const FAutoRegister& AutoRegister, IXRTrackin
 	: FSceneViewExtensionBase(AutoRegister)
 	, TrackingSystem(InTrackingSystem)
 	, DeviceId(InDeviceId)
+	, bUseImplicitHMDPosition(false)
 	, DeltaControlRotation(0, 0, 0)
 	, DeltaControlOrientation(FQuat::Identity)
-	, bUseImplicitHMDPosition(false)
 {
 }
 
@@ -176,5 +176,5 @@ void FDefaultXRCamera::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InV
 bool FDefaultXRCamera::IsActiveThisFrame(class FViewport* InViewport) const
 {
 	bCurrentFrameIsStereoRendering = GEngine && GEngine->IsStereoscopic3D(InViewport); // The current viewport might disallow stereo rendering. Save it so we'll use the correct value in SetupViewFamily.
-	return TrackingSystem->IsHeadTrackingAllowed();
+	return bCurrentFrameIsStereoRendering && TrackingSystem->IsHeadTrackingAllowed();
 }

@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 /// Initializes the Oculus display driver before graphics initialization, if applicable.
-OVRP_EXPORT ovrpResult ovrp_PreInitialize2();
+OVRP_EXPORT ovrpResult ovrp_PreInitialize3(void* activity);
 
 /// Gets the current initialization state of the Oculus runtime, VR tracking, and graphics
 /// resources.
@@ -41,13 +41,16 @@ OVRP_EXPORT ovrpBool ovrp_GetInitialized();
 /// Sets up the Oculus runtime, VR tracking, and graphics resources.
 /// You must call this before any other function except ovrp_PreInitialize() or
 /// ovrp_GetInitialized().
-OVRP_EXPORT ovrpResult ovrp_Initialize4(
-	ovrpRenderAPIType apiType,
-	ovrpLogCallback logCallback,
-	void* activity,
-	void* instance,
-	int initializeFlags,
-	OVRP_CONSTREF(ovrpVersion) version OVRP_DEFAULTVALUE({ OVRP_VERSION }));
+OVRP_EXPORT ovrpResult ovrp_Initialize5(
+  ovrpRenderAPIType apiType,
+  ovrpLogCallback logCallback,
+  void* activity,
+  void* vkInstance,
+  void* vkPhysicalDevice,
+  void* vkDevice,
+  void* vkQueue,
+  int initializeFlags,
+  OVRP_CONSTREF(ovrpVersion) version);
 
 /// Tears down the Oculus runtime, VR tracking, and graphics resources.
 OVRP_EXPORT ovrpResult ovrp_Shutdown2();
@@ -90,6 +93,18 @@ OVRP_EXPORT ovrpResult ovrp_GetAudioInId2(void const** audioInId);
 /// @note ovrp_PreInitialize must be called and return a successful result before calling this
 /// function.
 OVRP_EXPORT ovrpResult ovrp_GetAudioInDeviceId2(void const** audioInDeviceId);
+
+/// Returns an array of pointers to extension names which need to be enabled for the instance 
+/// in order for the VR runtime to support Vulkan-based applications.
+/// @note ovrp_PreInitialize must be called and return a successful result before calling this
+/// function.
+OVRP_EXPORT ovrpResult ovrp_GetInstanceExtensionsVk(char const** instanceExtensions, int* instanceExtensionCount);
+
+/// Returns an array of pointers to extension names which need to be enabled for the device 
+/// in order for the VR runtime to support Vulkan-based applications.
+/// @note ovrp_PreInitialize must be called and return a successful result before calling this
+/// function.
+OVRP_EXPORT ovrpResult ovrp_GetDeviceExtensionsVk(char const** deviceExtensions, int* deviceExtensionCount);
 
 /// Creates a dedicated window for rendering 3D content to the VR display.
 OVRP_EXPORT ovrpResult ovrp_SetupDistortionWindow3(int flags);
@@ -140,15 +155,14 @@ OVRP_EXPORT ovrpResult ovrp_CalculateLayerDesc(
 
 /// Calculates eye layer description
 OVRP_EXPORT ovrpResult ovrp_CalculateEyeLayerDesc2(
-	ovrpLayout layout,
-	float textureScale,
-	int mipLevels,
-	int sampleCount,
-	ovrpTextureFormat format,
+    ovrpLayout layout,
+    float textureScale,
+    int mipLevels,
+    int sampleCount,
+    ovrpTextureFormat format,
 	ovrpTextureFormat depthFormat,
-	ovrpFrustum2f frustum,
-	int layerFlags,
-	ovrpLayerDesc_EyeFov* layerDesc);
+    int layerFlags,
+    ovrpLayerDesc_EyeFov* layerDesc);
 
 /// Calculates the recommended viewport rect for the specified eye
 OVRP_EXPORT ovrpResult ovrp_CalculateEyeViewportRect(
@@ -319,6 +333,12 @@ OVRP_EXPORT ovrpResult ovrp_GetSystemPowerSavingMode2(ovrpBool* systemPowerSavin
 /// Gets the current refresh rate of the HMD.
 OVRP_EXPORT ovrpResult ovrp_GetSystemDisplayFrequency2(float* systemDisplayFrequency);
 
+/// Gets the available refresh rates of the HMD.
+OVRP_EXPORT ovrpResult ovrp_GetSystemDisplayAvailableFrequencies(float* systemDisplayAvailableFrequencies, int *arraySize);
+
+/// Sets the refresh rate for the HMD
+OVRP_EXPORT ovrpResult ovrp_SetSystemDisplayFrequency(float requestedFrequency);
+
 /// Gets the minimum number of vsyncs to wait after each frame.
 OVRP_EXPORT ovrpResult ovrp_GetSystemVSyncCount2(int* systemVSyncCount);
 
@@ -360,7 +380,7 @@ OVRP_EXPORT ovrpResult ovrp_GetAppHasInputFocus(ovrpBool* appHasInputFocus);
 /// True if a system overlay is present, such as a dashboard. In this case the application
 /// (if visible) should pause while still drawing, avoid drawing near-field graphics so they
 /// don't visually fight with the system overlay, and consume fewer CPU and GPU resources.
-OVRP_EXPORT ovrpResult ovrp_GetAppHasOverlayPresent(ovrpBool* appHasOverlayPresent);
+OVRP_EXPORT ovrpResult ovrp_GetAppHasSystemOverlayPresent(ovrpBool* appHasOverlayPresent);
 
 /// If true, the app should quit as soon as possible.
 OVRP_EXPORT ovrpResult ovrp_GetAppShouldQuit2(ovrpBool* appShouldQuit);
@@ -473,7 +493,27 @@ OVRP_EXPORT ovrpResult ovrp_SetInhibitSystemUX2(ovrpBool inhibitSystemUX);
 OVRP_EXPORT ovrpResult ovrp_SetDebugDumpEnabled2(ovrpBool debugDumpEnabled);
 #endif
 
-OVRP_EXPORT ovrpResult ovrp_SetFunctionPointer(ovrpFunctionType funcType, void *funcPtr);
+/// Return true if the device supports tiled multires
+OVRP_EXPORT ovrpResult ovrp_GetTiledMultiResSupported(ovrpBool* foveationSupported);
+
+/// Returns the current multires level on the device
+OVRP_EXPORT ovrpResult ovrp_GetTiledMultiResLevel(ovrpTiledMultiResLevel* level);
+
+/// Sets MultiRes levels
+OVRP_EXPORT ovrpResult ovrp_SetTiledMultiResLevel(ovrpTiledMultiResLevel level);
+
+/// Return true if the device supports GPU Util querying
+OVRP_EXPORT ovrpResult ovrp_GetGPUUtilSupported(ovrpBool* gpuUtilSupported);
+
+/// Return the GPU util if the device supports it
+OVRP_EXPORT ovrpResult ovrp_GetGPUUtilLevel(float* gpuUtil);
+
+/// Set thread's performance level, for example, put the performance critical thread on golden cores, 
+/// future policy might change for future hardware 
+OVRP_EXPORT ovrpResult ovrp_SetThreadPerformance(int threadId, ovrpThreadPerf perf);
+
+/// This is specifically for Unity to fix Core Affinity wrong assignment.
+OVRP_EXPORT ovrpResult ovrp_AutoThreadScheduling(unsigned int bigCoreMaskFromEngine, unsigned int* threadIds, ovrpThreadPerf* threadPerfFlags, int threadCount);
 
 #ifdef __cplusplus
 }
