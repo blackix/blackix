@@ -38,6 +38,13 @@
 #include "Runtime/UtilityShaders/Public/OculusShaders.h"
 #include "PipelineStateCache.h"
 
+#if WITH_OCULUS_PRIVATE_CODE
+#include "IOculusMRModule.h"
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+#include "OVR_Plugin_MixedReality.h"
+#endif
+#endif
+
 #if WITH_EDITOR
 #include "Editor/UnrealEd/Classes/Editor/EditorEngine.h"
 #endif
@@ -182,6 +189,7 @@ private:
 
 } // namespace
 
+#define OCULUS_PAUSED_IDLE_FPS 10
 
 namespace OculusHMD
 {
@@ -795,13 +803,18 @@ namespace OculusHMD
 				bool bPrevPause = Settings->Flags.bPauseRendering;
 				Settings->Flags.bPauseRendering = !bAppHasVRFocus;
 
+				if (Settings->Flags.bPauseRendering && (GEngine->GetMaxFPS() != OCULUS_PAUSED_IDLE_FPS))
+				{
+					GEngine->SetMaxFPS(OCULUS_PAUSED_IDLE_FPS);
+				}
+
 				if (bPrevPause != Settings->Flags.bPauseRendering)
 				{
 					APlayerController* const PC = GEngine->GetFirstLocalPlayerController(InWorldContext.World());
 					if (Settings->Flags.bPauseRendering)
 					{
 						// focus is lost
-						GEngine->SetMaxFPS(10);
+						GEngine->SetMaxFPS(OCULUS_PAUSED_IDLE_FPS);
 
 						if (!FCoreDelegates::ApplicationWillEnterBackgroundDelegate.IsBound())
 						{
@@ -890,13 +903,40 @@ namespace OculusHMD
 			}
 		}
 
+#if WITH_OCULUS_PRIVATE_CODE
+
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+		if (ovrp_GetMixedRealityInitialized())
+		{
+			ovrp_UpdateExternalCamera();
+			ovrp_UpdateCameraDevices();
+			UCastingViewportClient* CastingViewportClient = nullptr;
+			for (auto ViewportClient : InWorldContext.CastingViewports)
+			{
+				if (ViewportClient && ViewportClient->bProjectToMirrorWindow)
+				{
+					CastingViewportClient = ViewportClient;
+					break;
+				}
+			}
+			if (CastingViewportClient)
+			{
+				CastingViewportRenderTexture = CastingViewportClient->GetCastingViewport()->GetRenderTargetTexture();
+			}
+			else
+			{
+				CastingViewportRenderTexture = nullptr;
+			}
+		}
+#endif
+
+#endif
+
 		if (GIsRequestingExit)
 		{
-			// need to shutdown HMD here, otherwise the whole shutdown process may take forever.
 			PreShutdown();
-			GEngine->ShutdownHMD();
-			// note, 'this' may become invalid after ShutdownHMD
 		}
+
 		return retval;
 	}
 
@@ -1256,6 +1296,14 @@ namespace OculusHMD
 
 		if (SpectatorScreenController)
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+			if (CastingViewportRenderTexture_RenderThread)
+			{
+				SrcTexture = CastingViewportRenderTexture_RenderThread;
+			}
+#endif
+#endif
 			SpectatorScreenController->RenderSpectatorScreen_RenderThread(RHICmdList, BackBuffer, SrcTexture, WindowSize);
 		}
 
@@ -2192,18 +2240,21 @@ void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneVie
 			void* activity = nullptr;
 #endif
 
-			int initializeFlags = ovrpInitializeFlag_SupportsVRToggle;
+			int initializeFlags = GIsEditor ? ovrpInitializeFlag_SupportsVRToggle : 0;
 
 			if (Settings->Flags.bSupportsDash)
 			{
 				initializeFlags |= ovrpInitializeFlag_FocusAware;
 			}
 
-			if (OVRP_FAILURE(ovrp_Initialize4(
+			if (OVRP_FAILURE(ovrp_Initialize5(
 				CustomPresent->GetRenderAPI(),
 				logCallback,
 				activity,
 				CustomPresent->GetOvrpInstance(),
+				CustomPresent->GetOvrpPhysicalDevice(),
+				CustomPresent->GetOvrpDevice(),
+				CustomPresent->GetOvrpCommandQueue(),
 				initializeFlags,
 				{ OVRP_VERSION })))
 			{
@@ -3278,6 +3329,9 @@ void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneVie
 					}
 
 					Layers_RenderThread = XLayers;
+#if WITH_OCULUS_PRIVATE_CODE
+					CastingViewportRenderTexture_RenderThread = CastingViewportRenderTexture;
+#endif
 				}
 			});
 		}

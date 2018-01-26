@@ -87,6 +87,11 @@
 #include "Net/NetworkProfiler.h"
 #include "Interfaces/IPluginManager.h"
 #include "PackageReload.h"
+
+#if WITH_OCULUS_PRIVATE_CODE
+#include "Engine/CastingViewportClient.h"
+#endif
+
 #include "HAL/PlatformApplicationMisc.h"
 
 // needed for the RemotePropagator
@@ -1899,6 +1904,15 @@ void UEditorEngine::Tick( float DeltaSeconds, bool bIdleMode )
 				GameViewport->LayoutPlayers();
 				check(GameViewport->Viewport);
 				GameViewport->Viewport->Draw();
+#if WITH_OCULUS_PRIVATE_CODE
+                for (auto& CastingViewport : PieContext.CastingViewports)
+                {
+                    if (CastingViewport->Viewport != NULL)
+                    {
+                        CastingViewport->Viewport->Draw();
+                    }
+                }
+#endif
 
 				// Pop the world
 				RestoreEditorWorld( OldGWorld );
