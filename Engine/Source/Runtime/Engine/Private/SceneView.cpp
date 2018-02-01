@@ -566,6 +566,9 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, OverlayColor(InitOptions.OverlayColor)
 	, ColorScale(InitOptions.ColorScale)
 	, StereoPass(InitOptions.StereoPass)
+#if WITH_OCULUS_PRIVATE_CODE
+    , CastingLayer(InitOptions.CastingLayer)
+#endif
 	, bRenderFirstInstanceOnly(false)
 	, DiffuseOverrideParameter(FVector4(0,0,0,1))
 	, SpecularOverrideParameter(FVector4(0,0,0,1))
@@ -2220,6 +2223,9 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	bRealtimeUpdate(CVS.bRealtimeUpdate),
 	bDeferClear(CVS.bDeferClear),
 	bResolveScene(CVS.bResolveScene),
+#if WITH_OCULUS_PRIVATE_CODE
+    bIsCasting(CVS.bIsCasting),
+#endif
 	SceneCaptureSource(SCS_FinalColorLDR),
 	SceneCaptureCompositeMode(SCCM_Overwrite),
 	bWorldIsPaused(false),

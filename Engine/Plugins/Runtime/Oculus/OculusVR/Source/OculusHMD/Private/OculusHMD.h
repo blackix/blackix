@@ -61,6 +61,9 @@ class FOculusHMD : public FHeadMountedDisplayBase, public FXRRenderTargetManager
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+#if WITH_OCULUS_PRIVATE_CODE
+	friend class FOculusHMD_SpectatorScreenController;
+#endif
 
 public:
 	static const FName OculusSystemName;
@@ -387,6 +390,9 @@ protected:
 	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture;
+#endif
 	bool bNeedReAllocateViewportRenderTarget;
 
 	// Render thread
@@ -394,6 +400,9 @@ protected:
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
+#endif
 	bool bNeedReAllocateDepthTexture_RenderThread;
 
 	// RHI thread
