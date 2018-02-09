@@ -87,6 +87,7 @@ enum class EGearVRControllerHandedness_DEPRECATED : uint8
 	Unknown_DEPRECATED
 };
 
+/** DEPRECATED in 4.17 : All functions using this enum have been deprecated and it will be removed with them. If you are still needing this, then please create your own replacement.*/
 UENUM(BlueprintType)
 enum class ETiledMultiResLevel : uint8
 {
