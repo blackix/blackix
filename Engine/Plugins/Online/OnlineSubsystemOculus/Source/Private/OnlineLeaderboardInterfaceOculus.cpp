@@ -12,52 +12,81 @@ FOnlineLeaderboardOculus::FOnlineLeaderboardOculus(class FOnlineSubsystemOculus&
 
 bool FOnlineLeaderboardOculus::ReadLeaderboards(const TArray< TSharedRef<const FUniqueNetId> >& Players, FOnlineLeaderboardReadRef& ReadObject)
 {
-	bool bOnlyLoggedInUser = false;
+	auto StartAt = ovrLeaderboard_StartAtTop;
+	uint32 Limit = 100;
 	if (Players.Num() > 0) 
 	{
 		auto LoggedInPlayerId = OculusSubsystem.GetIdentityInterface()->GetUniquePlayerId(0);
 		if (Players.Num() == 1 && LoggedInPlayerId.IsValid() && *Players[0] == *LoggedInPlayerId)
 		{
-			bOnlyLoggedInUser = true;
+			Limit = 1;
+			StartAt = ovrLeaderboard_StartAtCenteredOnViewer;
 		}
 		else
 		{
 			UE_LOG_ONLINE(Warning, TEXT("Filtering by player ids other than the logged in player is not supported.  Ignoring the 'Players' parameter"));
 		}
 	}
-	return ReadOculusLeaderboards(/* Only Friends */ false, bOnlyLoggedInUser, ReadObject);
+	return ReadOculusLeaderboards(/* Only Friends */ false, StartAt, ReadObject, Limit);
 };
 
 bool FOnlineLeaderboardOculus::ReadLeaderboardsForFriends(int32 LocalUserNum, FOnlineLeaderboardReadRef& ReadObject)
 {
-	return ReadOculusLeaderboards(/* Only Friends */ true, /* Only Logged In User */ false, ReadObject);
+	return ReadOculusLeaderboards(/* Only Friends */ true, ovrLeaderboard_StartAtTop, ReadObject, 100);
 }
 
 bool FOnlineLeaderboardOculus::ReadLeaderboardsAroundRank(int32 Rank, uint32 Range, FOnlineLeaderboardReadRef& ReadObject)
 {
-	// UNDONE
-	return false;
+	// Oculus has a method to read *After* rank.  So we'll do some math to get this working
+
+	auto StartRank = (static_cast<int32>(Range + 1) < Rank) ? Rank - (Range + 1) : 0;
+
+	ReadObject->ReadState = EOnlineAsyncTaskState::InProgress;
+
+	// Range is defined as how far away from the current rank.  So a Range of 1 and a Rank 3 will return ranks 2,3,4.
+	// Therefore this will translate correctly to the limit of entries we return.
+	auto Limit = (Range * 2 + 1);
+
+	// If we are starting at the top, use the regular get leaderboard method
+	if (StartRank <= 0)
+	{
+		// Reduce the limit from the range that would be trying to get higher ranks that don't exist
+		// Eg Rank 2 and Range 3 will return Ranks 1,2,3,4,5.  So the limit is 5 and not 7
+		// because Ranks -1 and 0 does not exist in the leaderboard.
+		Limit -= static_cast<int32>(Range + 1) - Rank;
+		OculusSubsystem.AddRequestDelegate(
+			ovr_Leaderboard_GetEntries(TCHAR_TO_ANSI(*ReadObject->LeaderboardName.ToString()), Limit, ovrLeaderboard_FilterNone, ovrLeaderboard_StartAtTop),
+			FOculusMessageOnCompleteDelegate::CreateLambda([this, ReadObject](ovrMessageHandle Message, bool bIsError)
+		{
+			OnReadLeaderboardsComplete(Message, bIsError, ReadObject);
+		}));
+		return true;
+	}
+
+	OculusSubsystem.AddRequestDelegate(
+		ovr_Leaderboard_GetEntriesAfterRank(TCHAR_TO_ANSI(*ReadObject->LeaderboardName.ToString()), Limit, StartRank),
+		FOculusMessageOnCompleteDelegate::CreateLambda([this, ReadObject](ovrMessageHandle Message, bool bIsError)
+	{
+		OnReadLeaderboardsComplete(Message, bIsError, ReadObject);
+	}));
+	return true;
 }
 
 bool FOnlineLeaderboardOculus::ReadLeaderboardsAroundUser(TSharedRef<const FUniqueNetId> Player, uint32 Range, FOnlineLeaderboardReadRef& ReadObject)
 {
-	// UNDONE
-	return false;
+	auto LoggedInPlayerId = OculusSubsystem.GetIdentityInterface()->GetUniquePlayerId(0);
+	if (LoggedInPlayerId != Player)
+	{
+		UE_LOG_ONLINE(Error, TEXT("Only the logged in player is supported for Oculus for ReadLeaderboardsAroundUser"));
+		return false;
+	}
+
+	return ReadOculusLeaderboards(/* Only Friends */ false, ovrLeaderboard_StartAtCenteredOnViewer, ReadObject, (Range * 2 + 1));
 }
 
-bool FOnlineLeaderboardOculus::ReadOculusLeaderboards(bool bOnlyFriends, bool bOnlyLoggedInUser, FOnlineLeaderboardReadRef& ReadObject)
+bool FOnlineLeaderboardOculus::ReadOculusLeaderboards(bool bOnlyFriends, ovrLeaderboardStartAt StartAt, FOnlineLeaderboardReadRef& ReadObject, uint32 Limit)
 {
 	auto FilterType = (bOnlyFriends) ? ovrLeaderboard_FilterFriends : ovrLeaderboard_FilterNone;
-
-	auto Limit = 100;
-	auto StartAt = ovrLeaderboard_StartAtTop;
-
-	// If only getting the logged in user, then only return back one result
-	if (bOnlyLoggedInUser)
-	{
-		Limit = 1;
-		StartAt = ovrLeaderboard_StartAtCenteredOnViewer;
-	}
 
 	ReadObject->ReadState = EOnlineAsyncTaskState::InProgress;
 	OculusSubsystem.AddRequestDelegate(

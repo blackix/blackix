@@ -21,7 +21,7 @@ Copyright   :   Copyright 2016 Oculus VR, LLC. All Rights reserved.
 // Basic Ext Types
 //-----------------------------------------------------------------
 
-// This type is just to make parm chain traversal simple
+/// This type is just to make parm chain traversal simple
 typedef struct ovrFrameParmsExtBase
 {
 	ovrStructureType Type;
@@ -77,16 +77,70 @@ static inline const ovrFrameParms * vrapi_GetFrameParmsConst( const ovrFrameParm
 
 ///--BEGIN_SDK_REMOVE
 
+// VrApiLayers Extensions
+
+#define VRAPILAYERS_MAX_LAYERS 8
+
+typedef struct
+{
+	ovrInitParms    InitParms;
+	int             LayerList[VRAPILAYERS_MAX_LAYERS];
+} ovrInitParmsExt;
+
+OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT( ovrInitParmsExt, 68 );
+OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrInitParmsExt, 80 );
+
+typedef enum
+{
+	VRAPILAYER_NONE         = 0,
+	VRAPILAYER_FOVEATION	= 1,
+	VRAPILAYER_UTILPOLLER	= 2,
+} ovrLayerTypes;
+
+static inline const char * ovr_LayerEnumToName( int type )
+{
+    switch ( type )
+    {
+		case VRAPILAYER_FOVEATION:
+			return "Foveation";
+		case VRAPILAYER_UTILPOLLER:
+			return "UtilPoller";
+		default:
+			return "";
+    }
+}
+
+/// Utility function to default initialize the ovrInitParmsExt.
+static inline ovrInitParmsExt vrapi_DefaultInitParmsExt( const ovrJava * java, int LayerList[VRAPILAYERS_MAX_LAYERS] )
+{
+	ovrInitParmsExt parms;
+	memset( &parms, 0, sizeof( parms ) );
+	parms.InitParms = vrapi_DefaultInitParms( java );
+	parms.InitParms.Type = VRAPI_STRUCTURE_TYPE_INIT_PARMS_EXT;
+	for ( unsigned i = 0; i <  VRAPILAYERS_MAX_LAYERS; ++i )
+	{
+	    parms.LayerList[i] = LayerList[i];
+	}
+	return parms;
+}
+
+///--END_SDK_REMOVE
+
+
+///--BEGIN_SDK_REMOVE
+
 // REMAP_2D struct
 
 #define VRAPI_STRUCTURE_TYPE_FRAME_PARMS_REMAP_2D_EXT ((ovrStructureType)(VRAPI_EXT_BASE + 1))
 
+/// A 2D scale and bias.
 typedef struct
 {
 	ovrVector2f Scale;
 	ovrVector2f Bias;
 } ovrScaleBias2DExt;
 
+/// Frame parameters for 2D scale and bias support.
 typedef struct
 {
 	ovrStructureType Type;
@@ -148,8 +202,8 @@ static inline ovrFrameParmsOffcenterCubeMapExt vrapi_DefaultFrameParmsOffcenterC
 
 ///--BEGIN_SDK_REMOVE
 
-// This private-only interface has been subsumed by the
-// vrapi_SubmitFrame2 path and will be removed in the near future.
+/// This private-only interface has been subsumed by the
+/// vrapi_SubmitFrame2 path and will be removed in the near future.
 typedef enum ovrLayerType2_temp_
 {
 	VRAPI_LAYER_TYPE_PROJECTION2_TEMP		= 1,
@@ -362,18 +416,18 @@ typedef struct
 OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT( ovrLayerSurfaceTextureCylinder2_temp, 456 );
 OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrLayerSurfaceTextureCylinder2_temp, 472 );
 
-// An "equiangular fisheye" or "f-theta" lens can be used to capture photos or video
-// of around 180 degrees without stitching.
-//
-// The cameras probably aren't exactly vertical, so a transformation may need to be applied
-// before performing the fisheye calculation.
-// A stereo fisheye camera rig will usually have slight misalignments between the two
-// cameras, so they need independent transformations.
-//
-// Once in lens space, the ray is transformed into an ideal fisheye projection, where the
-// 180 degree hemisphere is mapped to a -1 to 1 2D space.
-//
-// From there it can be mapped into actual texture coordinates, possibly two to an image for stereo.
+/// An "equiangular fisheye" or "f-theta" lens can be used to capture photos or video
+/// of around 180 degrees without stitching.
+///
+/// The cameras probably aren't exactly vertical, so a transformation may need to be applied
+/// before performing the fisheye calculation.
+/// A stereo fisheye camera rig will usually have slight misalignments between the two
+/// cameras, so they need independent transformations.
+///
+/// Once in lens space, the ray is transformed into an ideal fisheye projection, where the
+/// 180 degree hemisphere is mapped to a -1 to 1 2D space.
+///
+/// From there it can be mapped into actual texture coordinates, possibly two to an image for stereo.
 typedef struct
 {
 	ovrLayerHeader2_temp	Header;				// Must be VRAPI_LAYER_TYPE_SURFACE_TEXTURE_FISHEYE2_TEMP.
@@ -403,8 +457,8 @@ typedef struct
 OVR_VRAPI_ASSERT_TYPE_SIZE_32_BIT( ovrLayerSurfaceTextureFisheye2_temp, 488 );
 OVR_VRAPI_ASSERT_TYPE_SIZE_64_BIT( ovrLayerSurfaceTextureFisheye2_temp, 504 );
 
-// Union that combines ovrLayer types in a way that allows them
-// to be used in a polymorphic way.
+/// Union that combines ovrLayer types in a way that allows them
+/// to be used in a polymorphic way.
 typedef union
 {
 	ovrLayerHeader2_temp			Header;
@@ -419,8 +473,7 @@ typedef union
 	ovrLayerSurfaceTextureFisheye2_temp		SurfaceTextureFisheye;
 } ovrLayer_Union2_temp;
 
-// Default Initialization
-
+/// Default Initialization
 static inline ovrLayerProjection2_temp vrapi_DefaultLayerProjection2_temp()
 {
 	ovrLayerProjection2_temp layer = {};
@@ -691,10 +744,10 @@ static inline ovrLayerSurfaceTextureFisheye2_temp vrapi_DefaultLayerSurfaceTextu
 extern "C" {
 #endif
 
-// This temporary function will be removed in the near future. vrapi_SubmitFrame2 should be used instead.
-OVR_VRAPI_EXPORT void vrapi_SubmitFrame2_temp( ovrMobile * ovr, long long frameIndex, int frameFlags,
+/// This temporary function will be removed in the near future. vrapi_SubmitFrame2 should be used instead.
+OVR_VRAPI_DEPRECATED( OVR_VRAPI_EXPORT void vrapi_SubmitFrame2_temp( ovrMobile * ovr, long long frameIndex, int frameFlags,
 						ovrLayerHeader2_temp const * const * layers, int layerCount,
-						const ovrPerformanceParms * performanceParms, int swapInterval, int extraLatencyMode );
+						const ovrPerformanceParms * performanceParms, int swapInterval, int extraLatencyMode ) );
 
 #if defined( __cplusplus )
 }	// extern "C"

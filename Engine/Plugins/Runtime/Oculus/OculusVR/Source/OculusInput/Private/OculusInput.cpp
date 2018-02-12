@@ -447,7 +447,7 @@ void FOculusInput::SendControllerEvents()
 								}
 								case EOculusTouchCapacitiveAxes::Thumbstick:
 								{
-									const uint32 mask = (bIsLeft) ? ovrpTouch_LThumb : ovrpTouch_RThumb;
+									const uint32 mask = bIsMalibuTracked ? ((bIsLeft) ? ovrpTouch_LTouchpad : ovrpTouch_RTouchpad) : ((bIsLeft) ? ovrpTouch_LThumb : ovrpTouch_RThumb);
 									CurrentAxisVal = (OvrpControllerState.Touches & mask) != 0 ? 1.f : 0.f;
 									break;
 								}
@@ -628,18 +628,18 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 						OVRP_SUCCESS(ovrp_GetNodePositionTracked2(Node, &bPositionTracked)) &&
 						(bOrientationTracked || bPositionTracked))
 					{
-						ovrpStep Step;
 						OculusHMD::FSettings* Settings;
+						OculusHMD::FGameFrame* CurrentFrame;
 
 						if (IsInGameThread())
 						{
-							Step = ovrpStep_Game;
 							Settings = OculusHMD->GetSettings();
+							CurrentFrame = OculusHMD->GetNextFrameToRender();
 						}
 						else
 						{
-							Step = ovrpStep_Render;
 							Settings = OculusHMD->GetSettings_RenderThread();
+							CurrentFrame = OculusHMD->GetFrame_RenderThread();
 						}
 
 						if (Settings)
@@ -647,7 +647,7 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 							ovrpPoseStatef InPoseState;
 							OculusHMD::FPose OutPose;
 
-							if (OVRP_SUCCESS(ovrp_GetNodePoseState2(Step, Node, &InPoseState)) &&
+							if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, Node, &InPoseState)) &&
 								OculusHMD->ConvertPose_Internal(InPoseState.Pose, OutPose, Settings, WorldToMetersScale))
 							{
 								if (bOrientationTracked)
@@ -655,7 +655,7 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 									OutOrientation = OutPose.Orientation.Rotator();
 								}
 
-								OutPosition = OutPose.Position;
+									OutPosition = OutPose.Position;
 
 								return true;
 							}

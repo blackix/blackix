@@ -12,8 +12,6 @@ public class OVRPlugin : ModuleRules
 
 		PublicIncludePaths.Add(SourceDirectory + "Include");
 
-        PublicIncludePaths.Add(SourceDirectory + "ExtIncludes");
-
         if (Target.Platform == UnrealTargetPlatform.Android)
 		{
 			PublicLibraryPaths.Add(SourceDirectory + "Lib/armeabi-v7a/");
@@ -21,6 +19,7 @@ public class OVRPlugin : ModuleRules
 
             PublicLibraryPaths.Add(SourceDirectory + "ExtLibs/");
             PublicAdditionalLibraries.Add("vrapi");
+            PublicAdditionalLibraries.Add("vrintegrationloader");
         }
         if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
