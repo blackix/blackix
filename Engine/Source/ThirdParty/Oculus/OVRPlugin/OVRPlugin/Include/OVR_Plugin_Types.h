@@ -28,11 +28,13 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 19
+#define OVRP_MINOR_VERSION 24
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
 #define OVRP_VERSION_STR OVRP_STRINGIFY(OVRP_MAJOR_VERSION.OVRP_MINOR_VERSION.OVRP_PATCH_VERSION)
+
+#define OVRP_CURRENT_FRAMEINDEX -1
 
 #ifndef OVRP_EXPORT
 #ifdef _WIN32
@@ -103,7 +105,21 @@ typedef enum {
   ovrpInitializeFlag_SupportsVRToggle = (1 << 1),
   /// Supports Life Cycle Focus (Dash)
   ovrpInitializeFlag_FocusAware = (1 << 2),
+  /// Turn off Legacy Core Affinity Patch
+  /// Background: Some legacy unity versions set thread affinities wrong on newer hardware like Oculus Go
+  /// We need patch it in the runtime for published legacy apps.
+  /// This flag will be passed from fixed Unity versions explicitly, so we can skip the runtime patch mechanism since we already have proper fixes.
+  ovrpInitializeFlag_NoLegacyCoreAffinityPatch = (1 << 3),
 } ovrpInitializeFlags;
+
+
+/// Thread Performance
+typedef enum {
+  ovrpThreadPef_DeadLine_Normal = 0,
+  ovrpThreadPef_DeadLine_Hard = 1,
+  ovrpThreadPef_DeadLine_Soft = 2,
+  ovrpThreadPef_EnumSize = 0x7fffffff
+} ovrpThreadPerf;
 
 /// Identifies an eye in a stereo pair.
 typedef enum {
@@ -184,7 +200,7 @@ typedef enum {
   ovrpUI_None = -1,
   ovrpUI_GlobalMenu = 0,
   ovrpUI_ConfirmQuit,
-  ovrpUI_GlobalMenuTutorial,
+  ovrpUI_GlobalMenuTutorial, // Deprecated
   ovrpUI_EnumSize = 0x7fffffff
 } ovrpUI;
 
@@ -204,6 +220,7 @@ typedef enum {
   ovrpSystemHeadset_GearVR_R323, // GearVR Commercial 2 (USB Type C)
   ovrpSystemHeadset_GearVR_R324, // GearVR Commercial 3 (USB Type C)
   ovrpSystemHeadset_GearVR_R325, // GearVR Commercial 4 (USB Type C)
+  ovrpSystemHeadset_Oculus_Go,   // Oculus Go Commercial 1
 
   ovrpSystemHeadset_Rift_DK1 = 0x1000,
   ovrpSystemHeadset_Rift_DK2,
@@ -321,7 +338,20 @@ typedef enum {
   ovrpLogLevel_EnumSize = 0x7fffffff
 } ovrpLogLevel;
 
+/// Foveation levels
+typedef enum {
+  ovrpTiledMultiResLevel_Off = 0,
+  ovrpTiledMultiResLevel_LMSLow = 1,
+  ovrpTiledMultiResLevel_LMSMedium = 2,
+  ovrpTiledMultiResLevel_LMSHigh = 3,
+  ovrpTiledMultiResLevel_EnumSize = 0x7fffffff
+} ovrpTiledMultiResLevel;
+
+#if defined(__arm__)
+typedef void(* ovrpLogCallback)(ovrpLogLevel, const char*);
+#else
 typedef void(__cdecl* ovrpLogCallback)(ovrpLogLevel, const char*);
+#endif
 
 typedef struct {
   int MajorVersion;
@@ -622,13 +652,13 @@ typedef enum {
   ovrpDistortionWindowFlag_None = 0x00000000,
   /// If true, the distortion window and eye buffers are set up to handle DRM-protected content.
   ovrpDistortionWindowFlag_Protected = 0x00000001,
+  /// If true, the compositor's graphics device skips error checking to improve performance.
+  ovrpDistortionWindowFlag_NoErrorContext = 0x00000002,
   ovrpDistortionWindowFlag_EnumSize = 0x7fffffff
 } ovrpDistortionWindowFlag;
 
 /// A timestep type corresponding to a use case for tracking data.
 typedef enum {
-  /// Updated from game thread at start of frame.
-  ovrpStep_Game = -2,
   /// Updated from game thread at end of frame, to hand-off state to Render thread.
   ovrpStep_Render = -1,
   /// Updated from physics thread, once per simulation step.
@@ -642,6 +672,7 @@ typedef enum {
   ovrpShape_Cubemap = 2,
   ovrpShape_EyeFov = 3,
   ovrpShape_OffcenterCubemap = 4,
+  ovrpShape_Equirect = 5,
   ovrpShape_EnumSize = 0xF
 } ovrpShape;
 
@@ -661,6 +692,7 @@ typedef enum {
   ovrpTextureFormat_R11G11B10_FP = 3,
   ovrpTextureFormat_B8G8R8A8_sRGB = 4,
   ovrpTextureFormat_B8G8R8A8 = 5,
+  ovrpTextureFormat_R5G6B5 = 11,
 
   //depth texture formats
   ovrpTextureFormat_D16 = 6,
@@ -687,6 +719,8 @@ typedef enum {
   ovrpLayerFlag_ChromaticAberrationCorrection = (1 << 4),
   /// Does not allocate texture space within the swapchain
   ovrpLayerFlag_NoAllocation = (1 << 5),
+  /// Enable protected content, added in 1.23
+  ovrpLayerFlag_ProtectedContent = (1 << 6),
 } ovrpLayerFlags;
 
 /// Layer description used by ovrp_SetupLayer to create the layer
@@ -723,6 +757,7 @@ typedef struct {
 } ovrpLayerDesc_EyeFov;
 
 typedef OVRP_LAYER_DESC_TYPE ovrpLayerDesc_OffcenterCubemap;
+typedef OVRP_LAYER_DESC_TYPE ovrpLayerDesc_Equirect;
 
 typedef union {
   OVRP_LAYER_DESC_TYPE;
@@ -731,6 +766,7 @@ typedef union {
   ovrpLayerDesc_Cubemap Cubemap;
   ovrpLayerDesc_EyeFov EyeFov;
   ovrpLayerDesc_OffcenterCubemap OffcenterCubemap;
+  ovrpLayerDesc_Equirect Equirect;
 } ovrpLayerDescUnion;
 
 #undef OVRP_LAYER_DESC
@@ -787,6 +823,7 @@ typedef struct {
 } ovrpLayerSubmit_EyeFov;
 
 typedef OVRP_LAYER_SUBMIT_TYPE ovrpLayerSubmit_OffcenterCubemap;
+typedef OVRP_LAYER_SUBMIT_TYPE ovrpLayerSubmit_Equirect;
 
 typedef union {
   OVRP_LAYER_SUBMIT_TYPE;
@@ -795,6 +832,7 @@ typedef union {
   ovrpLayerSubmit_Cubemap Cubemap;
   ovrpLayerSubmit_EyeFov EyeFov;
   ovrpLayerSubmit_OffcenterCubemap OffcenterCubemap;
+  ovrpLayerSubmit_Equirect Equirect;
 } ovrpLayerSubmitUnion;
 
 #undef OVRP_LAYER_SUBMIT

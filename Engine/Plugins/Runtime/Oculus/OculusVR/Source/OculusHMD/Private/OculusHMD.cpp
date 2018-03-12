@@ -36,6 +36,13 @@
 #include "Runtime/UtilityShaders/Public/OculusShaders.h"
 #include "PipelineStateCache.h"
 
+#if WITH_OCULUS_PRIVATE_CODE
+#include "IOculusMRModule.h"
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+#include "OVR_Plugin_MixedReality.h"
+#endif
+#endif
+
 #if WITH_EDITOR
 #include "Editor/UnrealEd/Classes/Editor/EditorEngine.h"
 #endif
@@ -45,6 +52,10 @@
 #endif
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
+
+#include "OculusHMDModule.h" // for IsOVRPluginAvailable()
+
+#define OCULUS_PAUSED_IDLE_FPS 10
 
 namespace OculusHMD
 {
@@ -70,7 +81,7 @@ namespace OculusHMD
 	//-------------------------------------------------------------------------------------------------
 
 	FName FOculusHMD::GetSystemName() const
-	{
+		{
 		static FName SystemName(TEXT("OculusHMD"));
 		return SystemName;
 	}
@@ -145,6 +156,26 @@ namespace OculusHMD
 	}
 
 
+	void FOculusHMD::UpdateRTPoses()
+	{
+		CheckInRenderThread();
+		FGameFrame* CurrentFrame = GetFrame_RenderThread();
+		if (CurrentFrame)
+		{
+			if (!CurrentFrame->Flags.bRTLateUpdateDone)
+			{
+				ovrp_Update3(ovrpStep_Render, CurrentFrame->FrameNumber, 0.0);
+				CurrentFrame->Flags.bRTLateUpdateDone = true;
+			}
+
+		}
+		else
+		{
+			UE_LOG(LogHMD, Error, TEXT("Still no frame"));
+		}
+	}
+
+
 	void FOculusHMD::RefreshPoses()
 	{
 		// UNDONE Move ovrp_Update here?
@@ -152,7 +183,7 @@ namespace OculusHMD
 
 
 	bool FOculusHMD::GetCurrentPose(int32 InDeviceId, FQuat& OutOrientation, FVector& OutPosition)
-	{
+		{
 		OutOrientation = FQuat::Identity;
 		OutPosition = FVector::ZeroVector;
 
@@ -162,19 +193,17 @@ namespace OculusHMD
 		}
 
 		ovrpNode Node = TrackedDevices[InDeviceId].Node;
-		ovrpStep Step;
 		const FSettings* CurrentSettings;
 		FGameFrame* CurrentFrame;
 
 		if (InRenderThread())
 		{
-			Step = ovrpStep_Render;
 			CurrentSettings = GetSettings_RenderThread();
 			CurrentFrame = GetFrame_RenderThread();
+			UpdateRTPoses();
 		}
 		else if(InGameThread())
 		{
-			Step = ovrpStep_Game;
 			CurrentSettings = GetSettings();
 			CurrentFrame = NextFrameToRender.Get();
 		}
@@ -191,7 +220,7 @@ namespace OculusHMD
 		ovrpPoseStatef PoseState;
 		FPose Pose;
 
-		if (OVRP_FAILURE(ovrp_GetNodePoseState2(Step, Node, &PoseState)) ||
+		if (OVRP_FAILURE(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, Node, &PoseState)) ||
 			!ConvertPose_Internal(PoseState.Pose, Pose, CurrentSettings, CurrentFrame->WorldToMetersScale))
 		{
 			return false;
@@ -230,19 +259,17 @@ namespace OculusHMD
 			return false;
 		}
 
-		ovrpStep Step;
 		const FSettings* CurrentSettings;
 		FGameFrame* CurrentFrame;
 
 		if (InRenderThread())
 		{
-			Step = ovrpStep_Render;
 			CurrentSettings = GetSettings_RenderThread();
 			CurrentFrame = GetFrame_RenderThread();
+			UpdateRTPoses();
 		}
 		else if(InGameThread())
 		{
-			Step = ovrpStep_Game;
 			CurrentSettings = GetSettings();
 			CurrentFrame = NextFrameToRender.Get();
 		}
@@ -258,8 +285,8 @@ namespace OculusHMD
 
 		ovrpPoseStatef HmdPoseState, EyePoseState;
 
-		if (OVRP_FAILURE(ovrp_GetNodePoseState2(Step, ovrpNode_Head, &HmdPoseState)) ||
-			OVRP_FAILURE(ovrp_GetNodePoseState2(Step, Node, &EyePoseState)))
+		if (OVRP_FAILURE(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, ovrpNode_Head, &HmdPoseState)) ||
+			OVRP_FAILURE(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, Node, &EyePoseState)))
 		{
 			return false;
 		}
@@ -292,7 +319,7 @@ namespace OculusHMD
 		FPose Pose;
 		ovrpFrustum2f Frustum;
 
-		if (OVRP_FAILURE(ovrp_GetNodePoseState2(ovrpStep_Game, Node, &PoseState)) || !ConvertPose(PoseState.Pose, Pose) ||
+		if (OVRP_FAILURE(ovrp_GetNodePoseState3(ovrpStep_Render, OVRP_CURRENT_FRAMEINDEX, Node, &PoseState)) || !ConvertPose(PoseState.Pose, Pose) ||
 			OVRP_FAILURE(ovrp_GetNodeFrustum2(Node, &Frustum)))
 		{
 			return false;
@@ -338,7 +365,7 @@ namespace OculusHMD
 
 
 	EHMDTrackingOrigin::Type FOculusHMD::GetTrackingOrigin()
-		{
+	{
 		EHMDTrackingOrigin::Type rv = EHMDTrackingOrigin::Eye;
 
 		if (ovrp_GetInitialized() && OVRP_SUCCESS(ovrp_GetTrackingOriginType2(&TrackingOrigin)))
@@ -452,7 +479,9 @@ namespace OculusHMD
 		CheckInGameThread();
 
 		if (!ovrp_GetInitialized())
-				return false;
+		{
+			return false;
+		}
 
 #if WITH_EDITOR
 		if (GIsEditor)
@@ -659,13 +688,18 @@ namespace OculusHMD
 				bool bPrevPause = Settings->Flags.bPauseRendering;
 				Settings->Flags.bPauseRendering = !bAppHasVRFocus;
 
+				if (Settings->Flags.bPauseRendering && (GEngine->GetMaxFPS() != OCULUS_PAUSED_IDLE_FPS))
+				{
+					GEngine->SetMaxFPS(OCULUS_PAUSED_IDLE_FPS);
+				}
+
 				if (bPrevPause != Settings->Flags.bPauseRendering)
 				{
 					APlayerController* const PC = GEngine->GetFirstLocalPlayerController(InWorldContext.World());
 					if (Settings->Flags.bPauseRendering)
 					{
 						// focus is lost
-						GEngine->SetMaxFPS(10);
+						GEngine->SetMaxFPS(OCULUS_PAUSED_IDLE_FPS);
 
 						if (!FCoreDelegates::ApplicationWillEnterBackgroundDelegate.IsBound())
 						{
@@ -750,17 +784,44 @@ namespace OculusHMD
 			// Update tracking
 			if (!Splash->IsShown())
 			{
-				ovrp_Update3(ovrpStep_Game, Frame->FrameNumber, 0.0);
+				ovrp_Update3(ovrpStep_Render, Frame->FrameNumber, 0.0);
 			}
 		}
 
+#if WITH_OCULUS_PRIVATE_CODE
+
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+		if (ovrp_GetMixedRealityInitialized())
+		{
+			ovrp_UpdateExternalCamera();
+			ovrp_UpdateCameraDevices();
+			UCastingViewportClient* CastingViewportClient = nullptr;
+			for (auto ViewportClient : InWorldContext.CastingViewports)
+			{
+				if (ViewportClient && ViewportClient->bProjectToMirrorWindow)
+				{
+					CastingViewportClient = ViewportClient;
+					break;
+				}
+			}
+			if (CastingViewportClient)
+			{
+				CastingViewportRenderTexture = CastingViewportClient->GetCastingViewport()->GetRenderTargetTexture();
+			}
+			else
+			{
+				CastingViewportRenderTexture = nullptr;
+			}
+		}
+#endif
+
+#endif
+
 		if (GIsRequestingExit)
 		{
-			// need to shutdown HMD here, otherwise the whole shutdown process may take forever.
 			PreShutdown();
-			GEngine->ShutdownHMD();
-			// note, 'this' may become invalid after ShutdownHMD
 		}
+
 		return retval;
 	}
 
@@ -843,7 +904,7 @@ namespace OculusHMD
 		ovrpFrustum2f Frustum;
 
 		if (OVRP_SUCCESS(ovrp_GetNodeFrustum2(ovrpNode_EyeCenter, &Frustum)))
-	{
+		{
 			InOutVFOVInDegrees = FMath::RadiansToDegrees(FMath::Atan(Frustum.Fov.UpTan) + FMath::Atan(Frustum.Fov.DownTan));
 			InOutHFOVInDegrees = FMath::RadiansToDegrees(FMath::Atan(Frustum.Fov.LeftTan) + FMath::Atan(Frustum.Fov.RightTan));
 		}
@@ -851,14 +912,14 @@ namespace OculusHMD
 
 
 	void FOculusHMD::SetInterpupillaryDistance(float NewInterpupillaryDistance)
-		{
+	{
 		CheckInGameThread();
 
 		if (ovrp_GetInitialized())
-			{
+		{
 			ovrp_SetUserIPD2(NewInterpupillaryDistance);
 		}
-			}
+	}
 
 
 	float FOculusHMD::GetInterpupillaryDistance() const
@@ -868,12 +929,12 @@ namespace OculusHMD
 		float UserIPD;
 
 		if (!ovrp_GetInitialized() || OVRP_FAILURE(ovrp_GetUserIPD2(&UserIPD)))
-			{
+		{
 			return 0.0f;
-			}
+		}
 
 		return UserIPD;
-		}
+	}
 
 
 	bool FOculusHMD::GetHMDDistortionEnabled() const
@@ -955,11 +1016,11 @@ namespace OculusHMD
 
 
 	void FOculusHMD::DrawVisibleAreaMesh_RenderThread(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass) const
-	{
+		{
 		CheckInRenderThread();
 
 		DrawOcclusionMesh_RenderThread(RHICmdList, StereoPass, VisibleAreaMeshes);
-	}
+		}
 
 
 	bool FOculusHMD::IsStereoEnabled() const
@@ -984,11 +1045,11 @@ namespace OculusHMD
 
 
 	bool FOculusHMD::EnableStereo(bool bStereo)
-		{
+	{
 		CheckInGameThread();
 
 		return DoEnableStereo(bStereo);
-		}
+	}
 
 
 	void FOculusHMD::AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
@@ -1030,6 +1091,7 @@ namespace OculusHMD
 		FHeadMountedDisplayBase::CalculateStereoViewOffset(StereoPassType, ViewRotation, WorldToMeters, ViewLocation);
 	}
 
+
 	FMatrix FOculusHMD::GetStereoProjectionMatrix(EStereoscopicPass StereoPassType) const
 	{
 		CheckInGameThread();
@@ -1042,18 +1104,17 @@ namespace OculusHMD
 
 		// correct far and near planes for reversed-Z projection matrix
 		const float WorldScale = GetWorldToMetersScale() * (1.0 / 100.0f); // physical scale is 100 UUs/meter
-		float InNearZ = (Settings->NearClippingPlane) ? Settings->NearClippingPlane : (GNearClippingPlane * WorldScale);
-		float InFarZ = (Settings->FarClippingPlane) ? Settings->FarClippingPlane : (GNearClippingPlane * WorldScale);
+		float InNearZ = GNearClippingPlane * WorldScale;
 		if (StereoPassType == eSSP_MONOSCOPIC_EYE)
 		{
-			InNearZ = InFarZ = GetMonoCullingDistance() - 50.0f; //50.0f is the hardcoded OverlapDistance in FSceneViewFamily. Should probably be elsewhere.
+			InNearZ = GetMonoCullingDistance() - 50.0f; //50.0f is the hardcoded OverlapDistance in FSceneViewFamily. Should probably be elsewhere.
 		}
 
 		proj.M[3][3] = 0.0f;
 		proj.M[2][3] = 1.0f;
 
-		proj.M[2][2] = (InNearZ == InFarZ) ? 0.0f : InNearZ / (InNearZ - InFarZ);
-		proj.M[3][2] = (InNearZ == InFarZ) ? InNearZ : -InFarZ * InNearZ / (InNearZ - InFarZ);
+		proj.M[2][2] = 0.0f;
+		proj.M[3][2] = InNearZ;
 
 		return proj;
 	}
@@ -1080,6 +1141,14 @@ namespace OculusHMD
 
 		if (SpectatorScreenController)
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+			if (CastingViewportRenderTexture_RenderThread)
+			{
+				SrcTexture = CastingViewportRenderTexture_RenderThread;
+			}
+#endif
+#endif
 			SpectatorScreenController->RenderSpectatorScreen_RenderThread(RHICmdList, BackBuffer, SrcTexture, WindowSize);
 		}
 
@@ -1151,7 +1220,7 @@ namespace OculusHMD
 		float orthoDistance = OrthoDistance / 100.f;
 
 		for (int eyeIndex = 0; eyeIndex < 2; eyeIndex++)
-	{
+		{
 			const FIntRect& eyeRenderViewport = Settings->EyeRenderViewport[eyeIndex];
 			const ovrpMatrix4f& PerspectiveProjection = Settings->EyeProjectionMatrices[eyeIndex];
 
@@ -1194,17 +1263,8 @@ namespace OculusHMD
 	}
 
 
-	void FOculusHMD::SetClippingPlanes(float NCP, float FCP)
+	FVector2D FOculusHMD::GetEyeCenterPoint_RenderThread(EStereoscopicPass StereoPassType) const
 	{
-		CheckInGameThread();
-
-		Settings->NearClippingPlane = NCP;
-		Settings->FarClippingPlane = FCP;
-		Settings->Flags.bClippingPlanesOverride = false; // prevents from saving in .ini file
-	}
-
-	FVector2D FOculusHMD::GetEyeCenterPoint_RenderThread(EStereoscopicPass StereoPassType) const 
-	{ 
 		CheckInRenderThread();
 
 		check(IsStereoEnabled());
@@ -1215,14 +1275,14 @@ namespace OculusHMD
 
 		//0,0,1 is the straight ahead point, wherever it maps to is the center of the projection plane in -1..1 coordinates.  -1,-1 is bottom left.
 		const FVector4 ScreenCenter = StereoProjectionMatrix.TransformPosition(FVector(0.0f, 0.0f, 1.0f));
-		//transform into 0-1 screen coordinates 0,0 is top left.  
+		//transform into 0-1 screen coordinates 0,0 is top left.
 		const FVector2D CenterPoint(0.5f + (ScreenCenter.X / 2.0f), 0.5f - (ScreenCenter.Y / 2.0f) );
 
 		return CenterPoint;
 	}
 
 	FIntRect FOculusHMD::GetFullFlatEyeRect_RenderThread(FTexture2DRHIRef EyeTexture) const
-	{
+			{
 		check(IsInRenderingThread());
 		// Rift does this differently than other platforms, it already has an idea of what rectangle it wants to use stored.
 		FIntRect& EyeRect = Settings_RenderThread->EyeRenderViewport[0];
@@ -1293,24 +1353,7 @@ namespace OculusHMD
 	{
 		CheckInGameThread();
 
-		if (Settings->IsStereoEnabled())
-		{
-			if (LayerMap[0].IsValid())
-			{
-				ExecuteOnRenderThread([this](FRHICommandListImmediate& RHICmdList)
-				{
-					InitializeEyeLayer_RenderThread(RHICmdList);
-				});
-
-				const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetTextureSetProxy();
-
-				const FTexture2DRHIRef Tex2D = Viewport.GetRenderTargetTexture();
-				const FTexture2DRHIRef SwapChain = TextureSet->GetTexture2D();
-				return Tex2D != SwapChain;
-			}
-		}
-
-		return false;
+		return Settings->IsStereoEnabled() && bNeedReAllocateViewportRenderTarget;
 	}
 
 
@@ -1318,20 +1361,7 @@ namespace OculusHMD
 	{
 		CheckInRenderThread();
 
-		if (Frame_RenderThread.IsValid() && EyeLayer_RenderThread.IsValid())
-		{
-			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
-
-			if (TextureSet.IsValid())
-			{
-				if (DepthTarget->GetRenderTargetItem().ShaderResourceTexture != TextureSet->GetTexture2D())
-				{
-					return true;
-				}
-			}
-		}
-
-		return false;
+		return Settings_RenderThread->IsStereoEnabled() && bNeedReAllocateDepthTexture_RenderThread;
 	}
 
 
@@ -1349,12 +1379,13 @@ namespace OculusHMD
 
 			UE_LOG(LogHMD, Log, TEXT("Allocating Oculus %d x %d rendertarget swapchain"), SizeX, SizeY);
 
-			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetTextureSetProxy();
+			const FTextureSetProxyPtr& TextureSetProxy = EyeLayer_RenderThread->GetTextureSetProxy();
 
-			if (TextureSet.IsValid())
+			if (TextureSetProxy.IsValid())
 			{
-				OutTargetableTexture = TextureSet->GetTexture2D();
-				OutShaderResourceTexture = TextureSet->GetTexture2D();
+				OutTargetableTexture = TextureSetProxy->GetTexture2D();
+				OutShaderResourceTexture = TextureSetProxy->GetTexture2D();
+				bNeedReAllocateViewportRenderTarget = false;
 				return true;
 			}
 		}
@@ -1365,7 +1396,6 @@ namespace OculusHMD
 
 	bool FOculusHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 FlagsIn, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 	{
-		// Only called when RenderThread is suspended.  Both of these checks should pass.
 		CheckInRenderThread();
 
 		check(Index == 0);
@@ -1379,6 +1409,7 @@ namespace OculusHMD
 				UE_LOG(LogHMD, Log, TEXT("Allocating Oculus %d x %d depth rendertarget swapchain"), SizeX, SizeY);
 				OutTargetableTexture = TextureSet->GetTexture2D();
 				OutShaderResourceTexture = TextureSet->GetTexture2D();
+				bNeedReAllocateDepthTexture_RenderThread = false;
 				return true;
 			}
 		}
@@ -1607,7 +1638,7 @@ namespace OculusHMD
 		StereoLayerDesc.ShapeType = IStereoLayers::ELayerShape::CylinderLayer;
 		StereoLayerDesc.Texture = Texture;
 		StereoLayerDesc.Flags = IStereoLayers::ELayerFlags::LAYER_FLAG_TEX_CONTINUOUS_UPDATE;
-		//StereoLayerDesc.Flags |= IStereoLayers::ELayerFlags::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO;
+		StereoLayerDesc.Flags |= IStereoLayers::ELayerFlags::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO;
 #if PLATFORM_ANDROID
 		StereoLayerDesc.UVRect.Min.Y = 1.0f; //force no Yinvert
 #endif
@@ -1703,11 +1734,12 @@ namespace OculusHMD
 			const int32 GapMinY = ViewFamily.Views[0]->ViewRect.Min.Y;
 			const int32 GapMaxY = ViewFamily.Views[1]->ViewRect.Max.Y;
 
+			SetRenderTarget(RHICmdList, ViewFamily.RenderTarget->GetRenderTargetTexture(), FTextureRHIRef());
 			RHICmdList.SetViewport(GapMinX, GapMinY, 0, GapMaxX, GapMaxY, 1.0f);
 			DrawClearQuad(RHICmdList, FLinearColor::Black);
 		}
-#else 
-		// ensure we have attached JNI to this thread - this has to happen persistently as the JNI could detach if the app loses focus 
+#else
+		// ensure we have attached JNI to this thread - this has to happen persistently as the JNI could detach if the app loses focus
 		FAndroidApplication::GetJavaEnv();
 #endif
 
@@ -1735,7 +1767,21 @@ namespace OculusHMD
 	}
 
 
-	void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
+	int32 FOculusHMD::GetPriority() const
+	{
+		// We want to run after the FDefaultXRCamera's view extension
+		return -1;
+	}
+
+
+	bool FOculusHMD::IsActiveThisFrame(class FViewport* InViewport) const
+	{
+		// We need to use GEngine->IsStereoscopic3D in case the current viewport disallows running in stereo.
+		return GEngine && GEngine->IsStereoscopic3D(InViewport);
+	}
+
+
+void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
 	{
 		bool needsPokeAHole = false;
 		for (int32 LayerIndex = 0; LayerIndex < Layers_RenderThread.Num(); LayerIndex++)
@@ -1852,11 +1898,6 @@ namespace OculusHMD
 		}
 	}
 
-	bool FOculusHMD::IsActiveThisFrame(class FViewport* InViewport) const
-	{
-		// We need to use GEngine->IsStereoscopic3D in case the current viewport disallows running in stereo.
-		return GEngine && GEngine->IsStereoscopic3D(InViewport);
-	}
 
 	FOculusHMD::FOculusHMD(const FAutoRegister& AutoRegister)
 		: FSceneViewExtensionBase(AutoRegister)
@@ -1865,6 +1906,7 @@ namespace OculusHMD
 		Flags.Raw = 0;
 		OCFlags.Raw = 0;
 		TrackingOrigin = ovrpTrackingOrigin_EyeLevel;
+		OCFlags.NeedSetTrackingOrigin = true;
 		DeltaControlRotation = FRotator::ZeroRotator;  // used from ApplyHmdRotation
 		LastPlayerOrientation = FQuat::Identity;
 		LastPlayerLocation = FVector::ZeroVector;
@@ -1914,30 +1956,30 @@ namespace OculusHMD
 		else
 #endif
 #if OCULUS_HMD_SUPPORTED_PLATFORMS_D3D12
-			if (RHIString == TEXT("D3D12"))
-			{
-				CustomPresent = CreateCustomPresent_D3D12(this);
-			}
-			else
+		if (RHIString == TEXT("D3D12"))
+		{
+			CustomPresent = CreateCustomPresent_D3D12(this);
+		}
+		else
 #endif
 #if OCULUS_HMD_SUPPORTED_PLATFORMS_OPENGL
-				if (RHIString == TEXT("OpenGL"))
-				{
-					CustomPresent = CreateCustomPresent_OpenGL(this);
-				}
-				else
+		if (RHIString == TEXT("OpenGL"))
+		{
+			CustomPresent = CreateCustomPresent_OpenGL(this);
+		}
+		else
 #endif
 #if OCULUS_HMD_SUPPORTED_PLATFORMS_VULKAN
-					if (RHIString == TEXT("Vulkan"))
-					{
-						CustomPresent = CreateCustomPresent_Vulkan(this);
-					}
-					else
+		if (RHIString == TEXT("Vulkan"))
+		{
+			CustomPresent = CreateCustomPresent_Vulkan(this);
+		}
+		else
 #endif
-					{
-						UE_LOG(LogHMD, Warning, TEXT("%s is not currently supported by OculusHMD plugin"), *RHIString);
-						return false;
-					}
+		{
+			UE_LOG(LogHMD, Warning, TEXT("%s is not currently supported by OculusHMD plugin"), *RHIString);
+			return false;
+		}
 
 		// grab a pointer to the renderer module for displaying our mirror window
 		static const FName RendererModuleName("Renderer");
@@ -1996,25 +2038,7 @@ namespace OculusHMD
 		ReleaseDevice();
 
 		Settings.Reset();
-		Frame.Reset();
-		NextFrameToRender.Reset();
 		LayerMap.Reset();
-
-		ExecuteOnRenderThread([this]()
-		{
-			Settings_RenderThread.Reset();
-			Frame_RenderThread.Reset();
-			Layers_RenderThread.Reset();
-			EyeLayer_RenderThread.Reset();
-
-			ExecuteOnRHIThread([this]()
-			{
-				Settings_RHIThread.Reset();
-				Frame_RHIThread.Reset();
-				Layers_RHIThread.Reset();
-				EyeLayer_RHIThread.Reset();
-			});
-		});
 	}
 
 	void FOculusHMD::ApplicationPauseDelegate()
@@ -2063,12 +2087,16 @@ namespace OculusHMD
 				initializeFlags |= ovrpInitializeFlag_FocusAware;
 			}
 
-			if (OVRP_FAILURE(ovrp_Initialize4(
+			if (OVRP_FAILURE(ovrp_Initialize5(
 				CustomPresent->GetRenderAPI(),
 				logCallback,
 				activity,
 				CustomPresent->GetOvrpInstance(),
-				initializeFlags)))
+				CustomPresent->GetOvrpPhysicalDevice(),
+				CustomPresent->GetOvrpDevice(),
+				CustomPresent->GetOvrpCommandQueue(),
+				initializeFlags,
+				{ OVRP_VERSION })))
 			{
 				return false;
 			}
@@ -2088,14 +2116,15 @@ namespace OculusHMD
 		{
 			UE_LOG(LogHMD, Log, TEXT("OculusHMD plugin supports multiview!"));
 		}
-
-		ovrp_SetFunctionPointer(ovrpFunctionEndFrame, (void*)(&vrapi_SubmitFrame));
-		ovrp_SetFunctionPointer(ovrpFunctionCreateTexture, (void*)(&vrapi_CreateTextureSwapChain));
 #endif
 
 		ovrp_SetupDistortionWindow3(ovrpDistortionWindowFlag_None);
 		ovrp_SetSystemCpuLevel2(2);
 		ovrp_SetSystemGpuLevel2(3);
+		ovrp_SetAppCPUPriority2(ovrpBool_True);
+
+		bNeedReAllocateViewportRenderTarget = true;
+		bNeedReAllocateDepthTexture_RenderThread = false;
 
 		return true;
 	}
@@ -2120,66 +2149,73 @@ namespace OculusHMD
 
 		if (ovrp_GetInitialized())
 		{
-			return true; // already created and present
+			// Already created and present
+			return true;
 		}
 
 		if (!IsHMDConnected())
 		{
-			return false; // don't bother if HMD is not connected
+			// Don't bother if HMD is not connected
+			return false;
 		}
 
 		LoadFromIni();
 
-		if (InitializeSession())
-		{
-			OCFlags.NeedSetFocusToGameViewport = true;
-
-			if (CustomPresent->IsUsingCorrectDisplayAdapter())
-			{
-				if (OVRP_FAILURE(ovrp_GetSystemHeadsetType2(&Settings->SystemHeadset)))
-				{
-					Settings->SystemHeadset = ovrpSystemHeadset_None;
-				}
-
-				UpdateHmdRenderInfo();
-				UpdateStereoRenderingParams();
-
-				ExecuteOnRenderThread([this](FRHICommandListImmediate& RHICmdList)
-				{
-					InitializeEyeLayer_RenderThread(RHICmdList);
-				});
-
-				ovrp_Update3(ovrpStep_Game, 0, 0.0);
-
-				if (!HiddenAreaMeshes[0].IsValid() || !HiddenAreaMeshes[1].IsValid())
-				{
-					SetupOcclusionMeshes();
-				}
-
-#if !UE_BUILD_SHIPPING
-				DrawDebugDelegateHandle = UDebugDrawService::Register(TEXT("Game"), FDebugDrawDelegate::CreateRaw(this, &FOculusHMD::DrawDebug));
-#endif
-
-				// Do not set VR focus in Editor by just creating a device; Editor may have it created w/o requiring focus.
-				// Instead, set VR focus in OnBeginPlay (VR Preview will run there first).
-				if (!GIsEditor)
-				{
-					FApp::SetUseVRFocus(true);
-					FApp::SetHasVRFocus(true);
-				}
-			}
-			else
-			{
-				// UNDONE Message that you need to restart application to use correct adapter
-				ShutdownSession();
-			}
-		}
-		else
+		if (!InitializeSession())
 		{
 			UE_LOG(LogHMD, Log, TEXT("HMD initialization failed"));
+			return false;
 		}
 
-		return ovrp_GetInitialized() != ovrpBool_False;
+		OCFlags.NeedSetFocusToGameViewport = true;
+
+		if (!CustomPresent->IsUsingCorrectDisplayAdapter())
+		{
+			UE_LOG(LogHMD, Error, TEXT("Using incorrect display adapter for HMD."));
+			ShutdownSession();
+			return false;
+		}
+
+		if (OVRP_FAILURE(ovrp_GetSystemHeadsetType2(&Settings->SystemHeadset)))
+		{
+			Settings->SystemHeadset = ovrpSystemHeadset_None;
+		}
+
+		UpdateHmdRenderInfo();
+		UpdateStereoRenderingParams();
+
+		ExecuteOnRenderThread([this](FRHICommandListImmediate& RHICmdList)
+		{
+			InitializeEyeLayer_RenderThread(RHICmdList);
+		});
+
+		if (!EyeLayer_RenderThread.IsValid() || !EyeLayer_RenderThread->GetTextureSetProxy().IsValid())
+		{
+			UE_LOG(LogHMD, Error, TEXT("Failed to create eye layer texture set."));
+			ShutdownSession();
+			return false;
+		}
+
+		ovrp_Update3(ovrpStep_Render, 0, 0.0);
+
+		if (!HiddenAreaMeshes[0].IsValid() || !HiddenAreaMeshes[1].IsValid())
+		{
+			SetupOcclusionMeshes();
+		}
+
+#if !UE_BUILD_SHIPPING
+		DrawDebugDelegateHandle = UDebugDrawService::Register(TEXT("Game"), FDebugDrawDelegate::CreateRaw(this, &FOculusHMD::DrawDebug));
+#endif
+
+		// Do not set VR focus in Editor by just creating a device; Editor may have it created w/o requiring focus.
+		// Instead, set VR focus in OnBeginPlay (VR Preview will run there first).
+		if (!GIsEditor)
+		{
+			FApp::SetUseVRFocus(true);
+			FApp::SetHasVRFocus(true);
+		}
+
+		return true;
 	}
 
 
@@ -2210,8 +2246,21 @@ namespace OculusHMD
 					{
 						CustomPresent->ReleaseResources_RHIThread();
 					}
+
+					Settings_RHIThread.Reset();
+					Frame_RHIThread.Reset();
+					Layers_RHIThread.Reset();
 				});
+
+				Settings_RenderThread.Reset();
+				Frame_RenderThread.Reset();
+				Layers_RenderThread.Reset();
+				EyeLayer_RenderThread.Reset();
 			});
+
+			Frame.Reset();
+			NextFrameToRender.Reset();
+			LastFrameToRender.Reset();
 
 #if !UE_BUILD_SHIPPING
 			UDebugDrawService::Unregister(DrawDebugDelegateHandle);
@@ -2305,15 +2354,11 @@ namespace OculusHMD
 		CheckInGameThread();
 
 		// Update PixelDensity
-		float PixelDensity = Settings->PixelDensity;
-
 		float AdaptiveGpuPerformanceScale;
 		if (Settings->bPixelDensityAdaptive && OVRP_SUCCESS(ovrp_GetAdaptiveGpuPerformanceScale2(&AdaptiveGpuPerformanceScale)))
 		{
-			PixelDensity *= FMath::Sqrt(AdaptiveGpuPerformanceScale);
+			Settings->UpdatePixelDensity(Settings->PixelDensity * FMath::Sqrt(AdaptiveGpuPerformanceScale));
 		}
-
-		PixelDensity = FMath::Clamp(PixelDensity, Settings->PixelDensityMin, Settings->PixelDensityMax);
 
 		// Update EyeLayer
 		FLayerPtr* EyeLayerFound = LayerMap.Find(0);
@@ -2335,10 +2380,6 @@ namespace OculusHMD
 #endif
 
 		ovrpLayerDesc_EyeFov EyeLayerDesc;
-		ovrpFrustum2f depthFrustum;
-		depthFrustum.zNear = GNearClippingPlane / GetWorldToMetersScale();
-		depthFrustum.zFar = 0;
-		depthFrustum.Fov.DownTan = depthFrustum.Fov.UpTan = depthFrustum.Fov.RightTan = depthFrustum.Fov.LeftTan = 0;
 
 		if (OVRP_SUCCESS(ovrp_CalculateEyeLayerDesc2(
 			Layout,
@@ -2346,13 +2387,12 @@ namespace OculusHMD
 			Settings->Flags.bHQDistortion ? 0 : 1,
 			1, // UNDONE
 			CustomPresent->GetDefaultOvrpTextureFormat(),
-			Settings->Flags.bCompositeDepth ? ovrpTextureFormat_D24_S8 : ovrpTextureFormat_None,
-			depthFrustum,
+			Settings->Flags.bCompositeDepth ? CustomPresent->GetDefaultDepthOvrpTextureFormat() : ovrpTextureFormat_None,
 			0,
 			&EyeLayerDesc)))
 		{
 			// Update viewports
-			float ViewportScale = Settings->bPixelDensityAdaptive ? PixelDensity / Settings->PixelDensityMax : 1.0f;
+			float ViewportScale = Settings->bPixelDensityAdaptive ? Settings->PixelDensity / Settings->PixelDensityMax : 1.0f;
 			ovrpSizei rtSize = EyeLayerDesc.TextureSize;
 			ovrpSizei vpSizeMax = EyeLayerDesc.MaxViewportSize;
 			ovrpRecti vpRect[3];
@@ -2389,10 +2429,10 @@ namespace OculusHMD
 			Settings->PerspectiveProjection[1] = ovrpMatrix4f_Projection(frustumRight, false);
 			Settings->PerspectiveProjection[2] = ovrpMatrix4f_Projection(frustumCenter, false);
 
-			// Update screen percentage
-			if (!FMath::IsNearlyEqual(Settings->PixelDensity, PixelDensity))
+			// Flag if need to recreate render targets
+			if (!EyeLayer->CanReuseResources(EyeLayer_RenderThread.Get()))
 			{
-				Settings->PixelDensity = PixelDensity;
+				bNeedReAllocateViewportRenderTarget = true;
 			}
 		}
 	}
@@ -2402,7 +2442,6 @@ namespace OculusHMD
 	{
 		CheckInGameThread();
 
-		static const auto ScreenPercentageCVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("r.ScreenPercentage"));
 		ovrp_GetSystemDisplayFrequency2(&Settings->VsyncToNextVsync);
 	}
 
@@ -2423,6 +2462,14 @@ namespace OculusHMD
 			else
 			{
 				Layers_RenderThread.Add(EyeLayer);
+			}
+
+			if (EyeLayer->GetDepthTextureSetProxy().IsValid())
+			{
+				if (!EyeLayer_RenderThread.IsValid() || EyeLayer->GetDepthTextureSetProxy() != EyeLayer_RenderThread->GetDepthTextureSetProxy())
+				{
+					bNeedReAllocateDepthTexture_RenderThread = true;
+				}
 			}
 
 			EyeLayer_RenderThread = EyeLayer;
@@ -2742,12 +2789,12 @@ namespace OculusHMD
 	{
 		CheckInGameThread();
 
-		if (!Frame.IsValid())
+		if (!NextFrameToRender.IsValid())
 		{
 			return false;
 		}
 
-		return ConvertPose_Internal(InPose, OutPose, Settings.Get(), Frame->WorldToMetersScale);
+		return ConvertPose_Internal(InPose, OutPose, Settings.Get(), NextFrameToRender->WorldToMetersScale);
 	}
 
 
@@ -2778,7 +2825,7 @@ namespace OculusHMD
 	}
 
 
-	FVector FOculusHMD::ScaleAndMovePointWithPlayer(ovrpVector3f& OculusHMDPoint) const
+	FVector FOculusHMD::ScaleAndMovePointWithPlayer(ovrpVector3f& OculusHMDPoint)
 	{
 		CheckInGameThread();
 
@@ -2790,6 +2837,14 @@ namespace OculusHMD
 		FRotator RotateWithPlayer = LastPlayerOrientation.Rotator();
 		FVector TransformWithPlayer = RotateWithPlayer.RotateVector(ConvertedPoint);
 		TransformWithPlayer = FVector(TranslationMatrix.TransformPosition(TransformWithPlayer));
+
+		if (GetXRCamera(HMDDeviceId)->GetUseImplicitHMDPosition())
+		{
+			FQuat HeadOrientation = FQuat::Identity;
+			FVector HeadPosition;
+			GetCurrentPose(HMDDeviceId, HeadOrientation, HeadPosition);
+			TransformWithPlayer -= RotateWithPlayer.RotateVector(HeadPosition);
+		}
 
 		return TransformWithPlayer;
 	}
@@ -2846,15 +2901,17 @@ namespace OculusHMD
 	}
 
 
-	void FOculusHMD::SetPixelDensity(float NewPD)
+	void FOculusHMD::SetPixelDensity(float PixelDensity)
 	{
 		CheckInGameThread();
-
-		Settings->PixelDensity = FMath::Clamp(NewPD, ClampPixelDensityMin, ClampPixelDensityMax);
-		Settings->PixelDensityMin = FMath::Min(Settings->PixelDensity, Settings->PixelDensityMin);
-		Settings->PixelDensityMax = FMath::Max(Settings->PixelDensity, Settings->PixelDensityMax);
+		Settings->UpdatePixelDensity(PixelDensity);
 	}
 
+	void FOculusHMD::SetTiledMultiResLevel(ETiledMultiResLevel multiresLevel)
+	{
+		CheckInGameThread();
+		Settings->MultiResLevel = multiresLevel;
+	}
 
 	bool FOculusHMD::DoEnableStereo(bool bStereo)
 	{
@@ -2919,6 +2976,8 @@ namespace OculusHMD
 				StartGameFrame_GameThread();
 				StartRenderFrame_GameThread();
 
+				ovrp_Update3(ovrpStep_Render, Frame->FrameNumber, 0.0);
+
 				// Set viewport size to Rift resolution
 				SceneVP->SetViewportSize(Settings->RenderTargetSize.X, Settings->RenderTargetSize.Y);
 
@@ -2943,14 +3002,6 @@ namespace OculusHMD
 
 		return Settings->Flags.bStereoEnabled;
 	}
-
-
-	void FOculusHMD::ResetStereoRenderingParams()
-	{
-		Settings->NearClippingPlane = Settings->FarClippingPlane = 0.f;
-		Settings->Flags.bClippingPlanesOverride = true; // forces zeros to be written to ini file to use default values next run
-	}
-
 
 	void FOculusHMD::ResetControlRotation() const
 	{
@@ -2985,6 +3036,7 @@ namespace OculusHMD
 		Result->WorldToMetersScale = CachedWorldToMetersScale;
 		Result->MonoCullingDistance = CachedMonoCullingDistance;
 		Result->NearClippingPlane = GNearClippingPlane;
+		Result->MultiResLevel = Settings->MultiResLevel;
 		return Result;
 	}
 
@@ -3050,11 +3102,6 @@ namespace OculusHMD
 
 			XLayers.Sort(FLayerPtr_CompareId());
 
-			if (!XFrame->Flags.bSplashIsShown)
-			{
-				ovrp_Update3(ovrpStep_Render, NextFrameToRender->FrameNumber, 0.0);
-			}
-
 			ExecuteOnRenderThread_DoNotWait([this, XSettings, XFrame, XLayers](FRHICommandListImmediate& RHICmdList)
 			{
 				if (XFrame.IsValid())
@@ -3090,8 +3137,9 @@ namespace OculusHMD
 					}
 
 					Layers_RenderThread = XLayers;
-					check(Layers_RenderThread.Num() > 0 && Layers_RenderThread[0]->GetId() == 0);
-					EyeLayer_RenderThread = Layers_RenderThread[0];
+#if WITH_OCULUS_PRIVATE_CODE
+					CastingViewportRenderTexture_RenderThread = CastingViewportRenderTexture;
+#endif
 				}
 			});
 		}
@@ -3143,13 +3191,14 @@ namespace OculusHMD
 					Settings_RHIThread = XSettings;
 					Frame_RHIThread = XFrame;
 					Layers_RHIThread = XLayers;
-					check(Layers_RHIThread.Num() > 0 && Layers_RHIThread[0]->GetId() == 0);
-					EyeLayer_RHIThread = Layers_RHIThread[0];
 
 					if (Frame_RHIThread->ShowFlags.Rendering && !Frame_RHIThread->Flags.bSplashIsShown)
 					{
 //						UE_LOG(LogHMD, Log, TEXT("ovrp_BeginFrame4 %u"), Frame_RHIThread->FrameNumber);
 						ovrp_BeginFrame4(Frame_RHIThread->FrameNumber, CustomPresent->GetOvrpCommandQueue());
+#if PLATFORM_ANDROID
+						ovrp_SetTiledMultiResLevel((ovrpTiledMultiResLevel)Frame_RHIThread->MultiResLevel);
+#endif
 					}
 				}
 			});
@@ -3171,9 +3220,14 @@ namespace OculusHMD
 				Layers.Sort(FLayerPtr_CompareTotal());
 				TArray<const ovrpLayerSubmit*> LayerSubmitPtr;
 
-				LayerSubmitPtr.SetNum(Layers.Num());
+				int LayerNum = Layers.Num();
+#if PLATFORM_ANDROID
+				LayerNum = FMath::Min(LayerNum, 4);
+#endif
 
-				for (int32 LayerIndex = 0; LayerIndex < Layers.Num(); LayerIndex++)
+				LayerSubmitPtr.SetNum(LayerNum);
+
+				for (int32 LayerIndex = 0; LayerIndex < LayerNum; LayerIndex++)
 				{
 					LayerSubmitPtr[LayerIndex] = Layers[LayerIndex]->UpdateLayer_RHIThread(Settings_RHIThread.Get(), Frame_RHIThread.Get());
 				}
@@ -3241,11 +3295,7 @@ namespace OculusHMD
 		{
 			Settings->PixelDensityMin = FMath::Clamp(FCString::Atof(*Args[0]), ClampPixelDensityMin, ClampPixelDensityMax);
 			Settings->PixelDensityMax = FMath::Max(Settings->PixelDensityMin, Settings->PixelDensityMax);
-			float NewPixelDensity = FMath::Clamp(Settings->PixelDensity, Settings->PixelDensityMin, Settings->PixelDensityMax);
-			if (!FMath::IsNearlyEqual(NewPixelDensity, Settings->PixelDensity))
-			{
-				Settings->PixelDensity = NewPixelDensity;
-			}
+			Settings->UpdatePixelDensity(Settings->PixelDensity);
 		}
 		Ar.Logf(TEXT("vr.oculus.PixelDensity.min = \"%1.2f\""), Settings->PixelDensityMin);
 	}
@@ -3259,11 +3309,7 @@ namespace OculusHMD
 		{
 			Settings->PixelDensityMax = FMath::Clamp(FCString::Atof(*Args[0]), ClampPixelDensityMin, ClampPixelDensityMax);
 			Settings->PixelDensityMin = FMath::Min(Settings->PixelDensityMin, Settings->PixelDensityMax);
-			float NewPixelDensity = FMath::Clamp(Settings->PixelDensity, Settings->PixelDensityMin, Settings->PixelDensityMax);
-			if (!FMath::IsNearlyEqual(NewPixelDensity, Settings->PixelDensity))
-			{
-				Settings->PixelDensity = NewPixelDensity;
-			}
+			Settings->UpdatePixelDensity(Settings->PixelDensity);
 		}
 		Ar.Logf(TEXT("vr.oculus.PixelDensity.max = \"%1.2f\""), Settings->PixelDensityMax);
 	}
@@ -3347,8 +3393,7 @@ namespace OculusHMD
 
 	void FOculusHMD::ShowSettingsCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 	{
-		Ar.Logf(TEXT("stereo ipd=%.4f\n nearPlane=%.4f farPlane=%.4f"), GetInterpupillaryDistance(),
-			(Settings->NearClippingPlane) ? Settings->NearClippingPlane : GNearClippingPlane, Settings->FarClippingPlane);
+		Ar.Logf(TEXT("stereo ipd=%.4f\n nearPlane=%.4f"), GetInterpupillaryDistance(), GNearClippingPlane);
 	}
 
 
@@ -3361,27 +3406,6 @@ namespace OculusHMD
 		Ar.Logf(TEXT("vr.oculus.Debug.IPD = %f"), GetInterpupillaryDistance());
 	}
 
-
-	void FOculusHMD::FCPCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
-	{
-		if (Args.Num() > 0)
-		{
-			Settings->FarClippingPlane = FCString::Atof(*Args[0]);
-			Settings->Flags.bClippingPlanesOverride = true;
-		}
-		Ar.Logf(TEXT("vr.oculus.Debug.FCP = %f"), Settings->FarClippingPlane);
-	}
-
-
-	void FOculusHMD::NCPCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
-	{
-		if (Args.Num() > 0)
-		{
-			Settings->NearClippingPlane = FCString::Atof(*Args[0]);
-			Settings->Flags.bClippingPlanesOverride = true;
-		}
-		Ar.Logf(TEXT("vr.oculus.Debug.NCP = %f"), (Settings->NearClippingPlane) ? Settings->NearClippingPlane : GNearClippingPlane);
-	}
 #endif // !UE_BUILD_SHIPPING
 
 
@@ -3454,22 +3478,6 @@ namespace OculusHMD
 				Settings->Flags.bUpdateOnRT = v;
 				UE_LOG(LogHMD, Warning, TEXT("Deprecated config setting: 'bUpdateOnRT' in [GearVR.Settings] has been deprecated. This setting has been merged with its conterpart in [Oculus.Settings] (which will override this value if it's set). Please make sure to acount for this change and then remove all [GearVR.Settings] from your config file."));
 			}
-			if (GConfig->GetFloat(OldGearVRSettings, TEXT("FarClippingPlane"), f, GEngineIni))
-			{
-				if (ensure(!FMath::IsNaN(f)))
-				{
-					Settings->FarClippingPlane = FMath::Max(f, 0.0f);
-				}
-				UE_LOG(LogHMD, Warning, TEXT("Deprecated config setting: 'FarClippingPlane' in [GearVR.Settings] has been deprecated. This setting has been merged with its conterpart in [Oculus.Settings] (which will override this value if it's set). Please make sure to acount for this change and then remove all [GearVR.Settings] from your config file."));
-			}
-			if (GConfig->GetFloat(OldGearVRSettings, TEXT("NearClippingPlane"), f, GEngineIni))
-			{
-				if (ensure(!FMath::IsNaN(f)))
-				{
-					Settings->NearClippingPlane = FMath::Max(f, 0.0f);
-				}
-				UE_LOG(LogHMD, Warning, TEXT("Deprecated config setting: 'NearClippingPlane' in [GearVR.Settings] has been deprecated. This setting has been merged with its conterpart in [Oculus.Settings] (which will override this value if it's set). Please make sure to acount for this change and then remove all [GearVR.Settings] from your config file."));
-			}
 		}
 
 		if (GConfig->GetBool(OculusSettings, TEXT("bChromaAbCorrectionEnabled"), v, GEngineIni))
@@ -3491,16 +3499,16 @@ namespace OculusHMD
 		if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensityMin"), f, GEngineIni))
 		{
 			check(!FMath::IsNaN(f));
-			Settings->PixelDensityMin = FMath::Clamp(f, ClampPixelDensityMin, ClampPixelDensityMax);
-		}
-		if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensity"), f, GEngineIni))
-		{
-			check(!FMath::IsNaN(f));
-			Settings->PixelDensity = FMath::Clamp(f, Settings->PixelDensityMin, Settings->PixelDensityMax);
+			Settings->PixelDensityMin = FMath::Clamp(f, Settings->PixelDensityMin, ClampPixelDensityMax);
 		}
 		if (GConfig->GetBool(OculusSettings, TEXT("bPixelDensityAdaptive"), v, GEngineIni))
 		{
 			Settings->bPixelDensityAdaptive = v;
+		}
+		if (GConfig->GetFloat(OculusSettings, TEXT("PixelDensity"), f, GEngineIni))
+		{
+			check(!FMath::IsNaN(f));
+			Settings->UpdatePixelDensity(f);
 		}
 		if (GConfig->GetBool(OculusSettings, TEXT("bDirectMultiview"), v, GEngineIni))
 		{
@@ -3517,16 +3525,6 @@ namespace OculusHMD
 		if (GConfig->GetBool(OculusSettings, TEXT("bUpdateOnRT"), v, GEngineIni))
 		{
 			Settings->Flags.bUpdateOnRT = v;
-		}
-		if (GConfig->GetFloat(OculusSettings, TEXT("FarClippingPlane"), f, GEngineIni))
-		{
-			check(!FMath::IsNaN(f));
-			Settings->FarClippingPlane = FMath::Max(f, 0.0f);
-		}
-		if (GConfig->GetFloat(OculusSettings, TEXT("NearClippingPlane"), f, GEngineIni))
-		{
-			check(!FMath::IsNaN(f));
-			Settings->NearClippingPlane = FMath::Max(f, 0.0f);
 		}
 		if (GConfig->GetBool(OculusSettings, TEXT("bCompositeDepth"), v, GEngineIni))
 		{
@@ -3558,11 +3556,6 @@ namespace OculusHMD
 
 		GConfig->SetBool(OculusSettings, TEXT("bUpdateOnRT"), Settings->Flags.bUpdateOnRT, GEngineIni);
 
-		if (Settings->Flags.bClippingPlanesOverride)
-		{
-			GConfig->SetFloat(OculusSettings, TEXT("FarClippingPlane"), Settings->FarClippingPlane, GEngineIni);
-			GConfig->SetFloat(OculusSettings, TEXT("NearClippingPlane"), Settings->NearClippingPlane, GEngineIni);
-		}
 #endif // !UE_BUILD_SHIPPING
 	}
 

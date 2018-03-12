@@ -1897,7 +1897,7 @@ namespace UnrealBuildTool
 			bool bAddDensity = (SDKLevelInt >= 24) && (MinSDKVersion >= 17);
 
 			// disable GearVR if not supported platform (in this case only armv7 for now)
-			if (UE4Arch != "-armv7")
+			if (UE4Arch != "-armv7" && UE4Arch != "-arm64")
 			{
 				if (bPackageForGearVR)
 				{

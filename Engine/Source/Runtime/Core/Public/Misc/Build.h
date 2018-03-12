@@ -33,7 +33,7 @@
 	#define UE_BUILD_DOCS				0
 #endif
 
-/** 
+/**
  *   Whether compiling for dedicated server or not.
  */
 #ifndef UE_SERVER
@@ -96,8 +96,12 @@
 	#define WITH_PERFCOUNTERS		0
 #endif
 
+#ifndef WITH_OCULUS_PRIVATE_CODE
+	#define WITH_OCULUS_PRIVATE_CODE		1
+#endif
+
 /**
- * Unreal Header Tool requires extra data stored in the structure of a few core files. This enables some ifdef hacks to make this work. 
+ * Unreal Header Tool requires extra data stored in the structure of a few core files. This enables some ifdef hacks to make this work.
  * Set via UBT, do not modify directly
  */
 #ifndef HACK_HEADER_GENERATOR
@@ -229,7 +233,7 @@
  *
  * Throughout the code base there are specific things which dramatically affect performance and/or
  * are good indicators that something is wrong with the content.  These have PERF_ISSUE_FINDER in the
- * comment near the define to turn the individual checks on. 
+ * comment near the define to turn the individual checks on.
  *
  * e.g. #if defined(PERF_LOG_DYNAMIC_LOAD_OBJECT) || LOOKING_FOR_PERF_ISSUES
  *

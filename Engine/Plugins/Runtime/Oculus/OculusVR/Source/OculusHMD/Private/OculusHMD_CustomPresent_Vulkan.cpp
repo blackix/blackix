@@ -27,6 +27,7 @@ public:
 	// Implementation of FCustomPresent, called by Plugin itself
 	virtual bool IsUsingCorrectDisplayAdapter() const override;
 	virtual void* GetOvrpInstance() const override;
+	virtual void* GetOvrpPhysicalDevice() const override;
 	virtual void* GetOvrpDevice() const override;
 	virtual void* GetOvrpCommandQueue() const override;
 	virtual FTextureRHIRef CreateTexture_RenderThread(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, FClearValueBinding InBinding, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, ERHIResourceType InResourceType, ovrpTextureHandle InTexture, uint32 InTexCreateFlags) override;
@@ -35,7 +36,7 @@ public:
 
 
 FVulkanCustomPresent::FVulkanCustomPresent(FOculusHMD* InOculusHMD) :
-	FCustomPresent(InOculusHMD, ovrpRenderAPI_Vulkan, PF_R8G8B8A8, false)
+	FCustomPresent(InOculusHMD, ovrpRenderAPI_Vulkan, PF_R8G8B8A8, false, false)
 {
 }
 
@@ -46,8 +47,8 @@ bool FVulkanCustomPresent::IsUsingCorrectDisplayAdapter() const
 	const void* luid;
 
 	FVulkanDynamicRHI* const DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
-	if (OVRP_SUCCESS(ovrp_GetDisplayAdapterId2(&luid)) && 
-		luid && 
+	if (OVRP_SUCCESS(ovrp_GetDisplayAdapterId2(&luid)) &&
+		luid &&
 		DynamicRHI->GetDevice()->GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
 	{
 		const VkPhysicalDeviceIDPropertiesKHR& vkPhysicalDeviceIDProperties = DynamicRHI->GetDevice()->GetDeviceIdProperties();
@@ -67,6 +68,13 @@ void* FVulkanCustomPresent::GetOvrpInstance() const
 {
 	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
 	return DynamicRHI->GetInstance();
+}
+
+
+void* FVulkanCustomPresent::GetOvrpPhysicalDevice() const
+{
+	FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+	return DynamicRHI->GetDevice()->GetPhysicalHandle();
 }
 
 

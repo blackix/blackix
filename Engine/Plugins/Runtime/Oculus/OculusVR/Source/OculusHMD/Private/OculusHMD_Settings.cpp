@@ -12,9 +12,7 @@ namespace OculusHMD
 //-------------------------------------------------------------------------------------------------
 
 FSettings::FSettings() :
-	  NearClippingPlane(0)
-	, FarClippingPlane(0)
-	, BaseOffset(0, 0, 0)
+	BaseOffset(0, 0, 0)
 	, BaseOrientation(FQuat::Identity)
 	, PixelDensity(1.0f)
 	, PixelDensityMin(0.5f)
@@ -46,18 +44,27 @@ TSharedPtr<FSettings, ESPMode::ThreadSafe> FSettings::Clone() const
 	return NewSettings;
 }
 
-bool FSettings::UpdatePixelDensityFromScreenPercentage()
+
+void FSettings::UpdatePixelDensity(float InPixelDensity)
+{
+	if (bPixelDensityAdaptive)
+	{
+		PixelDensity = FMath::Clamp(InPixelDensity, PixelDensityMin, PixelDensityMax);
+	}
+	else
+	{
+		PixelDensity = FMath::Clamp(InPixelDensity, ClampPixelDensityMin, ClampPixelDensityMax);
+	}
+}
+
+
+void FSettings::UpdatePixelDensityFromScreenPercentage()
 {
 	if (!bPixelDensityAdaptive)
 	{
 		static const auto ScreenPercentageCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-		float ScreenPercentage = ScreenPercentageCVar->GetFloat() / 100.;
-
-		PixelDensity = FMath::Clamp(ScreenPercentage, ClampPixelDensityMin, ClampPixelDensityMax);
-		PixelDensityMin = FMath::Min(PixelDensity, PixelDensityMin);
-		PixelDensityMax = FMath::Max(PixelDensity, PixelDensityMax);
+		PixelDensity = FMath::Clamp(ScreenPercentageCVar->GetFloat() / 100.0f, ClampPixelDensityMin, ClampPixelDensityMax);
 	}
-	return true;
 }
 
 

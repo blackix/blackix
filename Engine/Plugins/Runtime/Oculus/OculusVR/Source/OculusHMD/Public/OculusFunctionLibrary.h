@@ -87,6 +87,16 @@ enum class EGearVRControllerHandedness_DEPRECATED : uint8
 	Unknown_DEPRECATED
 };
 
+/** DEPRECATED in 4.17 : All functions using this enum have been deprecated and it will be removed with them. If you are still needing this, then please create your own replacement.*/
+UENUM(BlueprintType)
+enum class ETiledMultiResLevel : uint8
+{
+	ETiledMultiResLevel_Off = 0,
+	ETiledMultiResLevel_LMSLow,
+	ETiledMultiResLevel_LMSMedium,
+	ETiledMultiResLevel_LMSHigh
+};
+
 UCLASS()
 class OCULUSHMD_API UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 {
@@ -297,6 +307,48 @@ class OCULUSHMD_API UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	*/
 	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
 	static bool HasSystemOverlayPresent();
+
+	/**
+	* Returns the GPU utilization availability and value
+	*/
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static void GetGPUUtilization(bool& IsGPUAvailable, float& GPUUtilization);
+
+	/**
+	* Returns the current multiresolution level
+	*/
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static ETiledMultiResLevel GetTiledMultiresLevel();
+
+	/**
+	* Set the requested multiresolution level for the next frame
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void SetTiledMultiresLevel(ETiledMultiResLevel level);
+
+	/**
+	* Returns the current device's name
+	*/
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static FString GetDeviceName();
+
+	/**
+	* Returns the current available frequencies
+	*/
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static TArray<float> GetAvailableDisplayFrequencies();
+
+	/**
+	* Returns the current display frequency
+	*/
+	UFUNCTION(BlueprintPure, Category = "Input|OculusLibrary")
+	static float GetCurrentDisplayFrequency();
+
+	/**
+	* Sets the requested display frequency
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void SetDisplayFrequency(float RequestedFrequency);
 
 	/**
 	 * Returns IStereoLayers interface to work with overlays.

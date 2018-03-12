@@ -5,6 +5,10 @@
 #include "OculusHMDPrivateRHI.h"
 #include "Containers/StringConv.h"
 #include "Misc/EngineVersion.h"
+#if PLATFORM_ANDROID
+#include "AndroidApplication.h"
+#endif
+
 
 //-------------------------------------------------------------------------------------------------
 // FOculusHMDModule
@@ -68,8 +72,8 @@ bool FOculusHMDModule::PreInit()
 		}
 #endif
 
-		// Only init module when running Game or Editor, and Oculus service is running
-		if (!IsRunningDedicatedServer() && OculusHMD::IsOculusServiceRunning())
+		// Init module if app can render and Oculus service is running
+		if (FApp::CanEverRender() && OculusHMD::IsOculusServiceRunning())
 		{
 #if PLATFORM_WINDOWS
 			// Load OVRPlugin
@@ -82,7 +86,13 @@ bool FOculusHMDModule::PreInit()
 			}
 #endif
 			// Initialize OVRPlugin
-			if (OVRP_FAILURE(ovrp_PreInitialize2()))
+#if PLATFORM_ANDROID
+			void* activity = (void*) FAndroidApplication::GetGameActivityThis();
+#else
+			void* activity = nullptr;
+#endif
+
+			if (OVRP_FAILURE(ovrp_PreInitialize3(activity)))
 			{
 				UE_LOG(LogHMD, Log, TEXT("Failed initializing OVRPlugin %s"), TEXT(OVRP_VERSION_STR));
 				return false;
@@ -94,17 +104,29 @@ bool FOculusHMDModule::PreInit()
 			{
 				SetGraphicsAdapterLuid(*(const uint64*) displayAdapterId);
 			}
+			else
+			{
+				UE_LOG(LogHMD, Log, TEXT("Could not determine HMD display adapter"));
+			}
 
 			const WCHAR* audioInDeviceId;
 			if (OVRP_SUCCESS(ovrp_GetAudioInDeviceId2((const void**) &audioInDeviceId)) && audioInDeviceId)
 			{
 				GConfig->SetString(TEXT("Oculus.Settings"), TEXT("AudioInputDevice"), audioInDeviceId, GEngineIni);
 			}
+			else
+			{
+				UE_LOG(LogHMD, Log, TEXT("Could not determine HMD audio input device"));
+			}
 
 			const WCHAR* audioOutDeviceId;
 			if (OVRP_SUCCESS(ovrp_GetAudioOutDeviceId2((const void**) &audioOutDeviceId)) && audioOutDeviceId)
 			{
 				GConfig->SetString(TEXT("Oculus.Settings"), TEXT("AudioOutputDevice"), audioOutDeviceId, GEngineIni);
+			}
+			else
+			{
+				UE_LOG(LogHMD, Log, TEXT("Could not determine HMD audio output device"));
 			}
 #endif
 
@@ -122,7 +144,7 @@ bool FOculusHMDModule::PreInit()
 bool FOculusHMDModule::IsHMDConnected()
 {
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
-	if (!IsRunningDedicatedServer() && OculusHMD::IsOculusHMDConnected())
+	if (FApp::CanEverRender() && OculusHMD::IsOculusHMDConnected())
 	{
 		return true;
 	}

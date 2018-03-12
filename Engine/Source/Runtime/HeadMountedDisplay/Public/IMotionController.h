@@ -12,8 +12,9 @@ UENUM(BlueprintType)
 enum class ETrackingStatus : uint8
 {
 	NotTracked,
+	NotDisplayed,
 	InertialOnly,
-	Tracked
+	Tracked,
 };
 
 /**

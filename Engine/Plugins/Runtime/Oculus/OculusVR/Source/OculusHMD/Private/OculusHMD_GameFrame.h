@@ -27,6 +27,8 @@ public:
 	FVector PlayerLocation;			// (CalculateStereoViewOffset)
 	float NearClippingPlane;		// (GetStereoProjectionMatrix)
 
+	ETiledMultiResLevel MultiResLevel; //OnStartGameFrame
+
 	union
 	{
 		struct
@@ -35,6 +37,8 @@ public:
 			uint64			bSplashIsShown : 1;
 			/** True, if spectator screen is active */
 			uint64			bSpectatorScreenActive : 1;
+			/** True, if the render thread updated its poses */
+			uint64			bRTLateUpdateDone : 1;
 		};
 		uint64 Raw;
 	} Flags;
