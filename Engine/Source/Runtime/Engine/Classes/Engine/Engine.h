@@ -37,6 +37,7 @@ class SViewport;
 class UEditorEngine;
 class UGameUserSettings;
 class UGameViewportClient;
+class UCastingViewportClient;
 class ULocalPlayer;
 class UNetDriver;
 
@@ -323,7 +324,10 @@ struct FWorldContext
 	UPROPERTY()
 	class UGameViewportClient* GameViewport;
 
-	UPROPERTY()
+    UPROPERTY()
+    TArray<class UCastingViewportClient*> CastingViewports;
+
+    UPROPERTY()
 	class UGameInstance* OwningGameInstance;
 
 	/** A list of active net drivers */

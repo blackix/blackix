@@ -472,32 +472,32 @@ namespace UnrealBuildTool
 								"			<Configuration>Debug</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>ARM</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
-								"		<ProjectConfiguration Include=\"Release|ARM\"> " + ProjectFileGenerator.NewLine +
-								"			<Configuration>Release</Configuration> " + ProjectFileGenerator.NewLine +
+								"		<ProjectConfiguration Include=\"Development|ARM\"> " + ProjectFileGenerator.NewLine +
+								"			<Configuration>Development</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>ARM</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
 								"		<ProjectConfiguration Include=\"Debug|ARM64\"> " + ProjectFileGenerator.NewLine +
 								"			<Configuration>Debug</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>ARM64</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
-								"		<ProjectConfiguration Include=\"Release|ARM64\"> " + ProjectFileGenerator.NewLine +
-								"			<Configuration>Release</Configuration> " + ProjectFileGenerator.NewLine +
+								"		<ProjectConfiguration Include=\"Development|ARM64\"> " + ProjectFileGenerator.NewLine +
+								"			<Configuration>Development</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>ARM64</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
 								"		<ProjectConfiguration Include=\"Debug|x64\"> " + ProjectFileGenerator.NewLine +
 								"			<Configuration>Debug</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>x64</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
-								"		<ProjectConfiguration Include=\"Release|x64\"> " + ProjectFileGenerator.NewLine +
-								"			<Configuration>Release</Configuration> " + ProjectFileGenerator.NewLine +
+								"		<ProjectConfiguration Include=\"Development|x64\"> " + ProjectFileGenerator.NewLine +
+								"			<Configuration>Development</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>x64</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
 								"		<ProjectConfiguration Include=\"Debug|x86\"> " + ProjectFileGenerator.NewLine +
 								"			<Configuration>Debug</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>x86</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
-								"		<ProjectConfiguration Include=\"Release|x86\"> " + ProjectFileGenerator.NewLine +
-								"			<Configuration>Release</Configuration> " + ProjectFileGenerator.NewLine +
+								"		<ProjectConfiguration Include=\"Development|x86\"> " + ProjectFileGenerator.NewLine +
+								"			<Configuration>Development</Configuration> " + ProjectFileGenerator.NewLine +
 								"			<Platform>x86</Platform> " + ProjectFileGenerator.NewLine +
 								"		</ProjectConfiguration> " + ProjectFileGenerator.NewLine +
 								"	</ItemGroup> " + ProjectFileGenerator.NewLine +
@@ -519,7 +519,7 @@ namespace UnrealBuildTool
 								"		<UseDebugLibraries>true</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
 								"		<UseDebugLibraries>false</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
@@ -527,7 +527,7 @@ namespace UnrealBuildTool
 								"		<UseDebugLibraries>true</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM64\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM64\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
 								"		<UseDebugLibraries>false</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
@@ -535,7 +535,7 @@ namespace UnrealBuildTool
 								"		<UseDebugLibraries>true</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x64\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x64\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
 								"		<UseDebugLibraries>false</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
@@ -543,7 +543,7 @@ namespace UnrealBuildTool
 								"		<UseDebugLibraries>true</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x86\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x86\'\" Label=\"Configuration\"> " + ProjectFileGenerator.NewLine +
 								"		<UseDebugLibraries>false</UseDebugLibraries> " + ProjectFileGenerator.NewLine +
 								"		<TargetName>$(RootNamespace)</TargetName> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
@@ -552,26 +552,26 @@ namespace UnrealBuildTool
 								"	<PropertyGroup Label=\"UserMacros\" /> " + ProjectFileGenerator.NewLine +
 								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|ARM\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM\'\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
 								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|ARM64\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM64\'\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM64\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
 								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|x64\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x64\'\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x64\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
 								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|x86\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
-								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x86\'\"> " + ProjectFileGenerator.NewLine +
+								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x86\'\"> " + ProjectFileGenerator.NewLine +
 								"	</PropertyGroup> " + ProjectFileGenerator.NewLine +
 								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|ARM\'\"> " + ProjectFileGenerator.NewLine +
 								"		<AntPackage> " + ProjectFileGenerator.NewLine +
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
 								"	</ItemDefinitionGroup> " + ProjectFileGenerator.NewLine +
-								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM\'\"> " + ProjectFileGenerator.NewLine +
+								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM\'\"> " + ProjectFileGenerator.NewLine +
 								"		<AntPackage> " + ProjectFileGenerator.NewLine +
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
@@ -581,7 +581,7 @@ namespace UnrealBuildTool
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
 								"	</ItemDefinitionGroup> " + ProjectFileGenerator.NewLine +
-								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|ARM64\'\"> " + ProjectFileGenerator.NewLine +
+								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|ARM64\'\"> " + ProjectFileGenerator.NewLine +
 								"		<AntPackage> " + ProjectFileGenerator.NewLine +
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
@@ -591,7 +591,7 @@ namespace UnrealBuildTool
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
 								"	</ItemDefinitionGroup> " + ProjectFileGenerator.NewLine +
-								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x64\'\"> " + ProjectFileGenerator.NewLine +
+								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x64\'\"> " + ProjectFileGenerator.NewLine +
 								"		<AntPackage> " + ProjectFileGenerator.NewLine +
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
@@ -601,7 +601,7 @@ namespace UnrealBuildTool
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
 								"	</ItemDefinitionGroup> " + ProjectFileGenerator.NewLine +
-								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Release|x86\'\"> " + ProjectFileGenerator.NewLine +
+								"	<ItemDefinitionGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Development|x86\'\"> " + ProjectFileGenerator.NewLine +
 								"		<AntPackage> " + ProjectFileGenerator.NewLine +
 								"			<AndroidAppLibName /> " + ProjectFileGenerator.NewLine +
 								"		</AntPackage> " + ProjectFileGenerator.NewLine +
