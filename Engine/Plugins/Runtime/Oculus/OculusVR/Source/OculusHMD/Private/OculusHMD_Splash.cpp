@@ -244,6 +244,23 @@ void FSplash::Startup()
 }
 
 
+void FSplash::ReleaseResources_RHIThread()
+{
+	for (int32 LayerIndex = 0; LayerIndex < Layers_RenderThread.Num(); LayerIndex++)
+	{
+		Layers_RenderThread[LayerIndex]->ReleaseResources_RHIThread();
+	}
+
+	for (int32 LayerIndex = 0; LayerIndex < Layers_RHIThread.Num(); LayerIndex++)
+	{
+		Layers_RHIThread[LayerIndex]->ReleaseResources_RHIThread();
+	}
+
+	Layers_RenderThread.Reset();
+	Layers_RHIThread.Reset();
+}
+
+
 void FSplash::PreShutdown()
 {
 	CheckInGameThread();
