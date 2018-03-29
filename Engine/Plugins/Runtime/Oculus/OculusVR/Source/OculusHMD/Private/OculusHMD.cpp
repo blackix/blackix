@@ -2420,6 +2420,11 @@ void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneVie
 						Layers_RHIThread[LayerIndex]->ReleaseResources_RHIThread();
 					}
 
+					if (Splash.IsValid())
+					{
+						Splash->ReleaseResources_RHIThread();
+					}
+
 					if (CustomPresent)
 					{
 						CustomPresent->ReleaseResources_RHIThread();
@@ -3289,7 +3294,7 @@ void FOculusHMD::RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneVie
 //			UE_LOG(LogHMD, Log, TEXT("StartRenderFrame %u"), NextFrameToRender->FrameNumber);
 
 			LastFrameToRender = NextFrameToRender;
-			NextFrameToRender->Flags.bSplashIsShown = Splash->IsShown();
+			NextFrameToRender->Flags.bSplashIsShown = Splash->IsShown() || NextFrameToRender->FrameNumber != NextFrameNumber;
 
 			if (NextFrameToRender->ShowFlags.Rendering && !NextFrameToRender->Flags.bSplashIsShown)
 			{
