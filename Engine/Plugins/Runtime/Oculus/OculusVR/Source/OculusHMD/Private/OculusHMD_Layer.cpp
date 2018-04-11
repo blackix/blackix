@@ -319,7 +319,7 @@ void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandL
 			uint32 NumSamplesTileMem = 1;
 			if (OvrpLayerDesc.Shape == ovrpShape_EyeFov)
 			{
-				ovrp_GetSystemRecommendedMSAALevel2((int*) &NumSamplesTileMem);
+				NumSamplesTileMem = CustomPresent->GetSystemRecommendedMSAALevel();
 			}
 
 			ERHIResourceType ResourceType;			

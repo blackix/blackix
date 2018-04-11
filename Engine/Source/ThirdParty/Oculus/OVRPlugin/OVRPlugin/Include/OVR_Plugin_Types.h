@@ -28,11 +28,13 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 21
+#define OVRP_MINOR_VERSION 24
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
 #define OVRP_VERSION_STR OVRP_STRINGIFY(OVRP_MAJOR_VERSION.OVRP_MINOR_VERSION.OVRP_PATCH_VERSION)
+
+#define OVRP_CURRENT_FRAMEINDEX -1
 
 #ifndef OVRP_EXPORT
 #ifdef _WIN32
@@ -103,7 +105,21 @@ typedef enum {
   ovrpInitializeFlag_SupportsVRToggle = (1 << 1),
   /// Supports Life Cycle Focus (Dash)
   ovrpInitializeFlag_FocusAware = (1 << 2),
+  /// Turn off Legacy Core Affinity Patch
+  /// Background: Some legacy unity versions set thread affinities wrong on newer hardware like Oculus Go
+  /// We need patch it in the runtime for published legacy apps.
+  /// This flag will be passed from fixed Unity versions explicitly, so we can skip the runtime patch mechanism since we already have proper fixes.
+  ovrpInitializeFlag_NoLegacyCoreAffinityPatch = (1 << 3),
 } ovrpInitializeFlags;
+
+
+/// Thread Performance
+typedef enum {
+  ovrpThreadPef_DeadLine_Normal = 0,
+  ovrpThreadPef_DeadLine_Hard = 1,
+  ovrpThreadPef_DeadLine_Soft = 2,
+  ovrpThreadPef_EnumSize = 0x7fffffff
+} ovrpThreadPerf;
 
 /// Identifies an eye in a stereo pair.
 typedef enum {
@@ -184,7 +200,7 @@ typedef enum {
   ovrpUI_None = -1,
   ovrpUI_GlobalMenu = 0,
   ovrpUI_ConfirmQuit,
-  ovrpUI_GlobalMenuTutorial,
+  ovrpUI_GlobalMenuTutorial, // Deprecated
   ovrpUI_EnumSize = 0x7fffffff
 } ovrpUI;
 
@@ -643,8 +659,6 @@ typedef enum {
 
 /// A timestep type corresponding to a use case for tracking data.
 typedef enum {
-  /// Updated from game thread at start of frame.
-  ovrpStep_Game = -2,
   /// Updated from game thread at end of frame, to hand-off state to Render thread.
   ovrpStep_Render = -1,
   /// Updated from physics thread, once per simulation step.
@@ -705,6 +719,8 @@ typedef enum {
   ovrpLayerFlag_ChromaticAberrationCorrection = (1 << 4),
   /// Does not allocate texture space within the swapchain
   ovrpLayerFlag_NoAllocation = (1 << 5),
+  /// Enable protected content, added in 1.23
+  ovrpLayerFlag_ProtectedContent = (1 << 6),
 } ovrpLayerFlags;
 
 /// Layer description used by ovrp_SetupLayer to create the layer

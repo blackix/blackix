@@ -308,6 +308,18 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 		// Always grow scene render targets in the editor.
 		SceneTargetsSizingMethod = Grow;
 	}	
+#if WITH_OCULUS_PRIVATE_CODE
+	else if (ViewFamily.bIsCasting)
+	{
+		// Always grow scene render targets when casting viewport is used.
+		SceneTargetsSizingMethod = Grow;
+	}
+#endif
+	else if (bIsSceneCapture || bIsReflectionCapture)
+	{
+		// Always grow scene render targets if it's a SceneCapture or ReflectionCapture.
+		SceneTargetsSizingMethod = Grow;
+	}
 	else
 	{
 		// Otherwise use the setting specified by the console variable.

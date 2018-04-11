@@ -897,6 +897,11 @@ public:
 		return PLATFORM_HAS_TOUCH_MAIN_SCREEN;
 	}
 
+	static bool IsStereoOnly()
+	{
+		return false;
+	}
+
 	/*
 	 * Returns whether the volume buttons are handled by the system
 	 */
