@@ -2,6 +2,7 @@
 
 #pragma once
 #include "OculusHMDPrivate.h"
+#include "ProceduralMeshComponent.h"
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 #include "OculusHMD_CustomPresent.h"
@@ -43,9 +44,13 @@ public:
 	const IStereoLayers::FLayerDesc& GetDesc() const { return Desc; }
 	void SetEyeLayerDesc(const ovrpLayerDesc_EyeFov& InEyeLayerDesc, const ovrpRecti InViewportRect[ovrpEye_Count]);
 	const FTextureSetProxyPtr& GetTextureSetProxy() const { return TextureSetProxy; }
+	const FTextureSetProxyPtr& GetRightTextureSetProxy() const { return RightTextureSetProxy; }
 	const FTextureSetProxyPtr& GetDepthTextureSetProxy() const { return DepthTextureSetProxy; }
 	void MarkTextureForUpdate() { bUpdateTexture = true; }
 	bool NeedsPokeAHole() { return (Desc.Flags & IStereoLayers::LAYER_FLAG_SUPPORT_DEPTH) != 0; }
+	void HandlePokeAHoleComponent();
+	void BuildPokeAHoleMesh(TArray<FVector>& Vertices, TArray<int32>& Triangles, TArray<FVector2D>& UV0);
+
 	FTextureRHIRef GetTexture() { return Desc.Texture; }
 
 	TSharedPtr<FLayer, ESPMode::ThreadSafe> Clone() const;
@@ -54,11 +59,9 @@ public:
 	void Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandListImmediate& RHICmdList, const FLayer* InLayer = nullptr);
 	void UpdateTexture_RenderThread(FCustomPresent* CustomPresent, FRHICommandListImmediate& RHICmdList);
 
-	const ovrpLayerSubmit* UpdateLayer_RHIThread(const FSettings* Settings, const FGameFrame* Frame);
+	const ovrpLayerSubmit* UpdateLayer_RHIThread(const FSettings* Settings, const FGameFrame* Frame, const int LayerIndex);
 	void IncrementSwapChainIndex_RHIThread(FCustomPresent* CustomPresent);
 	void ReleaseResources_RHIThread();
-
-	void DrawPokeAHoleMesh(FRHICommandList& RHICmdList, const FMatrix& matrix, float scale, bool invertCoords);
 
 protected:
 	uint32 Id;
@@ -74,6 +77,9 @@ protected:
 	bool bUpdateTexture;
 	bool bInvertY;
 	bool bHasDepth;
+
+	UProceduralMeshComponent* PokeAHoleComponentPtr;
+	AActor* PokeAHoleActor;
 };
 
 typedef TSharedPtr<FLayer, ESPMode::ThreadSafe> FLayerPtr;
