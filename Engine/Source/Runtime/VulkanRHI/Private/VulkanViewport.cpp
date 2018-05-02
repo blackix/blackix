@@ -87,11 +87,17 @@ FVulkanViewport::~FVulkanViewport()
 
 		TextureViews[Index].Destroy(*Device);
 
-		Device->NotifyDeletedImage(BackBufferImages[Index]);
+		if (BackBufferImages[Index])
+		{
+			Device->NotifyDeletedImage(BackBufferImages[Index]);
+		}
 	}
 
-	SwapChain->Destroy();
-	delete SwapChain;
+	if (SwapChain)
+	{
+		SwapChain->Destroy();
+		delete SwapChain;
+	}
 
 	RHI->Viewports.Remove(this);
 }
@@ -169,7 +175,7 @@ FVulkanTexture2D* FVulkanViewport::GetBackBuffer(FRHICommandList& RHICmdList)
 	check(IsInRenderingThread());
 	//FRCLog::Printf(FString::Printf(TEXT("FVulkanViewport::GetBackBuffer(), AcquiredImageIndex=%d %s"), AcquiredImageIndex, RenderingBackBuffer ? TEXT("BB") : TEXT("NullBB")));
 
-	if (!RenderingBackBuffer)
+	if (!RenderingBackBuffer && SwapChain)
 	{
 		check(DelayAcquireBackBuffer() == false);
 
@@ -403,9 +409,12 @@ void FVulkanViewport::RecreateSwapchain(void* NewNativeWindow, bool bForce)
 		TextureViews[Index].Destroy(*Device);
 	}
 
-	SwapChain->Destroy();
-	delete SwapChain;
-	SwapChain = nullptr;
+	if (SwapChain)
+	{
+		SwapChain->Destroy();
+		delete SwapChain;
+		SwapChain = nullptr;
+	}
 
 	for (VkImage& BackBufferImage : BackBufferImages)
 	{
@@ -428,8 +437,11 @@ void FVulkanViewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscree
 
 	for (VkImage& BackBufferImage : BackBufferImages)
 	{
-		Device->NotifyDeletedRenderTarget(BackBufferImage);
-		BackBufferImage = VK_NULL_HANDLE;
+		if (BackBufferImage)
+		{
+			Device->NotifyDeletedRenderTarget(BackBufferImage);
+			BackBufferImage = VK_NULL_HANDLE;
+		}
 	}
 
 	for (int32 Index = 0; Index < NUM_BUFFERS; ++Index)
@@ -439,9 +451,12 @@ void FVulkanViewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscree
 
 	Device->GetDeferredDeletionQueue().ReleaseResources(true);
 
-	SwapChain->Destroy();
-	delete SwapChain;
-	SwapChain = nullptr;
+	if (SwapChain)
+	{
+		SwapChain->Destroy();
+		delete SwapChain;
+		SwapChain = nullptr;
+	}
 
 	Device->GetDeferredDeletionQueue().ReleaseResources(true);
 
@@ -453,45 +468,48 @@ void FVulkanViewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscree
 
 void FVulkanViewport::CreateSwapchain()
 {
-	uint32 DesiredNumBackBuffers = NUM_BUFFERS;
-
-	TArray<VkImage> Images;
-	SwapChain = new FVulkanSwapChain(
-		RHI->Instance, *Device, WindowHandle,
-		PixelFormat, SizeX, SizeY,
-		&DesiredNumBackBuffers,
-		Images
-		);
-
-	check(Images.Num() == NUM_BUFFERS);
-
-	FVulkanCmdBuffer* CmdBuffer = Device->GetImmediateContext().GetCommandBufferManager()->GetUploadCmdBuffer();
-	ensure(CmdBuffer->IsOutsideRenderPass());
-
-	for (int32 Index = 0; Index < Images.Num(); ++Index)
+	if (!FPlatformMisc::IsStereoOnly())
 	{
-		BackBufferImages[Index] = Images[Index];
+		uint32 DesiredNumBackBuffers = NUM_BUFFERS;
 
-		FName Name = FName(*FString::Printf(TEXT("BackBuffer%d"), Index));
-		//BackBuffers[Index]->SetName(Name);
+		TArray<VkImage> Images;
+		SwapChain = new FVulkanSwapChain(
+			RHI->Instance, *Device, WindowHandle,
+			PixelFormat, SizeX, SizeY,
+			&DesiredNumBackBuffers,
+			Images
+			);
 
-		TextureViews[Index].Create(*Device, Images[Index], VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, PixelFormat, UEToVkFormat(PixelFormat, false), 0, 1, 0, 1);
+		check(Images.Num() == NUM_BUFFERS);
 
-		// Clear the swapchain to avoid a validation warning, and transition to ColorAttachment
+		FVulkanCmdBuffer* CmdBuffer = Device->GetImmediateContext().GetCommandBufferManager()->GetUploadCmdBuffer();
+		ensure(CmdBuffer->IsOutsideRenderPass());
+
+		for (int32 Index = 0; Index < Images.Num(); ++Index)
 		{
-			VkImageSubresourceRange Range;
-			FMemory::Memzero(Range);
-			Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			Range.baseMipLevel = 0;
-			Range.levelCount = 1;
-			Range.baseArrayLayer = 0;
-			Range.layerCount = 1;
+			BackBufferImages[Index] = Images[Index];
 
-			VkClearColorValue Color;
-			FMemory::Memzero(Color);
-			VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::Undefined, EImageLayoutBarrier::TransferDest, Range);
-			VulkanRHI::vkCmdClearColorImage(CmdBuffer->GetHandle(), Images[Index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &Color, 1, &Range);
-			VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::TransferDest, EImageLayoutBarrier::ColorAttachment, Range);
+			FName Name = FName(*FString::Printf(TEXT("BackBuffer%d"), Index));
+			//BackBuffers[Index]->SetName(Name);
+
+			TextureViews[Index].Create(*Device, Images[Index], VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT, PixelFormat, UEToVkFormat(PixelFormat, false), 0, 1, 0, 1);
+
+			// Clear the swapchain to avoid a validation warning, and transition to ColorAttachment
+			{
+				VkImageSubresourceRange Range;
+				FMemory::Memzero(Range);
+				Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				Range.baseMipLevel = 0;
+				Range.levelCount = 1;
+				Range.baseArrayLayer = 0;
+				Range.layerCount = 1;
+
+				VkClearColorValue Color;
+				FMemory::Memzero(Color);
+				VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::Undefined, EImageLayoutBarrier::TransferDest, Range);
+				VulkanRHI::vkCmdClearColorImage(CmdBuffer->GetHandle(), Images[Index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &Color, 1, &Range);
+				VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), Images[Index], EImageLayoutBarrier::TransferDest, EImageLayoutBarrier::ColorAttachment, Range);
+			}
 		}
 	}
 
@@ -540,24 +558,27 @@ bool FVulkanViewport::Present(FVulkanCmdBuffer* CmdBuffer, FVulkanQueue* Queue, 
 	//Transition back buffer to presentable and submit that command
 	check(CmdBuffer->IsOutsideRenderPass());
 
-	if (DelayAcquireBackBuffer() && RenderingBackBuffer)
+	if (SwapChain)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_VulkanAcquireBackBuffer);
-		if (!DoCheckedSwapChainJob(DoAcquireImageIndex))
+		if (DelayAcquireBackBuffer() && RenderingBackBuffer)
 		{
-			UE_LOG(LogVulkanRHI, Fatal, TEXT("Swapchain acquire image index failed!"));
+			SCOPE_CYCLE_COUNTER(STAT_VulkanAcquireBackBuffer);
+			if (!DoCheckedSwapChainJob(DoAcquireImageIndex))
+			{
+				UE_LOG(LogVulkanRHI, Fatal, TEXT("Swapchain acquire image index failed!"));
+			}
+			CopyImageToBackBuffer(CmdBuffer->GetHandle(), true, RenderingBackBuffer->Surface.Image, BackBufferImages[AcquiredImageIndex], SizeX, SizeY);
 		}
-		CopyImageToBackBuffer(CmdBuffer->GetHandle(), true, RenderingBackBuffer->Surface.Image, BackBufferImages[AcquiredImageIndex], SizeX, SizeY);
-	}
-	else
-	{
-		//FRCLog::Printf(FString::Printf(TEXT("FVulkanViewport::Present(), AcquiredImageIndex=%d"), AcquiredImageIndex));
-		check(AcquiredImageIndex != -1);
+		else
+		{
+			//FRCLog::Printf(FString::Printf(TEXT("FVulkanViewport::Present(), AcquiredImageIndex=%d"), AcquiredImageIndex));
+			check(AcquiredImageIndex != -1);
 
-		check(RHIBackBuffer == nullptr || RHIBackBuffer->Surface.Image == BackBufferImages[AcquiredImageIndex]);
+			check(RHIBackBuffer == nullptr || RHIBackBuffer->Surface.Image == BackBufferImages[AcquiredImageIndex]);
 
-		//#todo-rco: Might need to NOT be undefined...
-		VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), BackBufferImages[AcquiredImageIndex], EImageLayoutBarrier::Undefined, EImageLayoutBarrier::Present, VulkanRHI::SetupImageSubresourceRange());
+			//#todo-rco: Might need to NOT be undefined...
+			VulkanRHI::ImagePipelineBarrier(CmdBuffer->GetHandle(), BackBufferImages[AcquiredImageIndex], EImageLayoutBarrier::Undefined, EImageLayoutBarrier::Present, VulkanRHI::SetupImageSubresourceRange());
+		}
 	}
 
 
@@ -599,7 +620,7 @@ bool FVulkanViewport::Present(FVulkanCmdBuffer* CmdBuffer, FVulkanQueue* Queue, 
 	}
 
 	bool bResult = false;
-	if (bNeedNativePresent && (DelayAcquireBackBuffer() || RHIBackBuffer != nullptr))
+	if (bNeedNativePresent && (DelayAcquireBackBuffer() || RHIBackBuffer != nullptr) && SwapChain)
 	{
 		// Present the back buffer to the viewport window.
 		auto SwapChainJob = [Queue, PresentQueue](FVulkanViewport* Viewport)

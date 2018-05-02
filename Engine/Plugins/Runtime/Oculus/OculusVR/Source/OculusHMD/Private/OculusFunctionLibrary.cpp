@@ -93,7 +93,7 @@ void UOculusFunctionLibrary::GetRawSensorData(FVector& AngularAcceleration, FVec
 	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
 	{
 		ovrpPoseStatef state;
-		if (OVRP_SUCCESS(ovrp_GetNodePoseState2(ovrpStep_Game, OculusHMD::ToOvrpNode(DeviceType), &state)))
+		if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, OVRP_CURRENT_FRAMEINDEX, OculusHMD::ToOvrpNode(DeviceType), &state)))
 		{
 			AngularAcceleration = OculusHMD::ToFVector(state.AngularAcceleration);
 			LinearAcceleration = OculusHMD::ToFVector(state.Acceleration);
@@ -114,7 +114,7 @@ bool UOculusFunctionLibrary::IsDeviceTracked(ETrackedDeviceType DeviceType)
 		ovrpBool present;
 		if (OVRP_SUCCESS(ovrp_GetNodePresent2(OculusHMD::ToOvrpNode(DeviceType), &present)))
 		{
-			return present == ovrpBool_True;
+			return present != ovrpBool_False;
 		}
 		else
 		{
@@ -406,14 +406,10 @@ bool UOculusFunctionLibrary::HasInputFocus()
 	const OculusHMD::FOculusHMD* const OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
 	{
-		ovrpBool HasFocus = ovrpBool_False;
+		ovrpBool HasFocus;
 		if (OVRP_SUCCESS(ovrp_GetAppHasInputFocus(&HasFocus)))
 		{
-			return HasFocus == ovrpBool_True;
-		}
-		else
-		{
-			return false;
+			return HasFocus != ovrpBool_False;
 		}
 	}
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
@@ -426,15 +422,10 @@ bool UOculusFunctionLibrary::HasSystemOverlayPresent()
 	const OculusHMD::FOculusHMD* const OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr && OculusHMD->IsHMDActive())
 	{
-		ovrpBool IsPresent = ovrpBool_False;
-
-		if (OVRP_SUCCESS(ovrp_GetAppHasInputFocus(&IsPresent)))
+		ovrpBool HasFocus;
+		if (OVRP_SUCCESS(ovrp_GetAppHasInputFocus(&HasFocus)))
 		{
-			return IsPresent == ovrpBool_False;
-		}
-		else
-		{
-			return false;
+			return HasFocus == ovrpBool_False;
 		}
 	}
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
@@ -444,6 +435,8 @@ bool UOculusFunctionLibrary::HasSystemOverlayPresent()
 void UOculusFunctionLibrary::GetGPUUtilization(bool& IsGPUAvailable, float& GPUUtilization)
 {
 	IsGPUAvailable = false;
+	GPUUtilization = 0.0f;
+
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	const OculusHMD::FOculusHMD* const OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr)
@@ -451,11 +444,10 @@ void UOculusFunctionLibrary::GetGPUUtilization(bool& IsGPUAvailable, float& GPUU
 		ovrpBool GPUAvailable;
 		if (OVRP_SUCCESS(ovrp_GetGPUUtilSupported(&GPUAvailable)))
 		{
-			IsGPUAvailable = (GPUAvailable == ovrpBool_True);
-
+			IsGPUAvailable = (GPUAvailable != ovrpBool_False);
 			ovrp_GetGPUUtilLevel(&GPUUtilization);
 		}
-}
+	}
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 }
 
@@ -476,9 +468,11 @@ ETiledMultiResLevel UOculusFunctionLibrary::GetTiledMultiresLevel()
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr)
 	{
-		ovrpTiledMultiResLevel lvl = ovrpTiledMultiResLevel_Off;
-		ovrp_GetTiledMultiResLevel(&lvl);
-		return (ETiledMultiResLevel)lvl;
+		ovrpTiledMultiResLevel lvl;
+		if (OVRP_SUCCESS(ovrp_GetTiledMultiResLevel(&lvl)))
+		{
+			return (ETiledMultiResLevel)lvl;
+		}
 	}
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 	return ETiledMultiResLevel::ETiledMultiResLevel_Off;
@@ -491,8 +485,10 @@ FString UOculusFunctionLibrary::GetDeviceName()
 	if (OculusHMD != nullptr)
 	{
 		const char *nameString;
-		ovrp_GetSystemProductName2(&nameString);
-		return FString(nameString);
+		if (OVRP_SUCCESS(ovrp_GetSystemProductName2(&nameString)) && nameString)
+		{
+			return FString(nameString);
+		}
 	}
 #endif
 	return FString();
@@ -504,13 +500,14 @@ TArray<float> UOculusFunctionLibrary::GetAvailableDisplayFrequencies()
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr)
 	{
-		int numberOfFrequencies = 0;
-		ovrp_GetSystemDisplayAvailableFrequencies(NULL, &numberOfFrequencies);
-
-		TArray<float> freqArray;
-		freqArray.SetNum(numberOfFrequencies);
-		ovrp_GetSystemDisplayAvailableFrequencies(freqArray.GetData(), &numberOfFrequencies);
-		return freqArray;
+		int numberOfFrequencies;
+		if (OVRP_SUCCESS(ovrp_GetSystemDisplayAvailableFrequencies(NULL, &numberOfFrequencies)))
+		{
+			TArray<float> freqArray;
+			freqArray.SetNum(numberOfFrequencies);
+			ovrp_GetSystemDisplayAvailableFrequencies(freqArray.GetData(), &numberOfFrequencies);
+			return freqArray;
+		}
 	}
 #endif
 	return TArray<float>();
@@ -522,9 +519,11 @@ float UOculusFunctionLibrary::GetCurrentDisplayFrequency()
 	OculusHMD::FOculusHMD* OculusHMD = GetOculusHMD();
 	if (OculusHMD != nullptr)
 	{
-		float frequency = 0;
-		ovrp_GetSystemDisplayFrequency2(&frequency);
-		return frequency;
+		float frequency;
+		if (OVRP_SUCCESS(ovrp_GetSystemDisplayFrequency2(&frequency)))
+		{
+			return frequency;
+		}
 	}
 #endif
 	return 0.0f;
