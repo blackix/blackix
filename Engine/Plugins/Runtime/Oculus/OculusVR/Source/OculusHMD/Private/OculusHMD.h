@@ -23,6 +23,7 @@
 #include "SceneViewExtension.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMeshActor.h"
+#include "ProceduralMeshComponent.h"
 
 
 namespace OculusHMD
@@ -61,6 +62,9 @@ class FOculusHMD : public FHeadMountedDisplayBase, public FXRRenderTargetManager
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+#if WITH_OCULUS_PRIVATE_CODE
+	friend class FOculusHMD_SpectatorScreenController;
+#endif
 
 public:
 	static const FName OculusSystemName;
@@ -184,6 +188,7 @@ public:
 	virtual void MarkTextureForUpdate(uint32 LayerId) override;
 	virtual void UpdateSplashScreen() override;
 	virtual IStereoLayers::FLayerDesc GetDebugCanvasLayerDesc(FTextureRHIRef Texture) override;
+	virtual void GetAllocatedTexture(uint32 LayerId, FTextureRHIRef &Texture, FTextureRHIRef &LeftTexture) override;
 
 	// ISceneViewExtension
 	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
@@ -217,7 +222,7 @@ protected:
 	void ApplySystemOverridesOnStereo(bool force = false);
 	bool OnOculusStateChange(bool bIsEnabledNow);
 	bool ShouldDisableHiddenAndVisibileAreaMeshForSpectatorScreen_RenderThread() const;
-	void RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily);
+	void RenderPokeAHoleAlphaClear(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily);
 #if !UE_BUILD_SHIPPING
 	void DrawDebug(UCanvas* InCanvas, APlayerController* InPlayerController);
 #endif
@@ -301,6 +306,8 @@ public:
 	FSettings* GetSettings_RHIThread() { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 	const FSettings* GetSettings_RHIThread() const { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 
+	const int GetNextFrameNumber() const { return NextFrameNumber; }
+
 	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
 	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
@@ -309,6 +316,8 @@ public:
 	void FinishRHIFrame_RHIThread(); // Called from FinishRendering_RHIThread
 
 	void SetTiledMultiResLevel(ETiledMultiResLevel multiresLevel);
+
+	OCULUSHMD_API void UpdateRTPoses();
 
 protected:
 	FConsoleCommands ConsoleCommands;
@@ -387,6 +396,9 @@ protected:
 	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture;
+#endif
 	bool bNeedReAllocateViewportRenderTarget;
 
 	// Render thread
@@ -394,6 +406,9 @@ protected:
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
+#endif
 	bool bNeedReAllocateDepthTexture_RenderThread;
 
 	// RHI thread

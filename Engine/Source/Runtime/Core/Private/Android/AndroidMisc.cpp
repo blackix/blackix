@@ -16,6 +16,8 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <sys/statfs.h>
+#include <sys/syscall.h>
+#include <sched.h>
 
 #include "AndroidPlatformCrashContext.h"
 #include "PlatformMallocCrash.h"
@@ -467,7 +469,39 @@ bool FAndroidMisc::AllowRenderThread()
 int32 FAndroidMisc::NumberOfCores()
 {
 	int32 NumberOfCores = android_getCpuCount();
-	return NumberOfCores;
+
+	static int CalculatedNumberOfCores = 0;
+
+#ifndef CPU_SETSIZE
+#if PLATFORM_64BITS
+#define CPU_SETSIZE 1024
+#else
+#define CPU_SETSIZE 32
+#endif 
+#endif
+
+	char cpuset[CPU_SETSIZE / 8];
+
+	if (CalculatedNumberOfCores == 0)
+	{
+		pid_t ThreadId = gettid();
+		syscall(__NR_sched_getaffinity, ThreadId, sizeof(cpuset), &cpuset);
+
+		char *coreptr = cpuset;
+		int32 CoreSets = CPU_SETSIZE / 8;;
+		while (CoreSets--)
+		{
+			char coremask = *coreptr++;
+			for (int i = 0; i < 8; i++)
+			{
+				CalculatedNumberOfCores += ((coremask & (1 << i)) != 0);
+			}
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("%d cores and %d assignable cores"), NumberOfCores, CalculatedNumberOfCores);
+	}
+
+	return !CalculatedNumberOfCores ? NumberOfCores : CalculatedNumberOfCores;
 }
 
 static FAndroidMisc::FCPUState CurrentCPUState;
@@ -741,13 +775,18 @@ bool FAndroidMisc::GetUseVirtualJoysticks()
 		}
 	}
 
+	// Stereo-only HMDs don't require virtual joysticks
+	if (IsStereoOnly())
+	{
+		return false;
+	}
+
 	return true;
 }
 
-
 bool FAndroidMisc::SupportsTouchInput()
 {
-	// Amazon Fire TV doesn't require virtual joysticks
+	// Amazon Fire TV doesn't support touch input
 	if (FAndroidMisc::GetDeviceMake() == FString("Amazon"))
 	{
 		if (FAndroidMisc::GetDeviceModel().StartsWith(TEXT("AFT")))
@@ -756,7 +795,24 @@ bool FAndroidMisc::SupportsTouchInput()
 		}
 	}
 
+	// Stereo-only HMDs don't support touch input
+	if (IsStereoOnly())
+	{
+		return false;
+	}
+
 	return true;
+}
+
+bool FAndroidMisc::IsStereoOnly()
+{
+	// Oculus HMDs are always in stereo mode
+	if (FAndroidMisc::GetDeviceMake() == FString("Oculus"))
+	{
+		return true;
+	}
+
+	return false;
 }
 
 extern void AndroidThunkCpp_RegisterForRemoteNotifications();

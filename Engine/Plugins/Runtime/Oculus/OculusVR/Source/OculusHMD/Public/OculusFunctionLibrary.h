@@ -87,6 +87,7 @@ enum class EGearVRControllerHandedness_DEPRECATED : uint8
 	Unknown_DEPRECATED
 };
 
+/** DEPRECATED in 4.17 : All functions using this enum have been deprecated and it will be removed with them. If you are still needing this, then please create your own replacement.*/
 UENUM(BlueprintType)
 enum class ETiledMultiResLevel : uint8
 {
@@ -348,6 +349,18 @@ class OCULUSHMD_API UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
 	static void SetDisplayFrequency(float RequestedFrequency);
+
+	/**
+	* Enables/disables positional tracking on devices that support it.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void EnablePositionTracking(bool bPositionTracking);
+
+	/**
+	* Enables/disables orientation tracking on devices that support it.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "Input|OculusLibrary")
+	static void EnableOrientationTracking(bool bOrientationTracking);
 
 	/**
 	 * Returns IStereoLayers interface to work with overlays.

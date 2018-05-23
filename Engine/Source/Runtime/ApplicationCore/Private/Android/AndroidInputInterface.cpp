@@ -9,7 +9,7 @@
 #include "Misc/CallbackDevice.h"
 #include "HAL/PlatformTime.h"
 #include "IConsoleManager.h"
-
+#include "IHapticDevice.h"
 
 TArray<TouchInput> FAndroidInputInterface::TouchInputStack = TArray<TouchInput>();
 FCriticalSection FAndroidInputInterface::TouchInputCriticalSection;
@@ -205,6 +205,18 @@ void FAndroidInputInterface::SetForceFeedbackChannelValues(int32 ControllerId, c
 
 	// Update with the latest values (wait for SendControllerEvents later?)
 	UpdateVibeMotors();
+}
+
+void FAndroidInputInterface::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const FHapticFeedbackValues& Values)
+{
+	for (auto DeviceIt = ExternalInputDevices.CreateIterator(); DeviceIt; ++DeviceIt)
+	{
+		IHapticDevice* HapticDevice = (*DeviceIt)->GetHapticDevice();
+		if (HapticDevice)
+		{
+			HapticDevice->SetHapticFeedbackValues(ControllerId, Hand, Values);
+		}
+	}
 }
 
 extern bool AndroidThunkCpp_IsGamepadAttached();

@@ -7,6 +7,7 @@
 #include "VulkanRHIPrivate.h"
 #include "VulkanSwapChain.h"
 #include "VulkanPlatform.h"
+#include "Runtime/HeadMountedDisplay/Public/IHeadMountedDisplayModule.h"
 
 int32 GShouldCpuWaitForFence = 1;
 static FAutoConsoleVariableRef CVarCpuWaitForFence(
@@ -155,18 +156,46 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 		FoundPresentModes.AddZeroed(NumFoundPresentModes);
 		VERIFYVULKANRESULT(VulkanRHI::vkGetPhysicalDeviceSurfacePresentModesKHR(Device.GetPhysicalHandle(), Surface, &NumFoundPresentModes, FoundPresentModes.GetData()));
 
-		bool bFoundDesiredMode = false;
+		bool bFoundPresentModeMailbox = false;
+		bool bFoundPresentModeImmediate = false;
+		bool bFoundPresentModeFIFO = false;
+
 		for (size_t i = 0; i < NumFoundPresentModes; i++)
 		{
-			if (FoundPresentModes[i] == PresentMode)
+			switch (FoundPresentModes[i])
 			{
-				bFoundDesiredMode = true;
+			case VK_PRESENT_MODE_MAILBOX_KHR:
+				bFoundPresentModeMailbox = true;
+				break;
+			case VK_PRESENT_MODE_IMMEDIATE_KHR:
+				bFoundPresentModeImmediate = true;
+				break;
+			case VK_PRESENT_MODE_FIFO_KHR:
+				bFoundPresentModeFIFO = true;
 				break;
 			}
 		}
-		if (!bFoundDesiredMode)
+
+		// #todo: Until FVulkanViewport::Present honors SyncInterval, need to disable vsync for the
+		// main (spectator) window if using an HMD.  Only test I can think from here is seeing if
+		// an HMD module is available.
+		bool bHasHMD = IHeadMountedDisplayModule::IsAvailable();
+
+		if (bFoundPresentModeMailbox && bHasHMD)
 		{
-			UE_LOG(LogVulkanRHI, Warning, TEXT("Couldn't find Present Mode %d!"), (int32)PresentMode);
+			PresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+		}
+		else if (bFoundPresentModeImmediate && bHasHMD)
+		{
+			PresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+		}
+		else if (bFoundPresentModeFIFO)
+		{
+			PresentMode = VK_PRESENT_MODE_FIFO_KHR;
+		}
+		else
+		{
+			UE_LOG(LogVulkanRHI, Warning, TEXT("Couldn't find desired PresentMode!"));
 			PresentMode = FoundPresentModes[0];
 		}
 	}
