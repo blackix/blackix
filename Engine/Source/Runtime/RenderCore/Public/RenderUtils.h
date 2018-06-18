@@ -362,6 +362,28 @@ inline bool IsUsingGBuffers(EShaderPlatform Platform)
 	return !IsAnyForwardShadingEnabled(Platform);
 }
 
+enum EMaskBasedFoveatedRenderingVisualizeMode
+{
+	EMaskBasedFoveatedRenderingVisualizeMode_Normal = 0,
+	EMaskBasedFoveatedRenderingVisualizeMode_NoReconstruction,
+	EMaskBasedFoveatedRenderingVisualizeMode_SeparateReconstruction
+};
+
+class FViewInfo;
+
+RENDERCORE_API bool IsMaskBasedFoveatedRenderingEnabled();
+RENDERCORE_API int GetMaskBasedFoveatedRenderingVisualizeMode();
+RENDERCORE_API bool GetMaskBasedFoveatedRenderingUsingMaskAnimation();
+RENDERCORE_API int GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex();
+RENDERCORE_API float GetMaskBasedFoveatedRenderingHighResSqrTan();
+RENDERCORE_API float GetMaskBasedFoveatedRenderingMediumResSqrTan();
+RENDERCORE_API float GetMaskBasedFoveatedRenderingLowResSqrTan();
+
+/**
+* returns FVector4(LeftTan, RightTan, UpTan, DownTan)
+*/
+RENDERCORE_API FVector4 GetFovFromAsymmetricProjectionMatrix(const FMatrix& matrix);
+
 /** Unit cube vertex buffer (VertexDeclarationFVector4) */
 RENDERCORE_API FVertexBufferRHIRef& GetUnitCubeVertexBuffer();
 

@@ -741,7 +741,7 @@ void FDeferredShadingSceneRenderer::RenderLights(FRHICommandListImmediate& RHICm
 							if (ScissorRect.Min.X < ScissorRect.Max.X && ScissorRect.Min.Y < ScissorRect.Max.Y)
 							{
 								RHICmdList.SetViewport(ScissorRect.Min.X, ScissorRect.Min.Y, 0.0f, ScissorRect.Max.X, ScissorRect.Max.Y, 1.0f);
-								DrawClearQuad(RHICmdList, true, FLinearColor(1, 1, 1, 1), false, 0, false, 0);
+								DrawClearQuad(RHICmdList, true, FLinearColor(1, 1, 1, 1), false, 0, false, 0, 0xff);
 							}
 							else
 							{
@@ -875,10 +875,32 @@ void SetBoundingGeometryRasterizerAndDepthState(FGraphicsPipelineStateInitialize
 		GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
 	}
 
-	GraphicsPSOInit.DepthStencilState =
-		bCameraInsideLightGeometry
-		? TStaticDepthStencilState<false, CF_Always>::GetRHI()
-		: TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+	if (FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL)
+	{
+		GraphicsPSOInit.DepthStencilState =
+			bCameraInsideLightGeometry
+			? TStaticDepthStencilState<false, CF_Always,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK, 0xff
+			>::GetRHI()
+			: TStaticDepthStencilState<false, CF_DepthNearOrEqual,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK, 0xff
+			>::GetRHI();
+	}
+	else
+	{
+	    GraphicsPSOInit.DepthStencilState =
+		    bCameraInsideLightGeometry
+		    ? TStaticDepthStencilState<false, CF_Always>::GetRHI()
+		    : TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+	}
 }
 
 template<bool bUseIESProfile, bool bRadialAttenuation, bool bInverseSquaredFalloff>
@@ -987,7 +1009,20 @@ void FDeferredShadingSceneRenderer::RenderLight(FRHICommandList& RHICmdList, con
 			TShaderMapRef<TDeferredLightVS<false> > VertexShader(View.ShaderMap);
 
 			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+			if (ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL)
+			{
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always,
+					true, CF_Equal, 
+					SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal,
+					SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK, 0xff
+				>::GetRHI();
+			}
+			else
+			{
+				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+			}
 
 			if (bRenderOverlap)
 			{

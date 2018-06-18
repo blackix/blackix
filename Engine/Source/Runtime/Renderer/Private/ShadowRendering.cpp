@@ -614,7 +614,7 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 			false, CF_DepthNearOrEqual,
 			true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 			false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-			0xff, 0xff
+			STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 			>::GetRHI());
 		DrawRenderState.SetStencilRef(1);
 
@@ -707,7 +707,7 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 			false, CF_DepthNearOrEqual,
 			true, CF_Always, SO_Keep, SO_Increment, SO_Keep,
 			true, CF_Always, SO_Keep, SO_Decrement, SO_Keep,
-			0xff, 0xff
+			STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 			>::GetRHI());
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
@@ -773,7 +773,7 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Increment, SO_Keep,
 				true, CF_Always, SO_Keep, SO_Decrement, SO_Keep,
-				0xff, 0xff
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 				>::GetRHI());
 		}
 		else
@@ -785,7 +785,7 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Increment,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Decrement,
-				0xff, 0xff
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 				>::GetRHI());
 		}
 		
@@ -818,7 +818,7 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				0xff, 0xff
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 				>::GetRHI());
 			DrawRenderState.SetStencilRef(0);
 
@@ -907,7 +907,7 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 				false, CF_Always,
 				true, CF_NotEqual, SO_Zero, SO_Zero, SO_Zero,
 				false, CF_Always, SO_Zero, SO_Zero, SO_Zero,
-				0xff, 0xff
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 				>::GetRHI();
 		}
 		else
@@ -918,7 +918,7 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 				false, CF_Always,
 				true, CF_NotEqual, SO_Keep, SO_Keep, SO_Keep,
 				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-				0xff, 0xff
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
 				>::GetRHI();
 		}
 	}
@@ -1004,7 +1004,7 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 		// Clear the stencil buffer to 0.
 		if (!GStencilOptimization)
 		{
-			DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 1);
+			DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 1, STENCIL_FOVEATED_MASK_INV_MASK);
 		}
 	}
 }
@@ -1044,14 +1044,40 @@ void FProjectedShadowInfo::RenderOnePassPointLightProjection(FRHICommandListImme
 
 	if (bCameraInsideLightGeometry)
 	{
-		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+		if (FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL)
+		{
+			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK, 0xff
+			>::GetRHI();
+		}
+		else
+		{
+			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+		}
 		// Render backfaces with depth tests disabled since the camera is inside (or close to inside) the light geometry
 		GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI();
 	}
 	else
 	{
 		// Render frontfaces with depth tests on to get the speedup from HiZ since the camera is outside the light geometry
-		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+		if (FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()))
+		{
+			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK, 0xff
+			>::GetRHI();
+		}
+		else
+		{
+			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+		}
 		GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
 	}	
 

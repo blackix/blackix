@@ -79,6 +79,9 @@ namespace UnrealBuildTool.Rules
 					PrivateIncludePaths.AddRange(
 						new string[]
 						{
+							// <<< WITH_OCULUS_PRIVATE_CODE
+                            "OculusMR/Public",
+							// >>> WITH_OCULUS_PRIVATE_CODE
 														"../../../../../Source/Runtime/Windows/D3D11RHI/Private",
 							"../../../../../Source/Runtime/Windows/D3D11RHI/Private/Windows",
 							"../../../../../Source/Runtime/D3D12RHI/Private",
@@ -138,6 +141,15 @@ namespace UnrealBuildTool.Rules
 			}
 			else if (Target.Platform == UnrealTargetPlatform.Android)
 			{
+				// <<< WITH_OCULUS_PRIVATE_CODE
+				// We are not currently supporting Mixed Reality on Android, but we need to include IOculusMRModule.h for OCULUS_MR_SUPPORTED_PLATFORMS definition
+				PrivateIncludePaths.AddRange(
+						new string[]
+						{
+							"OculusMR/Public"
+						});
+				// >>> WITH_OCULUS_PRIVATE_CODE
+
 				// Vulkan
 				{
 					string NDKPath = Environment.GetEnvironmentVariable("NDKROOT");

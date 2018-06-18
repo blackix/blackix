@@ -385,13 +385,14 @@ public:
 struct FSceneRenderTargetItem
 {
 	/** default constructor */
-	FSceneRenderTargetItem() {}
+	FSceneRenderTargetItem(): bIsFoveatedMasked(false) {}
 
 	/** constructor */
 	FSceneRenderTargetItem(FTextureRHIParamRef InTargetableTexture, FTextureRHIParamRef InShaderResourceTexture, FUnorderedAccessViewRHIRef InUAV)
 		:	TargetableTexture(InTargetableTexture)
 		,	ShaderResourceTexture(InShaderResourceTexture)
 		,	UAV(InUAV)
+		,	bIsFoveatedMasked(false)
 	{}
 
 	/** */
@@ -408,6 +409,7 @@ struct FSceneRenderTargetItem
 		{
 			MipSRVs[i].SafeRelease();
 		}
+		bIsFoveatedMasked = false;
 	}
 
 	bool IsValid() const
@@ -415,6 +417,16 @@ struct FSceneRenderTargetItem
 		return TargetableTexture != 0
 			|| ShaderResourceTexture != 0
 			|| UAV != 0;
+	}
+
+	bool IsFoveatedMasked() const
+	{
+		return bIsFoveatedMasked;
+	}
+
+	void SetFoveatedMasked(bool Masked)
+	{
+		bIsFoveatedMasked = Masked;
 	}
 
 	/** The 2D or cubemap texture that may be used as a render or depth-stencil target. */
@@ -431,6 +443,9 @@ struct FSceneRenderTargetItem
 
 	FShaderResourceViewRHIRef RTWriteMaskBufferRHI_SRV;
 	FStructuredBufferRHIRef RTWriteMaskDataBufferRHI;
+
+	/** Used when IsMaskBasedFoveatedRenderingEnabled() == true, to indicate some pixels would not be valid in this RT */
+	bool bIsFoveatedMasked;
 };
 
 /**
