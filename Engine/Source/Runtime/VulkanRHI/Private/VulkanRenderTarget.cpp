@@ -1072,8 +1072,6 @@ void FVulkanCommandListContext::RHITransitionResources(EResourceTransitionAccess
 			FVulkanTextureBase* VulkanTexture = FVulkanTextureBase::Cast(InTextures[Index]);
 			VkImageLayout SrcLayout = TransitionState.FindOrAddLayout(VulkanTexture->Surface.Image, VK_IMAGE_LAYOUT_UNDEFINED);
 			bool bIsDepthStencil = (VulkanTexture->Surface.GetFullAspectMask() & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) != 0;
-			// During HMD rendering we get a frame where nothing is rendered into the depth buffer, but CopyToTexture is still called...
-			ensure(SrcLayout != VK_IMAGE_LAYOUT_UNDEFINED || bIsDepthStencil);
 			VkImageLayout DstLayout = bIsDepthStencil ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			VulkanSetImageLayout(CmdBuffer->GetHandle(), VulkanTexture->Surface.Image, SrcLayout, DstLayout, VulkanRHI::SetupImageSubresourceRange(VulkanTexture->Surface.GetFullAspectMask()));
 			TransitionState.CurrentLayout[VulkanTexture->Surface.Image] = DstLayout;
@@ -1255,8 +1253,14 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FRHISetRenderTargetsI
 				Extent.Extent3D.depth = Texture->Surface.Depth;
 			}
 
-			ensure(!NumSamples || NumSamples == RTView.Texture->GetNumSamples());
-			NumSamples = RTView.Texture->GetNumSamples();
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
+			FVulkanSurface* Surface = Texture->MSAASurface ? Texture->MSAASurface : &Texture->Surface;
+#else
+			FVulkanSurface* Surface = &Texture->Surface;
+#endif
+
+			ensure(!NumSamples || NumSamples == Surface->GetNumSamples());
+			NumSamples = Surface->GetNumSamples();
 		
 			VkAttachmentDescription& CurrDesc = Desc[NumAttachmentDescriptions];
 			
@@ -1305,10 +1309,16 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FRHISetRenderTargetsI
 		FVulkanTextureBase* Texture = FVulkanTextureBase::Cast(RTInfo.DepthStencilRenderTarget.Texture);
 		check(Texture);
 
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
+		FVulkanSurface* Surface = Texture->MSAASurface ? Texture->MSAASurface : &Texture->Surface;
+#else
+		FVulkanSurface* Surface = &Texture->Surface;
+#endif
+		ensure(!NumSamples || NumSamples == Surface->GetNumSamples());
+		NumSamples = Surface->GetNumSamples();
+
 		//@TODO: Check this, it should be a power-of-two. Might be a VulkanConvert helper function.
-		CurrDesc.samples = static_cast<VkSampleCountFlagBits>(RTInfo.DepthStencilRenderTarget.Texture->GetNumSamples());
-		ensure(!NumSamples || CurrDesc.samples == NumSamples);
-		NumSamples = CurrDesc.samples;
+		CurrDesc.samples = static_cast<VkSampleCountFlagBits>(NumSamples);
 		CurrDesc.format = UEToVkFormat(RTInfo.DepthStencilRenderTarget.Texture->GetFormat(), false);
 		CurrDesc.loadOp = RenderTargetLoadActionToVulkan(RTInfo.DepthStencilRenderTarget.DepthLoadAction);
 		CurrDesc.stencilLoadOp = RenderTargetLoadActionToVulkan(RTInfo.DepthStencilRenderTarget.StencilLoadAction);

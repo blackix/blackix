@@ -23,6 +23,7 @@
 #include "SceneViewExtension.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMeshActor.h"
+#include "ProceduralMeshComponent.h"
 
 
 namespace OculusHMD
@@ -61,6 +62,9 @@ class FOculusHMD : public FHeadMountedDisplayBase, public FXRRenderTargetManager
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+#if WITH_OCULUS_PRIVATE_CODE
+	friend class FOculusHMD_SpectatorScreenController;
+#endif
 
 public:
 	static const FName OculusSystemName;
@@ -148,6 +152,7 @@ public:
 	//virtual FVector2D GetTextSafeRegionBounds() const override;
 	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const override;
+	virtual FMatrix GetStereoProjectionMatrix_RenderThread(const enum EStereoscopicPass StereoPassType) const override;
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) override;
 	//virtual void GetEyeRenderParams_RenderThread(const struct FRenderingCompositePassContext& Context, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	//virtual bool IsSpectatorScreenActive() const override;
@@ -173,6 +178,9 @@ public:
 	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	virtual bool NeedFoveatedMaskGeneration() override;
+	virtual void SetFoveatedMaskGenerated(bool IsMaskValid) override;
+	virtual void InvalidateAllGeneratedFoveatedMask() override;
 	virtual void UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget) override;
 	virtual void UpdateViewportRHIBridge(bool bUseSeparateRenderTarget, const class FViewport& Viewport, FRHIViewport* const ViewportRHI) override;
 
@@ -184,6 +192,7 @@ public:
 	virtual void MarkTextureForUpdate(uint32 LayerId) override;
 	virtual void UpdateSplashScreen() override;
 	virtual IStereoLayers::FLayerDesc GetDebugCanvasLayerDesc(FTextureRHIRef Texture) override;
+	virtual void GetAllocatedTexture(uint32 LayerId, FTextureRHIRef &Texture, FTextureRHIRef &LeftTexture) override;
 
 	// ISceneViewExtension
 	virtual void SetupViewFamily(FSceneViewFamily& InViewFamily) override;
@@ -217,7 +226,6 @@ protected:
 	void ApplySystemOverridesOnStereo(bool force = false);
 	bool OnOculusStateChange(bool bIsEnabledNow);
 	bool ShouldDisableHiddenAndVisibileAreaMeshForSpectatorScreen_RenderThread() const;
-	void RenderPokeAHole(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily);
 #if !UE_BUILD_SHIPPING
 	void DrawDebug(UCanvas* InCanvas, APlayerController* InPlayerController);
 #endif
@@ -231,6 +239,7 @@ public:
 	FCustomPresent* GetCustomPresent_Internal() const { return CustomPresent; }
 
 	float GetWorldToMetersScale() const;
+	float GetWorldToMetersScale_RenderThread() const;
 	float GetMonoCullingDistance() const;
 
 	ESpectatorScreenMode GetSpectatorScreenMode_RenderThread() const;
@@ -301,6 +310,8 @@ public:
 	FSettings* GetSettings_RHIThread() { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 	const FSettings* GetSettings_RHIThread() const { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 
+	const int GetNextFrameNumber() const { return NextFrameNumber; }
+
 	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
 	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
@@ -309,6 +320,8 @@ public:
 	void FinishRHIFrame_RHIThread(); // Called from FinishRendering_RHIThread
 
 	void SetTiledMultiResLevel(ETiledMultiResLevel multiresLevel);
+
+	OCULUSHMD_API void UpdateRTPoses();
 
 protected:
 	FConsoleCommands ConsoleCommands;
@@ -387,6 +400,9 @@ protected:
 	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture;
+#endif
 	bool bNeedReAllocateViewportRenderTarget;
 
 	// Render thread
@@ -394,6 +410,9 @@ protected:
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
+#endif
 	bool bNeedReAllocateDepthTexture_RenderThread;
 
 	// RHI thread
@@ -401,9 +420,11 @@ protected:
 	FGameFramePtr Frame_RHIThread; // Valid from PreRenderViewFamily_RenderThread to FinishRendering_RHIThread
 	TArray<FLayerPtr> Layers_RHIThread;
 
-
 	FHMDViewMesh HiddenAreaMeshes[2];
 	FHMDViewMesh VisibleAreaMeshes[2];
+
+	uint32 NeedGenerateFoveatedMaskFlag_RenderThread;	// one bit for each SwapChainIndex
+	bool NeedGenerateFoveatedMask_RenderThread;
 
 	FPerformanceStats PerformanceStats;
 

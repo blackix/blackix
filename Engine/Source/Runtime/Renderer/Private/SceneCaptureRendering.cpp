@@ -256,7 +256,7 @@ static void UpdateSceneCaptureContentDeferred_RenderThread(
 		FViewInfo& View = SceneRenderer->Views[0];
 		FIntRect ViewRect = View.ViewRect;
 		SetRenderTarget(RHICmdList, Target->GetRenderTargetTexture(), nullptr, true);
-		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), ViewRect);
+		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), ViewRect);
 
 		// Render the scene normally
 		{

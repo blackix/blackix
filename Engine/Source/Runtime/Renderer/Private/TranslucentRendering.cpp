@@ -507,6 +507,7 @@ bool FTranslucencyDrawingPolicyFactory::DrawMesh(
 {
 	bool bDirty = false;
 	const auto FeatureLevel = View.GetFeatureLevel();
+	bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL;
 
 	const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
@@ -547,7 +548,22 @@ bool FTranslucencyDrawingPolicyFactory::DrawMesh(
 			}
 			else if( bDisableDepthTest )
 			{
-				DrawRenderStateLocal.SetDepthStencilState(TStaticDepthStencilState<false,CF_Always>::GetRHI());
+				if (bUseFoveatedMaskStencil)
+				{
+					DrawRenderStateLocal.SetDepthStencilState(TStaticDepthStencilState<
+						false, CF_Always,
+						true, CF_Equal,
+						SO_Keep, SO_Keep, SO_Keep,
+						true, CF_Equal,
+						SO_Keep, SO_Keep, SO_Keep,
+						STENCIL_FOVEATED_MASK_MASK,
+						0xFF
+					>::GetRHI());
+				}
+				else
+				{
+					DrawRenderStateLocal.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
+				}
 			}
 
 			FIntPoint OutScaledSize;
@@ -1020,6 +1036,7 @@ public:
 		// Never needs clear here as it is already done in RenderTranslucency.
 		FParallelCommandListSet::SetStateOnCommandList(CmdList);
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(CmdList);
+		bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL;
 		if (bRenderInSeparateTranslucency)
 		{
 			SceneContext.BeginRenderingSeparateTranslucency(CmdList, View, false);
@@ -1028,7 +1045,22 @@ public:
 		{
 			SceneContext.BeginRenderingTranslucency(CmdList, View, false);
 		}
-		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+		if (bUseFoveatedMaskStencil)
+		{
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+				false, CF_DepthNearOrEqual,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal,
+				SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK,
+				0xFF
+			>::GetRHI());
+		}
+		else
+		{
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+		}
 	}
 };
 
@@ -1243,6 +1275,8 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 		}
 #endif
 
+		bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetFeatureLevel()) && View.StereoPass != eSSP_FULL;
+
 		FDrawingPolicyRenderState DrawRenderState(View);
 
 		// If downsampling we need to render in the separate buffer. Otherwise we also need to render offscreen to apply TPT_TranslucencyAfterDOF
@@ -1262,7 +1296,22 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 			SceneContext.BeginRenderingSeparateTranslucency(RHICmdList, View, ViewIndex == 0);
 
 			// Draw only translucent prims that are in the SeparateTranslucency pass
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					false, CF_DepthNearOrEqual,
+					true, CF_Equal,
+					SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal,
+					SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					0xFF
+				>::GetRHI());
+			}
+			else
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+			}
 
 			if (bUseParallel)
 			{

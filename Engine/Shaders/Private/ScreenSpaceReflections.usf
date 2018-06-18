@@ -224,7 +224,17 @@ void ScreenSpaceReflectionsPS(in noperspective float4 UVAndScreenPos : TEXCOORD0
 					float Vignette;
 					ReprojectHit( PostprocessInput3, PostprocessInput3Sampler, HitUVzTime.xyz, SampleUV, Vignette );
 
-					float4 SampleColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+					float4 SampleColor;
+				#if MASK_BASED_FOVEATED_RENDERING
+					if (PostProcessInputsIsFoveatedMasked[0])
+					{
+						SampleColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV ) * Vignette;
+					}
+					else
+				#endif
+					{
+						SampleColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+					}
 				
 					SampleColor.rgb /= 1 + Luminance(SampleColor.rgb);
 					OutColor += SampleColor;
@@ -258,7 +268,16 @@ void ScreenSpaceReflectionsPS(in noperspective float4 UVAndScreenPos : TEXCOORD0
 				float Vignette;
 				ReprojectHit( PostprocessInput3, PostprocessInput3Sampler, HitUVzTime.xyz, SampleUV, Vignette );
 
-				OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+			#if MASK_BASED_FOVEATED_RENDERING
+				if (PostProcessInputsIsFoveatedMasked[0])
+				{
+					OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV ) * Vignette;
+				}
+				else
+			#endif
+				{
+					OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+				}
 			}
 		}
 	}
@@ -286,7 +305,16 @@ void ScreenSpaceReflectionsPS(in noperspective float4 UVAndScreenPos : TEXCOORD0
 			float Vignette;
 			ReprojectHit( PostprocessInput3, PostprocessInput3Sampler, HitUVzTime.xyz, SampleUV, Vignette );
 
-			OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+		#if MASK_BASED_FOVEATED_RENDERING
+			if (PostProcessInputsIsFoveatedMasked[0])
+			{
+				OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV ) * Vignette;
+			}
+			else
+		#endif
+			{
+				OutColor = SampleScreenColor( PostprocessInput0, PostprocessInput0Sampler, SampleUV ) * Vignette;
+			}
 		}
 	}
 #endif //SSR_QUALITY  != SSR_CONE_QUALITY

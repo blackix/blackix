@@ -929,14 +929,6 @@ public class GameActivity extends NativeActivity implements SurfaceHolder.Callba
 		GooglePlayLicensing.GoogleLicensing = new GooglePlayLicensing();
 		GooglePlayLicensing.GoogleLicensing.Init(this, Log);
 
-		// Build Google Play API Client
-		googleClient = new GoogleApiClient.Builder(this)
-			.addConnectionCallbacks(this)
-			.addOnConnectionFailedListener(this)
-			.addApi(Games.API).addScope(Games.SCOPE_GAMES)
-			.addApi(Plus.API).addScope(Plus.SCOPE_PLUS_LOGIN)
-			.build();
-
 		// Now okay for event handler to be set up on native side
 		//	nativeResumeMainInit();
 				
@@ -1843,7 +1835,7 @@ public class GameActivity extends NativeActivity implements SurfaceHolder.Callba
 
 		try
         {
-			if (PermissionHelper.checkPermission("android.permission.GET_ACCOUNTS"))
+			if (PermissionHelper.checkPermission("android.permission.GET_ACCOUNTS") && googleClient != null)
 			{
 				String email = Plus.AccountApi.getAccountName(googleClient);
 				Log.debug("GetAccessToken: using email " + email);

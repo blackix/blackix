@@ -186,6 +186,11 @@ private:
 	 */
 	bool RenderPrePassHMD(FRHICommandListImmediate& RHICmdList);
 
+	/**
+	* Renders the foveated mask into stencil buffer, if available.
+	*/
+	void RenderFoveatedMaskInStencil(FRHICommandListImmediate& RHICmdList);
+
 	/** Issues occlusion queries. */
 	void BeginOcclusionTests(FRHICommandListImmediate& RHICmdList, bool bRenderQueries);
 

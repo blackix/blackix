@@ -1430,6 +1430,9 @@ public:
 	/** True if precomputed visibility was used when rendering the scene. */
 	bool bUsedPrecomputedVisibility;
 
+	/** Trigger the invalidation of foveated maskes */
+	bool bRequireRegenerateFoveatedMask;
+
 	/** Lights added if wholescenepointlight shadow would have been rendered (ignoring r.SupportPointLightWholeSceneShadows). Used for warning about unsupported features. */	
 	TArray<FName, SceneRenderingAllocator> UsedWholeScenePointLightNames;
 
@@ -1495,6 +1498,12 @@ public:
 	{
 		return ScreenPercentageInterface->Fork_GameThread(ForkedViewFamily);
 	}
+
+	/** Check if the mask-based foveated rendering should be used (It could be true only when in Stereo mode) */
+	static bool ShouldUseMaskBasedFoveatedRendering(ERHIFeatureLevel::Type FeatureLevel);
+
+	/** Trigger the invalidation of foveated maskes */
+	void RequireFoveatedMaskRegeneration();
 
 protected:
 
@@ -1648,6 +1657,9 @@ protected:
 	void RenderPlanarReflection(class FPlanarReflectionSceneProxy* ReflectionSceneProxy);
 
 	void ResolveSceneColor(FRHICommandList& RHICmdList);
+
+	void ReconstructMaskedPixels(FRHICommandList& RHICmdList);
+	void CopyReconstructedPixels(FRHICommandList& RHICmdList);
 
 private:
 	void ComputeFamilySize();
