@@ -404,7 +404,7 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 		{
 			auto& RenderTargetRHI = Target->GetRenderTargetTexture();
 			SetRenderTarget(RHICmdList, RenderTargetRHI, NULL, true);
-			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), ViewRect);
+			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), ViewRect);
 		}
 
 		// Render the scene normally

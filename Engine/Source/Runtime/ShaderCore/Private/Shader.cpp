@@ -2055,6 +2055,14 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 	}
 
 	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("vr.Foveated.Mask.Enable"));
+		if (CVar && CVar->GetInt() > 0)
+		{
+			KeyString += TEXT("_MBFR");
+		}
+	}
+
+	{
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessing.PropagateAlpha"));
 		if (CVar && CVar->GetValueOnAnyThread() > 0)
 		{

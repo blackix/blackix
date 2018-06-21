@@ -69,4 +69,19 @@ public:
 	 * @return				true, if texture was allocated; false, if the default texture allocation should be used.
 	 */
 	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) { return false; }
+
+	/**
+	* Returns true, if the foveated mask is required to be generated in the PrePass.
+	*/
+	virtual bool NeedFoveatedMaskGeneration() { return false; }
+
+	/**
+	* Call it after the generation of foveated mask
+	*/
+	virtual void SetFoveatedMaskGenerated(bool IsMaskValid) {}
+
+	/**
+	* Invalid the foveated mask from all stencil buffers
+	*/
+	virtual void InvalidateAllGeneratedFoveatedMask() {}
 };

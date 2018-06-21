@@ -274,7 +274,7 @@ static void ClobberAllocatedRenderTarget(FRHICommandList& RHICmdList, const FPoo
 	if (Desc.TargetableFlags & TexCreate_DepthStencilTargetable)
 	{
 		SetRenderTarget(RHICmdList, FTextureRHIRef(), Out->GetRenderTargetItem().TargetableTexture);
-		DrawClearQuad(RHICmdList, false, FLinearColor::Black, true, 0.0f, true, 0);
+		DrawClearQuad(RHICmdList, false, FLinearColor::Black, true, 0.0f, true, 0, 0xff);
 	}
 }
 
@@ -1553,6 +1553,8 @@ void FRenderTargetPool::CompactPool()
 bool FPooledRenderTarget::OnFrameStart()
 {
 	check(IsInRenderingThread() && !bSnapshot);
+
+	RenderTargetItem.SetFoveatedMasked(false);
 
 	// If there are any references to the pooled render target other than the pool itself, then it may not be freed.
 	if(!IsFree())
