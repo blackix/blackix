@@ -103,7 +103,7 @@ static bool IsReflectionEnvironmentActive(const FSceneView& View)
 static bool IsSkylightActive(const FViewInfo& View)
 {
 	FScene* Scene = (FScene*)View.Family->Scene;
-	return Scene->SkyLight 
+	return Scene->SkyLight
 		&& Scene->SkyLight->ProcessedTexture
 		&& View.Family->EngineShowFlags.SkyLighting;
 }
@@ -121,6 +121,13 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 			&& (FSSAOHelper::IsBasePassAmbientOcclusionRequired(View) || IsAmbientCubemapPassRequired(View) || IsReflectionEnvironmentActive(View) || IsSkylightActive(View) || View.Family->EngineShowFlags.VisualizeBuffer)
 			&& !IsAnyForwardShadingEnabled(View.GetShaderPlatform());
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+    if (View.CastingLayer != ECastingLayer::Full)
+    {
+        bEnabled = false;
+    }
+#endif
 
 	return bEnabled;
 }
@@ -174,7 +181,7 @@ static FRenderingCompositeOutputRef AddPostProcessingAmbientOcclusion(FRHIComman
 
 	FRenderingCompositePass* AmbientOcclusionInMip1 = 0;
 	FRenderingCompositePass* AmbientOcclusionInMip2 = 0;
-	FRenderingCompositePass* AmbientOcclusionPassMip1 = 0; 
+	FRenderingCompositePass* AmbientOcclusionPassMip1 = 0;
 	FRenderingCompositePass* AmbientOcclusionPassMip2 = 0;
 
 	FRenderingCompositePass* HZBInput = Context.Graph.RegisterPass(new FRCPassPostProcessInput(const_cast<FViewInfo&>(Context.View).HZB));
@@ -191,7 +198,7 @@ static FRenderingCompositeOutputRef AddPostProcessingAmbientOcclusion(FRHIComman
 		{
 			AmbientOcclusionInMip2 = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessAmbientOcclusionSetup());
 			AmbientOcclusionInMip2->SetInput(ePId_Input1, FRenderingCompositeOutputRef(AmbientOcclusionInMip1, ePId_Output0));
-		}		
+		}
 
 		// upsample from lower resolution
 
@@ -216,7 +223,7 @@ static FRenderingCompositeOutputRef AddPostProcessingAmbientOcclusion(FRHIComman
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
 	FRenderingCompositePass* GBufferA = nullptr;
-	
+
 	// finally full resolution
 	ESSAOType FullResAOType = ESSAOType::EPS;
 	{
@@ -282,7 +289,7 @@ void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICm
 		// decals are before AmbientOcclusion so the decal can output a normal that AO is affected by
 		if (!Context.View.Family->EngineShowFlags.ShaderComplexity &&
 			Context.View.Family->EngineShowFlags.Decals &&
-			IsDBufferEnabled()) 
+			IsDBufferEnabled())
 		{
 			FRenderingCompositePass* Pass = Context.Graph.RegisterPass(new(FMemStack::Get()) FRCPassPostProcessDeferredDecals(DRS_BeforeBasePass));
 			Pass->SetInput(ePId_Input0, Context.FinalOutput);
@@ -302,7 +309,7 @@ void FCompositionLighting::ProcessBeforeBasePass(FRHICommandListImmediate& RHICm
 void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmdList, FViewInfo& View)
 {
 	check(IsInRenderingThread());
-	
+
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	// might get renamed to refracted or ...WithAO
 	SceneContext.GetSceneColor()->SetDebugName(TEXT("SceneColor"));
@@ -316,7 +323,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 	GRenderTargetPool.VisualizeTexture.SetCheckPoint(RHICmdList, SceneContext.GBufferE);
 	GRenderTargetPool.VisualizeTexture.SetCheckPoint(RHICmdList, SceneContext.GBufferVelocity);
 	GRenderTargetPool.VisualizeTexture.SetCheckPoint(RHICmdList, SceneContext.ScreenSpaceAO);
-	
+
 	// so that the passes can register themselves to the graph
 	{
 		FMemMark Mark(FMemStack::Get());
@@ -325,7 +332,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 		FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
 		// Add the passes we want to add to the graph ----------
-		
+
 		if( Context.View.Family->EngineShowFlags.Decals &&
 			!Context.View.Family->EngineShowFlags.ShaderComplexity)
 		{
@@ -404,7 +411,7 @@ void FCompositionLighting::ProcessAfterBasePass(FRHICommandListImmediate& RHICmd
 void FCompositionLighting::ProcessLpvIndirect(FRHICommandListImmediate& RHICmdList, FViewInfo& View)
 {
 	check(IsInRenderingThread());
-	
+
 	FMemMark Mark(FMemStack::Get());
 	FRenderingCompositePassContext CompositeContext(RHICmdList, View);
 	FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
@@ -449,8 +456,8 @@ void FCompositionLighting::ProcessAfterLighting(FRHICommandListImmediate& RHICmd
 			bool bScreenSpaceSubsurfacePassNeeded = ((View.ShadingModelMaskInView & GetUseSubsurfaceProfileShadingModelMask()) != 0) && IsSubsurfacePostprocessRequired();
 			bool bSubsurfaceAllowed = CVarSubsurfaceScattering.GetValueOnRenderThread() == 1;
 
-			if (bScreenSpaceSubsurfacePassNeeded 
-				&& !bSimpleDynamicLighting 
+			if (bScreenSpaceSubsurfacePassNeeded
+				&& !bSimpleDynamicLighting
 				&& bSubsurfaceAllowed)
 			{
 				bool bHalfRes = CVarSSSHalfRes.GetValueOnRenderThread() != 0;
@@ -544,18 +551,18 @@ void FCompositionLighting::ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList
 		FMemMark Mark(FMemStack::Get());
 		FRenderingCompositePassContext CompositeContext(RHICmdList, View);
 
-		// Add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ----------		
-		uint32 Levels = ComputeAmbientOcclusionPassCount(View);		
+		// Add the passes we want to add to the graph (commenting a line means the pass is not inserted into the graph) ----------
+		uint32 Levels = ComputeAmbientOcclusionPassCount(View);
 		if (FSSAOHelper::IsAmbientOcclusionAsyncCompute(View, Levels))
 		{
 			FPostprocessContext Context(RHICmdList, CompositeContext.Graph, View);
 
 			FRenderingCompositeOutputRef AmbientOcclusion = AddPostProcessingAmbientOcclusion(RHICmdList, Context, Levels);
-			Context.FinalOutput = FRenderingCompositeOutputRef(AmbientOcclusion);			
+			Context.FinalOutput = FRenderingCompositeOutputRef(AmbientOcclusion);
 
 			// The graph setup should be finished before this line ----------------------------------------
 			CompositeContext.Process(Context.FinalOutput.GetPass(), TEXT("Composition_ProcessAsyncSSAO"));
-		}		
+		}
 	}
 	FinishAsyncSSAO(RHICmdList);
 }
@@ -569,7 +576,7 @@ void FCompositionLighting::FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList)
 
 		RHICmdListComputeImmediate.SetAsyncComputeBudget(EAsyncComputeBudget::EAll_4);
 		RHICmdListComputeImmediate.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, nullptr, 0, AsyncSSAOFence);
-		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);		
+		FRHIAsyncComputeCommandListImmediate::ImmediateDispatch(RHICmdListComputeImmediate);
 	}
 }
 
@@ -586,5 +593,5 @@ bool FCompositionLighting::IsSubsurfacePostprocessRequired() const
 {
 	const bool bSSSEnabled = CVarSubsurfaceScattering->GetInt() != 0;
 	const bool bSSSScaleEnabled = CVarSSSScale.GetValueOnAnyThread() > 0.0f;
-	return (bSSSEnabled && bSSSScaleEnabled);	
+	return (bSSSEnabled && bSSSScaleEnabled);
 }

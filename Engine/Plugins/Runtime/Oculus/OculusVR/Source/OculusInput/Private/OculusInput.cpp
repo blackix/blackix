@@ -190,6 +190,9 @@ void FOculusInput::SendControllerEvents()
 	{
 		if (MessageHandler.IsValid())
 		{
+			OculusHMD::FOculusHMD* OculusHMD = static_cast<OculusHMD::FOculusHMD*>(GEngine->XRSystem->GetHMDDevice());
+			ovrp_Update3(ovrpStep_Render, OculusHMD->GetNextFrameNumber(), 0.0);
+
 			ovrpControllerState4 OvrpControllerState;
 			
 			if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Remote, &OvrpControllerState)) &&

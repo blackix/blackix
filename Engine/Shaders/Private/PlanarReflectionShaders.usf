@@ -8,11 +8,31 @@
 #include "DeferredShadingCommon.ush"
 #include "PlanarReflectionShared.ush"
 
+#if MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
+
 Texture2D SceneColorInputTexture;
 SamplerState SceneColorInputSampler;
 
+#if MASK_BASED_FOVEATED_RENDERING
+// viewport width, height, 1/width, 1/height (scaled to the current rendertarget resolution), depends on SetViewportAndCallRHI() call
+float4 ViewportSize;
+// in pixels (scaled to the current rendertarget resolution), float4(minx,miny,maxx,maxy), depends on SetViewportAndCallRHI() call
+uint4 ViewportRect;
+float4 SceneColorInputTextureSize;
+int SceneColorInputTextureFoveatedMasked;
+#endif
+
 float4 SampleSceneColorInput(float2 UV)
 {
+#if MASK_BASED_FOVEATED_RENDERING
+	if (SceneColorInputTextureFoveatedMasked)
+	{
+		return FoveatedMask_LoadFromMaskedTexture(SceneColorInputTexture, SceneColorInputTextureSize, ViewportRect, ViewportSize, UV);
+	}
+	else
+#endif
 	return Texture2DSampleLevel(SceneColorInputTexture, SceneColorInputSampler, UV, 0);
 }
 

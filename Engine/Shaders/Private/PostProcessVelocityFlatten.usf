@@ -4,6 +4,10 @@
 #include "PostProcessCommon.ush"
 #include "FastMath.ush"
 
+#if MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
+
 #define THREADGROUP_SIZEX		16
 #define THREADGROUP_SIZEY		16
 #define THREADGROUP_TOTALSIZE	(THREADGROUP_SIZEX * THREADGROUP_SIZEY)
@@ -53,8 +57,31 @@ void VelocityFlattenMain(
 {
 	uint2 PixelPos = min(DispatchThreadId.xy + ViewportRect.xy, ViewportRect.zw - 1);
 
-	float2 Velocity = PostprocessInput0[ PixelPos ].xy;
-	float Depth = PostprocessInput1[ PixelPos ].x;
+	float2 Velocity;
+	float2 ViewportUV = ( (float2)DispatchThreadId.xy + 0.5 ) / ( ViewportRect.zw - ViewportRect.xy );
+	float2 ScreenPos = 2 * float2(ViewportUV.x, 1 - ViewportUV.y) - 1;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		Velocity = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PixelPos, ScreenPos).xy;
+	}
+	else
+#endif
+	{
+		Velocity = PostprocessInput0[ PixelPos ].xy;
+	}
+
+	float Depth;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[1])
+	{
+		Depth = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput1, PixelPos, ScreenPos).x;
+	}
+	else
+#endif
+	{
+		Depth = PostprocessInput1[ PixelPos ].x;
+	}
 
 	if( Velocity.x > 0.0 )
 	{
@@ -62,8 +89,6 @@ void VelocityFlattenMain(
 	}
 	else
 	{
-		float2 ViewportUV = ( (float2)DispatchThreadId.xy + 0.5 ) / ( ViewportRect.zw - ViewportRect.xy );
-		float2 ScreenPos = 2 * float2(ViewportUV.x, 1 - ViewportUV.y) - 1;
 		float4 ThisClip = float4( ScreenPos, Depth, 1 );
 		float4 PrevClip = mul( ThisClip, View.ClipToPrevClip );
 		float2 PrevScreen = PrevClip.xy / PrevClip.w;
