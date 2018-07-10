@@ -9,6 +9,9 @@
 #include "Random.ush"
 #include "EyeAdaptationCommon.ush"
 
+#if MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
 
 //------------------------------------------------------- COMPILER CONFIG
 
@@ -837,13 +840,33 @@ float GetSceneColorHdrWeight(
 		UNROLL
 		for (uint i = 0; i < kNeighborsCount; i++)
 		{
-			InputParams.CachedNeighbors0[i] = TransformCurrentFrameSceneColor(PostprocessInput0.SampleLevel(
-				PostprocessInput0Sampler, InputParams.NearestBufferUV, 0, kOffsets3x3[i]));
+		#if MASK_BASED_FOVEATED_RENDERING
+			if (PostProcessInputsIsFoveatedMasked[0])
+			{
+				InputParams.CachedNeighbors0[i] = TransformCurrentFrameSceneColor(FoveatedMask_LoadFromMaskedTexture(
+				    PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputParams.NearestBufferUV + kOffsets3x3[i] * PostprocessInput0Size.zw));
+			}
+			else
+		#endif
+			{
+			    InputParams.CachedNeighbors0[i] = TransformCurrentFrameSceneColor(PostprocessInput0.SampleLevel(
+				    PostprocessInput0Sampler, InputParams.NearestBufferUV, 0, kOffsets3x3[i]));
+			}
 	
 			#if HISTORY_RENDER_TARGETS == 2
-				InputParams.CachedNeighbors1[i] = PostprocessInput1.SampleLevel(
-					PostprocessInput1Sampler, InputParams.NearestBufferUV, 0, kOffsets3x3[i]).r;
+		    #if MASK_BASED_FOVEATED_RENDERING
+			    if (PostProcessInputsIsFoveatedMasked[1])
+			    {
+					InputParams.CachedNeighbors1[i] = FoveatedMask_LoadFromMaskedTexture(
+						PostprocessInput1, PostprocessInput1Size, ViewportRect, ViewportSize, InputParams.NearestBufferUV + kOffsets3x3[i] * PostprocessInput1Size.zw).r;
+				}
+				else
 			#endif
+				{
+					InputParams.CachedNeighbors1[i] = PostprocessInput1.SampleLevel(
+						PostprocessInput1Sampler, InputParams.NearestBufferUV, 0, kOffsets3x3[i]).r;
+				}
+		#endif
 		}
 	}
 
@@ -1192,9 +1215,31 @@ void PrecacheInputSceneColorToLDS(in FTAAInputParameters InputParams)
 					BufferUV = clamp(BufferUV, View.BufferBilinearUVMinMax.xy, View.BufferBilinearUVMinMax.zw);
 				#endif
 
-				float4 RawColor = PostprocessInput0.SampleLevel(PostprocessInput0Sampler, BufferUV, 0);
+				float4 RawColor;
+			#if MASK_BASED_FOVEATED_RENDERING
+				if (PostProcessInputsIsFoveatedMasked[0])
+				{
+					RawColor = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, BufferUV);
+				}
+				else
+			#endif
+				{
+					RawColor = PostprocessInput0.SampleLevel(PostprocessInput0Sampler, BufferUV, 0);
+				}
 			#else
-				float4 RawColor = PostprocessInput0.Load(uint3(TexelLocation, 0));
+				float4 RawColor;
+			#if MASK_BASED_FOVEATED_RENDERING
+				if (PostProcessInputsIsFoveatedMasked[0])
+				{
+					float2 ViewportCenter = float2(ViewportRect.zw + ViewportRect.xy) * 0.5;
+					float2 ViewPos = (TexelLocation - ViewportCenter) * ViewportSize.zw * 2.0;
+					RawColor = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, TexelLocation, ViewPos);
+				}
+				else
+			#endif
+				{
+					RawColor = PostprocessInput0.Load(uint3(TexelLocation, 0));
+				}
 			#endif
 
 			float4 Color = TransformCurrentFrameSceneColor(RawColor);
@@ -1332,8 +1377,18 @@ FTAASceneColorSample SampleCachedSceneColorTexture(
 	int2 PixelOffset)
 {
 	FTAASceneColorSample Sample;
-	Sample.Color = TransformCurrentFrameSceneColor(PostprocessInput0.SampleLevel(
-		PostprocessInput0Sampler, InputParams.NearestBufferUV, 0, PixelOffset));
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		float2 UV = InputParams.NearestBufferUV + PixelOffset * PostprocessInput0Size.zw;
+		Sample.Color = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, UV);
+	}
+	else
+#endif
+	{
+		Sample.Color = TransformCurrentFrameSceneColor(PostprocessInput0.SampleLevel(
+			PostprocessInput0Sampler, InputParams.NearestBufferUV, 0, PixelOffset));
+	}
 
 	Sample.CocRadius = 0;
 
@@ -2203,6 +2258,11 @@ FTAAHistoryPayload TemporalAASample(uint2 GroupId, uint2 GroupThreadId, uint Gro
 	// Luma weighted blend
 	float FilterWeight = GetSceneColorHdrWeight(InputParams, IntermediaryResult.Filtered.Color.x);
 	float HistoryWeight = GetSceneColorHdrWeight(InputParams, History.Color.x);
+
+	#if MASK_BASED_FOVEATED_RENDERING
+		float ConfidenceLevel = FoveatedMask_GetConfidenceLevel(PostprocessInput0Size, ViewportRect, ViewportSize, ViewportUV);
+		FilterWeight *= max(ConfidenceLevel, 0.001);
+	#endif
 
 	FTAAHistoryPayload OutputPayload;
 	{

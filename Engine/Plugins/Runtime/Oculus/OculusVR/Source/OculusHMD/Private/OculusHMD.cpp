@@ -38,6 +38,13 @@
 #include "Runtime/UtilityShaders/Public/OculusShaders.h"
 #include "PipelineStateCache.h"
 
+#if WITH_OCULUS_PRIVATE_CODE
+#include "IOculusMRModule.h"
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+#include "OVR_Plugin_MixedReality.h"
+#endif
+#endif
+
 #if WITH_EDITOR
 #include "Editor/UnrealEd/Classes/Editor/EditorEngine.h"
 #endif
@@ -916,6 +923,35 @@ namespace OculusHMD
 			}
 		}
 
+#if WITH_OCULUS_PRIVATE_CODE
+
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+		if (ovrp_GetMixedRealityInitialized())
+		{
+			ovrp_UpdateExternalCamera();
+			ovrp_UpdateCameraDevices();
+			UCastingViewportClient* CastingViewportClient = nullptr;
+			for (auto ViewportClient : InWorldContext.CastingViewports)
+			{
+				if (ViewportClient && ViewportClient->bProjectToMirrorWindow)
+				{
+					CastingViewportClient = ViewportClient;
+					break;
+				}
+			}
+			if (CastingViewportClient)
+			{
+				CastingViewportRenderTexture = CastingViewportClient->GetCastingViewport()->GetRenderTargetTexture();
+			}
+			else
+			{
+				CastingViewportRenderTexture = nullptr;
+			}
+		}
+#endif
+
+#endif
+
 		if (GIsRequestingExit)
 		{
 			PreShutdown();
@@ -1268,6 +1304,32 @@ namespace OculusHMD
 		return proj;
 	}
 
+	FMatrix FOculusHMD::GetStereoProjectionMatrix_RenderThread(EStereoscopicPass StereoPassType) const
+	{
+		CheckInRenderThread();
+
+		check(IsStereoEnabled());
+
+		const int32 ViewIndex = ViewIndexFromStereoPass(StereoPassType);
+
+		FMatrix proj = ToFMatrix(Settings_RenderThread->EyeProjectionMatrices[ViewIndex]);
+
+		// correct far and near planes for reversed-Z projection matrix
+		const float WorldScale = GetWorldToMetersScale_RenderThread() * (1.0 / 100.0f); // physical scale is 100 UUs/meter
+		float InNearZ = GNearClippingPlane * WorldScale;
+		if (StereoPassType == eSSP_MONOSCOPIC_EYE)
+		{
+			InNearZ = GetMonoCullingDistance() - 50.0f; //50.0f is the hardcoded OverlapDistance in FSceneViewFamily. Should probably be elsewhere.
+		}
+
+		proj.M[3][3] = 0.0f;
+		proj.M[2][3] = 1.0f;
+
+		proj.M[2][2] = 0.0f;
+		proj.M[3][2] = InNearZ;
+
+		return proj;
+	}
 
 	void FOculusHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	{
@@ -1290,6 +1352,14 @@ namespace OculusHMD
 
 		if (SpectatorScreenController)
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+#if OCULUS_MR_SUPPORTED_PLATFORMS
+			if (CastingViewportRenderTexture_RenderThread)
+			{
+				SrcTexture = CastingViewportRenderTexture_RenderThread;
+			}
+#endif
+#endif
 			SpectatorScreenController->RenderSpectatorScreen_RenderThread(RHICmdList, BackBuffer, SrcTexture, WindowSize);
 		}
 
@@ -1556,6 +1626,8 @@ namespace OculusHMD
 				OutTargetableTexture = TextureSet->GetTexture2D();
 				OutShaderResourceTexture = TextureSet->GetTexture2D();
 				bNeedReAllocateDepthTexture_RenderThread = false;
+					NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+					NeedGenerateFoveatedMask_RenderThread = true;
 				return true;
 			}
 		}
@@ -1564,6 +1636,46 @@ namespace OculusHMD
 		return false;
 	}
 
+	bool FOculusHMD::NeedFoveatedMaskGeneration()
+	{
+		CheckInRenderThread();
+		return NeedGenerateFoveatedMask_RenderThread;
+	}
+
+	void FOculusHMD::SetFoveatedMaskGenerated(bool IsMaskValid)
+	{
+		CheckInRenderThread();
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				uint32 Index = TextureSet->GetSwapChainIndex_RHIThread();
+				if (IsMaskValid)
+				{
+					NeedGenerateFoveatedMaskFlag_RenderThread &= ~(1 << Index);
+				}
+				else
+				{
+					NeedGenerateFoveatedMaskFlag_RenderThread |= (1 << Index);
+				}
+			}
+		}
+	}
+
+	void FOculusHMD::InvalidateAllGeneratedFoveatedMask()
+	{
+		CheckInRenderThread();
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+				NeedGenerateFoveatedMask_RenderThread = true;
+			}
+		}
+	}
 
 	void FOculusHMD::UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget)
 	{
@@ -1927,6 +2039,16 @@ namespace OculusHMD
 		// Update mirror texture
 		CustomPresent->UpdateMirrorTexture_RenderThread();
 
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				uint32 Index = TextureSet->GetSwapChainIndex_RHIThread();
+				NeedGenerateFoveatedMask_RenderThread = (NeedGenerateFoveatedMaskFlag_RenderThread & (1 << Index)) != 0;
+			}
+		}
+
 #if !PLATFORM_ANDROID
 	#if 0 // The entire target should be cleared by the tonemapper and pp material
  		// Clear the padding between two eyes
@@ -2011,6 +2133,9 @@ namespace OculusHMD
 		}
 
 		RendererModule = nullptr;
+
+		NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+		NeedGenerateFoveatedMask_RenderThread = true;
 	}
 
 
@@ -2845,6 +2970,18 @@ namespace OculusHMD
 		return 100.0f;
 	}
 
+	float FOculusHMD::GetWorldToMetersScale_RenderThread() const
+	{
+		CheckInRenderThread();
+
+		if (GetFrame_RenderThread())
+		{
+			return GetFrame_RenderThread()->WorldToMetersScale;
+		}
+
+		return 100.0f;
+	}
+
 	float FOculusHMD::GetMonoCullingDistance() const
 	{
 		CheckInGameThread();
@@ -3303,6 +3440,9 @@ namespace OculusHMD
 					}
 
 					Layers_RenderThread = XLayers;
+#if WITH_OCULUS_PRIVATE_CODE
+					CastingViewportRenderTexture_RenderThread = CastingViewportRenderTexture;
+#endif
 				}
 			});
 		}
@@ -3632,10 +3772,6 @@ namespace OculusHMD
 		{
 			check(!FMath::IsNaN(f));
 			Settings->PixelDensityMin = FMath::Clamp(f, Settings->PixelDensityMin, ClampPixelDensityMax);
-		}
-		if (GConfig->GetBool(OculusSettings, TEXT("bPixelDensityAdaptive"), v, GEngineIni))
-		{
-			Settings->bPixelDensityAdaptive = v;
 		}
 		if (GConfig->GetBool(OculusSettings, TEXT("bPixelDensityAdaptive"), v, GEngineIni))
 		{

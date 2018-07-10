@@ -21,6 +21,7 @@
 #include "DeferredShadingRenderer.h"
 #include "ScenePrivate.h"
 #include "OneColorShader.h"
+#include "FoveatedMaskShaders.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
 #include "ScreenRendering.h"
@@ -44,6 +45,12 @@ static TAutoConsoleVariable<int32> CVarRHICmdFlushRenderThreadTasksPrePass(
 	TEXT("r.RHICmdFlushRenderThreadTasksPrePass"),
 	0,
 	TEXT("Wait for completion of parallel render thread tasks at the end of the pre pass.  A more granular version of r.RHICmdFlushRenderThreadTasks. If either r.RHICmdFlushRenderThreadTasks or r.RHICmdFlushRenderThreadTasksPrePass is > 0 we will flush."));
+
+// TODO: remove it
+static TAutoConsoleVariable<int32> CVarForceFoveatedMaskGeneration(
+	TEXT("vr.Foveated.Mask.Generation.Forced"),
+	0,
+	TEXT("Force to generate the foveated mask"));
 
 const TCHAR* GetDepthDrawingModeString(EDepthDrawingMode Mode)
 {
@@ -906,8 +913,56 @@ static void SetupPrePassView(FRHICommandList& RHICmdList, const FViewInfo& View,
 	}
 }
 
+static void RenderFoveatedMaskView(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, RenderFoveatedMaskView);
+
+	const auto FeatureLevel = GMaxRHIFeatureLevel;
+	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+	TShaderMapRef<FPassthroughVS> VertexShader(ShaderMap);
+	TShaderMapRef<FMaskGenerationPS> PixelShader(ShaderMap);
+
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+	RHICmdList.SetStencilRef(0xffffffff);
+
+	bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && View.ViewState != nullptr && View.AntiAliasingMethod == AAM_TemporalAA;
+	uint32 FrameIndexMod8 = UseMaskAnimation ? View.ViewState->GetFrameIndexMod8() : 0;
+	if (GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+	{
+		UseMaskAnimation = true;
+		FrameIndexMod8 = GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() & 7;
+	}
+
+	FVector4 EyeFov(1.0f, 1.0f, 1.0f, 1.0f);
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	if (bStereo)
+	{
+		EStereoscopicPass Eye = View.StereoPass;
+		FMatrix Proj = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix_RenderThread(Eye);
+		EyeFov = GetFovFromAsymmetricProjectionMatrix(Proj);
+	}
+	FVector4 Viewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.ViewRect.Width(), View.ViewRect.Height());
+
+	PixelShader->SetParameters(RHICmdList, Viewport, EyeFov, FrameIndexMod8);
+
+	float Depth = (bool)ERHIZBuffer::IsInverted ? 1.0f : 0.0f;
+	FVector4 Vertices[4];
+	Vertices[0].Set(-1.0f, 1.0f, Depth, 1.0f);
+	Vertices[1].Set(1.0f, 1.0f, Depth, 1.0f);
+	Vertices[2].Set(-1.0f, -1.0f, Depth, 1.0f);
+	Vertices[3].Set(1.0f, -1.0f, Depth, 1.0f);
+	DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, sizeof(Vertices[0]));
+}
+
 static void RenderHiddenAreaMaskView(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View)
 {
+	SCOPED_DRAW_EVENT(RHICmdList, RenderHiddenAreaMaskView);
+
 	const auto FeatureLevel = GMaxRHIFeatureLevel;
 	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<TOneColorVS<true> > VertexShader(ShaderMap);
@@ -1047,7 +1102,7 @@ public:
 	virtual void SetStateOnCommandList(FRHICommandList& CmdList) override
 	{
 		FParallelCommandListSet::SetStateOnCommandList(CmdList);
-		FSceneRenderTargets::Get(CmdList).BeginRenderingPrePass(CmdList, false);
+		FSceneRenderTargets::Get(CmdList).BeginRenderingPrePass(CmdList, false, false);
 		SetupPrePassView(CmdList, View, SceneRenderer);
 	}
 };
@@ -1130,7 +1185,7 @@ bool FDeferredShadingSceneRenderer::RenderPrePassViewParallel(const FViewInfo& V
 			DrawRenderState);
 
 		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(ParentCmdList);
-		SceneContext.BeginRenderingPrePass(ParentCmdList, false);
+		SceneContext.BeginRenderingPrePass(ParentCmdList, false, false);
 
 		// Dynamic
 		FRHICommandList* CmdList = ParallelCommandListSet.NewParallelCommandList();
@@ -1195,7 +1250,13 @@ bool FDeferredShadingSceneRenderer::PreRenderPrePass(FRHICommandListImmediate& R
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-	SceneContext.BeginRenderingPrePass(RHICmdList, !bDepthWasCleared);
+	if (bRequireRegenerateFoveatedMask)
+	{
+		SceneContext.InvalidateFoveatedMaskInStencil();
+		bRequireRegenerateFoveatedMask = false;
+	}
+
+	SceneContext.BeginRenderingPrePass(RHICmdList, !bDepthWasCleared, false);
 	bDepthWasCleared = true;
 
 	// Dithered transition stencil mask fill
@@ -1353,8 +1414,16 @@ bool FDeferredShadingSceneRenderer::RenderPrePass(FRHICommandListImmediate& RHIC
 		bDidPrePre = true;
 	}
 
+	bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && Views[0].ViewState != nullptr && Views[0].AntiAliasingMethod == AAM_TemporalAA;
+	if (CVarForceFoveatedMaskGeneration.GetValueOnRenderThread() || GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+	{
+		UseMaskAnimation = true;
+	}
+
+	bool ResetFoveatedMaskStencil = ShouldUseMaskBasedFoveatedRendering(FeatureLevel) && (!SceneContext.IsFoveatedMaskValidInStencil() || UseMaskAnimation);
+
 	// Dithered transition stencil mask clear, accounting for all active viewports
-	if (bDitheredLODTransitionsUseStencil)
+	if (bDitheredLODTransitionsUseStencil || ResetFoveatedMaskStencil)
 	{
 		if (Views.Num() > 1)
 		{
@@ -1365,12 +1434,70 @@ bool FDeferredShadingSceneRenderer::RenderPrePass(FRHICommandListImmediate& RHIC
 			}
 			RHICmdList.SetViewport(FullViewRect.Min.X, FullViewRect.Min.Y, 0, FullViewRect.Max.X, FullViewRect.Max.Y, 1);
 		}
-		DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 0);
+		uint32 StencilMask = 0xff;
+		if (ResetFoveatedMaskStencil && !bDitheredLODTransitionsUseStencil)
+		{
+			StencilMask = STENCIL_FOVEATED_MASK_MASK;
+		}
+		else if (!ResetFoveatedMaskStencil && bDitheredLODTransitionsUseStencil)
+		{
+			StencilMask = STENCIL_FOVEATED_MASK_INV_MASK;
+		}
+		DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 0, StencilMask);
+	}
+
+	if (ResetFoveatedMaskStencil)
+	{
+		RenderFoveatedMaskInStencil(RHICmdList);
+		SceneContext.SetFoveatedMaskValidInStencil(true);
 	}
 
 	SceneContext.FinishRenderingPrePass(RHICmdList);
 
 	return bDepthWasCleared;
+}
+
+void FDeferredShadingSceneRenderer::RenderFoveatedMaskInStencil(FRHICommandListImmediate& RHICmdList)
+{
+	if (ShouldUseMaskBasedFoveatedRendering(FeatureLevel))
+	{
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_NONE>::GetRHI();
+		//GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<
+			false,
+			CF_Always,
+			true,
+			CF_Always,
+			SO_Keep,
+			SO_Keep,
+			SO_Replace,
+			false,
+			CF_Always,
+			SO_Keep,
+			SO_Keep,
+			SO_Keep,
+			0xFF,
+			STENCIL_FOVEATED_MASK_MASK
+		>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+
+		RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+
+		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+		{
+			const FViewInfo& View = Views[ViewIndex];
+			if (View.StereoPass != eSSP_FULL)
+			{
+				RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+				RenderFoveatedMaskView(RHICmdList, GraphicsPSOInit, View);
+			}
+		}
+
+		RHICmdList.SetStencilRef(0);
+	}
 }
 
 /**
@@ -1388,6 +1515,8 @@ static FORCEINLINE bool HasHiddenAreaMask()
 
 bool FDeferredShadingSceneRenderer::RenderPrePassHMD(FRHICommandListImmediate& RHICmdList)
 {
+	SCOPED_DRAW_EVENT(RHICmdList, RenderPrePassHMD);
+
 	// Early out before we change any state if there's not a mask to render
 	if (!HasHiddenAreaMask())
 	{
@@ -1395,8 +1524,7 @@ bool FDeferredShadingSceneRenderer::RenderPrePassHMD(FRHICommandListImmediate& R
 	}
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-	SceneContext.BeginRenderingPrePass(RHICmdList, true);
-
+	SceneContext.BeginRenderingPrePass(RHICmdList, true, false);
 
 	FGraphicsPipelineStateInitializer GraphicsPSOInit;
 	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1413,9 +1541,9 @@ bool FDeferredShadingSceneRenderer::RenderPrePassHMD(FRHICommandListImmediate& R
 		if (View.StereoPass != eSSP_FULL)
 		{
 			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-			RenderHiddenAreaMaskView(RHICmdList, GraphicsPSOInit, View);
+				RenderHiddenAreaMaskView(RHICmdList, GraphicsPSOInit, View);
+			}
 		}
-	}
 
 	SceneContext.FinishRenderingPrePass(RHICmdList);
 

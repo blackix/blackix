@@ -1,4 +1,4 @@
-﻿// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMD_CustomPresent.h"
 #include "OculusHMDPrivateRHI.h"
@@ -39,14 +39,7 @@ public:
 
 FVulkanCustomPresent::FVulkanCustomPresent(FOculusHMD* InOculusHMD) :
 	FCustomPresent(InOculusHMD, ovrpRenderAPI_Vulkan, PF_R8G8B8A8, false, false)
-{
-#if PLATFORM_ANDROID
-	if (GRHISupportsRHIThread && GIsThreadedRendering && GUseRHIThread_InternalUseOnly)
-	{
-		SetRHIThreadEnabled(false, false);
-	}
-#endif
-}
+{}
 
 
 bool FVulkanCustomPresent::IsUsingCorrectDisplayAdapter() const
