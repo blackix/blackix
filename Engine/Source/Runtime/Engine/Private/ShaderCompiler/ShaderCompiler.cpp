@@ -2972,6 +2972,12 @@ void GlobalBeginCompileShader(
 		}
 
 		Input.Environment.SetDefine(TEXT("MONOSCOPIC_FAR_FIELD"), bIsMonoscopicFarField);
+
+		static const auto CVarMaskBasedFoveatedRenderingEnabled = IConsoleManager::Get().FindConsoleVariable(TEXT("vr.Foveated.Mask.Enable"));
+		const bool bEnableFoveatedMask = CVarMaskBasedFoveatedRenderingEnabled ? (CVarMaskBasedFoveatedRenderingEnabled->GetInt() != 0) : false;
+
+		Input.Environment.SetDefine(TEXT("MASK_BASED_FOVEATED_RENDERING"), bEnableFoveatedMask && !IsMobilePlatform(ShaderPlatform));
+
 		Input.Environment.SetDefine(TEXT("ODS_CAPTURE"), bIsODSCapture);
 	}
 

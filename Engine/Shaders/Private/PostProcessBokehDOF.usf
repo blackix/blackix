@@ -9,6 +9,10 @@
 #include "DepthOfFieldCommon.ush"
 #include "SeparateTranslucency.ush"
 
+#if MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
+
 #ifndef BOKEH_DOF_QUADS_PER_INSTANCE
 #define BOKEH_DOF_QUADS_PER_INSTANCE	256
 #endif
@@ -83,10 +87,22 @@ void MainVS(
 	{
 		float4 ColorAndDepths[4];
 		
-		ColorAndDepths[0] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
-		ColorAndDepths[1] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
-		ColorAndDepths[2] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
-		ColorAndDepths[3] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+#if MASK_BASED_FOVEATED_RENDERING
+		if (PostProcessInputsIsFoveatedMasked[0])
+		{
+			ColorAndDepths[0] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw);
+			ColorAndDepths[1] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw);
+			ColorAndDepths[2] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw);
+			ColorAndDepths[3] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw);
+		}
+		else
+#endif
+		{
+			ColorAndDepths[0] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
+			ColorAndDepths[1] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
+			ColorAndDepths[2] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+			ColorAndDepths[3] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+		}
 
 		float4 Lum = float4(dot(ColorAndDepths[0].rgb, 1), dot(ColorAndDepths[1].rgb, 1), dot(ColorAndDepths[2].rgb, 1), dot(ColorAndDepths[3].rgb, 1));
 		float InvTotalLum = 1.0f / max(0.0001f, dot(Lum, 1));
@@ -177,11 +193,23 @@ void MainVS(
 	bool bRenderAll4Quads = false;
 
 	float4 ColorAndDepths[4];
-		
-	ColorAndDepths[0] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
-	ColorAndDepths[1] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
-	ColorAndDepths[2] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
-	ColorAndDepths[3] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+	
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		ColorAndDepths[0] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw);
+		ColorAndDepths[1] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw);
+		ColorAndDepths[2] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw);
+		ColorAndDepths[3] = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw);
+	}
+	else
+#endif
+	{
+		ColorAndDepths[0] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
+		ColorAndDepths[1] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f, -0.5f) * PostprocessInput0Size.zw, 0);
+		ColorAndDepths[2] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2(-0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+		ColorAndDepths[3] = Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, InputTexCoord + float2( 0.5f,  0.5f) * PostprocessInput0Size.zw, 0);
+	}
 
 	float4 MinColorAndDepths = min(min(ColorAndDepths[0], ColorAndDepths[1]), min(ColorAndDepths[2], ColorAndDepths[3]));
 	float4 MaxColorAndDepths = max(max(ColorAndDepths[0], ColorAndDepths[1]), max(ColorAndDepths[2], ColorAndDepths[3]));
@@ -316,7 +344,16 @@ float4 CommonDOFSetup(in float2 CenterUV)
 	UNROLL for(uint i = 0; i < 4; ++i)
 	{
 		// clamping to a small number fixes black dots appearing (denorms?, 0 doesn't fix it)
-		ColorAndDepth[i].rgb = max(float3(0.0001f, 0.0001f, 0.0001f), Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, UV[i]).rgb);
+	#if MASK_BASED_FOVEATED_RENDERING
+		if (PostProcessInputsIsFoveatedMasked[0])
+		{
+			ColorAndDepth[i].rgb = max(float3(0.0001f, 0.0001f, 0.0001f), FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, UV[i]).rgb);
+		}
+		else
+	#endif
+		{
+			ColorAndDepth[i].rgb = max(float3(0.0001f, 0.0001f, 0.0001f), Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, UV[i]).rgb);
+		}
 		ColorAndDepth[i].a = CalcSceneDepth(UV[i]);
 		Layer[i] = ComputeLayerContributions(ColorAndDepth[i].a);
 	}
@@ -403,7 +440,17 @@ float4 DOFRecombineCommon(float2 UV, float4 SvPosition)
 	float2 PixelPosCenter = SvPosition.xy;
 	float2 FullResUV = PixelPosCenter * PostprocessInput0Size.zw;
 
-	float3 UnfocusedSceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, FullResUV).rgb;
+	float3 UnfocusedSceneColor;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		UnfocusedSceneColor = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, FullResUV).rgb;
+	}
+	else
+#endif
+	{
+		UnfocusedSceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, FullResUV).rgb;
+	}	
 
 	OutColor.rgb = UnfocusedSceneColor;
 	OutColor.a = 0;
@@ -415,10 +462,30 @@ float4 DOFRecombineCommon(float2 UV, float4 SvPosition)
 	float2 BokehViewportUV = UV;
 
 	// behind focal plane
-	float4 BokehDOFAccumLayer1 = Texture2DSample(PostprocessInput1, PostprocessInput1Sampler, BokehViewportUV);
+	float4 BokehDOFAccumLayer1;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[1])
+	{
+		BokehDOFAccumLayer1 = FoveatedMask_LoadFromMaskedTexture(PostprocessInput1, PostprocessInput1Size, ViewportRect, ViewportSize, BokehViewportUV);
+	}
+	else
+#endif
+	{
+		BokehDOFAccumLayer1 = Texture2DSample(PostprocessInput1, PostprocessInput1Sampler, BokehViewportUV);
+	}
 
 	// in front of focal plane
-	float4 BokehDOFAccumLayer3 = Texture2DSample(PostprocessInput1, PostprocessInput1Sampler, BokehViewportUV + float2(0.0f, DepthOfFieldParams[1].y));
+	float4 BokehDOFAccumLayer3;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[1])
+	{
+		BokehDOFAccumLayer3 = FoveatedMask_LoadFromMaskedTexture(PostprocessInput1, PostprocessInput1Size, ViewportRect, ViewportSize, BokehViewportUV + float2(0.0f, DepthOfFieldParams[1].y));
+	}
+	else
+#endif
+	{
+		BokehDOFAccumLayer3 = Texture2DSample(PostprocessInput1, PostprocessInput1Sampler, BokehViewportUV + float2(0.0f, DepthOfFieldParams[1].y));
+	}
 
 	float OcclusionTweakFactor1 = DepthOfFieldParams[0].w;
 
@@ -452,7 +519,18 @@ float4 DOFRecombineCommon(float2 UV, float4 SvPosition)
 #endif
 
 #if RECOMBINE_METHOD == 2 || RECOMBINE_METHOD == 3
-	float4 SeparateTranslucency = UpsampleSeparateTranslucency(SvPosition.xy, FullResUV, PostprocessInput2, PostprocessInput2Size.zw);
+	float4 SeparateTranslucency;
+#if MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[2])
+	{
+		// UpsampleSeparateTranslucency would fallback to regular texture fetch
+		SeparateTranslucency = FoveatedMask_LoadFromMaskedTexture(PostprocessInput2, PostprocessInput2Size, ViewportRect, ViewportSize, FullResUV); 
+	}
+	else
+#endif
+	{
+		SeparateTranslucency = UpsampleSeparateTranslucency(SvPosition.xy, FullResUV, PostprocessInput2, PostprocessInput2Size.zw);
+	}
 
 	// add RGB, darken by A (this allows to represent translucent and additive blending)
 	OutColor.rgb = OutColor.rgb * SeparateTranslucency.a + SeparateTranslucency.rgb;
@@ -492,4 +570,4 @@ void MainRecombineCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	uint2 PixelPos = DispatchThreadId + (uint2)View.ViewRectMin.xy;
 	RWOutComputeTex[PixelPos] = OutColor;
 }
-#endif 
+#endif

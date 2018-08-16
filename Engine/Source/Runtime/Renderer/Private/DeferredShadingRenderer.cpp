@@ -1153,7 +1153,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	}
 
 	// TODO: Could entirely remove this by using STENCIL_SANDBOX_BIT in ShadowRendering.cpp and DistanceFieldSurfaceCacheLighting.cpp
-	if (!IsForwardShadingEnabled(FeatureLevel))
+	if (!IsForwardShadingEnabled(FeatureLevel) && !ShouldUseMaskBasedFoveatedRendering(FeatureLevel))
 	{
 		// Clear stencil to 0 now that deferred decals are done using what was setup in the base pass
 		// Shadow passes and other users of stencil assume it is cleared to 0 going in
@@ -1162,6 +1162,8 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 		RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthNop_StencilWrite;
 		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearStencilFromBasePass"));
 		RHICmdList.EndRenderPass();
+
+		SceneContext.SetFoveatedMaskValidInStencil(false);
 
 		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, SceneContext.GetSceneDepthSurface());
 	}
@@ -1373,6 +1375,54 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 	// Resolve the scene color for post processing.
 	ResolveSceneColor(RHICmdList);
 
+	bool SceneColorTextureIsFoveatedMasked = false;
+	//bool SceneDepthTextureIsFoveatedMasked = false;
+	//bool VelocityRTQuadIsFoveatedMasked = false;
+	bool SeparateTranslucnecyRTIsFoveatedMasked = false;
+
+	if (ShouldUseMaskBasedFoveatedRendering(FeatureLevel) && Views.Num() >= 2 && Views[0].StereoPass != eSSP_FULL)
+	{
+		if (GetMaskBasedFoveatedRenderingVisualizeMode() == EMaskBasedFoveatedRenderingVisualizeMode_SeparateReconstruction)
+		{
+			ReconstructMaskedPixels(RHICmdList);
+			//FResolveParams Params;
+			//RHICmdList.CopyTexture(SceneContext.GetMaskReconstructedColorTexture(), SceneContext.GetSceneColorTexture(), Params);
+			CopyReconstructedPixels(RHICmdList);
+
+			SceneColorTextureIsFoveatedMasked = false;
+			//SceneDepthTextureIsFoveatedMasked = true;
+			//VelocityRTIsFoveatedMasked = true;
+			SeparateTranslucnecyRTIsFoveatedMasked = true;
+		}
+		else if (GetMaskBasedFoveatedRenderingVisualizeMode() == EMaskBasedFoveatedRenderingVisualizeMode_NoReconstruction)
+		{
+			SceneColorTextureIsFoveatedMasked = false;
+			//SceneDepthTextureIsFoveatedMasked = false;
+			//VelocityRTIsFoveatedMasked = false;
+			SeparateTranslucnecyRTIsFoveatedMasked = false;
+		}
+		else
+		{
+			SceneColorTextureIsFoveatedMasked = true;
+			//SceneDepthTextureIsFoveatedMasked = true;
+			//VelocityRTIsFoveatedMasked = true;
+			SeparateTranslucnecyRTIsFoveatedMasked = true;
+		}
+	}
+
+	SceneContext.GetSceneColor()->GetRenderTargetItem().SetFoveatedMasked(SceneColorTextureIsFoveatedMasked);
+
+	// they should be constructed properly in stencil-based masking
+	//SceneContext.GetSceneDepth()->GetRenderTargetItem().SetFoveatedMasked(SceneDepthTextureIsFoveatedMasked);
+	//if (VelocityRT)
+	//{
+	//	VelocityRT->GetRenderTargetItem().SetFoveatedMasked(VelocityRTIsFoveatedMasked);
+	//}
+	if (SceneContext.SeparateTranslucencyRT)
+	{
+		SceneContext.SeparateTranslucencyRT->GetRenderTargetItem().SetFoveatedMasked(SeparateTranslucnecyRTIsFoveatedMasked);
+	}
+
 	GetRendererModule().RenderPostResolvedSceneColorExtension(RHICmdList, SceneContext);
 
 	CopySceneCaptureComponentToTarget(RHICmdList);
@@ -1395,6 +1445,7 @@ void FDeferredShadingSceneRenderer::Render(FRHICommandListImmediate& RHICmdList)
 
 		// End of frame, we don't need it anymore
 		FSceneRenderTargets::Get(RHICmdList).FreeDownsampledTranslucencyDepth();
+		FSceneRenderTargets::Get(RHICmdList).FreeMaskReconstructedColor();
 
 		// we rendered to it during the frame, seems we haven't made use of it, because it should be released
 		check(!FSceneRenderTargets::Get(RHICmdList).SeparateTranslucencyRT);

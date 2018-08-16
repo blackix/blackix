@@ -66,6 +66,9 @@ float4 PostprocessInput8MinMax;
 float4 PostprocessInput9MinMax;
 float4 PostprocessInput10MinMax;
 
+// x -> PostprocessInput0, y -> PostprocessInput1, z -> PostprocessInput2, w -> PostprocessInput3
+int4 PostProcessInputsIsFoveatedMasked;
+
 // viewport width, height, 1/width, 1/height (scaled to the current rendertarget resolution), depends on SetViewportAndCallRHI() call
 float4 ViewportSize;
 // in pixels (scaled to the current rendertarget resolution), float4(minx,miny,maxx,maxy), depends on SetViewportAndCallRHI() call

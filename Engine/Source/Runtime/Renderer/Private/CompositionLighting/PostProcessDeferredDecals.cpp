@@ -885,7 +885,7 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 
 				// we don't modify stencil but if out input was having stencil for us (after base pass - we need to clear)
 				// Clear stencil to 0, which is the assumed default by other passes
-				DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, SceneContext.GetSceneDepthSurface()->GetSizeXY(), FIntRect());
+				DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, SceneContext.GetSceneDepthSurface()->GetSizeXY(), FIntRect());
 			}
 
 			// This stops the targets from being resolved and decoded until the last view is rendered.

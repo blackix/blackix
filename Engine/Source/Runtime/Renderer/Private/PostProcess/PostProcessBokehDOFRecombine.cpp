@@ -47,7 +47,7 @@ class FPostProcessBokehDOFRecombinePS : public FGlobalShader
 
 	static bool UseNearestDepthNeighborUpsample()
 	{
-		return Method > 3;
+		return (Method > 3);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -423,8 +423,11 @@ void FRCPassPostProcessBokehDOFRecombine::Process(FRenderingCompositePassContext
 		// Set the view family's render target/viewport.
 		SetRenderTarget(Context.RHICmdList, DestRenderTarget.TargetableTexture, FTextureRHIRef());
 
-		// is optimized away if possible (RT size=view size, )
-		DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 1.0f, false, 0, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+		if (View.StereoPass == eSSP_FULL)
+		{
+			// is optimized away if possible (RT size=view size, )
+			DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 1.0f, false, 0, 0xff, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+		}
 
 		Context.SetViewportAndCallRHI(View.ViewRect);
 

@@ -36,6 +36,10 @@
 #if POST_PROCESS_MATERIAL
 	// only Postprocess material bind PostprocessInput0, PostprocessInput0Size, PostprocessInput0MinMax ...
 	#include "/Engine/Private/PostProcessCommon.ush"			// PostprocessInput0
+
+	#if MASK_BASED_FOVEATED_RENDERING
+		#include "/Engine/Private/FoveatedMaskCommon.ush"
+	#endif
 #endif
 
 #ifndef USE_DITHERED_LOD_TRANSITION
@@ -1437,6 +1441,48 @@ float4 SceneTextureLookup(float2 UV, int SceneTextureIndex, bool bFiltered)
 		// PPI_CustomDepth
 		case 13: return ScreenSpaceData.GBuffer.CustomDepth;
 #if POST_PROCESS_MATERIAL
+	#if MASK_BASED_FOVEATED_RENDERING		// Foveated masked textures are supported on PostprocessInput0-3
+		// PPI_PostprocessInput0
+		case 14:
+			if (PostProcessInputsIsFoveatedMasked[0])
+			{
+				return FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, UV);
+			}
+			else
+			{
+				return Texture2DSample(PostprocessInput0, bFiltered ? BilinearTextureSampler0 : PostprocessInput0Sampler, UV);
+			}
+		// PPI_PostprocessInput1
+		case 15:
+			if (PostProcessInputsIsFoveatedMasked[1])
+			{
+				return FoveatedMask_LoadFromMaskedTexture(PostprocessInput1, PostprocessInput1Size, ViewportRect, ViewportSize, UV);
+			}
+			else
+			{
+				return Texture2DSample(PostprocessInput1, bFiltered ? BilinearTextureSampler0 : PostprocessInput1Sampler, UV);
+			}
+		// PPI_PostprocessInput2
+		case 16: 
+			if (PostProcessInputsIsFoveatedMasked[2])
+			{
+				return FoveatedMask_LoadFromMaskedTexture(PostprocessInput2, PostprocessInput2Size, ViewportRect, ViewportSize, UV);
+			}
+			else
+			{
+				return Texture2DSample(PostprocessInput2, bFiltered ? BilinearTextureSampler0 : PostprocessInput2Sampler, UV);
+			}
+		// PPI_PostprocessInput3
+		case 17:
+			if (PostProcessInputsIsFoveatedMasked[3])
+			{
+				return FoveatedMask_LoadFromMaskedTexture(PostprocessInput3, PostprocessInput3Size, ViewportRect, ViewportSize, UV);
+			}
+			else
+			{
+				return Texture2DSample(PostprocessInput3, bFiltered ? BilinearTextureSampler0 : PostprocessInput3Sampler, UV);
+			}
+	#else
 		// PPI_PostprocessInput0
 		case 14: return Texture2DSample(PostprocessInput0, bFiltered ? BilinearTextureSampler0 : PostprocessInput0Sampler, UV);
 		// PPI_PostprocessInput1
@@ -1445,6 +1491,7 @@ float4 SceneTextureLookup(float2 UV, int SceneTextureIndex, bool bFiltered)
 		case 16: return Texture2DSample(PostprocessInput2, bFiltered ? BilinearTextureSampler0 : PostprocessInput2Sampler, UV);
 		// PPI_PostprocessInput3
 		case 17: return Texture2DSample(PostprocessInput3, bFiltered ? BilinearTextureSampler0 : PostprocessInput3Sampler, UV);
+	#endif
 		// PPI_PostprocessInput4
 		case 18: return Texture2DSample(PostprocessInput4, bFiltered ? BilinearTextureSampler0 : PostprocessInput4Sampler, UV);
 		// PPI_PostprocessInput5
