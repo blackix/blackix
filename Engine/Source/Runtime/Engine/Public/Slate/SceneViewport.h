@@ -266,7 +266,11 @@ public:
 		ViewportGammaOverride = InGammaOverride;
 	};
 
+#if WITH_OCULUS_PRIVATE_CODE
+protected:
+#else
 private:
+#endif
 	/**
 	 * Called when this viewport is destroyed
 	 */
@@ -366,7 +370,11 @@ private:
 	 */
 	void OnPostResizeWindowBackbuffer(void* Backbuffer);
 
+#if WITH_OCULUS_PRIVATE_CODE
+protected:
+#else
 private:
+#endif
 	/** An intermediate reply state that is reset whenever an input event is generated */
 	FReply CurrentReplyState;
 	/** A mapping of key names to their pressed state */

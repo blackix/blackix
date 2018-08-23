@@ -167,7 +167,7 @@ void FRCPassPostProcessVisualizeDOF::Process(FRenderingCompositePassContext& Con
 	// can be optimized (don't clear areas we overwrite, don't clear when full screen),
 	// needed when a camera (matinee) has black borders or with multiple viewports
 	// focal distance depth is stored in the alpha channel to avoid DOF artifacts
-	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, View.FinalPostProcessSettings.DepthOfFieldFocalDistance), false, 0, false, 0, PassOutputs[0].RenderTargetDesc.Extent, DestRect);
+	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, View.FinalPostProcessSettings.DepthOfFieldFocalDistance), false, 0, false, 0, 0xff, PassOutputs[0].RenderTargetDesc.Extent, DestRect);
 
 	Context.SetViewportAndCallRHI(0, 0, 0.0f, DestSize.X, DestSize.Y, 1.0f );
 
@@ -510,10 +510,13 @@ void FRCPassPostProcessBokehDOFSetup::Process(FRenderingCompositePassContext& Co
 		// Set the view family's render target/viewport.
 		SetRenderTarget(Context.RHICmdList, DestRenderTarget.TargetableTexture, FTextureRHIRef());
 	
-		// can be optimized (don't clear areas we overwrite, don't clear when full screen),
-		// needed when a camera (matinee) has black borders or with multiple viewports
-		// focal distance depth is stored in the alpha channel to avoid DOF artifacts
-		DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, View.FinalPostProcessSettings.DepthOfFieldFocalDistance), false, 0, false, 0, DestSize, DestRect);
+		if (View.StereoPass == eSSP_FULL)
+		{
+			// can be optimized (don't clear areas we overwrite, don't clear when full screen),
+			// needed when a camera (matinee) has black borders or with multiple viewports
+			// focal distance depth is stored in the alpha channel to avoid DOF artifacts
+			DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, View.FinalPostProcessSettings.DepthOfFieldFocalDistance), false, 0, false, 0, 0xff, DestSize, DestRect);
+		}
 
 		Context.SetViewportAndCallRHI(0, 0, 0.0f, DestSize.X, DestSize.Y, 1.0f );
 
@@ -862,7 +865,7 @@ void FRCPassPostProcessBokehDOF::Process(FRenderingCompositePassContext& Context
 	SetRenderTarget(Context.RHICmdList, DestRenderTarget.TargetableTexture, FTextureRHIRef());
 
 	// This clean is required to make the accumulation working
-	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, GetOutput(ePId_Output0)->RenderTargetDesc.Extent, FIntRect());
+	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, 0xff, GetOutput(ePId_Output0)->RenderTargetDesc.Extent, FIntRect());
 
 	// we need to output to the whole rendertarget
 	Context.SetViewportAndCallRHI(0, 0, 0.0f, PassOutputs[0].RenderTargetDesc.Extent.X, PassOutputs[0].RenderTargetDesc.Extent.Y, 1.0f);
