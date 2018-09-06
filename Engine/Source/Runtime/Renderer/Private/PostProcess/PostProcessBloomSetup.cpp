@@ -572,7 +572,11 @@ void FRCPassPostProcessVisualizeBloomOverlay::Process(FRenderingCompositePassCon
 	SetRenderTarget(Context.RHICmdList, DestRenderTarget.TargetableTexture, FTextureRHIRef());
 
 	// is optimized away if possible (RT size=view size, )
-	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0 ,0), false, 0, false, 0, DestSize, DestRect);
+#if WITH_OCULUS_PRIVATE_CODE
+	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0 ,0), false, 0, false, 0, 0xff, DestSize, DestRect);
+#else
+	DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, DestSize, DestRect);
+#endif
 
 	Context.SetViewportAndCallRHI(0, 0, 0.0f, DestRect.Width(), DestRect.Height(), 1.0f );
 

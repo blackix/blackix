@@ -821,6 +821,11 @@ void FPostProcessPassParameters::Bind(const FShaderParameterMap& ParameterMap)
 	ViewportRect.Bind(ParameterMap,TEXT("ViewportRect"));
 	ScreenPosToPixel.Bind(ParameterMap, TEXT("ScreenPosToPixel"));
 	SceneColorBufferUVViewport.Bind(ParameterMap, TEXT("SceneColorBufferUVViewport"));
+#if WITH_OCULUS_PRIVATE_CODE
+	InputsIsFoveatedMasked.Bind(ParameterMap, TEXT("PostProcessInputsIsFoveatedMasked"));
+	FoveatedMaskRadiusRatioItems.Bind(ParameterMap, TEXT("FoveatedMaskRadiusRatioItems"));
+	FoveatedMaskEyeFov.Bind(ParameterMap, TEXT("FoveatedMaskEyeFov"));
+#endif
 	
 	for(uint32 i = 0; i < ePId_Input_MAX; ++i)
 	{
@@ -960,7 +965,11 @@ void FPostProcessPassParameters::Set(
 			ensure(!"Unhandled enum in EFallbackColor");
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
 	// ePId_Input0, ePId_Input1, ...
+	FIntVector4 IsFoveatedMasked(0, 0, 0, 0);
+#endif
+
 	for(uint32 Id = 0; Id < (uint32)ePId_Input_MAX; ++Id)
 	{
 		FRenderingCompositeOutputRef* OutputRef = Context.Pass->GetInput((EPassInputId)Id);
@@ -1010,6 +1019,13 @@ void FPostProcessPassParameters::Set(
 				PPInputMinMax.W -= 0.5f * OnePPInputPixelUVSize.Y;
 				SetShaderValue(RHICmdList, ShaderRHI, PostProcessInputMinMaxParameter[Id], PPInputMinMax);
 			}
+
+#if WITH_OCULUS_PRIVATE_CODE
+			if (Id < 4 && InputPooledElement->GetRenderTargetItem().IsFoveatedMasked())
+			{
+				IsFoveatedMasked[Id] = 1;
+			}
+#endif
 		}
 		else
 		{
@@ -1022,6 +1038,41 @@ void FPostProcessPassParameters::Set(
 			SetShaderValue(RHICmdList, ShaderRHI, PostProcessInputMinMaxParameter[Id], Dummy);
 		}
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	if (InputsIsFoveatedMasked.IsBound())
+	{
+		SetShaderValue(RHICmdList, ShaderRHI, InputsIsFoveatedMasked, IsFoveatedMasked);
+	}
+
+	bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && Context.ViewState != nullptr && Context.View.AntiAliasingMethod == AAM_TemporalAA;
+	uint32 FrameIndexMod8 = UseMaskAnimation ? Context.ViewState->GetFrameIndexMod8() : 0;
+	if (GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+	{
+		UseMaskAnimation = true;
+		FrameIndexMod8 = GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() & 7;
+	}
+
+	if (FoveatedMaskRadiusRatioItems.IsBound())
+	{
+		FVector4 Items;
+		Items = FVector4((float)FrameIndexMod8, GetMaskBasedFoveatedRenderingHighResSqrTan(), GetMaskBasedFoveatedRenderingMediumResSqrTan(), GetMaskBasedFoveatedRenderingLowResSqrTan());
+		SetShaderValue(RHICmdList, ShaderRHI, FoveatedMaskRadiusRatioItems, Items);
+	}
+
+	if (FoveatedMaskEyeFov.IsBound())
+	{
+		FVector4 Fov(1.0f, 1.0f, 1.0f, 1.0f);
+		const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+		if (bStereo)
+		{
+			EStereoscopicPass Eye = Context.View.StereoPass;
+			FMatrix Proj = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix_RenderThread(Eye);
+			Fov = GetFovFromAsymmetricProjectionMatrix(Proj);
+		}
+		SetShaderValue(RHICmdList, ShaderRHI, FoveatedMaskEyeFov, Fov);
+	}
+#endif
 
 	// todo warning if Input[] or InputSize[] is bound but not available, maybe set a specific input texture (blinking?)
 }
@@ -1055,6 +1106,12 @@ FArchive& operator<<(FArchive& Ar, FPostProcessPassParameters& P)
 		Ar << P.PostprocessInputSizeParameter[i];
 		Ar << P.PostProcessInputMinMaxParameter[i];
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	Ar << P.InputsIsFoveatedMasked;
+	Ar << P.FoveatedMaskRadiusRatioItems;
+	Ar << P.FoveatedMaskEyeFov;
+#endif
 
 	return Ar;
 }

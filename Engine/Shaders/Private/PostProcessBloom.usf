@@ -8,6 +8,10 @@
 #include "PostProcessCommon.ush"
 #include "EyeAdaptationCommon.ush"
 
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
+
 // for VisualizeBloomOverlayPS
 // xyz:Bloom1Tint.rgb, w:unused
 float4 ColorScale1;
@@ -158,7 +162,18 @@ float4 BloomSetupCommon(float2 UV, float Threshold, float ExposureScale)
 	const float PreExposure = View.PreExposure;
 #endif
 
-	half4 SceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, UV) * OneOverPreExposure; 
+	half4 SceneColor;
+	
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		SceneColor = FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, UV) * OneOverPreExposure;
+	}
+	else
+#endif
+	{
+		SceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, UV) * OneOverPreExposure; 
+	}
 
 	// clamp to avoid artifacts from exceeding fp16 through framebuffer blending of multiple very bright lights
 	SceneColor.rgb = min(float3(256 * 256, 256 * 256, 256 * 256), SceneColor.rgb);

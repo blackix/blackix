@@ -154,16 +154,32 @@ void FRCPassPostProcessSelectionOutlineColor::Process(FRenderingCompositePassCon
 
 			// top
 			Context.RHICmdList.SetScissorRect(true, ViewRect.Min.X, ViewRect.Min.Y, ViewRect.Max.X, InnerRect.Min.Y);
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#else
 			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#endif
 			// bottom
 			Context.RHICmdList.SetScissorRect(true, ViewRect.Min.X, InnerRect.Max.Y, ViewRect.Max.X, ViewRect.Max.Y);
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#else
 			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#endif
 			// left
 			Context.RHICmdList.SetScissorRect(true, ViewRect.Min.X, ViewRect.Min.Y, InnerRect.Min.X, ViewRect.Max.Y);
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#else
 			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#endif
 			// right
 			Context.RHICmdList.SetScissorRect(true, InnerRect.Max.X, ViewRect.Min.Y, ViewRect.Max.X, ViewRect.Max.Y);
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#else
 			DrawClearQuad(Context.RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, PassOutputs[0].RenderTargetDesc.Extent, FIntRect());
+#endif
 
 			Context.RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
 		}

@@ -233,6 +233,9 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, DownsampledTranslucencyDepthRT(SnapshotSource.DownsampledTranslucencyDepthRT)
 	, bScreenSpaceAOIsValid(SnapshotSource.bScreenSpaceAOIsValid)
 	, bCustomDepthIsValid(SnapshotSource.bCustomDepthIsValid)
+#if WITH_OCULUS_PRIVATE_CODE
+	, bIsFoveatedMaskValidInStencil(SnapshotSource.bIsFoveatedMaskValidInStencil)
+#endif
 	, GBufferRefCount(SnapshotSource.GBufferRefCount)
 	, ThisFrameNumber(SnapshotSource.ThisFrameNumber)
 	, CurrentDesiredSizeIndex(SnapshotSource.CurrentDesiredSizeIndex)
@@ -314,6 +317,13 @@ FIntPoint FSceneRenderTargets::ComputeDesiredSize(const FSceneViewFamily& ViewFa
 		// Always grow scene render targets in the editor.
 		SceneTargetsSizingMethod = Grow;
 	}	
+#if WITH_OCULUS_PRIVATE_CODE
+	else if (ViewFamily.bIsCasting)
+	{
+		// Always grow scene render targets when casting viewport is used.
+		SceneTargetsSizingMethod = Grow;
+	}
+#endif
 	else
 	{
 		// Otherwise use the setting specified by the console variable.
@@ -703,7 +713,11 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 			Textures[i] = RenderTargets[i].Texture;
 		}
 		//depth/stencil should have been handled by the fast clear.  only color for RT0 can get changed.
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0, 0xff);
+#else
 		DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0);
+#endif
 	}
 
 	//bind any clear data that won't be bound automatically by the preceding SetRenderTargetsAndClear
@@ -1171,24 +1185,36 @@ void FSceneRenderTargets::FinishRenderingCustomDepth(FRHICommandListImmediate& R
 	bCustomDepthIsValid = true;
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear, bool bShouldClearStencil)
+#else
 void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear)
+#endif
 {
 	SCOPED_DRAW_EVENT(RHICmdList, BeginRenderingPrePass);
 
 	FTextureRHIRef ColorTarget;
 	FTexture2DRHIRef DepthTarget = GetSceneDepthSurface();
-	
+
 	if (bPerformClear)
-	{				
+	{
 		FRHIRenderTargetView ColorView(ColorTarget, 0, -1, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
+#if WITH_OCULUS_PRIVATE_CODE
+		FRHIDepthRenderTargetView DepthView(DepthTarget,
+			ERenderTargetLoadAction::EClear, ERenderTargetStoreAction::EStore,
+			bShouldClearStencil ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ENoAction,
+			ERenderTargetStoreAction::EStore
+		);
+#else
 		FRHIDepthRenderTargetView DepthView(DepthTarget, ERenderTargetLoadAction::EClear, ERenderTargetStoreAction::EStore);
+#endif
 
 		// Clear the depth buffer.
 		// Note, this is a reversed Z depth surface, so 0.0f is the far plane.
 		FRHISetRenderTargetsInfo Info(1, &ColorView, DepthView);
-	
+
 		RHICmdList.SetRenderTargetsAndClear(Info);
-		bSceneDepthCleared = true;	
+		bSceneDepthCleared = true;
 	}
 	else
 	{
@@ -1196,10 +1222,14 @@ void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, boo
 		// (as long as it's the same dimension as the depth buffer),	
 		FRHIRenderTargetView ColorView(ColorTarget, 0, -1, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
 		FRHIDepthRenderTargetView DepthRTV(DepthTarget, ERenderTargetLoadAction::ELoad, ERenderTargetStoreAction::EStore);
-		
+
 		RHICmdList.SetRenderTargets(1, &ColorView, &DepthRTV, 0, NULL);
-		
+
+#if WITH_OCULUS_PRIVATE_CODE
+		RHICmdList.BindClearMRTValues(false, true, bShouldClearStencil);
+#else
 		RHICmdList.BindClearMRTValues(false, true, true);
+#endif
 	}
 }
 
@@ -1286,6 +1316,19 @@ TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetDownsampledTranslucen
 	return DownsampledTranslucencyDepthRT;
 }
 
+TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetMaskReconstructedColor(FRHICommandList& RHICmdList, FIntPoint Size)
+{
+	if (!MaskReconstructedColorRT || MaskReconstructedColorRT->GetDesc().Extent != Size)
+	{
+		// Create the SeparateTranslucency depth render target 
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(Size, PF_FloatRGBA, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
+		Desc.NumSamples = 1;
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MaskReconstructedColorRT, TEXT("MaskReconstructedColor"));
+	}
+	return MaskReconstructedColorRT;
+}
+
+
 void FSceneRenderTargets::BeginRenderingTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame)
 {
 	// Use the scene color buffer.
@@ -1294,7 +1337,11 @@ void FSceneRenderTargets::BeginRenderingTranslucency(FRHICommandList& RHICmdList
 	if (bFirstTimeThisFrame)
 	{
 		// Clear the stencil buffer for ResponsiveAA
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, STENCIL_FOVEATED_MASK_INV_MASK);
+#else
 		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0);
+#endif
 	}
 
 	// viewport to match view size
@@ -1874,12 +1921,18 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		}
 
 		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
+#if WITH_OCULUS_PRIVATE_CODE
+		bIsFoveatedMaskValidInStencil = false;
+#endif
 	}
 	else if (bStereo && bHMDAllocatedDepthTarget)
 	{
 		// We need to update the stencil SRV every frame if the depth target was allocated by an HMD.
 		// TODO: This should be handled by the HMD depth target swap chain, but currently it only updates the depth SRV.
 		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
+#if WITH_OCULUS_PRIVATE_CODE
+		bIsFoveatedMaskValidInStencil = !StereoRenderTargetManager->NeedFoveatedMaskGeneration();
+#endif
 	}
 
 	// When targeting DX Feature Level 10, create an auxiliary texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
@@ -1890,6 +1943,30 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, AuxiliarySceneDepthZ, TEXT("AuxiliarySceneDepthZ"), true, ERenderTargetTransience::NonTransient);
 	}
 }
+
+#if WITH_OCULUS_PRIVATE_CODE
+void FSceneRenderTargets::SetFoveatedMaskValidInStencil(bool IsMaskValid)
+{
+	bIsFoveatedMaskValidInStencil = IsMaskValid;
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	if (bStereo && bHMDAllocatedDepthTarget)
+	{
+		StereoRenderTargetManager->SetFoveatedMaskGenerated(IsMaskValid);
+	}
+}
+
+void FSceneRenderTargets::InvalidateFoveatedMaskInStencil()
+{
+	bIsFoveatedMaskValidInStencil = false;
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	if (bStereo && bHMDAllocatedDepthTarget)
+	{
+		StereoRenderTargetManager->InvalidateAllGeneratedFoveatedMask();
+	}
+}
+#endif
 
 void FSceneRenderTargets::AllocateScreenShadowMask(FRHICommandList& RHICmdList, TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskTexture)
 {
@@ -2373,6 +2450,42 @@ const FTextureRHIRef& FSceneRenderTargets::GetSceneColorTexture() const
 	}
 
 	return (const FTextureRHIRef&)GetSceneColor()->GetRenderTargetItem().ShaderResourceTexture; 
+}
+
+const TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetActualDepthRenderTarget() const
+{
+	const TRefCountPtr<IPooledRenderTarget>* DepthRenderTargetPtr = NULL;
+	if ((CurrentFeatureLevel >= ERHIFeatureLevel::SM4) || IsPCPlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
+	{
+		if (GSupportsDepthFetchDuringDepthTest)
+		{
+			DepthRenderTargetPtr = &GetSceneDepth();
+		}
+		else
+		{
+			DepthRenderTargetPtr = &GetAuxiliarySceneDepth();
+		}
+	}
+	else if (IsMobilePlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
+	{
+		// TODO: avoid depth texture fetch when shader needs fragment previous depth and device supports framebuffer fetch
+
+		//bool bSceneDepthInAlpha = (GetSceneColor()->GetDesc().Format == PF_FloatRGBA);
+		//bool bOnChipDepthFetch = (GSupportsShaderDepthStencilFetch || (bSceneDepthInAlpha && GSupportsShaderFramebufferFetch));
+		//
+		//if (bOnChipDepthFetch)
+		//{
+		//	DepthTexture = (const FTexture2DRHIRef*)(&GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture);
+		//}
+		//else
+		{
+			DepthRenderTargetPtr = &GetSceneDepth();
+		}
+	}
+
+	check(DepthRenderTargetPtr != NULL);
+
+	return *DepthRenderTargetPtr;
 }
 
 const FTexture2DRHIRef* FSceneRenderTargets::GetActualDepthTexture() const

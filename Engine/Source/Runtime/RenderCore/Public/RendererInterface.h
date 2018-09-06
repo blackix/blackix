@@ -385,13 +385,20 @@ public:
 struct FSceneRenderTargetItem
 {
 	/** default constructor */
+#if WITH_OCULUS_PRIVATE_CODE
+	FSceneRenderTargetItem(): bIsFoveatedMasked(false) {}
+#else
 	FSceneRenderTargetItem() {}
+#endif
 
 	/** constructor */
 	FSceneRenderTargetItem(FTextureRHIParamRef InTargetableTexture, FTextureRHIParamRef InShaderResourceTexture, FUnorderedAccessViewRHIRef InUAV)
 		:	TargetableTexture(InTargetableTexture)
 		,	ShaderResourceTexture(InShaderResourceTexture)
 		,	UAV(InUAV)
+#if WITH_OCULUS_PRIVATE_CODE
+		,	bIsFoveatedMasked(false)
+#endif
 	{}
 
 	/** */
@@ -408,6 +415,9 @@ struct FSceneRenderTargetItem
 		{
 			MipSRVs[i].SafeRelease();
 		}
+#if WITH_OCULUS_PRIVATE_CODE
+		bIsFoveatedMasked = false;
+#endif
 	}
 
 	bool IsValid() const
@@ -416,6 +426,18 @@ struct FSceneRenderTargetItem
 			|| ShaderResourceTexture != 0
 			|| UAV != 0;
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	bool IsFoveatedMasked() const
+	{
+		return bIsFoveatedMasked;
+	}
+
+	void SetFoveatedMasked(bool Masked)
+	{
+		bIsFoveatedMasked = Masked;
+	}
+#endif
 
 	/** The 2D or cubemap texture that may be used as a render or depth-stencil target. */
 	FTextureRHIRef TargetableTexture;
@@ -431,6 +453,11 @@ struct FSceneRenderTargetItem
 
 	FShaderResourceViewRHIRef RTWriteMaskBufferRHI_SRV;
 	FStructuredBufferRHIRef RTWriteMaskDataBufferRHI;
+
+#if WITH_OCULUS_PRIVATE_CODE
+	/** Used when IsMaskBasedFoveatedRenderingEnabled() == true, to indicate some pixels would not be valid in this RT */
+	bool bIsFoveatedMasked;
+#endif
 };
 
 /**

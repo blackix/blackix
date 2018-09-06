@@ -41,6 +41,7 @@ class UEditorEngine;
 class UEngineCustomTimeStep;
 class UGameUserSettings;
 class UGameViewportClient;
+class UCastingViewportClient;
 class ULocalPlayer;
 class UNetDriver;
 class UTimecodeProvider;
@@ -348,7 +349,10 @@ struct FWorldContext
 	UPROPERTY()
 	class UGameViewportClient* GameViewport;
 
-	UPROPERTY()
+    UPROPERTY()
+    TArray<class UCastingViewportClient*> CastingViewports;
+
+    UPROPERTY()
 	class UGameInstance* OwningGameInstance;
 
 	/** A list of active net drivers */

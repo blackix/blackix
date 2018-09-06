@@ -9,6 +9,9 @@
 #include "TonemapCommon.ush"
 #include "EyeAdaptationCommon.ush"
 
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
 
 
 
@@ -281,6 +284,13 @@ float2 ComputeCounterStepForTileDebugging(float4 SvPosition, int2 TileSize, out 
 
 half3 LookupSceneColor(float2 SceneUV, int2 PixelOffset)
 {
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		return FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SceneUV + PixelOffset * PostprocessInput0Size.zw).rgb;
+	}
+#endif
+
 #if (ES2_PROFILE && COMPILER_GLSL_ES2) || (ES3_1_PROFILE && COMPILER_GLSL_ES3_1)
 	// slower but always works
 	// to prevent "error: Texture offset not supported on GLSL ES"
@@ -297,7 +307,16 @@ float4 SampleSceneColor(float2 SceneUV)
 		SceneUV = clamp(SceneUV, SceneUVMinMax.xy, SceneUVMinMax.zw);
 	#endif
 
-	return Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, SceneUV);
+	#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		return FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SceneUV);
+	}
+	else
+	#endif
+	{
+		return Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, SceneUV);
+	}
 }
 
 float4 TonemapCommonPS(

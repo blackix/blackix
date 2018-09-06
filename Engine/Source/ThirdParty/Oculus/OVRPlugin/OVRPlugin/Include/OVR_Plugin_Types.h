@@ -28,7 +28,7 @@ limitations under the License.
 #endif
 
 #define OVRP_MAJOR_VERSION 1
-#define OVRP_MINOR_VERSION 25
+#define OVRP_MINOR_VERSION 29
 #define OVRP_PATCH_VERSION 0
 
 #define OVRP_VERSION OVRP_MAJOR_VERSION, OVRP_MINOR_VERSION, OVRP_PATCH_VERSION
@@ -113,6 +113,10 @@ typedef enum {
   /// in order to fallback to runtime thread affinity handling. In the future, a new flag will be introduced to allow engine opt-out of
   /// runtime affinity handling.
   ovrpInitializeFlag_NoLegacyCoreAffinityPatch = (1 << 3), // DEPRECATED
+
+  /// Allow to use sRGB frame buffer, we use it as an initialization flag because we need make the window surface
+  /// sRGB compilable, this can't be changed after window created. 
+  ovrpInitializeFlag_SupportSRGBFrameBuffer = (1 << 4)
 } ovrpInitializeFlags;
 
 
@@ -197,6 +201,13 @@ typedef enum {
   ovrpBatteryStatus_Unknown,
   ovrpBatteryStatus_EnumSize = 0x7fffffff
 } ovrpBatteryStatus;
+
+//Handedness of user as specified in the mobile device
+typedef enum {
+    ovrpHandedness_Unsupported = 0,
+    ovrpHandedness_LeftHanded = 1,
+    ovrpHandedness_RightHanded = 2
+} ovrpHandedness;
 
 /// An oculus platform UI.
 typedef enum {
@@ -640,6 +651,7 @@ const static ovrpFrustum2f s_identityFrustum2 = {0, 0, {0, 0, 0, 0}};
 const static ovrpVector3f s_vec3Zero = {0, 0, 0};
 const static ovrpVector2f s_vec2Zero = {0, 0};
 const static ovrpVector3f s_vec3One = {1, 1, 1};
+const static ovrpQuatf s_identifyQuat = {0, 0, 0, 1};
 const static ovrpCameraIntrinsics s_invalidCameraIntrinsics = {ovrpBool_False, -1, {0, 0, 0, 0}, 0, 0, {0, 0}};
 const static ovrpCameraExtrinsics s_invalidCameraExtrinsics = {ovrpBool_False,
                                                                -1,
@@ -724,6 +736,8 @@ typedef enum {
   ovrpLayerFlag_NoAllocation = (1 << 5),
   /// Enable protected content, added in 1.23
   ovrpLayerFlag_ProtectedContent = (1 << 6),
+  /// Allocate AndroidSurfaceSwapChain, instead of regular TextureSwapChain
+  ovrpLayerFlag_AndroidSurfaceSwapChain = (1 << 7),
 } ovrpLayerFlags;
 
 /// Layer description used by ovrp_SetupLayer to create the layer
@@ -787,6 +801,10 @@ typedef enum {
   ovrpLayerSubmitFlag_NoDepth = (1 << 3),
   /// Use inverse alpha for timewarp blending
   ovrpLayerSubmitFlag_InverseAlpha = (1 << 4),
+  /// Combine the submitted layer with the layers generated from OVROverlay commands
+  ovrpLayerSubmitFlag_CombineLayerSubmits = (1 << 5),
+  /// Enable Positional timeWarp on Fov layer
+  ovrpLayerSubmitFlag_PositionalTimeWarp = (1 << 6),
 } ovrpLayerSubmitFlags;
 
 /// Layer state to submit to ovrp_EndFrame
@@ -842,7 +860,29 @@ typedef union {
   ovrpLayerSubmit_Equirect Equirect;
 } ovrpLayerSubmitUnion;
 
+typedef enum {
+  ovrpViewportStencilType_HiddenArea = 0,
+  ovrpViewportStencilType_VisibleArea = 1,
+  ovrpViewportStencilType_BorderLine = 2
+} ovrpViewportStencilType;
+
 #undef OVRP_LAYER_SUBMIT
 #undef OVRP_LAYER_SUBMIT_TYPE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #endif

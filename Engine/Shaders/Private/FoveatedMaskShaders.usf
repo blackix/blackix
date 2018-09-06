@@ -1,0 +1,103 @@
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	FoveatedMaskShaders.usf: 2D shader for pixel masking and reconstruction.
+=============================================================================*/
+
+#include "Common.ush"
+#include "FoveatedMaskCommon.ush"
+
+struct FPassthroughVertexOutput
+{
+	float4 PositionVS : POSITION_VIEW_SPACE;
+	float4 Position : SV_POSITION;
+};
+
+/*=============================================================================
+ * Vertex shader
+ =============================================================================*/
+
+#if VERTEXSHADER
+
+void PassthroughVertexShader(
+	in float4 InPosition : ATTRIBUTE0,
+	out FPassthroughVertexOutput Output
+	)
+{
+	Output.PositionVS = InPosition;
+	Output.Position = InPosition;
+}
+
+#endif // VERTEXSHADER
+
+/*=============================================================================
+ * Pixel shader
+ =============================================================================*/
+
+#if PIXELSHADER
+
+float4 FoveatedMaskViewportSize;
+
+void MaskGenerationPixelShader(
+	in FPassthroughVertexOutput InVertex,
+	in float4 PixelPosition : SV_Position,
+	out float4 OutColor : SV_Target0)
+{
+	float4 DistMask;
+
+	// use one pixel offset to eliminate the boundary line
+	float2 Offset = float2((FoveatedMaskEyeFov.x + FoveatedMaskEyeFov.y) * FoveatedMaskViewportSize.z, (FoveatedMaskEyeFov.z + FoveatedMaskEyeFov.w) * FoveatedMaskViewportSize.w);
+	bool UseMask = FoveatedMask_ComputeDistanceMask(InVertex.PositionVS.xy, Offset, DistMask);		
+
+	if (!UseMask)
+	{
+		discard;
+	}
+
+	uint QuadSubIndex;
+	FoveatedMask_ComputeQuadMaskSimple((uint2)PixelPosition.xy, (int)FoveatedMaskRadiusRatioItems.x, QuadSubIndex);
+	bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+	if (!IsMaskedQuad)
+	{
+		discard;
+	}
+	OutColor = float4(1, 1, 1, 1);
+}
+
+Texture2D InSourceTexture;
+
+void SimpleMaskReconstructionPS(
+	in FPassthroughVertexOutput InVertex,
+	in float4 PixelPosition : SV_Position,
+	out float4 OutColor : SV_Target0)
+{
+	OutColor = FoveatedMask_LoadFromMaskedTexture(InSourceTexture, int2(PixelPosition.xy), InVertex.PositionVS.xy);
+}
+
+void CopyReconstructedPixelsPS(
+	in FPassthroughVertexOutput InVertex,
+	in float4 PixelPosition : SV_Position,
+	out float4 OutColor : SV_Target0)
+{
+	float4 DistMask;
+	bool UseMask = FoveatedMask_ComputeDistanceMask(InVertex.PositionVS.xy, DistMask);
+
+	if (!UseMask)
+	{
+		discard;
+	}
+
+	uint QuadSubIndex;
+	FoveatedMask_ComputeQuadMaskSimple((uint2)PixelPosition.xy, (int)FoveatedMaskRadiusRatioItems.x, QuadSubIndex);
+	bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+
+	if (!IsMaskedQuad)
+	{
+		discard;
+	}
+
+	int2 PixelPos = int2(PixelPosition.xy);
+	OutColor = InSourceTexture.Load(int3(PixelPos.x, PixelPos.y, 0));
+}
+
+#endif // PIXELSHADER

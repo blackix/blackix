@@ -7,6 +7,10 @@
 #include "Common.ush"
 #include "PostProcessCommon.ush"
 
+#if MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
+
 // vertex shader entry point
 void MainDownsampleVS(
 	in float4 InPosition : ATTRIBUTE0,
@@ -26,7 +30,17 @@ float4 SampleInput0(float2 BufferUV)
 	#if MANUALLY_CLAMP_UV
 		BufferUV = clamp(BufferUV, BufferBilinearUVMinMax.xy, BufferBilinearUVMinMax.zw);
 	#endif
-	return Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, BufferUV, 0);
+	
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		return FoveatedMask_LoadFromMaskedTextureCoarse(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, BufferUV);
+	}
+	else
+#endif
+	{
+		return Texture2DSampleLevel(PostprocessInput0, PostprocessInput0Sampler, BufferUV, 0);
+	}
 }
 
 
