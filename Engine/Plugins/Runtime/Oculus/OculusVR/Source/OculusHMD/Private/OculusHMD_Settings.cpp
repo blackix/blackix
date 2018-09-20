@@ -17,12 +17,14 @@ FSettings::FSettings() :
 	, PixelDensity(1.0f)
 	, PixelDensityMin(0.5f)
 	, PixelDensityMax(1.0f)
-	, bPixelDensityAdaptive(false)
 	, SystemHeadset(ovrpSystemHeadset_None)
+	, MultiResLevel(ETiledMultiResLevel::ETiledMultiResLevel_Off)
+	, CPULevel(2)
+	, GPULevel(3)
 {
 	Flags.Raw = 0;
 	Flags.bHMDEnabled = true;
-	Flags.bChromaAbCorrectionEnabled = true;
+	Flags.bChromaAbCorrectionEnabled = false;
 	Flags.bUpdateOnRT = true;
 	Flags.bHQBuffer = false;
 	Flags.bDirectMultiview = true;
@@ -33,6 +35,7 @@ FSettings::FSettings() :
 	Flags.bCompositeDepth = true;
 #endif
 	Flags.bSupportsDash = false;
+	Flags.bRecenterHMDWithController = true;
 	EyeRenderViewport[0] = EyeRenderViewport[1] = EyeRenderViewport[2] = FIntRect(0, 0, 0, 0);
 
 	RenderTargetSize = FIntPoint(0, 0);
@@ -44,15 +47,30 @@ TSharedPtr<FSettings, ESPMode::ThreadSafe> FSettings::Clone() const
 	return NewSettings;
 }
 
-bool FSettings::UpdatePixelDensity(const float NewPixelDensity)
+void FSettings::SetPixelDensity(float NewPixelDensity)
 {
-	if (!bPixelDensityAdaptive)
+	if (Flags.bPixelDensityAdaptive)
 	{
-		PixelDensity = NewPixelDensity;
-		PixelDensityMin = FMath::Min(PixelDensity, PixelDensityMin);
-		PixelDensityMax = FMath::Max(PixelDensity, PixelDensityMax);
+		PixelDensity = FMath::Clamp(NewPixelDensity, PixelDensityMin, PixelDensityMax);
 	}
-	return true;
+	else
+	{
+		PixelDensity = FMath::Clamp(NewPixelDensity, ClampPixelDensityMin, ClampPixelDensityMax);
+	}
+}
+
+void FSettings::SetPixelDensityMin(float NewPixelDensityMin)
+{
+	PixelDensityMin = FMath::Clamp(NewPixelDensityMin, ClampPixelDensityMin, ClampPixelDensityMax);
+	PixelDensityMax = FMath::Max(PixelDensityMin, PixelDensityMax);
+	SetPixelDensity(PixelDensity);
+}
+
+void FSettings::SetPixelDensityMax(float NewPixelDensityMax)
+{
+	PixelDensityMax = FMath::Clamp(NewPixelDensityMax, ClampPixelDensityMin, ClampPixelDensityMax);
+	PixelDensityMin = FMath::Min(PixelDensityMin, PixelDensityMax);
+	SetPixelDensity(PixelDensity);
 }
 
 

@@ -112,6 +112,16 @@ OVRP_EXPORT ovrpResult ovrp_SetupDistortionWindow3(int flags);
 /// Destroys the dedicated VR window.
 OVRP_EXPORT ovrpResult ovrp_DestroyDistortionWindow2();
 
+//Returns handedness as specified in the mobile device
+OVRP_EXPORT ovrpResult ovrp_GetDominantHand(ovrpHandedness* dominantHand);
+
+//Returns the recenter mode (i.e. what the HMD does when the controller recenters).
+// If true, the HMD recenters on controller recenter, and if false, the HMD does nothing on controller recenter.
+OVRP_EXPORT ovrpResult ovrp_GetReorientHMDOnControllerRecenter(ovrpBool* recenter);
+
+//Sets the recenter mode on mobile, and returns unsupported on PC.
+OVRP_EXPORT ovrpResult ovrp_SetReorientHMDOnControllerRecenter(ovrpBool recenter);
+
 /// Creates a layer.
 /// The desc remains constant for the lifetime of the layer.
 OVRP_EXPORT ovrpResult ovrp_SetupLayer(void* device, OVRP_CONSTREF(ovrpLayerDesc) desc, int* layerId);
@@ -129,6 +139,9 @@ OVRP_EXPORT ovrpResult ovrp_GetLayerTextureStageCount(int layerId, int* layerTex
 
 /// Gets the texture handle for a specific layer stage and eye.
 OVRP_EXPORT ovrpResult ovrp_GetLayerTexture2(int layerId, int stage, ovrpEye eyeId, ovrpTextureHandle* textureHandle, ovrpTextureHandle* depthTextureHandle);
+
+/// Gets the texture handle for a specific layer stage and eye.
+OVRP_EXPORT ovrpResult ovrp_GetLayerAndroidSurfaceObject(int layerId, void** surfaceObject);
 
 /// Return the vertices and indices for the eye occlusion mesh.
 OVRP_EXPORT ovrpResult ovrp_GetLayerOcclusionMesh(
@@ -282,8 +295,17 @@ OVRP_EXPORT ovrpResult ovrp_SetNodePositionTracked2(ovrpNode nodeId, ovrpBool no
 /// Gets the current pose, acceleration, and velocity of the given node on the given update cadence.
 OVRP_EXPORT ovrpResult ovrp_GetNodePoseState3(ovrpStep step, int frameIndex, ovrpNode nodeId, ovrpPoseStatef* nodePoseState);
 
+/// Gets the current pose, acceleration, and velocity of the given node on the given update cadence, without applying any modifier (e.g. HeadPoseModifier)
+OVRP_EXPORT ovrpResult ovrp_GetNodePoseStateRaw(ovrpStep step, int frameIndex, ovrpNode nodeId, ovrpPoseStatef* nodePoseState);
+
 /// Gets the current frustum for the given node, if available.
 OVRP_EXPORT ovrpResult ovrp_GetNodeFrustum2(ovrpNode nodeId, ovrpFrustum2f* nodeFrustum);
+
+/// Set relative rotation/translation to the eye pose
+OVRP_EXPORT ovrpResult ovrp_SetHeadPoseModifier(const ovrpQuatf* relativeRotation, const ovrpVector3f* relativeTranslation);
+
+/// Get current relative rotation/translation to the eye pose
+OVRP_EXPORT ovrpResult ovrp_GetHeadPoseModifier(ovrpQuatf* relativeRotation, ovrpVector3f* relativeTranslation);
 
 /// Gets the controller state for the given controllers.
 OVRP_EXPORT ovrpResult ovrp_GetControllerState4(ovrpController controllerMask, ovrpControllerState4* controllerState);
@@ -488,10 +510,6 @@ OVRP_EXPORT ovrpResult ovrp_GetSystemRecommendedMSAALevel2(int* systemRecommende
 /// Inhibits system UX behavior.
 OVRP_EXPORT ovrpResult ovrp_SetInhibitSystemUX2(ovrpBool inhibitSystemUX);
 
-#ifdef SUPPORTS_DEBUG_DUMP
-OVRP_EXPORT ovrpResult ovrp_SetDebugDumpEnabled2(ovrpBool debugDumpEnabled);
-#endif
-
 /// Return true if the device supports tiled multires
 OVRP_EXPORT ovrpResult ovrp_GetTiledMultiResSupported(ovrpBool* foveationSupported);
 
@@ -513,6 +531,17 @@ OVRP_EXPORT ovrpResult ovrp_SetThreadPerformance(int threadId, ovrpThreadPerf pe
 
 /// This is specifically for Unity to fix Core Affinity wrong assignment.
 OVRP_EXPORT ovrpResult ovrp_AutoThreadScheduling(unsigned int bigCoreMaskFromEngine, unsigned int* threadIds, ovrpThreadPerf* threadPerfFlags, int threadCount);
+
+
+
+
+
+OVRP_EXPORT ovrpResult ovrp_GetGPUFrameTime(float* gpuTime);
+
+/// This is to request vertices and indices for the triangle mesh
+OVRP_EXPORT ovrpResult ovrp_GetViewportStencil(ovrpEye eyeId, ovrpViewportStencilType type, ovrpVector2f *vertices, int *vertexCount, ovrpUInt16 *indices, int *indexCount);
+
+OVRP_EXPORT ovrpResult ovrp_SendEvent(const char* eventName, const char* param);
 
 #ifdef __cplusplus
 }
