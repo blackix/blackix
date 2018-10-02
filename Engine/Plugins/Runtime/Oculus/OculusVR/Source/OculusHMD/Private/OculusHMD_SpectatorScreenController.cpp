@@ -9,16 +9,41 @@ namespace OculusHMD
 {
 
 //-------------------------------------------------------------------------------------------------
-// FOculusRiftSpectatorScreenController
+// FSpectatorScreenController
 //-------------------------------------------------------------------------------------------------
 
-FOculusHMD_SpectatorScreenController::FOculusHMD_SpectatorScreenController(FOculusHMD* InOculusHMD)
+FSpectatorScreenController::FSpectatorScreenController(FOculusHMD* InOculusHMD)
 	: FDefaultSpectatorScreenController(InOculusHMD)
 	, OculusHMD(InOculusHMD)
 {
 }
 
-void FOculusHMD_SpectatorScreenController::RenderSpectatorScreen_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* BackBuffer, FTexture2DRHIRef RenderTexture, FVector2D WindowSize) const
+#if WITH_OCULUS_PRIVATE_CODE
+void FSpectatorScreenController::UpdateSpectatorScreenMode_RenderThread()
+{
+	// when there is a casting viewport projecting to mirror window, we need to bind the Distorted function
+	if ((!IsInRenderingThread() && OculusHMD->CastingViewportRenderTexture) ||
+		(IsInRenderingThread() && OculusHMD->CastingViewportRenderTexture_RenderThread))
+	{
+		ESpectatorScreenMode OldNewMode;
+		{
+			FScopeLock FrameLock(&NewSpectatorScreenModeLock);
+
+			OldNewMode = NewSpectatorScreenMode;
+			NewSpectatorScreenMode = ESpectatorScreenMode::Undistorted;
+			FDefaultSpectatorScreenController::UpdateSpectatorScreenMode_RenderThread();
+			NewSpectatorScreenMode = OldNewMode;
+		}
+	}
+	else
+	{
+		FDefaultSpectatorScreenController::UpdateSpectatorScreenMode_RenderThread();
+	}
+}
+#endif
+
+
+void FSpectatorScreenController::RenderSpectatorScreen_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* BackBuffer, FTexture2DRHIRef RenderTexture, FVector2D WindowSize) const
 {
 	if (OculusHMD->GetCustomPresent_Internal())
 	{
@@ -26,9 +51,22 @@ void FOculusHMD_SpectatorScreenController::RenderSpectatorScreen_RenderThread(FR
 	}
 }
 
-void FOculusHMD_SpectatorScreenController::RenderSpectatorModeUndistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
+void FSpectatorScreenController::RenderSpectatorModeUndistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
 {
 	CheckInRenderThread();
+
+#if WITH_OCULUS_PRIVATE_CODE
+	if (OculusHMD->CastingViewportRenderTexture_RenderThread)
+	{
+		// when there is a casting viewport projecting to mirror window, stretch the output to use all pixels efficiently
+		const FIntRect SrcRect(0, 0, EyeTexture->GetSizeX(), EyeTexture->GetSizeY());
+		const FIntRect DstRect(0, 0, TargetTexture->GetSizeX(), TargetTexture->GetSizeY());
+
+		OculusHMD->CopyTexture_RenderThread(RHICmdList, EyeTexture, SrcRect, TargetTexture, DstRect, false);
+		return;
+	}
+#endif
+
 	FSettings* Settings = OculusHMD->GetSettings_RenderThread();
 	FIntRect DestRect(0, 0, TargetTexture->GetSizeX() / 2, TargetTexture->GetSizeY());
 	for (int i = 0; i < 2; ++i)
@@ -39,7 +77,7 @@ void FOculusHMD_SpectatorScreenController::RenderSpectatorModeUndistorted(FRHICo
 	}
 }
 
-void FOculusHMD_SpectatorScreenController::RenderSpectatorModeDistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
+void FSpectatorScreenController::RenderSpectatorModeDistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
 {
 	CheckInRenderThread();
 	FCustomPresent* CustomPresent = OculusHMD->GetCustomPresent_Internal();
@@ -52,7 +90,7 @@ void FOculusHMD_SpectatorScreenController::RenderSpectatorModeDistorted(FRHIComm
 	}
 }
 
-void FOculusHMD_SpectatorScreenController::RenderSpectatorModeSingleEye(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
+void FSpectatorScreenController::RenderSpectatorModeSingleEye(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize)
 {
 	CheckInRenderThread();
 	FSettings* Settings = OculusHMD->GetSettings_RenderThread();

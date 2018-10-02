@@ -407,7 +407,11 @@ void FRCPassPostProcessScreenSpaceReflections::Process(FRenderingCompositePassCo
 		Context.SetViewportAndCallRHI(View.ViewRect);
 
 		// Clear stencil to 0
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+#else
 		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+#endif
 	
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);

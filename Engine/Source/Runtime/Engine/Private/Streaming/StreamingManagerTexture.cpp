@@ -1361,8 +1361,7 @@ bool FStreamingManagerTexture::HandleDumpTextureStreamingStatsCommand( const TCH
 }
 #endif // STATS_FAST
 
-#if !UE_BUILD_SHIPPING
-
+#if STATS
 bool FStreamingManagerTexture::HandleListStreamingTexturesCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	SyncStates(true);
@@ -1417,6 +1416,9 @@ bool FStreamingManagerTexture::HandleListStreamingTexturesCommand( const TCHAR* 
 	}
 	return true;
 }
+#endif // STATS
+
+#if !UE_BUILD_SHIPPING
 
 bool FStreamingManagerTexture::HandleResetMaxEverRequiredTexturesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 {

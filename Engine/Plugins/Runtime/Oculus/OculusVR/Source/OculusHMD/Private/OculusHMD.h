@@ -12,6 +12,7 @@
 #include "OculusHMD_StressTester.h"
 #include "OculusHMD_ConsoleCommands.h"
 #include "OculusHMD_SpectatorScreenController.h"
+#include "OculusHMD_DynamicResolutionState.h"
 
 #include "OculusAssetManager.h"
 
@@ -64,6 +65,9 @@ class FOculusHMD : public FHeadMountedDisplayBase, public FXRRenderTargetManager
 	friend FOculusHMDModule;
 	friend class FSplash;
 	friend class FConsoleCommands;
+#if WITH_OCULUS_PRIVATE_CODE
+	friend class FSpectatorScreenController;
+#endif
 
 public:
 	static const FName OculusSystemName;
@@ -140,7 +144,7 @@ public:
 	//virtual bool DoesAppUseVRFocus() const override;
 	//virtual bool DoesAppHaveVRFocus() const override;
 	virtual float GetPixelDenity() const override;
-	virtual void SetPixelDensity(const float NewDensity) override;
+	virtual void SetPixelDensity(const float NewPixelDensity) override;
 	virtual FIntPoint GetIdealRenderTargetSize() const override;
 
 	// IStereoRendering interface
@@ -152,11 +156,13 @@ public:
 	//virtual FVector2D GetTextSafeRegionBounds() const override;
 	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual FMatrix GetStereoProjectionMatrix_RenderThread(const enum EStereoscopicPass StereoPassType) const override;
+#endif
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) override;
 	//virtual void GetEyeRenderParams_RenderThread(const struct FRenderingCompositePassContext& Context, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	//virtual bool IsSpectatorScreenActive() const override;
 	virtual void RenderTexture_RenderThread(class FRHICommandListImmediate& RHICmdList, class FRHITexture2D* BackBuffer, class FRHITexture2D* SrcTexture, FVector2D WindowSize) const override;
-	virtual void GetOrthoProjection(int32 RTWidth, int32 RTHeight, float OrthoDistance, FMatrix OrthoProjection[2]) const override;
 	//virtual void SetClippingPlanes(float NCP, float FCP) override;
 	virtual IStereoRenderTargetManager* GetRenderTargetManager() override { return this; }
 	virtual IStereoLayers* GetStereoLayers() override { return this; }
@@ -176,6 +182,11 @@ public:
 	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual bool NeedFoveatedMaskGeneration() override;
+	virtual void SetFoveatedMaskGenerated(bool IsMaskValid) override;
+	virtual void InvalidateAllGeneratedFoveatedMask() override;
+#endif
 	virtual void UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget) override;
 	virtual FXRRenderBridge* GetActiveRenderBridge_GameThread(bool bUseSeparateRenderTarget);
 
@@ -226,6 +237,7 @@ protected:
 #endif
 
 	class FSceneViewport* FindSceneViewport();
+	FOculusSplashDesc GetUESplashScreenDesc();
 
 public:
 	bool IsHMDActive() const;
@@ -234,6 +246,9 @@ public:
 	FCustomPresent* GetCustomPresent_Internal() const { return CustomPresent; }
 
 	float GetWorldToMetersScale() const;
+#if WITH_OCULUS_PRIVATE_CODE
+	float GetWorldToMetersScale_RenderThread() const;
+#endif
 	float GetMonoCullingDistance() const;
 
 	ESpectatorScreenMode GetSpectatorScreenMode_RenderThread() const;
@@ -307,6 +322,8 @@ public:
 	FSettings* GetSettings_RHIThread() { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 	const FSettings* GetSettings_RHIThread() const { CheckInRHIThread(); return Settings_RHIThread.Get(); }
 
+	const int GetNextFrameNumber() const { return NextFrameNumber; }
+
 	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
 	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
@@ -334,8 +351,7 @@ protected:
 	void IPDCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 #endif
 
-	void LoadFromIni();
-	void SaveToIni();
+	void LoadFromSettings();
 
 protected:
 	void UpdateHMDWornState();
@@ -395,6 +411,9 @@ protected:
 	FGameFramePtr LastFrameToRender; // Valid from OnStartGameFrame to BeginRenderViewFamily
 	uint32 NextLayerId;
 	TMap<uint32, FLayerPtr> LayerMap;
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture;
+#endif
 	bool bNeedReAllocateViewportRenderTarget;
 
 	// Render thread
@@ -402,6 +421,9 @@ protected:
 	FGameFramePtr Frame_RenderThread; // Valid from BeginRenderViewFamily to PostRenderViewFamily_RenderThread
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
+#if WITH_OCULUS_PRIVATE_CODE
+	FTexture2DRHIRef CastingViewportRenderTexture_RenderThread;
+#endif
 	bool bNeedReAllocateDepthTexture_RenderThread;
 
 	// RHI thread
@@ -409,11 +431,17 @@ protected:
 	FGameFramePtr Frame_RHIThread; // Valid from PreRenderViewFamily_RenderThread to FinishRendering_RHIThread
 	TArray<FLayerPtr> Layers_RHIThread;
 
-
 	FHMDViewMesh HiddenAreaMeshes[2];
 	FHMDViewMesh VisibleAreaMeshes[2];
 
+#if WITH_OCULUS_PRIVATE_CODE
+	uint32 NeedGenerateFoveatedMaskFlag_RenderThread;	// one bit for each SwapChainIndex
+	bool NeedGenerateFoveatedMask_RenderThread;
+#endif
+
 	FPerformanceStats PerformanceStats;
+
+	FRotator SplashRotation; // rotation applied to all splash screens (dependent on HMD orientation as the splash is shown)
 
 #if !UE_BUILD_SHIPPING
 	FDelegateHandle DrawDebugDelegateHandle;

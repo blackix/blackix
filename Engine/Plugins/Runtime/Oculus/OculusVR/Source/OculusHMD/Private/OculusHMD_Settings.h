@@ -66,6 +66,11 @@ public:
 			/** Show status / statistics on screen. See 'hmd stats' cmd */
 			uint64				bShowStats : 1;
 #endif
+			/** Dynamically update pixel density to maintain framerate */
+			uint64				bPixelDensityAdaptive : 1;
+
+			/** Recenters the HMD too when the controller recenter button is pressed on Go and GearVR */
+			uint64				bRecenterHMDWithController : 1;
 		};
 		uint64 Raw;
 	} Flags;
@@ -76,8 +81,8 @@ public:
 
 	/** Viewports for each eye, in render target texture coordinates */
 	FIntRect EyeRenderViewport[3];
-	/** Maximum adaptive resolution viewports for each eye, in render target texture coordinates */
-	FIntRect EyeMaxRenderViewport[3];
+	/** Viewports for each eye, without DynamicResolution scaling applied */
+	FIntRect EyeUnscaledRenderViewport[3];
 
 	ovrpMatrix4f EyeProjectionMatrices[3]; // 0 - left, 1 - right, same as Views
 	ovrpMatrix4f PerspectiveProjection[3]; // used for calc ortho projection matrices
@@ -86,22 +91,24 @@ public:
 	float PixelDensity;
 	float PixelDensityMin;
 	float PixelDensityMax;
-	bool bPixelDensityAdaptive;
 
 	ovrpSystemHeadset SystemHeadset;
 
 	float VsyncToNextVsync;
 
 	ETiledMultiResLevel MultiResLevel;
+	int CPULevel, GPULevel;
 
 public:
 	FSettings();
 	virtual ~FSettings() {}
 
-	bool IsStereoEnabled() const { return FPlatformMisc::IsStandaloneStereoOnlyDevice() || Flags.bStereoEnabled && Flags.bHMDEnabled; }
+	bool IsStereoEnabled() const { return Flags.bStereoEnabled && Flags.bHMDEnabled; }
 
-	bool UpdatePixelDensity(const float NewPixelDensity);
-
+	void SetPixelDensity(float NewPixelDensity);
+	void SetPixelDensityMin(float NewPixelDensityMin);
+	void SetPixelDensityMax(float NewPixelDensityMax);
+	
 	TSharedPtr<FSettings, ESPMode::ThreadSafe> Clone() const;
 };
 
