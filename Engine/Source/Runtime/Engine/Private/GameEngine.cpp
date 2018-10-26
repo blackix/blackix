@@ -15,6 +15,9 @@
 #include "EngineGlobals.h"
 #include "RenderingThread.h"
 #include "Engine/GameViewportClient.h"
+#if WITH_OCULUS_PRIVATE_CODE
+#include "Engine/CastingViewportClient.h"
+#endif
 #include "Engine/LevelStreaming.h"
 #include "Engine/PlatformInterfaceBase.h"
 #include "ContentStreaming.h"
@@ -654,6 +657,16 @@ void UGameEngine::RedrawViewports( bool bShouldPresent /*= true*/ )
 			GameViewport->Viewport->Draw(bShouldPresent);
 		}
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+    for (auto& CastingViewport : GameInstance->GetWorldContext()->CastingViewports)
+    {
+        if (CastingViewport->Viewport != NULL)
+        {
+            CastingViewport->Viewport->Draw(bShouldPresent);
+        }
+    }
+#endif
 }
 
 void UGameEngine::OnViewportResized(FViewport* Viewport, uint32 Unused)

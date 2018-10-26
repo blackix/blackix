@@ -404,7 +404,11 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 		{
 			auto& RenderTargetRHI = Target->GetRenderTargetTexture();
 			SetRenderTarget(RHICmdList, RenderTargetRHI, NULL, true);
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), ViewRect);
+#else
 			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), ViewRect);
+#endif
 		}
 
 		// Render the scene normally

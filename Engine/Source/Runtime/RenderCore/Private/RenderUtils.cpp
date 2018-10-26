@@ -953,6 +953,68 @@ RENDERCORE_API void RenderUtilsInit()
 #endif
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+
+RENDERCORE_API bool IsMaskBasedFoveatedRenderingEnabled()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.Foveated.Mask.Enable"));
+	return CVar->GetValueOnAnyThread() != 0;
+}
+
+RENDERCORE_API int GetMaskBasedFoveatedRenderingVisualizeMode()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.Foveated.Mask.VisualizeMode"));
+	return CVar->GetValueOnAnyThread();
+}
+
+RENDERCORE_API bool GetMaskBasedFoveatedRenderingUsingMaskAnimation()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.Foveated.Mask.Animation"));
+	return CVar->GetValueOnAnyThread() != 0;
+}
+
+RENDERCORE_API int GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.Foveated.Mask.Animation.OverrideFrameIndex"));
+	return CVar->GetValueOnAnyThread();
+}
+
+RENDERCORE_API float GetMaskBasedFoveatedRenderingHighResSqrTan()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("vr.Foveated.Mask.HighResFov"));
+	float Fov = CVar->GetValueOnAnyThread();
+	float TanFovDiv2 = FMath::Tan(FMath::DegreesToRadians(Fov) * 0.5f);
+	return TanFovDiv2 * TanFovDiv2;
+}
+
+RENDERCORE_API float GetMaskBasedFoveatedRenderingMediumResSqrTan()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("vr.Foveated.Mask.MediumResFov"));
+	float Fov = CVar->GetValueOnAnyThread();
+	float TanFovDiv2 = FMath::Tan(FMath::DegreesToRadians(Fov) * 0.5f);
+	return TanFovDiv2 * TanFovDiv2;
+}
+
+RENDERCORE_API float GetMaskBasedFoveatedRenderingLowResSqrTan()
+{
+	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataFloat(TEXT("vr.Foveated.Mask.LowResFov"));
+	float Fov = CVar->GetValueOnAnyThread();
+	float TanFovDiv2 = FMath::Tan(FMath::DegreesToRadians(Fov) * 0.5f);
+	return TanFovDiv2 * TanFovDiv2;
+}
+
+RENDERCORE_API FVector4 GetFovFromAsymmetricProjectionMatrix(const FMatrix& matrix)
+{
+	float LeftTan = (1.0f + matrix.M[2][0]) / matrix.M[0][0];
+	float RightTan = (1.0f - matrix.M[2][0]) / matrix.M[0][0];
+	float UpTan = (1.0f - matrix.M[2][1]) / matrix.M[1][1];
+	float DownTan = (1.0f + matrix.M[2][1]) / matrix.M[1][1];
+
+	return FVector4(LeftTan, RightTan, UpTan, DownTan);
+}
+
+#endif
+
 class FUnitCubeVertexBuffer : public FVertexBuffer
 {
 public:

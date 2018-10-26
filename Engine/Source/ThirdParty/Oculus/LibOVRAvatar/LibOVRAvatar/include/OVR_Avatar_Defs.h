@@ -1,8 +1,8 @@
-/**************************************************
+/**********************************************************************************
 \file      OVR_Avatar_Defs.h
 \brief     OVR Avatar SDK public header file
-\copyright 2016 Oculus VR, LLC All Rights reserved.
-***************************************************/
+\copyright (c) Facebook Technologies, LLC and its affiliates.  All rights reserved.
+***********************************************************************************/
 #ifndef OVR_Avatar_Defs_h
 #define OVR_Avatar_Defs_h
 

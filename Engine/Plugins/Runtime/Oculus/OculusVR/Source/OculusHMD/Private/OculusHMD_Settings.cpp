@@ -18,10 +18,13 @@ FSettings::FSettings() :
 	, PixelDensityMin(0.5f)
 	, PixelDensityMax(1.0f)
 	, SystemHeadset(ovrpSystemHeadset_None)
+	, MultiResLevel(ETiledMultiResLevel::ETiledMultiResLevel_Off)
+	, CPULevel(2)
+	, GPULevel(3)
 {
 	Flags.Raw = 0;
 	Flags.bHMDEnabled = true;
-	Flags.bChromaAbCorrectionEnabled = true;
+	Flags.bChromaAbCorrectionEnabled = false;
 	Flags.bUpdateOnRT = true;
 	Flags.bHQBuffer = false;
 	Flags.bDirectMultiview = true;
@@ -31,7 +34,8 @@ FSettings::FSettings() :
 #else
 	Flags.bCompositeDepth = true;
 #endif
-	Flags.bSupportsDash = false;
+	Flags.bSupportsDash = true;
+	Flags.bRecenterHMDWithController = true;
 	EyeRenderViewport[0] = EyeRenderViewport[1] = EyeRenderViewport[2] = FIntRect(0, 0, 0, 0);
 
 	RenderTargetSize = FIntPoint(0, 0);

@@ -3,6 +3,8 @@
 #include "OVR_Avatar.h"
 #include "Containers/Map.h"
 #include "Containers/Queue.h"
+#include "UObject/WeakObjectPtr.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 #include "Engine/Texture2D.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogAvatars, Log, All);

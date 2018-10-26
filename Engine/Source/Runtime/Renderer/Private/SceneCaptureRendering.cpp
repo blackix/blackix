@@ -324,7 +324,11 @@ static void UpdateSceneCaptureContentDeferred_RenderThread(
 		// TODO: Could avoid the clear by replacing with dummy black system texture.
 		FViewInfo& View = SceneRenderer->Views[0];
 		SetRenderTarget(RHICmdList, Target->GetRenderTargetTexture(), nullptr, true);
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), View.UnscaledViewRect);
+#else
 		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), View.UnscaledViewRect);
+#endif
 
 		// Render the scene normally
 		{

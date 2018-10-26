@@ -122,6 +122,13 @@ bool ShouldRenderScreenSpaceAmbientOcclusion(const FViewInfo& View)
 			&& !IsSimpleForwardShadingEnabled(View.GetShaderPlatform());
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
+    if (View.CastingLayer != ECastingLayer::Full)
+    {
+        bEnabled = false;
+    }
+#endif
+
 	return bEnabled;
 }
 

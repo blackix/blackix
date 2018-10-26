@@ -4,6 +4,8 @@
 #include "OVR_Avatar.h"
 #include "Containers/Set.h"
 #include "Components/ActorComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Components/MeshComponent.h"
 #include "OVR_Plugin.h"
 #include "OVR_Plugin_Types.h"
 

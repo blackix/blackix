@@ -196,7 +196,11 @@ void FRCPassPostProcessDOFSetup::Process(FRenderingCompositePassContext& Context
 			FLinearColor(0, 0, 0, 0)
 		};
 		// is optimized away if possible (RT size=view size, )
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuadMRT(Context.RHICmdList, true, NumRenderTargets, ClearColors, false, 0, false, 0, 0xff, DestSize, DestRect);
+#else
 		DrawClearQuadMRT(Context.RHICmdList, true, NumRenderTargets, ClearColors, false, 0, false, 0, DestSize, DestRect);
+#endif
 	}
 
 	Context.SetViewportAndCallRHI(DestRect.Min.X, DestRect.Min.Y, 0.0f, DestRect.Max.X + 1, DestRect.Max.Y + 1, 1.0f );
@@ -454,7 +458,11 @@ void FRCPassPostProcessDOFRecombine::Process(FRenderingCompositePassContext& Con
 		if (View.StereoPass == eSSP_FULL)
 		{
 			// is optimized away if possible (RT size=view size, )
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+#else
 			DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 0, false, 0, PassOutputs[0].RenderTargetDesc.Extent, View.ViewRect);
+#endif
 		}
 	}
 

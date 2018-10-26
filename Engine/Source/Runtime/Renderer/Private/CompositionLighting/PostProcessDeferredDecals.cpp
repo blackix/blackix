@@ -946,7 +946,11 @@ void FRCPassPostProcessDeferredDecals::Process(FRenderingCompositePassContext& C
 													FExclusiveDepthStencil(FExclusiveDepthStencil::DepthNop_StencilWrite));
 				FRHISetRenderTargetsInfo Info(0, nullptr, DepthView);
 				RHICmdList.SetRenderTargetsAndClear(Info);
+#if WITH_OCULUS_PRIVATE_CODE
+				//DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, SceneContext.GetSceneDepthSurface()->GetSizeXY(), FIntRect());
+#else
 				//DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, SceneContext.GetSceneDepthSurface()->GetSizeXY(), FIntRect());
+#endif
 			}
 
 			// This stops the targets from being resolved and decoded until the last view is rendered.

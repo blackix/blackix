@@ -8,7 +8,9 @@
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Rendering/SkeletalMeshLODModel.h"
 #include "Rendering/SkeletalMeshModel.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Animation/Skeleton.h"
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"
 
@@ -119,7 +121,7 @@ void UOvrAvatar::AddDepthMeshComponent(ovrAvatarAssetID id, UPoseableMeshCompone
 
 void UOvrAvatar::HandleAvatarSpecification(const ovrAvatarMessage_AvatarSpecification* message)
 {
-	if (Avatar || OnlineUserID != message->oculusUserID)
+	if (Avatar || !message->oculusUserID || OnlineUserID != message->oculusUserID)
 		return;
 
 	Avatar = ovrAvatar_Create(message->avatarSpec, ovrAvatarCapability_All);

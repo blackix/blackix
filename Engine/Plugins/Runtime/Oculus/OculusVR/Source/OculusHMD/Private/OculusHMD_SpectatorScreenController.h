@@ -18,6 +18,9 @@ class FSpectatorScreenController : public FDefaultSpectatorScreenController
 public:
 	FSpectatorScreenController(class FOculusHMD* InOculusHMD);
 
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual void UpdateSpectatorScreenMode_RenderThread() override;
+#endif
 	virtual void RenderSpectatorScreen_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* BackBuffer, FTexture2DRHIRef RenderTarget, FVector2D WindowSize) override;
 	virtual void RenderSpectatorModeUndistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize) override;
 	virtual void RenderSpectatorModeDistorted(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef TargetTexture, FTexture2DRHIRef EyeTexture, FTexture2DRHIRef OtherTexture, FVector2D WindowSize) override;

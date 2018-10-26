@@ -4,6 +4,7 @@
 #include "OVR_Avatar.h"
 #include "RenderUtils.h"
 #include "UObject/UObjectIterator.h"
+#include "RenderUtils.h"
 #include "OculusHMDModule.h"
 
 DEFINE_LOG_CATEGORY(LogAvatars);
@@ -183,6 +184,12 @@ void FOvrAvatarManager::InitializeSDK()
 		AVATAR_APP_ID = TCHAR_TO_ANSI(*GConfig->GetStr(TEXT("OnlineSubsystemOculus"), TEXT("RiftAppId"), GEngineIni));
 		ovrAvatar_Initialize(AVATAR_APP_ID);
 
+		// Clear avatar message queue in case there are leftover/invalid messages from other sessions/apps
+		while (ovrAvatarMessage* Message = ovrAvatarMessage_Pop())
+		{
+			ovrAvatarMessage_Free(Message);
+		}
+		
 		ovrAvatar_RegisterLoggingCallback(&FOvrAvatarManager::SDKLogger);
 	}
 }

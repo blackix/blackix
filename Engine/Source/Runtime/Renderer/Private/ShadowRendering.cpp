@@ -614,7 +614,11 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 			false, CF_DepthNearOrEqual,
 			true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 			false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+#if WITH_OCULUS_PRIVATE_CODE
+			STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 			0xff, 0xff
+#endif
 			>::GetRHI());
 		DrawRenderState.SetStencilRef(1);
 
@@ -707,7 +711,11 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 			false, CF_DepthNearOrEqual,
 			true, CF_Always, SO_Keep, SO_Increment, SO_Keep,
 			true, CF_Always, SO_Keep, SO_Decrement, SO_Keep,
+#if WITH_OCULUS_PRIVATE_CODE
+			STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 			0xff, 0xff
+#endif
 			>::GetRHI());
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
@@ -778,7 +786,11 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Increment, SO_Keep,
 				true, CF_Always, SO_Keep, SO_Decrement, SO_Keep,
+#if WITH_OCULUS_PRIVATE_CODE
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 				0xff, 0xff
+#endif
 				>::GetRHI());
 		}
 		else
@@ -790,7 +802,11 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Increment,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Decrement,
+#if WITH_OCULUS_PRIVATE_CODE
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 				0xff, 0xff
+#endif
 				>::GetRHI());
 		}
 		
@@ -831,7 +847,11 @@ void FProjectedShadowInfo::SetupProjectionStencilMask(
 				false, CF_DepthNearOrEqual,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+#if WITH_OCULUS_PRIVATE_CODE
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 				0xff, 0xff
+#endif
 				>::GetRHI());
 			DrawRenderState.SetStencilRef(0);
 
@@ -920,7 +940,11 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 				false, CF_Always,
 				true, CF_NotEqual, SO_Zero, SO_Zero, SO_Zero,
 				false, CF_Always, SO_Zero, SO_Zero, SO_Zero,
+#if WITH_OCULUS_PRIVATE_CODE
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 				0xff, 0xff
+#endif
 				>::GetRHI();
 		}
 		else
@@ -931,7 +955,11 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 				false, CF_Always,
 				true, CF_NotEqual, SO_Keep, SO_Keep, SO_Keep,
 				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+#if WITH_OCULUS_PRIVATE_CODE
+				STENCIL_FOVEATED_MASK_INV_MASK, STENCIL_FOVEATED_MASK_INV_MASK
+#else
 				0xff, 0xff
+#endif
 				>::GetRHI();
 		}
 	}
@@ -1018,7 +1046,11 @@ void FProjectedShadowInfo::RenderProjection(FRHICommandListImmediate& RHICmdList
 		// Clear the stencil buffer to 0.
 		if (!GStencilOptimization)
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 1, STENCIL_FOVEATED_MASK_INV_MASK);
+#else
 			DrawClearQuad(RHICmdList, false, FLinearColor::Transparent, false, 0, true, 1);
+#endif
 		}
 	}
 }

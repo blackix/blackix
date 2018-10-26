@@ -68,6 +68,9 @@ public:
 #endif
 			/** Dynamically update pixel density to maintain framerate */
 			uint64				bPixelDensityAdaptive : 1;
+
+			/** Recenters the HMD too when the controller recenter button is pressed on Go and GearVR */
+			uint64				bRecenterHMDWithController : 1;
 		};
 		uint64 Raw;
 	} Flags;
@@ -94,12 +97,14 @@ public:
 	float VsyncToNextVsync;
 
 	ETiledMultiResLevel MultiResLevel;
+	int CPULevel;
+	int GPULevel;
 
 public:
 	FSettings();
 	virtual ~FSettings() {}
 
-	bool IsStereoEnabled() const { return FPlatformMisc::IsStandaloneStereoOnlyDevice() || Flags.bStereoEnabled && Flags.bHMDEnabled; }
+	bool IsStereoEnabled() const { return Flags.bStereoEnabled && Flags.bHMDEnabled; }
 
 	void SetPixelDensity(float NewPixelDensity);
 	void SetPixelDensityMin(float NewPixelDensityMin);

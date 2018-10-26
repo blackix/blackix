@@ -328,7 +328,7 @@ bool FLayer::CanReuseResources(const FLayer* InLayer) const
 }
 
 
-void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandListImmediate& RHICmdList, const FLayer* InLayer)
+void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* CustomPresent, FRHICommandListImmediate& RHICmdList, const FLayer* InLayer)
 {
 	CheckInRenderThread();
 
@@ -338,7 +338,7 @@ void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandL
 	}
 	else
 	{
-		bInvertY = ( CustomPresent->GetLayerFlags() & ovrpLayerFlag_TextureOriginAtBottomLeft ) != 0;
+		bInvertY = (CustomPresent->GetLayerFlags() & ovrpLayerFlag_TextureOriginAtBottomLeft) != 0;
 
 		uint32 SizeX = 0, SizeY = 0;
 
@@ -367,7 +367,7 @@ void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandL
 			return;
 
 		ovrpShape Shape;
-		
+
 		switch (Desc.ShapeType)
 		{
 		case IStereoLayers::QuadLayer:
@@ -395,8 +395,15 @@ void FLayer::Initialize_RenderThread(FCustomPresent* CustomPresent, FRHICommandL
 		uint32 NumSamples = 1;
 		int LayerFlags = CustomPresent->GetLayerFlags();
 
-		if(!(Desc.Flags & IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE))
+		if (!(Desc.Flags & IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE))
+		{
 			LayerFlags |= ovrpLayerFlag_Static;
+		}
+
+		if (Settings->Flags.bChromaAbCorrectionEnabled)
+		{
+			LayerFlags |= ovrpLayerFlag_ChromaticAberrationCorrection;
+		}
 
 		// Calculate layer desc
 		ovrp_CalculateLayerDesc(

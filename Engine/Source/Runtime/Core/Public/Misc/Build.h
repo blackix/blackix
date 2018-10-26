@@ -103,6 +103,10 @@
 	#define ENABLE_PGO_PROFILE 0
 #endif
 
+#ifndef WITH_OCULUS_PRIVATE_CODE
+	#define WITH_OCULUS_PRIVATE_CODE		1
+#endif
+
 /**
  * Unreal Header Tool requires extra data stored in the structure of a few core files. This enables some ifdef hacks to make this work. 
  * Set via UBT, do not modify directly

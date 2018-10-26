@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -30,4 +28,7 @@ public:
 	
 	UPROPERTY(config, EditAnywhere, Category = Oculus)
 	EOculusPlatform PerfToolTargetPlatform;
+
+	UPROPERTY(globalconfig, EditAnywhere, Category = Oculus)
+	bool bAddMenuOption;
 };
