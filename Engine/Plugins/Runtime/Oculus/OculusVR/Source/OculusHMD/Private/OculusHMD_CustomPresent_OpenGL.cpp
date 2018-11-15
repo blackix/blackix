@@ -12,6 +12,10 @@
 #endif
 #endif
 
+#if PLATFORM_ANDROID
+#include "Android/AndroidOpenGL.h"
+#endif
+
 namespace OculusHMD
 {
 
@@ -22,17 +26,29 @@ namespace OculusHMD
 class FOpenGLCustomPresent : public FCustomPresent
 {
 public:
-	FOpenGLCustomPresent(FOculusHMD* InOculusHMD);
+	FOpenGLCustomPresent(FOculusHMD* InOculusHMD, bool srgbSupport);
 
 	// Implementation of FCustomPresent, called by Plugin itself
+	virtual int GetLayerFlags() const override;
 	virtual FTextureRHIRef CreateTexture_RenderThread(uint32 InSizeX, uint32 InSizeY, EPixelFormat InFormat, FClearValueBinding InBinding, uint32 InNumMips, uint32 InNumSamples, uint32 InNumSamplesTileMem, ERHIResourceType InResourceType, ovrpTextureHandle InTexture, uint32 InTexCreateFlags) override;
 	virtual void AliasTextureResources_RHIThread(FTextureRHIParamRef DestTexture, FTextureRHIParamRef SrcTexture) override;
+	virtual void SubmitGPUFrameTime(float GPUFrameTime) override;
 };
 
 
-FOpenGLCustomPresent::FOpenGLCustomPresent(FOculusHMD* InOculusHMD) :
-	FCustomPresent(InOculusHMD, ovrpRenderAPI_OpenGL, PF_R8G8B8A8, true, false)
+FOpenGLCustomPresent::FOpenGLCustomPresent(FOculusHMD* InOculusHMD, bool srgbSupport) :
+	FCustomPresent(InOculusHMD, ovrpRenderAPI_OpenGL, PF_R8G8B8A8, srgbSupport, false)
 {
+}
+
+
+int FOpenGLCustomPresent::GetLayerFlags() const
+{
+#if PLATFORM_ANDROID
+	return ovrpLayerFlag_TextureOriginAtBottomLeft;
+#else
+	return 0;
+#endif
 }
 
 
@@ -67,6 +83,12 @@ void FOpenGLCustomPresent::AliasTextureResources_RHIThread(FTextureRHIParamRef D
 	DynamicRHI->RHIAliasTextureResources(DestTexture, SrcTexture);
 }
 
+void FOpenGLCustomPresent::SubmitGPUFrameTime(float GPUFrameTime)
+{
+	FOpenGLDynamicRHI* DynamicRHI = static_cast<FOpenGLDynamicRHI*>(GDynamicRHI);
+	DynamicRHI->GetGPUProfilingData().ExternalGPUTime = GPUFrameTime * 1000;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 // APIs
@@ -74,7 +96,12 @@ void FOpenGLCustomPresent::AliasTextureResources_RHIThread(FTextureRHIParamRef D
 
 FCustomPresent* CreateCustomPresent_OpenGL(FOculusHMD* InOculusHMD)
 {
-	return new FOpenGLCustomPresent(InOculusHMD);
+#if PLATFORM_ANDROID
+	const bool sRGBSupport = FAndroidOpenGL::SupportsFramebufferSRGBEnable();
+#else
+	const bool sRGBSupport = true;
+#endif
+	return new FOpenGLCustomPresent(InOculusHMD, sRGBSupport);
 }
 
 

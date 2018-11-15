@@ -11,7 +11,12 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogClearQuad, Log, Log)
 
-static void ClearQuadSetup( FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil )
+#if WITH_OCULUS_PRIVATE_CODE
+template<uint32 StencilMask>
+static void ClearQuadSetupTemp( FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil )
+#else
+static void ClearQuadSetup(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil)
+#endif
 {
 	if (UNLIKELY(!FApp::CanEverRender()))
 	{
@@ -31,7 +36,11 @@ static void ClearQuadSetup( FRHICommandList& RHICmdList, bool bClearColor, int32
 				true, CF_Always,
 				true,CF_Always,SO_Replace,SO_Replace,SO_Replace,
 				false,CF_Always,SO_Replace,SO_Replace,SO_Replace,
-				0xff,0xff
+#if WITH_OCULUS_PRIVATE_CODE
+				StencilMask,StencilMask
+#else
+				0xff, 0xff
+#endif
 				>::GetRHI()
 			: bClearDepth
 				? TStaticDepthStencilState<true, CF_Always>::GetRHI()
@@ -40,7 +49,11 @@ static void ClearQuadSetup( FRHICommandList& RHICmdList, bool bClearColor, int32
 						false, CF_Always,
 						true,CF_Always,SO_Replace,SO_Replace,SO_Replace,
 						false,CF_Always,SO_Replace,SO_Replace,SO_Replace,
-						0xff,0xff
+#if WITH_OCULUS_PRIVATE_CODE
+						StencilMask, StencilMask
+#else
+						0xff, 0xff
+#endif
 						>::GetRHI()
 					: TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
@@ -112,6 +125,29 @@ static void ClearQuadSetup( FRHICommandList& RHICmdList, bool bClearColor, int32
 
 	PixelShader->SetColors(RHICmdList, ClearColorArray, NumClearColors);
 }
+
+#if WITH_OCULUS_PRIVATE_CODE
+static void ClearQuadSetup(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil, uint32 StencilMask)
+{
+	if (!bClearStencil || (StencilMask & 0xff) == 0xff)
+	{
+		ClearQuadSetupTemp<0xff>(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+	}
+	else if ((StencilMask & 0xff) == 0x7f)	// ~STENCIL_FOVEATED_MASK_MASK
+	{
+		ClearQuadSetupTemp<0x7f>(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+	}
+	else if ((StencilMask & 0xff) == 0x80)	// STENCIL_FOVEATED_MASK_MASK
+	{
+		ClearQuadSetupTemp<0x80>(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+	}
+	else
+	{
+		ensureMsgf(false, TEXT("The corresponding ClearQuadSetupTemp<StencilMask> has not been specialized. It would cause error in graphics."));
+		ClearQuadSetupTemp<0xff>(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+	}
+}
+#endif
 
 const uint32 GMaxSizeUAVDMA = 0;
 static void ClearUAVShader(FRHICommandList& RHICmdList, FUnorderedAccessViewRHIParamRef UnorderedAccessViewRHI, uint32 SizeInBytes, uint32 ClearValue)
@@ -252,9 +288,17 @@ void ClearUAV(FRHICommandList& RHICmdList, const FSceneRenderTargetItem& RenderT
 	ClearUAV_T(RHICmdList, RenderTargetItem, reinterpret_cast<const float(&)[4]>(ClearColor));
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil, uint32 StencilMask)
+#else
 void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil)
+#endif
 {
+#if WITH_OCULUS_PRIVATE_CODE
+	ClearQuadSetup(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil, StencilMask);
+#else
 	ClearQuadSetup(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+#endif
 
 	// without a hole
 	FVector4 Vertices[4];
@@ -265,7 +309,11 @@ void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumCl
 	DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, sizeof(Vertices[0]));
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil, uint32 StencilMask, FIntPoint ViewSize, FIntRect ExcludeRect)
+#else
 void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumClearColors, const FLinearColor* ClearColorArray, bool bClearDepth, float Depth, bool bClearStencil, uint32 Stencil, FIntPoint ViewSize, FIntRect ExcludeRect)
+#endif
 {
 	if (ExcludeRect.Min == FIntPoint::ZeroValue && ExcludeRect.Max == ViewSize)
 	{
@@ -273,7 +321,11 @@ void DrawClearQuadMRT(FRHICommandList& RHICmdList, bool bClearColor, int32 NumCl
 		return;
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
+	ClearQuadSetup(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil, StencilMask);
+#else
 	ClearQuadSetup(RHICmdList, bClearColor, NumClearColors, ClearColorArray, bClearDepth, Depth, bClearStencil, Stencil);
+#endif
 
 	// Draw a fullscreen quad
 	if (ExcludeRect.Width() > 0 && ExcludeRect.Height() > 0)

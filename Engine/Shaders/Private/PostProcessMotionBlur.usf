@@ -10,6 +10,9 @@
 #include "FastMath.ush"
 #include "Random.ush"
 
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
 
 #if MOTION_BLUR_INNER_LOOP_CONFIG == 0
 	// Stay opt-out of everything.
@@ -108,7 +111,18 @@ void VelocityScatterVS(
 		return;
 	}
 
-	float4 MinMaxVelocity = PostprocessInput0[ PixelPos ];
+	float4 MinMaxVelocity;
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		MinMaxVelocity = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, float2(PixelPos) / PostprocessInput0Size.xy);
+	}
+	else
+#endif
+	{
+		MinMaxVelocity = PostprocessInput0[ PixelPos ];
+	}
+	
 	OutColor = MinMaxVelocity;
 
 	float4 MinMaxVelocityPixels = MinMaxVelocity * MotionBlurParameters.z;
@@ -255,7 +269,17 @@ float4 MainMotionBlurCommon(float2 OutputBufferUV, float2 ScreenSpacePos, float2
 	float MaxVelocityLengthSqrPixels = dot( MaxVelocityPixels, MaxVelocityPixels );
 
 	// Input buffer 0 as same viewport as output buffer.
-	float4 CenterColor = PostprocessInput0.SampleLevel( PostprocessInput0Sampler, OutputBufferUV, 0 );
+	float4 CenterColor;
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		CenterColor = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, OutputBufferUV);
+	}
+	else
+#endif
+	{
+		CenterColor = PostprocessInput0.SampleLevel( PostprocessInput0Sampler, OutputBufferUV, 0 );
+	}
 
 	float2 MinViewportUV = (float2(ViewportRect.xy) + 0.5) * PostprocessInput0Size.zw;
 	float2 MaxViewportUV = (float2(ViewportRect.zw) - 0.5) * PostprocessInput0Size.zw;
@@ -331,8 +355,18 @@ float4 MainMotionBlurCommon(float2 OutputBufferUV, float2 ScreenSpacePos, float2
 				SampleUV[1] = clamp( SampleUV[1], MinViewportUV, MaxViewportUV );
 			#endif
 
-			ColorAccum += PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[0], 0 );
-			ColorAccum += PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[1], 0 );
+		#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+			if (PostProcessInputsIsFoveatedMasked[0])
+			{
+				ColorAccum += FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV[0]);
+				ColorAccum += FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV[1]);
+			}
+			else
+		#endif
+			{
+				ColorAccum += PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[0], 0 );
+				ColorAccum += PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[1], 0 );
+			}
 		}
 	
 		ColorAccum *= 0.5 / StepCount;
@@ -373,7 +407,16 @@ float4 MainMotionBlurCommon(float2 OutputBufferUV, float2 ScreenSpacePos, float2
 			{
 				float3 SampleVelocityDepth = PostprocessInput2.SampleLevel(
 					PostprocessInput2Sampler, SampleUV[j] * SceneColorBufferUVToViewBufferUV.xy + SceneColorBufferUVToViewBufferUV.zw, 0 ).xyz;
-				SampleColor[j] = PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[j], 0 );
+			#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+				if (PostProcessInputsIsFoveatedMasked[0])
+				{
+					SampleColor[j] = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SampleUV[j]);
+				}
+				else
+			#endif
+				{
+					SampleColor[j] = PostprocessInput0.SampleLevel( PostprocessInput0Sampler, SampleUV[j], 0 );
+				}
 				SampleDepth[j] = SampleVelocityDepth.z;
 
 				// in pixels

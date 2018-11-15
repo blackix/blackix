@@ -1963,6 +1963,11 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 			static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.UseLegacyShadingModel"));
 			KeyString += (CVar && CVar->GetInt() != 0) ? TEXT("_legshad") : TEXT("");
 		}
+
+		{
+			static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.UseHWsRGBEncoding"));
+			KeyString += (CVar && CVar->GetInt() != 0) ? TEXT("_HWsRGB") : TEXT("");
+		}
 	}
 
 	if (Platform == SP_PS4)
@@ -2056,6 +2061,14 @@ void ShaderMapAppendKeyString(EShaderPlatform Platform, FString& KeyString)
 		if (CVar && CVar->GetInt() > 0)
 		{
 			KeyString += TEXT("_FS");
+		}
+	}
+
+	{
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("vr.Foveated.Mask.Enable"));
+		if (CVar && CVar->GetInt() > 0)
+		{
+			KeyString += TEXT("_MBFR");
 		}
 	}
 

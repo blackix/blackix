@@ -195,6 +195,14 @@ void FCustomPresent::FinishRendering_RHIThread()
 #endif
 
 	OculusHMD->FinishRHIFrame_RHIThread();
+
+#if PLATFORM_ANDROID
+	float GPUFrameTime = 0;
+	if (OVRP_SUCCESS(ovrp_GetGPUFrameTime(&GPUFrameTime)))
+	{
+		SubmitGPUFrameTime(GPUFrameTime);
+	}
+#endif
 }
 
 
@@ -439,7 +447,11 @@ void FCustomPresent::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 			RendererModule->DrawRectangle(
 				RHICmdList,
 				0, 0, ViewportWidth, ViewportHeight,
+#if PLATFORM_ANDROID
 				U, V, USize, VSize,
+#else
+				U, 1.0 - V, USize, -VSize,
+#endif
 				TargetSize,
 				FIntPoint(1, 1),
 				*VertexShader,

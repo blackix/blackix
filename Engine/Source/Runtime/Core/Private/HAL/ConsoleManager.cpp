@@ -1894,6 +1894,13 @@ static TAutoConsoleVariable<int32> CVarMobileHDR32bppMode(
 	TEXT("3: Force Mobile 32bpp HDR with direct RGBA8 rendering."),
 	ECVF_RenderThreadSafe);
 
+static TAutoConsoleVariable<int32> CVarMobileUseHWsRGBEncoding(
+	TEXT("r.Mobile.UseHWsRGBEncoding"),
+	0,
+	TEXT("0: Write sRGB encoding in the shader\n")
+	TEXT("1: Use GPU HW to convert linear to sRGB automatically (device must support sRGB write control)\n"),
+	ECVF_RenderThreadSafe);
+
 static TAutoConsoleVariable<int32> CVarSetClearSceneMethod(
 	TEXT("r.ClearSceneMethod"),
 	1,
