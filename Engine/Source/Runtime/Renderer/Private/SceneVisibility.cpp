@@ -2830,6 +2830,8 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 
 	FPrimitiveViewMasks HasDynamicEditorMeshElementsMasks;
 
+	const bool bIsInstancedStereo = (Views.Num() > 0) ? (Views[0].IsInstancedStereoPass() || Views[0].bIsMobileMultiViewEnabled) : false;
+
 	if (GIsEditor)
 	{
 		HasDynamicEditorMeshElementsMasks.AddZeroed(NumPrimitives);
@@ -3060,7 +3062,7 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 		}
 
 		// ISR views can't compute relevance until all views are frustum culled
-		if (!View.IsInstancedStereoPass())
+		if (!bIsInstancedStereo)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
 			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
@@ -3093,7 +3095,7 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 		View.bSceneHasDecals = (Scene->Decals.Num() > 0);
 	}
 
-	if (Views.Num() > 1 && Views[0].IsInstancedStereoPass())
+	if (bIsInstancedStereo)
 	{
 		// Ensure primitives from the right-eye view are visible in the left-eye (instanced) view
 		FSceneBitArray& LeftView = Views[0].PrimitiveVisibilityMap;
@@ -3114,7 +3116,7 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 	ViewBit = 0x1;
 	for (FViewInfo& View : Views)
 	{
-		if (View.IsInstancedStereoPass())
+		if (bIsInstancedStereo)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
 			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);

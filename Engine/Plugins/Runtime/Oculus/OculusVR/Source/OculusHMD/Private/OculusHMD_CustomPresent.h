@@ -71,6 +71,8 @@ public:
 	virtual void AliasTextureResources_RHIThread(FTextureRHIParamRef DestTexture, FTextureRHIParamRef SrcTexture) = 0;
 	virtual void SubmitGPUFrameTime(float GPUFrameTime) { }
 
+	bool supportsSRGB() { return bSupportsSRGB; }
+
 protected:
 	FOculusHMD* OculusHMD;
 	ovrpRenderAPIType RenderAPI;

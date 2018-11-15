@@ -711,6 +711,10 @@ void FAndroidOpenGL::QueryTimestampCounter(GLuint Query)
 
 }
 
+bool FAndroidOpenGL::SupportsFramebufferSRGBEnable()
+{
+	return SupportsSRGB() && !!AndroidThunkCpp_IsGearVRApplication();
+}
 
 void FAndroidOpenGL::BeginQuery(GLenum QueryType, GLuint Query)
 {

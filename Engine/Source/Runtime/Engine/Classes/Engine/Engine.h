@@ -348,7 +348,7 @@ struct FWorldContext
 	UPROPERTY()
 	class UGameViewportClient* GameViewport;
 
-	UPROPERTY()
+    UPROPERTY()
 	class UGameInstance* OwningGameInstance;
 
 	/** A list of active net drivers */

@@ -154,7 +154,11 @@ void FRCPassPostProcessNoiseBlur::Process(FRenderingCompositePassContext& Contex
 	if (View.StereoPass == eSSP_FULL)
 	{
 		// is optimized away if possible (RT size=view size, )
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, 0xff, PassOutputs[0].RenderTargetDesc.Extent, DestRect);
+#else
 		DrawClearQuad(Context.RHICmdList, true, FLinearColor(0, 0, 0, 0), false, 0, false, 0, PassOutputs[0].RenderTargetDesc.Extent, DestRect);
+#endif
 	}
 
 	Context.SetViewportAndCallRHI(0, 0, 0.0f, DestSize.X, DestSize.Y, 1.0f );

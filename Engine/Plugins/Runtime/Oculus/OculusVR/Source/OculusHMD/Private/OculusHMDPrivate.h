@@ -111,6 +111,11 @@ namespace OculusHMD
 			FPlane(vtm.M[0][3], vtm.M[1][3], vtm.M[2][3], vtm.M[3][3]));
 	}
 
+	FORCEINLINE ovrpVector4f LinearColorToOvrpVector4f(const FLinearColor& InColor)
+	{
+		return ovrpVector4f{ InColor.R, InColor.G, InColor.B, InColor.A };
+	}
+
 	FORCEINLINE ovrpRecti ToOvrpRecti(const FIntRect& rect)
 	{
 		return ovrpRecti { { rect.Min.X, rect.Min.Y }, { rect.Size().X, rect.Size().Y } };
