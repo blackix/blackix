@@ -556,6 +556,8 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Project SDK Override", Meta = (DisplayName = "NDK API Level (specific version or 'latest' - see tooltip)"))
 	FString NDKAPILevelOverride;
 
+private:
+	void HandlesRGBHWSupport();
 
 #if WITH_EDITOR
 	// UObject interface

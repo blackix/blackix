@@ -5,6 +5,7 @@
 #include "UObject/UnrealType.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CoreDelegates.h"
+#include "HAL/IConsoleManager.h"
 
 #if WITH_EDITOR
 #include "IAndroidTargetPlatformModule.h"
@@ -40,6 +41,14 @@ UAndroidRuntimeSettings::UAndroidRuntimeSettings(const FObjectInitializer& Objec
 	, TextureFormatPriority_ASTC(0.9f)
 {
 	bBuildForES2 = !bBuildForES2 && !bBuildForES31 && !bSupportsVulkan;
+	HandlesRGBHWSupport();
+}
+
+void UAndroidRuntimeSettings::HandlesRGBHWSupport()
+{
+	bool supportssRGB = bBuildForES31 && bPackageForGearVR;
+	static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.UseHWsRGBEncoding"));
+	MobileUseHWsRGBEncodingCVAR->Set((int)supportssRGB);
 }
 
 #if WITH_EDITOR
@@ -108,6 +117,8 @@ void UAndroidRuntimeSettings::PostEditChangeProperty(struct FPropertyChangedEven
 			Module->NotifyMultiSelectedFormatsChanged();
 		}
 	}
+
+	HandlesRGBHWSupport();
 }
 
 void UAndroidRuntimeSettings::PostInitProperties()
@@ -152,6 +163,7 @@ void UAndroidRuntimeSettings::PostInitProperties()
 
 	// Enable ES2 if no GPU arch is selected. (as can be the case with the removal of ESDeferred) 
 	EnsureValidGPUArch();
+	HandlesRGBHWSupport();
 }
 
 void UAndroidRuntimeSettings::EnsureValidGPUArch()

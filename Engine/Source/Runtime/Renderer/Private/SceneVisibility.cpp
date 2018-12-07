@@ -2332,23 +2332,18 @@ void FSceneRenderer::GatherDynamicMeshElements(
 			Collector.AddViewMeshArrays(&InViews[ViewIndex], &InViews[ViewIndex].DynamicMeshElements, &InViews[ViewIndex].SimpleElementCollector, InViewFamily.GetFeatureLevel());
 		}
 
-		const bool bIsInstancedStereo = (ViewCount > 0) ? (InViews[0].IsInstancedStereoPass() || InViews[0].bIsMobileMultiViewEnabled) : false;
-
 		for (int32 PrimitiveIndex = 0; PrimitiveIndex < NumPrimitives; ++PrimitiveIndex)
 		{
 			const uint8 ViewMask = HasDynamicMeshElementsMasks[PrimitiveIndex];
 
 			if (ViewMask != 0)
 			{
-				// Don't cull a single eye when drawing a stereo pair
-				const uint8 ViewMaskFinal = (bIsInstancedStereo) ? ViewMask | 0x3 : ViewMask;
-
 				FPrimitiveSceneInfo* PrimitiveSceneInfo = InScene->Primitives[PrimitiveIndex];
 				Collector.SetPrimitive(PrimitiveSceneInfo->Proxy, PrimitiveSceneInfo->DefaultDynamicHitProxyId);
 
 				SetDynamicMeshElementViewCustomData(InViews, HasViewCustomDataMasks, PrimitiveSceneInfo);
 
-				PrimitiveSceneInfo->Proxy->GetDynamicMeshElements(InViewFamily.Views, InViewFamily, ViewMaskFinal, Collector);
+				PrimitiveSceneInfo->Proxy->GetDynamicMeshElements(InViewFamily.Views, InViewFamily, ViewMask, Collector);
 			}
 
 			// to support GetDynamicMeshElementRange()
@@ -2830,12 +2825,16 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 
 	FPrimitiveViewMasks HasDynamicEditorMeshElementsMasks;
 
+	const bool bIsInstancedStereo = 
+		(Views.Num() > 1) &&
+		(Views[0].bIsInstancedStereoEnabled || Views[0].bIsMobileMultiViewEnabled) && 
+		(Views[0].StereoPass == eSSP_LEFT_EYE) &&
+		(Views[1].StereoPass == eSSP_RIGHT_EYE);
+
 	if (GIsEditor)
 	{
 		HasDynamicEditorMeshElementsMasks.AddZeroed(NumPrimitives);
 	}
-
-	const bool bIsInstancedStereo = (Views.Num() > 0) ? (Views[0].IsInstancedStereoPass() || Views[0].bIsMobileMultiViewEnabled) : false;
 
 	uint8 ViewBit = 0x1;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex, ViewBit <<= 1)
@@ -3061,8 +3060,8 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 			Scene->ConditionalMarkStaticMeshElementsForUpdate();
 		}
 
-		// ISR views can't compute relevance until all views are frustum culled
-		if (!bIsInstancedStereo)
+		// For ISR, relevance of left-eye (instanced) view will be computed later.
+		if (!bIsInstancedStereo || ViewIndex > 0)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
 			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
@@ -3095,7 +3094,7 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 		View.bSceneHasDecals = (Scene->Decals.Num() > 0);
 	}
 
-	if ((Views.Num() > 1) && bIsInstancedStereo)
+	if (bIsInstancedStereo)
 	{
 		// Ensure primitives from the right-eye view are visible in the left-eye (instanced) view
 		FSceneBitArray& LeftView = Views[0].PrimitiveVisibilityMap;
@@ -3111,17 +3110,13 @@ void FSceneRenderer::ComputeViewVisibility(FRHICommandListImmediate& RHICmdList)
 		{
 			LeftData[Index] |= RightData[Index];
 		}
-	}
 
-	ViewBit = 0x1;
-	for (FViewInfo& View : Views)
-	{
-		if (bIsInstancedStereo)
+		// Compute relevance of left-eye (instanced) view.
+		// Use 0x3 for ViewBit, so it marks visible elements as visible in both left-eye and right-eye views.
 		{
 			SCOPE_CYCLE_COUNTER(STAT_ViewRelevance);
-			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, View, ViewBit, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
+			ComputeAndMarkRelevanceForViewParallel(RHICmdList, Scene, Views[0], 0x3, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks);
 		}
-		ViewBit <<= 1;
 	}
 
 	GatherDynamicMeshElements(Views, Scene, ViewFamily, HasDynamicMeshElementsMasks, HasDynamicEditorMeshElementsMasks, HasViewCustomDataMasks, MeshCollector);

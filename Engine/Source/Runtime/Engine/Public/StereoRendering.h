@@ -146,6 +146,17 @@ public:
 	 */
 	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const = 0;
 
+#if WITH_OCULUS_PRIVATE_CODE
+	/**
+	 * Gets a projection matrix for the device, given the specified eye setup
+	 * Override if the Stereo Device doesn't support using GetStereoProjectionMatrix(StereoPassType) on the RenderThread (e.g. OculusHMD)
+	 */
+	virtual FMatrix GetStereoProjectionMatrix_RenderThread(const enum EStereoscopicPass StereoPassType) const
+	{
+		return GetStereoProjectionMatrix(StereoPassType);
+	}
+#endif
+
 	/**
 	 * Sets view-specific params (such as view projection matrix) for the canvas.
 	 */

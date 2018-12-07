@@ -64,7 +64,7 @@ struct APPLICATIONCORE_API FGenericWindowDefinition
 {
 	/** Window type */
 	EWindowType Type;
-	
+
 	/** The initially desired horizontal screen position */
 	float XDesiredPositionOnScreen;
 	/** The initially desired vertical screen position */

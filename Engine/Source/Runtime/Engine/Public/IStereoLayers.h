@@ -172,6 +172,7 @@ public:
 		if (Texture)
 		{
 			SplashMovie = Texture->GetTexture2D();
+			bSplashShowMovie = true;
 		}
 		UpdateSplashScreen();
 	}

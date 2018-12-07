@@ -417,7 +417,11 @@ void FRCPassPostProcessUpscale::Process(FRenderingCompositePassContext& Context)
 	Context.SetViewportAndCallRHI(DestRect);
 	if (Context.GetLoadActionForRenderTarget(DestRenderTarget) == ERenderTargetLoadAction::EClear && !bMobilePlatform)
 	{
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, PassOutputs[0].RenderTargetDesc.Extent, ExcludeRect);
+#else
 		DrawClearQuad(Context.RHICmdList, true, FLinearColor::Black, false, 0, false, 0, PassOutputs[0].RenderTargetDesc.Extent, ExcludeRect);
+#endif
 	}
 
 	FShader* VertexShader = 0;
