@@ -86,25 +86,34 @@ static const int32 NumTranslucencyShadowSurfaces = 2;
 *		BIT ID    | USE
 *		[0]       | sandbox bit (bit to be use by any rendering passes, but must be properly reset to 0 after using)
 *		[1]       | unallocated
-*		[2]       | unallocated
-*		[3]       | Temporal AA mask for translucent object.
+*		[2]       | Temporal AA mask for translucent object.
+*		[3]       | Lighting channels
 *		[4]       | Lighting channels
 *		[5]       | Lighting channels
-*		[6]       | Lighting channels
-*		[7]       | primitive receive decal bit
+*		[6]       | primitive receive decal bit
+*		[7]       | Foveated Mask bit. Put that to the highest bit because we want to preserve it in ShadowRendering
 *
 * After deferred decals, stencil is cleared to 0 and no longer packed in this way, to ensure use of fast hardware clears and HiStencil.
 */
 #define STENCIL_SANDBOX_BIT_ID				0
-#define STENCIL_TEMPORAL_RESPONSIVE_AA_BIT_ID 3
-#define STENCIL_LIGHTING_CHANNELS_BIT_ID	4
-#define STENCIL_RECEIVE_DECAL_BIT_ID		7
+#define STENCIL_TEMPORAL_RESPONSIVE_AA_BIT_ID 2
+#define STENCIL_LIGHTING_CHANNELS_BIT_ID	3
+#define STENCIL_RECEIVE_DECAL_BIT_ID		6
+
+#if WITH_OCULUS_PRIVATE_CODE
+#define STENCIL_FOVEATED_MASK_BIT_ID		7
+#endif
 
 // Outputs a compile-time constant stencil's bit mask ready to be used
 // in TStaticDepthStencilState<> template parameter. It also takes care
 // of masking the Value macro parameter to only keep the low significant
 // bit to ensure to not overflow on other bits.
 #define GET_STENCIL_BIT_MASK(BIT_NAME,Value) uint8((uint8(Value) & uint8(0x01)) << (STENCIL_##BIT_NAME##_BIT_ID))
+
+#if WITH_OCULUS_PRIVATE_CODE
+#define STENCIL_FOVEATED_MASK_MASK GET_STENCIL_BIT_MASK(FOVEATED_MASK, 1)
+#define STENCIL_FOVEATED_MASK_INV_MASK uint8(~STENCIL_FOVEATED_MASK_MASK)
+#endif
 
 #define STENCIL_SANDBOX_MASK GET_STENCIL_BIT_MASK(SANDBOX,1)
 
@@ -153,6 +162,9 @@ protected:
 	FSceneRenderTargets(): 
 		bScreenSpaceAOIsValid(false),
 		bCustomDepthIsValid(false),
+#if WITH_OCULUS_PRIVATE_CODE
+		bIsFoveatedMaskValidInStencil(false),
+#endif
 		GBufferRefCount(0),
 		ThisFrameNumber( 0 ),
 		CurrentDesiredSizeIndex ( 0 ),
@@ -213,8 +225,6 @@ public:
 	 */
 	void BeginRenderingSceneColor(FRHICommandList& FRHICommandListImmediate, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite, bool bTransitionWritable = true);
 
-	void BeginRenderingSceneMonoColor(FRHICommandList& RHICmdList, ESimpleRenderTargetMode RenderTargetMode = ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil DepthStencilAccess = FExclusiveDepthStencil::DepthWrite_StencilWrite);
-
 	// @return true: call FinishRenderingCustomDepth after rendering, false: don't render it, feature is disabled
 	bool BeginRenderingCustomDepth(FRHICommandListImmediate& RHICmdList, bool bPrimitives);
 	// only call if BeginRenderingCustomDepth() returned true
@@ -243,10 +253,22 @@ public:
 		}
 	}
 	
+	void FreeMaskReconstructedColor()
+	{
+		if (MaskReconstructedColorRT.GetReference())
+		{
+			MaskReconstructedColorRT.SafeRelease();
+		}
+	}
+
 	void ResolveSceneDepthTexture(FRHICommandList& RHICmdList, const FResolveRect& ResolveRect);
 	void ResolveSceneDepthToAuxiliaryTexture(FRHICommandList& RHICmdList);
 
+#if WITH_OCULUS_PRIVATE_CODE
+	void BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear, bool bShouldClearStencil);
+#else
 	void BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear);
+#endif
 	void FinishRenderingPrePass(FRHICommandListImmediate& RHICmdList);
 
 	void BeginRenderingSceneAlphaCopy(FRHICommandListImmediate& RHICmdList);
@@ -291,6 +313,18 @@ public:
 		return (const FTexture2DRHIRef&)DownsampledTranslucencyDepthRT->GetRenderTargetItem().TargetableTexture;
 	}
 
+	TRefCountPtr<IPooledRenderTarget>& GetMaskReconstructedColor(FRHICommandList& RHICmdList, FIntPoint Size);
+
+	const FTexture2DRHIRef& GetMaskReconstructedColorSurface()
+	{
+		return (const FTexture2DRHIRef&)MaskReconstructedColorRT->GetRenderTargetItem().TargetableTexture;
+	}
+
+	const FTextureRHIRef& GetMaskReconstructedColorTexture()
+	{
+		return (const FTextureRHIRef&)MaskReconstructedColorRT->GetRenderTargetItem().ShaderResourceTexture;
+	}
+
 	/**
 	 * Cleans up editor primitive targets that we no longer need
 	 */
@@ -333,15 +367,13 @@ public:
 	bool HasSceneAlphaCopyTexture() const { return SceneAlphaCopy.GetReference() != 0; }
 	const FTexture2DRHIRef& GetSceneDepthTexture() const { return (const FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture; }
 
-	const FTexture2DRHIRef& GetSceneMonoColorTexture() const { return (const FTexture2DRHIRef&)SceneMonoColor->GetRenderTargetItem().ShaderResourceTexture; }
-	const FTexture2DRHIRef& GetSceneMonoDepthTexture() const { return (const FTexture2DRHIRef&)SceneMonoDepthZ->GetRenderTargetItem().ShaderResourceTexture; }
-
 	const FTexture2DRHIRef& GetAuxiliarySceneDepthTexture() const
 	{ 
 		check(!GSupportsDepthFetchDuringDepthTest);
 		return (const FTexture2DRHIRef&)AuxiliarySceneDepthZ->GetRenderTargetItem().ShaderResourceTexture; 
 	}
 
+	const TRefCountPtr<IPooledRenderTarget>& GetActualDepthRenderTarget() const;
 	const FTexture2DRHIRef* GetActualDepthTexture() const;
 	const FTexture2DRHIRef& GetGBufferATexture() const { return (const FTexture2DRHIRef&)GBufferA->GetRenderTargetItem().ShaderResourceTexture; }
 	const FTexture2DRHIRef& GetGBufferBTexture() const { return (const FTexture2DRHIRef&)GBufferB->GetRenderTargetItem().ShaderResourceTexture; }
@@ -358,8 +390,6 @@ public:
 	const FTextureRHIRef& GetSceneColorSurface() const;
 	const FTexture2DRHIRef& GetSceneAlphaCopySurface() const						{ return (const FTexture2DRHIRef&)SceneAlphaCopy->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSceneDepthSurface() const							{ return (const FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture; }
-	const FTexture2DRHIRef& GetSceneMonoColorSurface() const						{ return (const FTexture2DRHIRef&)SceneMonoColor->GetRenderTargetItem().TargetableTexture; }
-	const FTexture2DRHIRef& GetSceneMonoDepthSurface() const						{ return (const FTexture2DRHIRef&)SceneMonoDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetSmallDepthSurface() const							{ return (const FTexture2DRHIRef&)SmallDepthZ->GetRenderTargetItem().TargetableTexture; }
 	const FTexture2DRHIRef& GetOptionalShadowDepthColorSurface(FRHICommandList& RHICmdList, int32 Width, int32 Height) const;
 	const FTexture2DRHIRef& GetLightAttenuationSurface() const					{ return (const FTexture2DRHIRef&)GetLightAttenuation()->GetRenderTargetItem().TargetableTexture; }
@@ -437,13 +467,19 @@ public:
 	EPixelFormat GetDesiredMobileSceneColorFormat() const;
 	EPixelFormat GetMobileSceneColorFormat() const;
 
-
 	// changes depending at which part of the frame this is called
 	bool IsSceneColorAllocated() const;
 
 	void SetSceneColor(IPooledRenderTarget* In);
 
 	// ---
+
+	/** Get the current scene depth target */
+	const TRefCountPtr<IPooledRenderTarget>& GetSceneDepth() const { return SceneDepthZ; }
+	TRefCountPtr<IPooledRenderTarget>& GetSceneDepth() { return SceneDepthZ; }
+
+	const TRefCountPtr<IPooledRenderTarget>& GetAuxiliarySceneDepth() const { return AuxiliarySceneDepthZ; }
+	TRefCountPtr<IPooledRenderTarget>& GetAuxiliarySceneDepth() { return AuxiliarySceneDepthZ; }
 
 	void SetLightAttenuation(IPooledRenderTarget* In);
 
@@ -464,8 +500,6 @@ public:
 
 	void AllocLightAttenuation(FRHICommandList& RHICmdList);
 
-	void AllocSceneMonoRenderTargets(FRHICommandList& RHICmdList, const FViewInfo& MonoView);
-
 	void AllocateReflectionTargets(FRHICommandList& RHICmdList, int32 TargetSize);
 
 	void AllocateLightingChannelTexture(FRHICommandList& RHICmdList);
@@ -484,6 +518,12 @@ public:
 	
 	ERHIFeatureLevel::Type GetCurrentFeatureLevel() const { return CurrentFeatureLevel; }
 
+#if WITH_OCULUS_PRIVATE_CODE
+	bool IsFoveatedMaskValidInStencil() const { return bIsFoveatedMaskValidInStencil; }
+	void SetFoveatedMaskValidInStencil(bool IsMaskValid);
+	void InvalidateFoveatedMaskInStencil();
+#endif
+	
 private: // Get...() methods instead of direct access
 
 	// 0 before BeginRenderingSceneColor and after tone mapping in deferred shading
@@ -507,10 +547,6 @@ public:
 	TRefCountPtr<IPooledRenderTarget> AuxiliarySceneDepthZ;
 	// Quarter-sized version of the scene depths
 	TRefCountPtr<IPooledRenderTarget> SmallDepthZ;
-
-	// VR monoscopic far field rendering render targets
-	TRefCountPtr<IPooledRenderTarget> SceneMonoColor;
-	TRefCountPtr<IPooledRenderTarget> SceneMonoDepthZ;
 
 	// GBuffer: Geometry Buffer rendered in base pass for deferred shading, only available between AllocGBufferTargets() and FreeGBufferTargets()
 	TRefCountPtr<IPooledRenderTarget> GBufferA;
@@ -567,11 +603,19 @@ public:
 	/** Downsampled depth used when rendering translucency in smaller resolution. */
 	TRefCountPtr<IPooledRenderTarget> DownsampledTranslucencyDepthRT;
 
+	/** The reconstructed color RT in mask-based foveated rendering */
+	TRefCountPtr<IPooledRenderTarget> MaskReconstructedColorRT;			// [WIP]
+
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bScreenSpaceAOIsValid;
 
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bCustomDepthIsValid;
+
+#if WITH_OCULUS_PRIVATE_CODE
+	/*The foveated mask has been already written to the stencil buffer. It's done in FDeferredShadingSceneRenderer::RenderPrePass()*/
+	bool bIsFoveatedMaskValidInStencil;
+#endif
 
 private:
 	/** used by AdjustGBufferRefCount */

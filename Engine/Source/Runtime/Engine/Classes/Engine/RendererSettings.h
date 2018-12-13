@@ -197,6 +197,11 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bMobileUseLegacyShadingModel : 1;
 
+	UPROPERTY(config, meta = (
+		ConsoleVariable = "r.Mobile.UseHWsRGBEncoding", DisplayName = "Single-pass linear rendering",
+		ToolTip = "If true then mobile single-pass (non mobile HDR) rendering will use HW accelerated sRGB encoding/decoding. Available only on Oculus for now."))
+		uint32 bMobileUseHWsRGBEncoding : 1;
+
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta=(
 		ConsoleVariable="r.Mobile.AllowDitheredLODTransition", DisplayName="Allow Dithered LOD Transition",
 		ToolTip="Whether to support 'Dithered LOD Transition' material option on mobile platforms. Enabling this may degrade performance as rendering will not benefit from Early-Z optimization.",
@@ -545,12 +550,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		uint32 bMobileMultiViewDirect : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
-		ConsoleVariable = "vr.MonoscopicFarField", DisplayName = "Monoscopic Far Field",
-		ToolTip = "Enable monoscopic far field rendering (only available for mobile).",
-		ConfigRestartRequired = true))
-		uint32 bMonoscopicFarField : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
 		ConsoleVariable = "vr.RoundRobinOcclusion", DisplayName = "Round Robin Occlusion Queries",
 		ToolTip = "Enable round-robin scheduling of occlusion queries for VR.",
 		ConfigRestartRequired = false))
@@ -561,6 +560,33 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable Omni-directional Stereo Capture.",
 		ConfigRestartRequired = true))
 		uint32 bODSCapture : 1;
+
+//#if WITH_OCULUS_PRIVATE_CODE		// This preprocessor macro can't be handled by UnrealHeaderTool
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bForwardShading",
+		ConsoleVariable = "vr.Foveated.Mask.Enable", DisplayName = "[VR] Enable Mask-based Foveated Rendering (requires Forward Shading)",
+		ToolTip = "Enable mask-based foveated rendering. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		uint32 bEnableFoveatedMask : 1;
+	
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.HighResFov", DisplayName = "[VR] Foveated Mask High Resolution Ring FOV (in degrees)",
+		ToolTip = "High-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskHighResFov;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.MediumResFov", DisplayName = "[VR] Foveated Mask Medium Resolution Ring FOV (in degrees)",
+		ToolTip = "Medium-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskMediumResFov;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.LowResFov", DisplayName = "[VR] Foveated Mask Low Resolution Ring FOV (in degrees)",
+		ToolTip = "Low-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskLowResFov;
+//#endif
 
 	UPROPERTY(config, EditAnywhere, Category=Editor, meta=(
 		ConsoleVariable="r.WireframeCullThreshold",DisplayName="Wireframe Cull Threshold",

@@ -154,6 +154,9 @@ public:
 	//virtual FVector2D GetTextSafeRegionBounds() const override;
 	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual FMatrix GetStereoProjectionMatrix_RenderThread(const enum EStereoscopicPass StereoPassType) const override;
+#endif
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) override;
 	//virtual void GetEyeRenderParams_RenderThread(const struct FRenderingCompositePassContext& Context, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	virtual void RenderTexture_RenderThread(class FRHICommandListImmediate& RHICmdList, class FRHITexture2D* BackBuffer, class FRHITexture2D* SrcTexture, FVector2D WindowSize) const override;
@@ -176,6 +179,11 @@ public:
 	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual bool NeedFoveatedMaskGeneration() override;
+	virtual void SetFoveatedMaskGenerated(bool IsMaskValid) override;
+	virtual void InvalidateAllGeneratedFoveatedMask() override;
+#endif
 	virtual void UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget) override;
 	virtual FXRRenderBridge* GetActiveRenderBridge_GameThread(bool bUseSeparateRenderTarget);
 
@@ -226,6 +234,7 @@ protected:
 #endif
 
 	class FSceneViewport* FindSceneViewport();
+	FOculusSplashDesc GetUESplashScreenDesc();
 
 public:
 	bool IsHMDActive() const;
@@ -234,7 +243,9 @@ public:
 	FCustomPresent* GetCustomPresent_Internal() const { return CustomPresent; }
 
 	float GetWorldToMetersScale() const;
-	float GetMonoCullingDistance() const;
+#if WITH_OCULUS_PRIVATE_CODE
+	float GetWorldToMetersScale_RenderThread() const;
+#endif
 
 	ESpectatorScreenMode GetSpectatorScreenMode_RenderThread() const;
 
@@ -309,6 +320,8 @@ public:
 
 	const int GetNextFrameNumber() const { return NextFrameNumber; }
 
+	const FRotator GetSplashRotation() const { return SplashRotation; }
+
 	void StartGameFrame_GameThread(); // Called from OnStartGameFrame
 	void FinishGameFrame_GameThread(); // Called from OnEndGameFrame
 	void StartRenderFrame_GameThread(); // Called from BeginRenderViewFamily
@@ -317,6 +330,7 @@ public:
 	void FinishRHIFrame_RHIThread(); // Called from FinishRendering_RHIThread
 
 	void SetTiledMultiResLevel(ETiledMultiResLevel multiresLevel);
+	void SetColorScaleAndOffset(FLinearColor ColorScale, FLinearColor ColorOffset, bool bApplyToAllLayers);
 
 	OCULUSHMD_API void UpdateRTPoses();
 
@@ -336,8 +350,7 @@ protected:
 	void IPDCommandHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 #endif
 
-	void LoadFromIni();
-	void SaveToIni();
+	void LoadFromSettings();
 
 protected:
 	void UpdateHMDWornState();
@@ -377,7 +390,7 @@ protected:
 	FSplashPtr Splash;
 	IRendererModule* RendererModule;
 
-	ovrpTrackingOrigin TrackingOrigin;
+	EHMDTrackingOrigin::Type TrackingOrigin;
 	// Stores difference between ViewRotation and EyeOrientation from previous frame
 	FQuat LastPlayerOrientation;
 	// Stores GetFrame()->PlayerLocation (i.e., ViewLocation) from the previous frame
@@ -387,7 +400,6 @@ protected:
 	TWeakPtr<SWindow> CachedWindow;
 	FVector2D CachedWindowSize;
 	float CachedWorldToMetersScale;
-	float CachedMonoCullingDistance;
 
 	// Game thread
 	FSettingsPtr Settings;
@@ -411,11 +423,17 @@ protected:
 	FGameFramePtr Frame_RHIThread; // Valid from PreRenderViewFamily_RenderThread to FinishRendering_RHIThread
 	TArray<FLayerPtr> Layers_RHIThread;
 
-
 	FHMDViewMesh HiddenAreaMeshes[2];
 	FHMDViewMesh VisibleAreaMeshes[2];
 
+#if WITH_OCULUS_PRIVATE_CODE
+	uint32 NeedGenerateFoveatedMaskFlag_RenderThread;	// one bit for each SwapChainIndex
+	bool NeedGenerateFoveatedMask_RenderThread;
+#endif
+
 	FPerformanceStats PerformanceStats;
+
+	FRotator SplashRotation; // rotation applied to all splash screens (dependent on HMD orientation as the splash is shown)
 
 #if !UE_BUILD_SHIPPING
 	FDelegateHandle DrawDebugDelegateHandle;
