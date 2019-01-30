@@ -76,23 +76,26 @@ void FSteamVRHMD::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList,
 	auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 	TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
-	TShaderMapRef<FScreenPS> PixelShader(ShaderMap);
-
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = RendererModule->GetFilterVertexDeclaration().VertexDeclarationRHI;
 	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
-
-	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 	const bool bSameSize = DstRect.Size() == SrcRect.Size();
-	if (bSameSize)
+	FSamplerStateRHIParamRef pixelSampler = bSameSize ? TStaticSamplerState<SF_Point>::GetRHI() : TStaticSamplerState<SF_Bilinear>::GetRHI();
+
+	if ((SrcTexture->GetFlags() & TexCreate_SRGB) != 0)
 	{
-		PixelShader->SetParameters(RHICmdList, TStaticSamplerState<SF_Point>::GetRHI(), SrcTexture);
+		TShaderMapRef<FScreenPSsRGBSource> PixelShader(ShaderMap);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		PixelShader->SetParameters(RHICmdList, pixelSampler, SrcTexture);
 	}
 	else
 	{
-		PixelShader->SetParameters(RHICmdList, TStaticSamplerState<SF_Bilinear>::GetRHI(), SrcTexture);
+		TShaderMapRef<FScreenPS> PixelShader(ShaderMap);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		PixelShader->SetParameters(RHICmdList, pixelSampler, SrcTexture);
 	}
+
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 	RendererModule->DrawRectangle(
 		RHICmdList,

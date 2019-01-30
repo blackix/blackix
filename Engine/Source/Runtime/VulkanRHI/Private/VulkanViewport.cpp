@@ -242,7 +242,7 @@ void FVulkanViewport::AdvanceBackBufferFrame()
 {
 	check(IsInRenderingThread());
 
-	if (!DelayAcquireBackBuffer())
+	if (FVulkanPlatform::SupportsStandardSwapchain() && !DelayAcquireBackBuffer())
 	{
 		RenderingBackBuffer = nullptr;
 	}

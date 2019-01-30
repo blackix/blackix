@@ -1212,7 +1212,12 @@ public:
 	* for stereo rendering, this will force the post-processing to use the same render target for both eyes*/
 	FSceneRenderTargetItem* GetTonemappingLUTRenderTarget(FRHICommandList& RHICmdList, const int32 LUTSize, const bool bUseVolumeLUT, const bool bNeedUAV) const;
 	
-
+#if WITH_OCULUS_PRIVATE_CODE
+	const FVertexBufferRHIRef* GetFoveatedMaskFullscreenQuadVertexBufferRHI() const
+	{
+		return &FoveatedMaskFullscreenQuadVertexBufferRHI;
+	}
+#endif
 
 	/** Instanced stereo and multi-view only need to render the left eye. */
 	bool ShouldRenderView() const 
@@ -1276,6 +1281,10 @@ private:
 	// may not have a valid value if FViewInfo is created on the render thread.
 	ESamplerFilter WorldTextureGroupSamplerFilter;
 	bool bIsValidWorldTextureGroupSamplerFilter;
+
+#if WITH_OCULUS_PRIVATE_CODE
+	FVertexBufferRHIRef FoveatedMaskFullscreenQuadVertexBufferRHI;
+#endif
 
 	FSceneViewState* GetEffectiveViewState() const;
 
@@ -1443,6 +1452,11 @@ public:
 	/** True if precomputed visibility was used when rendering the scene. */
 	bool bUsedPrecomputedVisibility;
 
+#if WITH_OCULUS_PRIVATE_CODE
+	/** Trigger the invalidation of foveated maskes */
+	bool bRequireRegenerateFoveatedMask;
+#endif
+
 	/** Lights added if wholescenepointlight shadow would have been rendered (ignoring r.SupportPointLightWholeSceneShadows). Used for warning about unsupported features. */	
 	TArray<FName, SceneRenderingAllocator> UsedWholeScenePointLightNames;
 
@@ -1529,6 +1543,14 @@ public:
 	}
 
 	static int32 GetRefractionQuality(const FSceneViewFamily& ViewFamily);
+
+#if WITH_OCULUS_PRIVATE_CODE
+	/** Check if the mask-based foveated rendering should be used (It could be true only when in Stereo mode) */
+	static bool ShouldUseMaskBasedFoveatedRendering(EShaderPlatform Platform);
+
+	/** Trigger the invalidation of foveated maskes */
+	void RequireFoveatedMaskRegeneration();
+#endif
 	
 protected:
 
@@ -1670,18 +1692,15 @@ protected:
 	/** Returns the scene color texture multi-view is targeting. */	
 	FTextureRHIParamRef GetMultiViewSceneColor(const FSceneRenderTargets& SceneContext) const;
 
-	/** Composites the monoscopic far field view into the stereo views. */
-	void CompositeMonoscopicFarField(FRHICommandListImmediate& RHICmdList);
-
-	/** Renders a depth mask into the monoscopic far field view to ensure we only render visible pixels. */
-	void RenderMonoscopicFarFieldMask(FRHICommandListImmediate& RHICmdList);
-
 	void UpdatePrimitivePrecomputedLightingBuffers();
 	void ClearPrimitiveSingleFramePrecomputedLightingBuffers();
 
 	void RenderPlanarReflection(class FPlanarReflectionSceneProxy* ReflectionSceneProxy);
 
 	void ResolveSceneColor(FRHICommandList& RHICmdList);
+
+	void ReconstructMaskedPixels(FRHICommandList& RHICmdList);
+	void CopyReconstructedPixels(FRHICommandList& RHICmdList);
 
 private:
 	void ComputeFamilySize();

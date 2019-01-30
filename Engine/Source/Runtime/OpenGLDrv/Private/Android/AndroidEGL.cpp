@@ -691,14 +691,14 @@ void AndroidEGL::InitSurface(bool bUseSmallSurface, bool bCreateWndSurface)
 	PImplData->SingleThreadedContext.eglSurface = PImplData->eglSurface;
 }
 
-// call out to JNI to see if the application was packaged for Gear VR
-extern bool AndroidThunkCpp_IsGearVRApplication();
+// call out to JNI to see if the application was packaged for Oculus Mobile
+extern bool AndroidThunkCpp_IsOculusMobileApplication();
 
 void AndroidEGL::ReInit()
 {
 	FPlatformMisc::LowLevelOutputDebugString(TEXT("AndroidEGL::ReInit()"));
 	SetCurrentContext(EGL_NO_CONTEXT, EGL_NO_SURFACE);
-	bool bCreateSurface = !AndroidThunkCpp_IsGearVRApplication();
+	bool bCreateSurface = !AndroidThunkCpp_IsOculusMobileApplication();
 	InitSurface(false, bCreateSurface);
 	SetCurrentSharedContext();
 }
