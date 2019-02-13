@@ -8,13 +8,14 @@
 #include "Engine/StaticMesh.h"
 #include "Runtime/Core/Public/Serialization/CustomVersion.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "AudioDevice.h"
 
 
 #define COMPILE_AS_DEBUG_MODE 0
 
 #if COMPILE_AS_DEBUG_MODE
 #  pragma optimize("", off) // worse perf, better debugging
-#endif COMPILE_AS_DEBUG_MODE
+#endif
 
 
 #define OVRA_AUDIO_GEOMETRY_COMPONENT_LATEST_VERSION 1
@@ -166,7 +167,7 @@ bool UOculusAudioGeometryComponent::UploadGeometry()
 			ovrMaterial);
 	}
 
-	ovrAudioMesh ovrMesh = { 0 };
+	ovrAudioMesh ovrMesh = { { 0 } };
 	ovrAudioMeshVertices ovrVertices = { 0 };
 
 	ovrVertices.vertices = MergedVertices.GetData();
@@ -358,29 +359,29 @@ void UOculusAudioGeometryComponent::Serialize(FArchive & Ar)
 
 	struct Delta {
 		static size_t Read(void* userData, void* bytes, size_t byteCount) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			check(Ar->IsLoading());
-			int64 CurrentPosition = Ar->Tell();
-			int64 TotalSize = Ar->TotalSize();
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			check(userAr->IsLoading());
+			int64 CurrentPosition = userAr->Tell();
+			int64 TotalSize = userAr->TotalSize();
 			if ((CurrentPosition + static_cast<int64>(byteCount)) > TotalSize)
 			{
 				// Note: After copy/paste/undo TotalSize returns -1 and Serialize fails
 				return 0;
 			}
 
-			Ar->Serialize(bytes, byteCount);
-			return Ar->GetError() ? 0 : byteCount;
+			userAr->Serialize(bytes, byteCount);
+			return userAr->GetError() ? 0 : byteCount;
 		}
 		static size_t Write(void* userData, const void* bytes, size_t byteCount) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			check(Ar->IsSaving());
-			Ar->Serialize(const_cast<void*>(bytes), byteCount);
-			return Ar->GetError() ? 0 : byteCount;
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			check(userAr->IsSaving());
+			userAr->Serialize(const_cast<void*>(bytes), byteCount);
+			return userAr->GetError() ? 0 : byteCount;
 		}
 		static int64_t Seek(void* userData, int64_t seekOffset) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			int64 Start = Ar->Tell();
-			Ar->Seek(seekOffset);
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			int64 Start = userAr->Tell();
+			userAr->Seek(seekOffset);
 			return 0;
 		}
 	};

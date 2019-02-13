@@ -29,7 +29,7 @@ static const TCHAR* GetOculusErrorString(ovrResult Result)
 }
 
 #define OVRA_CALL(Function) \
-	[]() { static decltype(&Function) fp = static_cast<decltype(&Function)>(FPlatformProcess::GetDllExport(FOculusAudioLibraryManager::Get().DllHandle(), TEXT(#Function))); return fp; }()
+	[]() { static decltype(&Function) fp = reinterpret_cast<decltype(&Function)>(FPlatformProcess::GetDllExport(FOculusAudioLibraryManager::Get().DllHandle(), TEXT(#Function))); return fp; }()
 
 
 #define OVR_AUDIO_CHECK(Result, Context)																\

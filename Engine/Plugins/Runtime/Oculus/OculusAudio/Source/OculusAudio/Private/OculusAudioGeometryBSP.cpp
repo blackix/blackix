@@ -21,21 +21,21 @@ void UOculusAudioGeometryBSP::Serialize(FArchive & Ar)
 
 	struct Delta {
 		static size_t Read(void* userData, void* bytes, size_t byteCount) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			check(Ar->IsLoading());
-			Ar->Serialize(bytes, byteCount);
-			return Ar->GetError() ? 0 : byteCount;
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			check(userAr->IsLoading());
+			userAr->Serialize(bytes, byteCount);
+			return userAr->GetError() ? 0 : byteCount;
 		}
 		static size_t Write(void* userData, const void* bytes, size_t byteCount) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			check(Ar->IsSaving());
-			Ar->Serialize(const_cast<void*>(bytes), byteCount);
-			return Ar->GetError() ? 0 : byteCount;
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			check(userAr->IsSaving());
+			userAr->Serialize(const_cast<void*>(bytes), byteCount);
+			return userAr->GetError() ? 0 : byteCount;
 		}
 		static int64_t Seek(void* userData, int64_t seekOffset) {
-			FArchive* Ar = static_cast<FArchive*>(userData);
-			int64 Start = Ar->Tell();
-			Ar->Seek(seekOffset);
+			FArchive* userAr = static_cast<FArchive*>(userData);
+			int64 Start = userAr->Tell();
+			userAr->Seek(seekOffset);
 			return 0;
 		}
 	};
@@ -124,7 +124,7 @@ void UOculusAudioGeometryBSP::CreateGeometryFromBSP(ovrAudioContext Context, UWo
 		}
 	}
 
-	ovrAudioMesh ovrMesh = { 0 };
+	ovrAudioMesh ovrMesh = { { 0 } };
 
 	ovrAudioMeshVertices ovrVertices = { 0 };
 	ovrVertices.vertices = Vertices.GetData();
