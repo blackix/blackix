@@ -196,7 +196,6 @@ public:
 private:
 	FSceneViewStateReference ViewState;
 	TArray<FSceneViewStateReference> StereoViewStates;
-	FSceneViewStateReference MonoViewState;
 
 	/** The controller ID which this player accepts input from. */
 	UPROPERTY()

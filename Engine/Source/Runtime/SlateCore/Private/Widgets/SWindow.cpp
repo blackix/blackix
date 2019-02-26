@@ -528,8 +528,8 @@ void SWindow::ConstructWindowInternals()
 			SNullWidget::NullWidget
 		];
 
-	// create window
-	if (Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator && !bIsPopupWindow && !bHasOSWindowBorder)
+    // create window
+    if (Type != EWindowType::ToolTip && Type != EWindowType::CursorDecorator && !bIsPopupWindow && !bHasOSWindowBorder)
 	{
 		TAttribute<EVisibility> WindowContentVisibility(this, &SWindow::GetWindowContentVisibility);
 		TAttribute<const FSlateBrush*> WindowBackgroundAttr(this, &SWindow::GetWindowBackground);

@@ -133,15 +133,15 @@ FPlatformOpenGLDevice::FPlatformOpenGLDevice()
 {
 }
 
-// call out to JNI to see if the application was packaged for Gear VR
-extern bool AndroidThunkCpp_IsGearVRApplication();
+// call out to JNI to see if the application was packaged for Oculus Mobile
+extern bool AndroidThunkCpp_IsOculusMobileApplication();
 
 void FPlatformOpenGLDevice::Init()
 {
 	extern void InitDebugContext();
 
 	FPlatformMisc::LowLevelOutputDebugString(TEXT("FPlatformOpenGLDevice:Init"));
-	bool bCreateSurface = !AndroidThunkCpp_IsGearVRApplication();
+	bool bCreateSurface = !AndroidThunkCpp_IsOculusMobileApplication();
 	AndroidEGL::GetInstance()->InitSurface(false, bCreateSurface);
 	PlatformRenderingContextSetup(this);
 
@@ -711,6 +711,12 @@ void FAndroidOpenGL::QueryTimestampCounter(GLuint Query)
 
 }
 
+bool FAndroidOpenGL::SupportsFramebufferSRGBEnable()
+{	
+	static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.UseHWsRGBEncoding"));
+	const bool bMobileUseHWsRGBEncoding = (MobileUseHWsRGBEncodingCVAR->GetValueOnAnyThread() == 1);
+	return bMobileUseHWsRGBEncoding;
+}
 
 void FAndroidOpenGL::BeginQuery(GLenum QueryType, GLuint Query)
 {

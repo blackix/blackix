@@ -242,7 +242,7 @@ void FVulkanViewport::AdvanceBackBufferFrame()
 {
 	check(IsInRenderingThread());
 
-	if (!DelayAcquireBackBuffer())
+	if (FVulkanPlatform::SupportsStandardSwapchain() && !DelayAcquireBackBuffer())
 	{
 		RenderingBackBuffer = nullptr;
 	}
@@ -325,11 +325,6 @@ FVulkanFramebuffer::FVulkanFramebuffer(FVulkanDevice& Device, const FRHISetRende
 		else
 		{
 			ensure(0);
-		}
-
-		if (Texture->MSAASurface)
-		{
-			AttachmentViews.Add(Texture->MSAAView.View);
 		}
 
 		AttachmentViews.Add(RTView);

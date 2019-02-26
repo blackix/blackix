@@ -5,6 +5,8 @@
 #include "UObject/UnrealType.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CoreDelegates.h"
+#include "HAL/IConsoleManager.h"
+#include "Engine/RendererSettings.h"
 
 #if WITH_EDITOR
 #include "IAndroidTargetPlatformModule.h"
@@ -43,6 +45,26 @@ UAndroidRuntimeSettings::UAndroidRuntimeSettings(const FObjectInitializer& Objec
 }
 
 #if WITH_EDITOR
+
+void UAndroidRuntimeSettings::HandlesRGBHWSupport()
+{
+	bool supportssRGB = bBuildForES31 && PackageForOculusMobile.Num() > 0;
+	URendererSettings* Settings = GetMutableDefault<URendererSettings>();
+	static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.UseHWsRGBEncoding"));
+
+	if (supportssRGB != Settings->bMobileUseHWsRGBEncoding)
+	{
+		Settings->bMobileUseHWsRGBEncoding = supportssRGB;
+		Settings->UpdateSinglePropertyInConfigFile(Settings->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(URendererSettings, bMobileUseHWsRGBEncoding)), GetDefaultConfigFilename());
+	}
+
+	if (MobileUseHWsRGBEncodingCVAR->GetInt() != (int)supportssRGB)
+	{
+		MobileUseHWsRGBEncodingCVAR->Set((int)supportssRGB);
+	}
+
+}
+
 static void InvalidateAllAndroidPlatforms()
 {
 	ITargetPlatformModule* Module = FModuleManager::GetModulePtr<IAndroidTargetPlatformModule>("AndroidTargetPlatform");
@@ -108,6 +130,8 @@ void UAndroidRuntimeSettings::PostEditChangeProperty(struct FPropertyChangedEven
 			Module->NotifyMultiSelectedFormatsChanged();
 		}
 	}
+
+	HandlesRGBHWSupport();
 }
 
 void UAndroidRuntimeSettings::PostInitProperties()
@@ -150,8 +174,20 @@ void UAndroidRuntimeSettings::PostInitProperties()
 		UpdateDefaultConfigFile();
 	}
 
+	// Upgrade old Oculus packaging settings as necessary.
+	const TCHAR* AndroidSettings = TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings");
+	bool bPackageForGearVR = false;
+	GConfig->GetBool(AndroidSettings, TEXT("bPackageForGearVR"), bPackageForGearVR, GEngineIni);
+	if (bPackageForGearVR)
+	{
+		// Update default config
+		PackageForOculusMobile.Add(EOculusMobileDevice::GearGo);
+		UpdateDefaultConfigFile();
+	}
+
 	// Enable ES2 if no GPU arch is selected. (as can be the case with the removal of ESDeferred) 
 	EnsureValidGPUArch();
+	HandlesRGBHWSupport();
 }
 
 void UAndroidRuntimeSettings::EnsureValidGPUArch()
