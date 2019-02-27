@@ -49,7 +49,7 @@ void OculusAudioLegacySpatialization::Initialize(const FAudioPluginInitializatio
 
 	check(OvrAudioContext == nullptr);
 	// Create the OVR Audio Context with a given quality
-	ovrResult Result = ovrAudio_CreateContext(&OvrAudioContext, &ContextConfig);
+	ovrResult Result = OVRA_CALL(ovrAudio_CreateContext)(&OvrAudioContext, &ContextConfig);
 	OVR_AUDIO_CHECK(Result, "Failed to create simple context");
 
     const UOculusAudioSettings* Settings = GetDefault<UOculusAudioSettings>();
@@ -76,7 +76,7 @@ void OculusAudioLegacySpatialization::Shutdown()
 	{
 		if (OvrAudioContext != nullptr)
 		{
-			ovrAudio_DestroyContext(OvrAudioContext);
+			OVRA_CALL(ovrAudio_DestroyContext)(OvrAudioContext);
 			OvrAudioContext = nullptr;
 		}
 
@@ -99,17 +99,17 @@ void OculusAudioLegacySpatialization::OnInitSource(const uint32 SourceId, const 
         if (!Settings->EarlyReflectionsEnabled)
             Flags |= ovrAudioSourceFlag_ReflectionsDisabled;
 
-        ovrResult Result = ovrAudio_SetAudioSourceFlags(OvrAudioContext, SourceId, Flags);
+		ovrResult Result = OVRA_CALL(ovrAudio_SetAudioSourceFlags)(OvrAudioContext, SourceId, Flags);
         OVR_AUDIO_CHECK(Result, "Failed to set audio source flags");
 
         ovrAudioSourceAttenuationMode mode = Settings->AttenuationEnabled ? ovrAudioSourceAttenuationMode_InverseSquare : ovrAudioSourceAttenuationMode_None;
-        Result = ovrAudio_SetAudioSourceAttenuationMode(OvrAudioContext, SourceId, mode, 1.0f);
+		Result = OVRA_CALL(ovrAudio_SetAudioSourceAttenuationMode)(OvrAudioContext, SourceId, mode, 1.0f);
         OVR_AUDIO_CHECK(Result, "Failed to set audio source attenuation mode");
 
-        Result = ovrAudio_SetAudioSourceRange(OvrAudioContext, SourceId, Settings->AttenuationRangeMinimum, Settings->AttenuationRangeMaximum);
+		Result = OVRA_CALL(ovrAudio_SetAudioSourceRange)(OvrAudioContext, SourceId, Settings->AttenuationRangeMinimum, Settings->AttenuationRangeMaximum);
         OVR_AUDIO_CHECK(Result, "Failed to set audio source attenuation range");
 
-        Result = ovrAudio_SetAudioSourceRadius(OvrAudioContext, SourceId, Settings->VolumetricRadius);
+		Result = OVRA_CALL(ovrAudio_SetAudioSourceRadius)(OvrAudioContext, SourceId, Settings->VolumetricRadius);
         OVR_AUDIO_CHECK(Result, "Failed to set audio source volumetric radius");
     }
 }
@@ -166,7 +166,7 @@ void OculusAudioLegacySpatialization::ProcessAudioInternal(ovrAudioContext Audio
     FVector OvrListenerForward = ToOVRVector(Params[VoiceIndex].ListenerOrientation.GetForwardVector());
     FVector OvrListenerUp = ToOVRVector(Params[VoiceIndex].ListenerOrientation.GetUpVector());
 
-    ovrResult Result = ovrAudio_SetListenerVectors(OvrAudioContext,
+	ovrResult Result = OVRA_CALL(ovrAudio_SetListenerVectors)(OvrAudioContext,
         OvrListenerPosition.X, OvrListenerPosition.Y, OvrListenerPosition.Z,
         OvrListenerForward.X, OvrListenerForward.Y, OvrListenerForward.Z,
         OvrListenerUp.X, OvrListenerUp.Y, OvrListenerUp.Z);
@@ -176,21 +176,21 @@ void OculusAudioLegacySpatialization::ProcessAudioInternal(ovrAudioContext Audio
     FVector OvrPosition = ToOVRVector(Params[VoiceIndex].EmitterWorldPosition * OVR_AUDIO_SCALE);
 
 	// Set the source position to current audio position
-	Result = ovrAudio_SetAudioSourcePos(AudioContext, VoiceIndex, OvrPosition.X, OvrPosition.Y, OvrPosition.Z);
+	Result = OVRA_CALL(ovrAudio_SetAudioSourcePos)(AudioContext, VoiceIndex, OvrPosition.X, OvrPosition.Y, OvrPosition.Z);
 	OVR_AUDIO_CHECK(Result, "Failed to set audio source position");
 
 	// Perform the processing
 	uint32 Status;
-	Result = ovrAudio_SpatializeMonoSourceInterleaved(AudioContext, VoiceIndex, ovrAudioSpatializationFlag_None, &Status, OutSamples, InSamples);
+	Result = OVRA_CALL(ovrAudio_SpatializeMonoSourceInterleaved)(AudioContext, VoiceIndex, &Status, OutSamples, InSamples);
 	OVR_AUDIO_CHECK(Result, "Failed to spatialize mono source interleaved");
 }
 
 void OculusAudioLegacySpatialization::ApplyOculusAudioSettings(const UOculusAudioSettings* Settings)
 {
-    ovrResult Result = ovrAudio_Enable(OvrAudioContext, ovrAudioEnable_SimpleRoomModeling, Settings->EarlyReflections);
+	ovrResult Result = OVRA_CALL(ovrAudio_Enable)(OvrAudioContext, ovrAudioEnable_SimpleRoomModeling, Settings->EarlyReflections);
     OVR_AUDIO_CHECK(Result, "Failed to enable reflections");
 
-    Result = ovrAudio_Enable(OvrAudioContext, ovrAudioEnable_LateReverberation, Settings->LateReverberation);
+	Result = OVRA_CALL(ovrAudio_Enable)(OvrAudioContext, ovrAudioEnable_LateReverberation, Settings->LateReverberation);
     OVR_AUDIO_CHECK(Result, "Failed to enable reverb");
 
     ovrAudioBoxRoomParameters Room = { 0 };
@@ -205,7 +205,7 @@ void OculusAudioLegacySpatialization::ApplyOculusAudioSettings(const UOculusAudi
     Room.brp_ReflectBehind = Settings->ReflectionCoefBack;
     Room.brp_ReflectFront = Settings->ReflectionCoefFront;
 
-    Result = ovrAudio_SetSimpleBoxRoomParameters(OvrAudioContext, &Room);
+	Result = OVRA_CALL(ovrAudio_SetSimpleBoxRoomParameters)(OvrAudioContext, &Room);
     OVR_AUDIO_CHECK(Result, "Failed to set room parameters");
 }
 

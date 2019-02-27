@@ -800,37 +800,33 @@ bool FAudioStreamingManager::IsManagedStreamingSoundSource(const FSoundSource* S
 
 const uint8* FAudioStreamingManager::GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex, uint32* OutChunkSize) const
 {
-	if (CriticalSection.TryLock())
+	FScopeLock Lock(&CriticalSection);
+
+	// Check for the spoof of failing to load a stream chunk
+	if (SpoofFailedStreamChunkLoad > 0)
 	{
-		// Check for the spoof of failing to load a stream chunk
-		if (SpoofFailedStreamChunkLoad > 0)
-		{
-			CriticalSection.Unlock();
-			return nullptr;
-		}
+		return nullptr;
+	}
 
-		const FStreamingWaveData* WaveData = StreamingSoundWaves.FindRef(SoundWave);
-		if (WaveData)
+	const FStreamingWaveData* WaveData = StreamingSoundWaves.FindRef(SoundWave);
+	if (WaveData)
+	{
+		if (WaveData->LoadedChunkIndices.Contains(ChunkIndex))
 		{
-			if (WaveData->LoadedChunkIndices.Contains(ChunkIndex))
+			for (int32 Index = 0; Index < WaveData->LoadedChunks.Num(); ++Index)
 			{
-				for (int32 Index = 0; Index < WaveData->LoadedChunks.Num(); ++Index)
+				if (WaveData->LoadedChunks[Index].Index == ChunkIndex)
 				{
-					if (WaveData->LoadedChunks[Index].Index == ChunkIndex)
+					if(OutChunkSize != NULL)
 					{
-						if (OutChunkSize != NULL)
-						{
-							// Return the size of the audio data within the chunk, not the chunk itself since this chunk could be zero-padded
-							*OutChunkSize = WaveData->LoadedChunks[Index].AudioDataSize;
-						}
-
-						return WaveData->LoadedChunks[Index].Data;
+						// Return the size of the audio data within the chunk, not the chunk itself since this chunk could be zero-padded
+						*OutChunkSize = WaveData->LoadedChunks[Index].AudioDataSize;
 					}
+					
+					return WaveData->LoadedChunks[Index].Data;
 				}
 			}
 		}
-
-		CriticalSection.Unlock();
 	}
 	return NULL;
 }

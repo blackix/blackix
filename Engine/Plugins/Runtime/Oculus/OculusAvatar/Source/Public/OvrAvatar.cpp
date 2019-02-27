@@ -15,6 +15,7 @@
 #include "Animation/Skeleton.h"
 #include "Model.h"
 #include "Animation/MorphTarget.h"
+#include "OculusHMD.h"
 
 float DebugLineScale = 100.f;
 bool DrawDebug = false;
@@ -651,38 +652,53 @@ void UOvrAvatar::UpdateTransforms(float DeltaTime)
 	if (!FOvrAvatarManager::Get().IsOVRPluginValid())
 		return;
 
+	OculusHMD::FOculusHMD* OculusHMD = (OculusHMD::FOculusHMD*)(GEngine->XRSystem.Get());
+
+	if (!OculusHMD)
+		return;
+
+	OculusHMD::CheckInGameThread();
+	OculusHMD::FSettings* Settings = OculusHMD->GetSettings();
+	OculusHMD::FGameFrame* CurrentFrame = OculusHMD->GetNextFrameToRender();
+
+	if (!Settings || !CurrentFrame)
+		return;
+
 	OvrAvatarHelpers::OvrAvatarIdentity(BodyTransform);
 
 	// Head
 	{
-		ovrpPoseStatef ovrPose;
-		ovrp_GetNodePoseState3(ovrpStep_Render, OVRP_CURRENT_FRAMEINDEX, ovrpNode_Head, &ovrPose);
+		ovrpPoseStatef InPoseState;
+		OculusHMD::FPose OutPose;
 
+		if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, ovrpNode_Head, &InPoseState)) &&
+			OculusHMD->ConvertPose_Internal(InPoseState.Pose, OutPose, Settings, 1.0f))
+		{
+			ovrpPosef ovrPose;
+			ovrPose.Orientation = OculusHMD::ToOvrpQuatf(OutPose.Orientation);
+			ovrPose.Position = OculusHMD::ToOvrpVector3f(OutPose.Position);
 
-		OvrAvatarHelpers::OvrPoseToAvatarTransform(BodyTransform, ovrPose.Pose);
-		BodyTransform.position.y += PlayerHeightOffset;
+			OvrAvatarHelpers::OvrPoseToAvatarTransform(BodyTransform, ovrPose);
+			BodyTransform.position.y += PlayerHeightOffset;
+		}
 	}
 
-	ovrpResult result = ovrpFailure_NotInitialized;
+	ovrpResult result;
 	ovrpController ControllerMask = ovrpController_None;
 	ovrpController ActiveController = ovrpController_None;
-	result = ovrp_GetConnectedControllers2(&ControllerMask);
 
-	if (result != ovrpSuccess)
+	if (OVRP_FAILURE(result = ovrp_GetConnectedControllers2(&ControllerMask)))
 	{
 		UE_LOG(LogAvatars, Display, TEXT("ovrp_GetConnectedControllers2 failed %d"), result);
 	}
 
-	result = ovrp_GetActiveController2(&ActiveController);
-
-	if (result != ovrpSuccess)
+	if (OVRP_FAILURE(result = ovrp_GetActiveController2(&ActiveController)))
 	{
 		UE_LOG(LogAvatars, Display, TEXT("ovrp_GetActiveController2 failed %d"), result);
 	}
 
 	// Left hand
 	{
-		ovrpControllerState4 controllerState;
 		ovrpController LeftControllerType = ovrpController_None;
 
 		if (ControllerMask & ovrpController_LTouch)
@@ -699,25 +715,35 @@ void UOvrAvatar::UpdateTransforms(float DeltaTime)
 
 		if (LeftControllerType != ovrpController_None)
 		{
-			ovrp_GetControllerState4(LeftControllerType, &controllerState);
+			ovrpPoseStatef InPoseState;
+			OculusHMD::FPose OutPose;
 
-			ovrpPoseStatef ovrPose;
-			ovrp_GetNodePoseState3(ovrpStep_Render, OVRP_CURRENT_FRAMEINDEX, ovrpNode_HandLeft, &ovrPose);
+			if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, ovrpNode_HandLeft, &InPoseState)) &&
+				OculusHMD->ConvertPose_Internal(InPoseState.Pose, OutPose, Settings, 1.0f))
+			{
+				ovrpPosef ovrPose;
+				ovrPose.Orientation = OculusHMD::ToOvrpQuatf(OutPose.Orientation);
+				ovrPose.Position = OculusHMD::ToOvrpVector3f(OutPose.Position);
 
-			OvrAvatarHelpers::OvrPoseToAvatarTransform(handInputState.transform, ovrPose.Pose);
+				OvrAvatarHelpers::OvrPoseToAvatarTransform(handInputState.transform, ovrPose);
+				handInputState.transform.position.y += PlayerHeightOffset;
+			}
 
-			handInputState.isActive = true;
-			handInputState.indexTrigger = controllerState.IndexTrigger[ovrpHand_Left];
-			handInputState.handTrigger = controllerState.HandTrigger[ovrpHand_Left];
-			handInputState.joystickX = controllerState.Thumbstick[ovrpHand_Left].x;
-			handInputState.joystickY = controllerState.Thumbstick[ovrpHand_Left].y;
+			ovrpControllerState4 controllerState;
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(LeftControllerType, &controllerState)))
+			{
+				handInputState.isActive = true;
+				handInputState.indexTrigger = controllerState.IndexTrigger[ovrpHand_Left];
+				handInputState.handTrigger = controllerState.HandTrigger[ovrpHand_Left];
+				handInputState.joystickX = controllerState.Thumbstick[ovrpHand_Left].x;
+				handInputState.joystickY = controllerState.Thumbstick[ovrpHand_Left].y;
 
-			OvrAvatarHelpers::OvrAvatarParseButtonsAndTouches(controllerState, ovrpHand_Left, handInputState);
+				OvrAvatarHelpers::OvrAvatarParseButtonsAndTouches(controllerState, ovrpHand_Left, handInputState);
+			}
 		}
 	}
 	// Right hand
 	{
-		ovrpControllerState4 controllerState;
 		ovrpController RightControllerType = ovrpController_None;
 
 		if (ControllerMask & ovrpController_RTouch)
@@ -734,25 +760,33 @@ void UOvrAvatar::UpdateTransforms(float DeltaTime)
 
 		if (RightControllerType != ovrpController_None)
 		{
-			ovrp_GetControllerState4(RightControllerType, &controllerState);
+			ovrpPoseStatef InPoseState;
+			OculusHMD::FPose OutPose;
 
-			ovrpPoseStatef ovrPose;
-			ovrp_GetNodePoseState3(ovrpStep_Render, OVRP_CURRENT_FRAMEINDEX, ovrpNode_HandRight, &ovrPose);
+			if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame->FrameNumber, ovrpNode_HandRight, &InPoseState)) &&
+				OculusHMD->ConvertPose_Internal(InPoseState.Pose, OutPose, Settings, 1.0f))
+			{
+				ovrpPosef ovrPose;
+				ovrPose.Orientation = OculusHMD::ToOvrpQuatf(OutPose.Orientation);
+				ovrPose.Position = OculusHMD::ToOvrpVector3f(OutPose.Position);
 
-			OvrAvatarHelpers::OvrPoseToAvatarTransform(handInputState.transform, ovrPose.Pose);
+				OvrAvatarHelpers::OvrPoseToAvatarTransform(handInputState.transform, ovrPose);
+				handInputState.transform.position.y += PlayerHeightOffset;
+			}
 
-			handInputState.isActive = true;
-			handInputState.indexTrigger = controllerState.IndexTrigger[ovrpHand_Right];
-			handInputState.handTrigger = controllerState.HandTrigger[ovrpHand_Right];
-			handInputState.joystickX = controllerState.Thumbstick[ovrpHand_Right].x;
-			handInputState.joystickY = controllerState.Thumbstick[ovrpHand_Right].y;
+			ovrpControllerState4 controllerState;
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(RightControllerType, &controllerState)))
+			{
+				handInputState.isActive = true;
+				handInputState.indexTrigger = controllerState.IndexTrigger[ovrpHand_Right];
+				handInputState.handTrigger = controllerState.HandTrigger[ovrpHand_Right];
+				handInputState.joystickX = controllerState.Thumbstick[ovrpHand_Right].x;
+				handInputState.joystickY = controllerState.Thumbstick[ovrpHand_Right].y;
 
-			OvrAvatarHelpers::OvrAvatarParseButtonsAndTouches(controllerState, ovrpHand_Right, handInputState);
+				OvrAvatarHelpers::OvrAvatarParseButtonsAndTouches(controllerState, ovrpHand_Right, handInputState);
+			}
 		}
 	}
-
-	HandInputState[HandType_Right].transform.position.y += PlayerHeightOffset;
-	HandInputState[HandType_Left].transform.position.y += PlayerHeightOffset;
 
 	ovrAvatarPose_UpdateBody(Avatar, BodyTransform);
 

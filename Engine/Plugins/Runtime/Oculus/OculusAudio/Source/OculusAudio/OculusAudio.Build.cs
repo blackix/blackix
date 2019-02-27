@@ -21,7 +21,8 @@ namespace UnrealBuildTool.Rules
                     "../../../../../Source/ThirdParty/Oculus/LibOVRAudio/LibOVRAudio/include",
 
                     "OculusAudio/Private",
-                    "../../../../../Source/Runtime/AudioMixer/Private"
+                    "../../../../../Source/Runtime/AudioMixer/Private",
+
  					// ... add other private include paths required here ...
 				}
 				);
@@ -32,16 +33,18 @@ namespace UnrealBuildTool.Rules
 					"Core",
 					"CoreUObject",
 					"Engine",
-                    "AudioMixer"
-				}
+                    "AudioMixer",
+					"Landscape",
+                }
 				);
 
             if (Target.Platform == UnrealTargetPlatform.Win64)
             {
-
                 PrivateIncludePathModuleNames.Add("XAudio2");
-                PrivateDependencyModuleNames.AddRange(new string[] { "XAudio2", "LibOVRAudio" });
-				RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/Oculus/Audio/Win64/ovraudio64.dll");
+                PrivateDependencyModuleNames.AddRange(new string[] { "XAudio2" });
+
+				// Automatically copy DLL to packaged builds
+                RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/Oculus/Audio/Win64/ovraudio64.dll");
 
                 AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11Audio");
             }

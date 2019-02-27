@@ -144,11 +144,17 @@ void FSplash::Startup()
 
 void FSplash::StopTicker()
 {
-	FScopeLock ScopeLock(&RenderThreadLock);
+	CheckInGameThread();
 
-	if (!IsShown())
+	if (bTickable && !bIsShown)
 	{
 		bTickable = false;
+
+		ExecuteOnRenderThread([]()
+		{
+			// Flush any frames in flight
+		});
+
 		UnloadTextures();
 	}
 }
@@ -180,7 +186,8 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 	}
 	else
 	{
-		OculusHMD->NextFrameNumber++;
+		OculusHMD->WaitFrameNumber = XFrame->FrameNumber;
+		OculusHMD->NextFrameNumber = XFrame->FrameNumber + 1;
 		FPlatformAtomics::InterlockedIncrement(&FramesOutstanding);
 	}
 

@@ -33,6 +33,9 @@
 #include "PostProcess/PostProcessSubsurface.h"
 #include "HdrCustomResolveShaders.h"
 #include "WideCustomResolveShaders.h"
+#if WITH_OCULUS_PRIVATE_CODE
+#include "FoveatedMaskShaders.h"
+#endif
 #include "PipelineStateCache.h"
 #include "GPUSkinCache.h"
 #include "PrecomputedVolumetricLightmap.h"
@@ -348,6 +351,52 @@ static TAutoConsoleVariable<int32> CVarTestSecondaryUpscaleOverride(
 	TEXT(" 0: disabled; (default)\n")
 	TEXT(" 1: use secondary view fraction = 0.5 with nearest secondary upscale."));
 
+#endif
+
+#if WITH_OCULUS_PRIVATE_CODE
+static TAutoConsoleVariable<int32> CVarMaskBasedFoveatedRenderingEnabled(
+	TEXT("vr.Foveated.Mask.Enable"),
+	0,
+	TEXT("Enable the mask-based foveated rendering.\n")
+	TEXT(" 0: disabled; (default)\n")
+	TEXT(" 1: enabled."));
+
+static TAutoConsoleVariable<int32> CVarMaskBasedFoveatedRenderingVisualizeMode(
+	TEXT("vr.Foveated.Mask.VisualizeMode"),
+	0,
+	TEXT("The mask-based foveated rendering visualize mode.\n")
+	TEXT(" 0: reconstructed; (default)\n")
+	TEXT(" 1: masked."));
+
+static TAutoConsoleVariable<int32> CVarMaskBasedFoveatedRenderingUsingMaskAnimation(
+	TEXT("vr.Foveated.Mask.Animation"),
+	0,
+	TEXT("Animate mask pattern.\n")
+	TEXT(" 0: no animation;\n")
+	TEXT(" 1: with animation."));
+
+static TAutoConsoleVariable<int32> CVarMaskBasedFoveatedRenderingAnimationOverrideFrameIndex(
+	TEXT("vr.Foveated.Mask.Animation.OverrideFrameIndex"),
+	-1,
+	TEXT("Override the FrameIndexMod8 parameter when mask pattern animation is activated.\n")
+	TEXT(" Set to -1 to disable the overriding;\n"));
+
+static TAutoConsoleVariable<float> CVarMaskBasedFoveatedRenderingHighResFov(
+	TEXT("vr.Foveated.Mask.HighResFov"),
+	46.0f,
+	TEXT("High-res region FOV in mask-based foveated rendering (0-179).\n"));
+
+static TAutoConsoleVariable<float> CVarMaskBasedFoveatedRenderingMediumResFov(
+	TEXT("vr.Foveated.Mask.MediumResFov"),
+	60.0f,
+	TEXT("Medium-res region FOV in mask-based foveated rendering (0-179).\n"));
+
+static TAutoConsoleVariable<float> CVarMaskBasedFoveatedRenderingLowResFov(
+	TEXT("vr.Foveated.Mask.LowResFov"),
+	78.0f,
+	TEXT("Low-res region FOV in mask-based foveated rendering (0-179).\n"));
+
+static int RequireRegenerateFoveatedMaskFrameCount = 0;
 #endif
 
 static FParallelCommandListSet* GOutstandingParallelCommandListSet = nullptr;
@@ -893,6 +942,10 @@ void FViewInfo::Init()
 
 FViewInfo::~FViewInfo()
 {
+#if WITH_OCULUS_PRIVATE_CODE
+	FoveatedMaskFullscreenQuadVertexBufferRHI.SafeRelease();
+#endif
+
 	for(int32 ResourceIndex = 0;ResourceIndex < DynamicResources.Num();ResourceIndex++)
 	{
 		DynamicResources[ResourceIndex]->ReleasePrimitiveResource();
@@ -1490,6 +1543,21 @@ void FViewInfo::InitRHIResources()
 		TranslucencyVolumeVoxelSize[CascadeIndex] = (VolumeBounds[CascadeIndex].Max.X - VolumeBounds[CascadeIndex].Min.X) / TranslucencyLightingVolumeDim;
 		TranslucencyLightingVolumeSize[CascadeIndex] = VolumeBounds[CascadeIndex].Max - VolumeBounds[CascadeIndex].Min;
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	float Depth = (bool)ERHIZBuffer::IsInverted ? 1.0f : 0.0f;
+	FVector4 Vertices[4];
+	Vertices[0].Set(-1.0f, 1.0f, Depth, 1.0f);
+	Vertices[1].Set(1.0f, 1.0f, Depth, 1.0f);
+	Vertices[2].Set(-1.0f, -1.0f, Depth, 1.0f);
+	Vertices[3].Set(1.0f, -1.0f, Depth, 1.0f);
+
+	FRHIResourceCreateInfo CreateInfo;
+	FoveatedMaskFullscreenQuadVertexBufferRHI = RHICreateVertexBuffer(sizeof(Vertices), BUF_Static, CreateInfo);
+	void* VoidPtr = RHILockVertexBuffer(FoveatedMaskFullscreenQuadVertexBufferRHI, 0, sizeof(Vertices), RLM_WriteOnly);
+	FPlatformMemory::Memcpy(VoidPtr, &Vertices[0], sizeof(Vertices));
+	RHIUnlockVertexBuffer(FoveatedMaskFullscreenQuadVertexBufferRHI);
+#endif
 }
 
 // These are not real view infos, just dumb memory blocks
@@ -1792,6 +1860,9 @@ FSceneRenderer::FSceneRenderer(const FSceneViewFamily* InViewFamily,FHitProxyCon
 ,	MeshCollector(InViewFamily->GetFeatureLevel())
 ,	RayTracingCollector(InViewFamily->GetFeatureLevel())
 ,	bUsedPrecomputedVisibility(false)
+#if WITH_OCULUS_PRIVATE_CODE
+,	bRequireRegenerateFoveatedMask(false)
+#endif
 ,	InstancedStereoWidth(0)
 ,	RootMark(nullptr)
 ,	FamilySize(0, 0)
@@ -3218,6 +3289,13 @@ void OnChangeCVarRequiringRecreateRenderState(IConsoleVariable* Var)
 	FGlobalComponentRecreateRenderStateContext Context;
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void OnChangedCVarRequiringRegenerateFoveatedMask(IConsoleVariable* Var)
+{
+	RequireRegenerateFoveatedMaskFrameCount = 2;		// would be decrease in PostRenderAllViewports(), and be applied at the next frame
+}
+#endif
+
 FRendererModule::FRendererModule()
 {
 	CVarSimpleForwardShading_PreviousValue = CVarSimpleForwardShading.AsVariable()->GetInt();
@@ -3233,6 +3311,15 @@ FRendererModule::FRendererModule()
 	void InitDebugViewModeInterfaces();
 	InitDebugViewModeInterfaces();
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+
+#if WITH_OCULUS_PRIVATE_CODE
+	CVarMaskBasedFoveatedRenderingEnabled->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+	CVarMaskBasedFoveatedRenderingUsingMaskAnimation->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+	CVarMaskBasedFoveatedRenderingAnimationOverrideFrameIndex->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+	CVarMaskBasedFoveatedRenderingHighResFov->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+	CVarMaskBasedFoveatedRenderingMediumResFov->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+	CVarMaskBasedFoveatedRenderingLowResFov->SetOnChangedCallback(FConsoleVariableDelegate::CreateStatic(&OnChangedCVarRequiringRegenerateFoveatedMask));
+#endif
 }
 
 void FRendererModule::CreateAndInitSingleView(FRHICommandListImmediate& RHICmdList, class FSceneViewFamily* ViewFamily, const struct FSceneViewInitOptions* ViewInitOptions)
@@ -3316,6 +3403,13 @@ void FRendererModule::BeginRenderingViewFamily(FCanvas* Canvas, FSceneViewFamily
 		// Construct the scene renderer.  This copies the view family attributes into its own structures.
 		FSceneRenderer* SceneRenderer = FSceneRenderer::CreateSceneRenderer(ViewFamily, Canvas->GetHitProxyConsumer());
 
+#if WITH_OCULUS_PRIVATE_CODE
+		if (RequireRegenerateFoveatedMaskFrameCount > 0)
+		{
+			SceneRenderer->RequireFoveatedMaskRegeneration();
+		}
+#endif
+
 		if (!SceneRenderer->ViewFamily.EngineShowFlags.HitProxies)
 		{
 			USceneCaptureComponent::UpdateDeferredCaptures(Scene);
@@ -3354,6 +3448,12 @@ void FRendererModule::PostRenderAllViewports()
 	// Increment FrameNumber before render the scene. Wrapping around is no problem.
 	// This is the only spot we change GFrameNumber, other places can only read.
 	++GFrameNumber;
+#if WITH_OCULUS_PRIVATE_CODE
+	if (RequireRegenerateFoveatedMaskFrameCount > 0)
+	{
+		--RequireRegenerateFoveatedMaskFrameCount;
+	}
+#endif
 }
 
 void FRendererModule::UpdateMapNeedsLightingFullyRebuiltState(UWorld* World)
@@ -3764,6 +3864,138 @@ void FSceneRenderer::ResolveSceneColor(FRHICommandList& RHICmdList)
 		RHICmdList.EndRenderPass();
 	}
 }
+
+#if WITH_OCULUS_PRIVATE_CODE
+bool FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(EShaderPlatform ShaderPlatform)
+{
+	return IsMaskBasedFoveatedRenderingEnabled() && IsForwardShadingEnabled(ShaderPlatform) && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+}
+
+
+void FSceneRenderer::ReconstructMaskedPixels(FRHICommandList& RHICmdList)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, ReconstructMaskedPixels);
+	check(FamilySize.X);
+
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	auto MaskRecontructedColor = SceneContext.GetMaskReconstructedColor(RHICmdList, FIntPoint(FamilySize.X, FamilySize.Y));
+
+	SetRenderTarget(RHICmdList, SceneContext.GetMaskReconstructedColorSurface(), FTextureRHIParamRef());
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+
+		auto ShaderMap = GetGlobalShaderMap(SceneContext.GetCurrentFeatureLevel());
+		TShaderMapRef<FPassthroughVS> VertexShader(ShaderMap);
+		TShaderMapRef<FSimpleMaskReconstructionPS> PixelShader(ShaderMap);
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+		bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && View.ViewState != nullptr && View.AntiAliasingMethod == AAM_TemporalAA;
+		uint32 FrameIndexMod8 = UseMaskAnimation ? View.ViewState->GetFrameIndex(8) : 0;
+		if (GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+		{
+			UseMaskAnimation = true;
+			FrameIndexMod8 = GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() & 7;
+		}
+
+		FVector4 EyeFov(1.0f, 1.0f, 1.0f, 1.0f);
+		const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+		if (bStereo)
+		{
+			EStereoscopicPass Eye = View.StereoPass;
+			FMatrix Proj = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix_RenderThread(Eye);
+			EyeFov = GetFovFromAsymmetricProjectionMatrix(Proj);
+		}
+		FVector4 Viewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.ViewRect.Width(), View.ViewRect.Height());
+
+		PixelShader->SetParameters(RHICmdList, Viewport, EyeFov, FrameIndexMod8, SceneContext.GetSceneColorTexture());
+
+		RHICmdList.SetStreamSource(0, *View.GetFoveatedMaskFullscreenQuadVertexBufferRHI(), 0);
+		RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
+	}
+
+	RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+}
+
+void FSceneRenderer::CopyReconstructedPixels(FRHICommandList& RHICmdList)
+{
+	SCOPED_DRAW_EVENT(RHICmdList, CopyReconstructedPixels);
+	check(FamilySize.X);
+
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
+	SetRenderTarget(RHICmdList, SceneContext.GetSceneColorTexture(), FTextureRHIParamRef());
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+
+		auto ShaderMap = GetGlobalShaderMap(SceneContext.GetCurrentFeatureLevel());
+		TShaderMapRef<FPassthroughVS> VertexShader(ShaderMap);
+		TShaderMapRef<FCopyReconstructedPixelsPS> PixelShader(ShaderMap);
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+		GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+		bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && View.ViewState != nullptr && View.AntiAliasingMethod == AAM_TemporalAA;
+		uint32 FrameIndexMod8 = UseMaskAnimation ? View.ViewState->GetFrameIndex(8) : 0;
+		if (GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+		{
+			UseMaskAnimation = true;
+			FrameIndexMod8 = GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() & 7;
+		}
+
+		FVector4 EyeFov(1.0f, 1.0f, 1.0f, 1.0f);
+		const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+		if (bStereo)
+		{
+			EStereoscopicPass Eye = View.StereoPass;
+			FMatrix Proj = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix_RenderThread(Eye);
+			EyeFov = GetFovFromAsymmetricProjectionMatrix(Proj);
+		}
+		FVector4 Viewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, View.ViewRect.Width(), View.ViewRect.Height());
+
+		PixelShader->SetParameters(RHICmdList, Viewport, EyeFov, FrameIndexMod8, SceneContext.GetMaskReconstructedColorTexture());
+
+		RHICmdList.SetStreamSource(0, *View.GetFoveatedMaskFullscreenQuadVertexBufferRHI(), 0);
+		RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
+	}
+
+	RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+}
+
+void FSceneRenderer::RequireFoveatedMaskRegeneration()
+{
+	bRequireRegenerateFoveatedMask = true;
+}
+#endif
 
 FTextureRHIParamRef FSceneRenderer::GetMultiViewSceneColor(const FSceneRenderTargets& SceneContext) const
 {

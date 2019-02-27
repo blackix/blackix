@@ -172,7 +172,7 @@ bool FOvrAvatarManager::Tick(float DeltaTime)
 }
 
 void FOvrAvatarManager::SDKLogger(const char * str)
-{	
+{
 	UE_LOG(LogAvatars, Display, TEXT("[AVATAR SDK]: %s"), *FString(str));
 }
 
@@ -224,7 +224,7 @@ void FOvrAvatarManager::InitializeSDK()
 		{
 			ovrAvatarMessage_Free(Message);
 		}
-		
+
 		ovrAvatar_RegisterLoggingCallback(&FOvrAvatarManager::SDKLogger);
 	}
 }
@@ -262,7 +262,7 @@ void FOvrAvatarManager::HandleAssetLoaded(const ovrAvatarMessage_AssetLoaded* me
 }
 
 void FOvrAvatarManager::LoadTexture(const uint64_t id, const ovrAvatarTextureAssetData* data)
-{ 
+{
 	const bool isNormalMap = NormalMapIDs.Find(id) != nullptr;
 	Textures.Add(id, LoadTexture(data, isNormalMap));
 
@@ -363,7 +363,7 @@ UTexture2D* FOvrAvatarManager::LoadTexture(const ovrAvatarTextureAssetData* data
 
 			check(DataOffset + MipSize <= TextureSize)
 
-			FTexture2DMipMap* MipMap = new FTexture2DMipMap();
+				FTexture2DMipMap* MipMap = new FTexture2DMipMap();
 
 			UnrealTexture->PlatformData->Mips.Add(MipMap);
 			MipMap->SizeX = Width;
@@ -414,7 +414,7 @@ void FOvrAvatarManager::CacheNormalMapID(uint64_t id)
 }
 
 // Setting a max in case there is no consumer and recording turned on.
-static const uint32_t SANITY_SIZE = 500; 
+static const uint32_t SANITY_SIZE = 500;
 void FOvrAvatarManager::QueueAvatarPacket(ovrAvatarPacket* packet)
 {
 	if (packet == nullptr)
@@ -445,6 +445,60 @@ void FOvrAvatarManager::QueueAvatarPacket(ovrAvatarPacket* packet)
 	}
 
 	ovrAvatarPacket_Free(packet);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//UFUNCTION(Server, Reliable)
+//	void QueueAvatarPacketServer(uint8_t* inBuffer, uint32_t inBufferSize, const FString& key, uint32 packetSequenceNumber);
+//
+//This is a server side call used in Multiplayer to Queue Avatar packet data.  The data has to be sent to the server to then be replicated out to all the clients
+//The packet data has been extracted out of the ovrAvatarPacket type so it can be sent over the wire.
+//The key param is the unique identifier for the avatar that is sending the data so the server can keep a queue for each avatar in the session
+//The packetSequenceNumber param is just a way to keep track of the order of packets arriving on the server to make sure nothing out of order is used
+void FOvrAvatarManager::QueueAvatarPacketServer(uint8_t* inBuffer, uint32_t inBufferSize, const FString& key, uint32 packetSequenceNumber)
+{
+	if (inBufferSize < 1)//(packet == nullptr)
+	{
+		UE_LOG(LogAvatars, Warning, TEXT("FOvrAvatarManager::QueueAvatarPacket() packet is empty"));
+		return;
+	}
+
+	SerializedPacketBuffer Buffer;
+
+	//find the PacketQueue that belongs to the key
+	if (auto Queue = AvatarPacketQueues.Find(key))
+	{
+		UE_LOG(LogAvatars, Warning, TEXT("[Avatars] FOvrAvatarManager::QueueAvatarPacket Found a queue with Key: %s "), *key);//pw
+		if ((*Queue)->PacketQueueSize >= SANITY_SIZE)
+		{
+			UE_LOG(LogAvatars, Warning, TEXT("[Avatars] Unexpectedly large amount of packets recorded, losing data.  Queue Size: %d, Key: %s "), (*Queue)->PacketQueueSize, *key);
+			(*Queue)->PacketQueue.Dequeue(Buffer);
+			(*Queue)->PacketQueueSize--;
+			delete[] Buffer.Buffer;
+		}
+		(*Queue)->PacketQueueSize++;
+		UE_LOG(LogAvatars, Warning, TEXT("[Avatars] FOvrAvatarManager::QueueAvatarPacket PacketQueueSize: %d "), (*Queue)->PacketQueueSize);//pw
+
+		Buffer.Buffer = new uint8_t[inBufferSize];
+		for (uint32_t elementIdx = 0; elementIdx < inBufferSize; elementIdx++)
+		{
+			Buffer.Buffer[elementIdx] = inBuffer[elementIdx];
+		}
+		Buffer.Size = inBufferSize;
+
+		if (!(*Queue)->PacketQueue.Enqueue(Buffer))
+		{
+			UE_LOG(LogAvatars, Warning, TEXT("[Avatars] FOvrAvatarManager::QueueAvatarPacket() - (*Queue)->PacketQueue.Enqueue(Buffer) FAILED.  Key: %s  Buffer: %llu"), *key, Buffer.Buffer);
+		}
+		else
+		{
+			UE_LOG(LogAvatars, Warning, TEXT("[Avatars] FOvrAvatarManager::QueueAvatarPacket() - (*Queue)->PacketQueue.Enqueue(Buffer).  Key: %s  SequenceNum: %d"), *key, packetSequenceNumber);
+		}
+	}
+	else
+	{
+		UE_LOG(LogAvatars, Warning, TEXT("[Avatars] FOvrAvatarManager::QueueAvatarPacket() AvatarPacketQueues.Find(%s) failed to find a queue"), *key);
+	}
 }
 
 ovrAvatarPacket* FOvrAvatarManager::RequestAvatarPacket(const FString& key)

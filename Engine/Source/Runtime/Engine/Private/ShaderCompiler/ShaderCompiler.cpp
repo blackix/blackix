@@ -2983,6 +2983,10 @@ void GlobalBeginCompileShader(
 		Input.Environment.SetDefine(TEXT("SHADING_PATH_MOBILE"), 1);
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
+	Input.Environment.SetDefine(TEXT("WITH_OCULUS_PRIVATE_CODE"), 1);
+#endif
+
 	// Set VR definitions
 	{
 		static const auto CVarInstancedStereo = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.InstancedStereo"));
@@ -3010,6 +3014,13 @@ void GlobalBeginCompileShader(
 			UE_LOG(LogShaderCompilers, Log, TEXT("Instanced stereo rendering is not supported for the %s shader platform."), *LegacyShaderPlatformToShaderFormat(ShaderPlatform).ToString());
 			GShaderCompilingManager->SuppressWarnings(ShaderPlatform);
 		}
+
+#if WITH_OCULUS_PRIVATE_CODE
+		static const auto CVarMaskBasedFoveatedRenderingEnabled = IConsoleManager::Get().FindConsoleVariable(TEXT("vr.Foveated.Mask.Enable"));
+		const bool bEnableFoveatedMask = CVarMaskBasedFoveatedRenderingEnabled ? (CVarMaskBasedFoveatedRenderingEnabled->GetInt() != 0) : false;
+
+		Input.Environment.SetDefine(TEXT("MASK_BASED_FOVEATED_RENDERING"), bEnableFoveatedMask && !IsMobilePlatform(ShaderPlatform));
+#endif
 
 		Input.Environment.SetDefine(TEXT("ODS_CAPTURE"), bIsODSCapture);
 	}

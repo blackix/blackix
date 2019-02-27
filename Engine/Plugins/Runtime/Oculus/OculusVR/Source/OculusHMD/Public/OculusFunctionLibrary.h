@@ -82,9 +82,11 @@ UENUM(BlueprintType)
 enum class ETiledMultiResLevel : uint8
 {
 	ETiledMultiResLevel_Off = 0,
-	ETiledMultiResLevel_LMSLow,
-	ETiledMultiResLevel_LMSMedium,
-	ETiledMultiResLevel_LMSHigh
+	ETiledMultiResLevel_LMSLow = 1,
+	ETiledMultiResLevel_LMSMedium = 2,
+	ETiledMultiResLevel_LMSHigh = 3,
+	// High foveation setting with more detail toward the bottom of the view and more foveation near the top (Same as High on Oculus Go)
+	ETiledMultiResLevel_LMSHighTop = 4
 };
 
 /* Guardian boundary types*/
