@@ -1795,12 +1795,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 				Extent.Extent3D.depth = Texture->Surface.Depth;
 			}
 
-#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
-			FVulkanSurface* Surface = Texture->MSAASurface ? Texture->MSAASurface : &Texture->Surface;
-#else
 			FVulkanSurface* Surface = &Texture->Surface;
-#endif
-
 			ensure(!NumSamples || NumSamples == Surface->GetNumSamples());
 			NumSamples = Surface->GetNumSamples();
 		
@@ -1819,6 +1814,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 
 			ColorReferences[NumColorAttachments].attachment = NumAttachmentDescriptions;
 			ColorReferences[NumColorAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
 			if (CurrDesc.samples > VK_SAMPLE_COUNT_1_BIT)
 			{
 				Desc[NumAttachmentDescriptions + 1] = Desc[NumAttachmentDescriptions];
@@ -1828,6 +1824,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 				++NumAttachmentDescriptions;
 				bHasResolveAttachments = true;
 			}
+#endif
 
 			CompatibleHashInfo.Formats[NumColorAttachments] = CurrDesc.format;
 			FullHashInfo.LoadOps[NumColorAttachments] = CurrDesc.loadOp;
@@ -1850,11 +1847,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 		FVulkanTextureBase* Texture = FVulkanTextureBase::Cast(RTInfo.DepthStencilRenderTarget.Texture);
 		check(Texture);
 
-#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
-		FVulkanSurface* Surface = Texture->MSAASurface ? Texture->MSAASurface : &Texture->Surface;
-#else
 		FVulkanSurface* Surface = &Texture->Surface;
-#endif
 		ensure(!NumSamples || NumSamples == Surface->GetNumSamples());
 		NumSamples = Surface->GetNumSamples();
 
@@ -1990,6 +1983,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 
 		ColorReferences[NumColorAttachments].attachment = NumAttachmentDescriptions;
 		ColorReferences[NumColorAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
 		if (CurrDesc.samples > VK_SAMPLE_COUNT_1_BIT)
 		{
 			Desc[NumAttachmentDescriptions + 1] = Desc[NumAttachmentDescriptions];
@@ -1999,6 +1993,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(FVulkanDevice& InDevice, co
 			++NumAttachmentDescriptions;
 			bHasResolveAttachments = true;
 		}
+#endif
 
 		CompatibleHashInfo.Formats[NumColorAttachments] = CurrDesc.format;
 		FullHashInfo.LoadOps[NumColorAttachments] = CurrDesc.loadOp;
@@ -2130,6 +2125,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FGraphicsPipelineStat
 
 			ColorReferences[NumColorAttachments].attachment = NumAttachmentDescriptions;
 			ColorReferences[NumColorAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+#if VULKAN_USE_MSAA_RESOLVE_ATTACHMENTS
 			if (CurrDesc.samples > VK_SAMPLE_COUNT_1_BIT)
 			{
 				Desc[NumAttachmentDescriptions + 1] = Desc[NumAttachmentDescriptions];
@@ -2139,6 +2135,7 @@ FVulkanRenderTargetLayout::FVulkanRenderTargetLayout(const FGraphicsPipelineStat
 				++NumAttachmentDescriptions;
 				bHasResolveAttachments = true;
 			}
+#endif
 
 			CompatibleHashInfo.Formats[NumColorAttachments] = CurrDesc.format;
 			FullHashInfo.LoadOps[NumColorAttachments] = CurrDesc.loadOp;

@@ -447,7 +447,11 @@ void InitHitProxyRender(FRHICommandListImmediate& RHICmdList, const FSceneRender
 	{
 		const FViewInfo& View = Views[ViewIndex];
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, true, FLinearColor::White, false, 0, false, 0, 0xff, OutHitProxyRT->GetDesc().Extent, FIntRect());
+#else
 		DrawClearQuad(RHICmdList, true, FLinearColor::White, false, 0, false, 0, OutHitProxyRT->GetDesc().Extent, FIntRect());
+#endif
 	}
 }
 
@@ -481,7 +485,11 @@ static void DoRenderHitProxies(FRHICommandListImmediate& RHICmdList, const FScen
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 
 		// Clear the depth buffer for each DPG.
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, STENCIL_FOVEATED_MASK_INV_MASK, HitProxyDepthRT->GetDesc().Extent, FIntRect());
+#else
 		DrawClearQuad(RHICmdList, false, FLinearColor(), true, (float)ERHIZBuffer::FarPlane, true, 0, HitProxyDepthRT->GetDesc().Extent, FIntRect());
+#endif
 
 		// Depth tests + writes, no alpha blending.
 		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());

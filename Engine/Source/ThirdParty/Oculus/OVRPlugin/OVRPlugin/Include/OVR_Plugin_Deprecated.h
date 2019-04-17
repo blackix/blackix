@@ -1,17 +1,17 @@
 /************************************************************************************
 
-Copyright   :   Copyright 2014 Oculus VR, LLC. All Rights reserved.
+Copyright (c) Facebook Technologies, LLC and its affiliates.  All rights reserved.
 
-Licensed under the Oculus VR Rift SDK License Version 3.2 (the "License");
-you may not use the Oculus VR Rift SDK except in compliance with the License,
+Licensed under the Oculus SDK License Version 3.5 (the "License");
+you may not use the Oculus SDK except in compliance with the License,
 which is provided at the time of installation or download, or which
 otherwise accompanies this software in either electronic or hard copy form.
 
 You may obtain a copy of the License at
 
-http://www.oculusvr.com/licenses/LICENSE-3.2
+https://developer.oculus.com/licenses/sdk-3.5/
 
-Unless required by applicable law or agreed to in writing, the Oculus VR SDK
+Unless required by applicable law or agreed to in writing, the Oculus SDK
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
@@ -156,9 +156,6 @@ OVRP_EXPORT ovrpBoundaryTestResult ovrp_TestBoundaryNode(ovrpNode node, ovrpBoun
 
 OVRP_EXPORT ovrpBoundaryTestResult ovrp_TestBoundaryPoint(ovrpVector3f point, ovrpBoundaryType boundaryType);
 
-OVRP_EXPORT ovrpBool ovrp_SetBoundaryLookAndFeel(ovrpBoundaryLookAndFeel lookAndFeel);
-OVRP_EXPORT ovrpBool ovrp_ResetBoundaryLookAndFeel();
-
 OVRP_EXPORT ovrpBool ovrp_GetBoundaryGeometry2(ovrpBoundaryType boundaryType, ovrpVector3f* points, int* pointsCount);
 
 OVRP_EXPORT ovrpVector3f ovrp_GetBoundaryDimensions(ovrpBoundaryType boundaryType);
@@ -254,6 +251,21 @@ OVRP_EXPORT ovrpResult ovrp_EnqueueSubmitLayer(
     OVRP_CONSTREF(ovrpPosef) pose,
     OVRP_CONSTREF(ovrpVector3f) scale,
     int layerIndex);
+
+OVRP_EXPORT ovrpResult ovrp_EnqueueSubmitLayer2(
+  unsigned int flags,
+  void* textureLeft,
+  void* textureRight,
+  int layerId,
+  int frameIndex,
+  OVRP_CONSTREF(ovrpPosef) pose,
+  OVRP_CONSTREF(ovrpVector3f) scale,
+  int layerIndex,
+  ovrpBool overrideTextureRectMatrix,
+  OVRP_CONSTREF(ovrpTextureRectMatrixf) textureRectMatrix,
+  ovrpBool overridePerLayerColorScaleAndOffset,
+  OVRP_CONSTREF(ovrpVector4f) colorScale,
+  OVRP_CONSTREF(ovrpVector4f) colorOffset);
 
 // Previously deprecated
 OVRP_EXPORT ovrpBool ovrp_Initialize(ovrpRenderAPIType apiType, void* platformArgs);
@@ -351,6 +363,19 @@ OVRP_EXPORT ovrpResult ovrp_EndEye2(ovrpEye eye, int frameIndex);
 
 // Update depth projection info, this is a replacement of ovrp_SetDepthCompositingInfo for more generic purpose
 OVRP_EXPORT ovrpResult ovrp_SetDepthProjInfo(float zNear, float zFar, ovrpBool isReverseZ);
+
+// Enable / Disable PTW
+OVRP_EXPORT ovrpResult ovrp_SetPTWEnable(ovrpBool enable);
+
+// Return current PTW status
+OVRP_EXPORT ovrpResult ovrp_GetPTWEnable(ovrpBool* enable);
+
+// Enable / Disable ASW
+OVRP_EXPORT ovrpResult ovrp_SetASWEnable(ovrpBool enable);
+
+// Return current PTW status
+OVRP_EXPORT ovrpResult ovrp_GetASWEnable(ovrpBool* enable);
+
 #ifdef __cplusplus
 }
 #endif

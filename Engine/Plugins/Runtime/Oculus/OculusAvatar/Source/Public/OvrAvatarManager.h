@@ -1,31 +1,46 @@
 #pragma once
-#include "Containers/Ticker.h"
 #include "OVR_Avatar.h"
 #include "Containers/Map.h"
 #include "Containers/Queue.h"
-#include "Engine/Texture2D.h"
+#include "Tickable.h"
+#include "UObject/Object.h"
+#include "OvrAvatarManager.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogAvatars, Log, All);
 
-class OCULUSAVATAR_API FOvrAvatarManager : public FTickerObjectBase
+class UTexture2D;
+class UTexture;
+
+UCLASS()
+class OCULUSAVATAR_API UOvrAvatarManager : public UObject, public FTickableGameObject
 {
 public:
-	static FOvrAvatarManager& Get();
+	GENERATED_BODY()
 
+	static UOvrAvatarManager& Get();
 	static void Destroy();
 
-	bool Tick(float DeltaTime) override;
+	// from FTickableGameObject
+	virtual void Tick(float DeltaTime) override;
+	virtual bool IsTickable() const override { return true; }
+	virtual bool IsTickableWhenPaused() const override { return true; }
+	virtual TStatId GetStatId() const override { return TStatId(); }
 
 	void InitializeSDK();
 	void ShutdownSDK();
 
 	void LoadTexture(const uint64_t id, const ovrAvatarTextureAssetData* data);
-	UTexture* FindTexture(uint64_t id) const; 
+	UTexture* FindTexture(uint64_t id);
 	void CacheNormalMapID(uint64_t id);
+	void CacheRoughnessMapID(uint64_t id);
 
 	//These both call from the main game thread so should be thread safe.
-	void QueueAvatarPacket(ovrAvatarPacket* packet);
 	ovrAvatarPacket* RequestAvatarPacket(const FString& key);
+	void QueueAvatarPacket(ovrAvatarPacket* packet);
+
+	//declaring this version of the function as a Server side call.  So when a client calls this, it executes on the server only.  
+	//UFUNCTION(Server, Reliable)
+	//void QueueAvatarPacketServer(uint8_t* inBuffer, uint32_t inBufferSize, const FString& key, uint32 packetSequenceNumber);
 
 	void RegisterRemoteAvatar(const FString& key);
 	void UnregisterRemoteAvatar(const FString& key);
@@ -33,27 +48,31 @@ public:
 	float GetSDKPacketDuration(ovrAvatarPacket* packet);
 	void FreeSDKPacket(ovrAvatarPacket* packet);
 
-	bool IsOVRPluginValid() const { return OVRPluginHandle != nullptr; }
-	
+	bool IsOVRPluginValid() const;
+
 	void SetSDKLoggingLevel(ovrAvatarLogLevel level) { ovrAvatar_SetLoggingLevel(level); }
+
 private:
 	static void SDKLogger(const char * str);
 
-	FOvrAvatarManager() {};
-	~FOvrAvatarManager();
+	UOvrAvatarManager() {};
+	~UOvrAvatarManager();
 
 	void HandleAvatarSpecification(const ovrAvatarMessage_AvatarSpecification* message);
 	void HandleAssetLoaded(const ovrAvatarMessage_AssetLoaded* message);
 
-	UTexture2D* LoadTexture(const ovrAvatarTextureAssetData* data, bool isNormalMap);
+	UTexture2D* LoadTexture(const uint64_t id, const ovrAvatarTextureAssetData* data, bool isLinearColor);
 
 	bool IsInitialized = false;
 
-	TMap<uint64_t, TWeakObjectPtr<UTexture>> Textures;
-	TSet<uint64_t> NormalMapIDs;
+	UPROPERTY()
+	TMap<uint64, UTexture*> Textures;
 
-	static FOvrAvatarManager* sAvatarManager;
-	const char* AVATAR_APP_ID = nullptr;
+	TSet<uint64_t> NormalMapIDs;
+	TSet<uint64_t> RoughnessMapIDs;
+	
+	static UOvrAvatarManager* sAvatarManager;
+	FString AVATAR_APP_ID;
 
 	struct SerializedPacketBuffer
 	{
@@ -68,8 +87,9 @@ private:
 	};
 
 	TMap<FString, AvatarPacketQueue*> AvatarPacketQueues;
-	
+
 	void* OVRPluginHandle = nullptr;
+	void* OVRAvatarHandle = nullptr;
 
 	ovrAvatarLogLevel LogLevel = ovrAvatarLogLevel::ovrAvatarLogLevel_Silent;
 

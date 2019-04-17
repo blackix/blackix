@@ -20,7 +20,14 @@ UEditorStyleSettings::UEditorStyleSettings( const FObjectInitializer& ObjectInit
 	InactiveSelectionColor = FLinearColor(0.25f, 0.25f, 0.25f);
 	PressedSelectionColor = FLinearColor(0.701f, 0.225f, 0.003f);
 
+#if WITH_OCULUS_PRIVATE_CODE
+	// Change window color to differentiate Oculus branch of UE4
+	EditorWindowBackgroundColor = FLinearColor(0.068478f, 0.127438f, 0.434154f, 1.000000f);
+	EditorMainWindowBackgroundOverride.TintColor = FLinearColor(0.991102f, 0.991102f, 0.991102f, 1.0f);
+	EditorChildWindowBackgroundOverride.TintColor = FLinearColor(0.991102f, 0.991102f, 0.991102f, 1.0f);
+#else
 	EditorWindowBackgroundColor = FLinearColor::White;
+#endif
 
 	AssetEditorOpenLocation = EAssetEditorOpenLocation::Default;
 	bEnableColorizedEditorTabs = true;

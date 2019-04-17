@@ -101,7 +101,6 @@ public:
 		Ar << PostProcessParameters;
 		Ar << FilteredSceneDepthTexture;
 		Ar << FilteredSceneDepthTextureSampler;
-
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -149,6 +148,7 @@ class FPostProcessComposeEditorPrimitivesPS : public FGlobalShader
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine( TEXT("MSAA_SAMPLE_COUNT"), MSAASampleCount);
+		OutEnvironment.SetDefine( TEXT("OUTPUT_SRGB_BUFFER"), IsMobileColorsRGB() && IsMobilePlatform(Parameters.Platform));
 	}
 
 	FPostProcessComposeEditorPrimitivesPS() {}

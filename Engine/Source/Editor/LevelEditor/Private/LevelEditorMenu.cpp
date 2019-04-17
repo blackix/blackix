@@ -194,6 +194,16 @@ TSharedRef< SWidget > FLevelEditorMenu::MakeLevelEditorMenu( const TSharedPtr<FU
 
 		static void ExtendHelpMenu( FMenuBuilder& MenuBuilder )
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+			MenuBuilder.BeginSection("HelpOculus", NSLOCTEXT("MainHelpMenu", "Oculus", "Oculus"));
+			{
+				MenuBuilder.AddMenuEntry(FLevelEditorCommands::Get().OculusUnrealDocumentation);
+
+				MenuBuilder.AddMenuEntry(FLevelEditorCommands::Get().OculusUnrealDevelopmentForum);
+			}
+			MenuBuilder.EndSection();
+#endif
+
 			MenuBuilder.BeginSection("HelpBrowse", NSLOCTEXT("MainHelpMenu", "Browse", "Browse"));
 			{
 				MenuBuilder.AddMenuEntry( FLevelEditorCommands::Get().BrowseDocumentation );

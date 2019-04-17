@@ -24,13 +24,18 @@ enum class SupportFlags : int
 	ExcludeDeferred = 0x08
 };
 
+typedef struct _SimpleSettingAction
+{
+	FText buttonText;
+	FReply(SOculusToolWidget::*ClickFunc)(bool);
+} SimpleSettingAction;
+
 typedef struct _SimpleSetting
 {
 	FName tag;
 	FText description;
-	FText buttonText;
 	EVisibility(SOculusToolWidget::*VisFunc)(FName) const;
-	FReply(SOculusToolWidget::*ClickFunc)(bool);
+	TArray<SimpleSettingAction> actions;
 	int supportMask; // bitfield of SupportFlags
 } SimpleSetting;
 
@@ -58,6 +63,8 @@ protected:
 	EVisibility RestartVisible() const;
 	FReply IgnoreRecommendation(FName tag);
 	FReply UnhideIgnoredRecommendations();
+	bool UsingForwardShading() const;
+	FString GetConfigPath() const;
 	FReply Refresh();
 	EVisibility CanUnhideIgnoredRecommendations() const;
 	EVisibility IsVisible(FName tag) const;
@@ -86,6 +93,13 @@ protected:
 	FReply MobileHDRDisable(bool text);
 	EVisibility MobileHDRVisibility(FName tag) const;
 
+	FReply AndroidManifestGearGo(bool text);
+	FReply AndroidManifestQuest(bool text);
+	EVisibility AndroidManifestVisibility(FName tag) const;
+
+	FReply AndroidPackagingFix(bool text);
+	EVisibility AndroidPackagingVisibility(FName tag) const;
+
 	FReply AntiAliasingEnable(bool text);
 	EVisibility AntiAliasingVisibility(FName tag) const;
 
@@ -94,6 +108,9 @@ protected:
 
 	FReply SelectLight(FString lightName);
 	FReply IgnoreLight(FString lightName);
+	
+	void OnShowButtonChanged( ECheckBoxState NewState );
+	ECheckBoxState IsShowButtonChecked() const;
 
 	APostProcessVolume* PostProcessVolume;
 	UEnum* PlatformEnum;
