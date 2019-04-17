@@ -414,7 +414,11 @@ void UpdateSceneCaptureContentMobile_RenderThread(
 			FRHIRenderPassInfo RPInfo(RenderTargetRHI, ERenderTargetActions::DontLoad_Store);
 			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("Clear"));
+#if WITH_OCULUS_PRIVATE_CODE
+			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), ViewRect);
+#else
 			DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), ViewRect);
+#endif
 			RHICmdList.EndRenderPass();
 		}
 

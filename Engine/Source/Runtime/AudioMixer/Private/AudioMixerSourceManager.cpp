@@ -2455,13 +2455,13 @@ namespace Audio
 		check(CommandsProcessedEvent != nullptr);
 
 		// Make sure current current executing 
-		CommandsProcessedEvent->Wait();
+		CommandsProcessedEvent->Wait(1000);
 
 		// Call update to trigger a final pump of commands
 		Update();
 
 		// Wait one more time for the double pump
-		CommandsProcessedEvent->Wait();
+		CommandsProcessedEvent->Wait(1000);
 	}
 
 	void FMixerSourceManager::UpdatePendingReleaseData(bool bForceWait)

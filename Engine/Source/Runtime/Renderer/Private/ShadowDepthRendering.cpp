@@ -748,7 +748,11 @@ void FProjectedShadowInfo::ClearDepth(FRHICommandList& RHICmdList, class FSceneR
 			ViewportMaxZ
 		);
 
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuadMRT(RHICmdList, bClearColor, NumClearColors, Colors, true, 1.0f, false, 0, 0xff);
+#else
 		DrawClearQuadMRT(RHICmdList, bClearColor, NumClearColors, Colors, true, 1.0f, false, 0);
+#endif
 	}
 	else
 	{
