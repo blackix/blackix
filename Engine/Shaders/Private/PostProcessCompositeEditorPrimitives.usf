@@ -4,6 +4,9 @@
 #include "Common.ush"
 #include "PostProcessCommon.ush"
 
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+#include "FoveatedMaskCommon.ush"
+#endif
 
 #define IS_MOBILE_COMPOSITING (MSAA_SAMPLE_COUNT == 0)
 
@@ -119,7 +122,17 @@ void MainComposeEditorPrimitivesPS(
 	
 	// Fetch scene color.
 	float2 SceneColorUV = ViewportUVToPostProcessingSceneColorBufferUV(ViewportUV);
-	float4 SceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, SceneColorUV);
+	float4 SceneColor;
+#if WITH_OCULUS_PRIVATE_CODE && MASK_BASED_FOVEATED_RENDERING
+	if (PostProcessInputsIsFoveatedMasked[0])
+	{
+		SceneColor = FoveatedMask_LoadFromMaskedTexture(PostprocessInput0, PostprocessInput0Size, ViewportRect, ViewportSize, SceneColorUV);
+	}
+	else
+#endif
+	{
+		SceneColor = Texture2DSample(PostprocessInput0, PostprocessInput0Sampler, SceneColorUV);
+	}
 
 #if OUTPUT_SRGB_BUFFER
 	SceneColor.rgb = pow( SceneColor.rgb, 1.0f / 2.2f );

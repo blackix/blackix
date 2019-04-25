@@ -1073,7 +1073,7 @@ inline bool RHISupportsSeparateMSAAAndResolveTextures(const EShaderPlatform Plat
 {
 	// Metal mobile devices, Vulkan and Android ES2/3.1 need to handle MSAA and resolve textures internally (unless RHICreateTexture2D was changed to take an optional resolve target)
 	const bool bMobileMetalDevice = (Platform == SP_METAL || Platform == SP_METAL_TVOS);
-	return !bMobileMetalDevice && !IsVulkanPlatform(Platform) && !IsAndroidOpenGLESPlatform(Platform);
+	return !bMobileMetalDevice && !IsAndroidOpenGLESPlatform(Platform);
 }
 
 inline bool RHISupportsComputeShaders(const EShaderPlatform Platform)
@@ -1095,7 +1095,7 @@ inline bool RHIHasTiledGPU(const EShaderPlatform Platform)
 
 inline bool RHISupportsMobileMultiView(const EShaderPlatform Platform)
 {
-	return (Platform == EShaderPlatform::SP_OPENGL_ES3_1_ANDROID || Platform == EShaderPlatform::SP_OPENGL_ES2_ANDROID);
+	return (Platform == EShaderPlatform::SP_OPENGL_ES3_1_ANDROID || Platform == EShaderPlatform::SP_OPENGL_ES2_ANDROID || IsVulkanMobilePlatform(Platform));
 }
 
 inline bool RHISupportsDrawIndirect(const EShaderPlatform Platform)

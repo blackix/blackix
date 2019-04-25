@@ -587,6 +587,11 @@ void FLevelEditorModule::BindGlobalLevelEditorCommands()
 	// Make a default can execute action that disables input when in debug mode
 	FCanExecuteAction DefaultExecuteAction = FCanExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::DefaultCanExecuteAction );
 
+#if WITH_OCULUS_PRIVATE_CODE
+	ActionList.MapAction( Commands.OculusUnrealDocumentation, FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::OculusUnrealDocumentation) );
+	ActionList.MapAction( Commands.OculusUnrealDevelopmentForum, FExecuteAction::CreateStatic(&FLevelEditorActionCallbacks::OculusUnrealDevelopmentForum) );
+#endif
+
 	ActionList.MapAction( Commands.BrowseDocumentation, FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::BrowseDocumentation ) );
 	ActionList.MapAction( Commands.BrowseAPIReference, FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::BrowseAPIReference ) );
 	ActionList.MapAction( Commands.BrowseCVars, FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::BrowseCVars ) );

@@ -157,6 +157,18 @@ bool FLevelEditorActionCallbacks::DefaultCanExecuteAction()
 	return FSlateApplication::Get().IsNormalExecution();
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void FLevelEditorActionCallbacks::OculusUnrealDocumentation()
+{
+	IDocumentation::Get()->Open(TEXT("https://developer.oculus.com/documentation/unreal/latest/concepts/unreal-engine/"));
+}
+
+void FLevelEditorActionCallbacks::OculusUnrealDevelopmentForum()
+{
+	IDocumentation::Get()->Open(TEXT("https://forums.oculusvr.com/developer/categories/unreal"));
+}
+#endif
+
 void FLevelEditorActionCallbacks::BrowseDocumentation()
 {
 	IDocumentation::Get()->OpenHome(FDocumentationSourceInfo(TEXT("help_menu")));
@@ -3120,6 +3132,11 @@ class UWorld* FLevelEditorActionCallbacks::GetWorld()
 PRAGMA_DISABLE_OPTIMIZATION
 void FLevelEditorCommands::RegisterCommands()
 {
+#if WITH_OCULUS_PRIVATE_CODE
+	UI_COMMAND( OculusUnrealDocumentation, "Oculus Unreal Documentation...", "Opens Oculus Unreal Documentation.", EUserInterfaceActionType::Button, FInputChord() );
+	UI_COMMAND( OculusUnrealDevelopmentForum, "Oculus Unreal Development Forum...", "Opens Oculus Unreal Development Forum.", EUserInterfaceActionType::Button, FInputChord() );
+#endif
+
 	UI_COMMAND( BrowseDocumentation, "Documentation...", "Opens the main documentation page, and allows you to search across all UE4 support sites.", EUserInterfaceActionType::Button, FInputChord( EKeys::F1 ) );
 	UI_COMMAND( BrowseAPIReference, "API Reference...", "Opens the API reference documentation", EUserInterfaceActionType::Button, FInputChord() );
 	UI_COMMAND( BrowseCVars, "Console Variables", "Creates an HTML file to browse the console variables and commands (console command 'help')", EUserInterfaceActionType::Button, FInputChord() );

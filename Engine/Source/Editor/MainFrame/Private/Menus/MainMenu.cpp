@@ -271,15 +271,22 @@ void FMainMenu::FillWindowMenu( FMenuBuilder& MenuBuilder, const TSharedRef< FEx
 
 void FMainMenu::FillHelpMenu( FMenuBuilder& MenuBuilder, const TSharedRef< FExtender > Extender )
 {
+#if WITH_OCULUS_PRIVATE_CODE
+	// Remove bug reporting links
+#else
 	MenuBuilder.BeginSection("BugReporting", NSLOCTEXT("MainHelpMenu", "BugsReporting", "Bugs"));
 	{
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().ReportABug);
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().OpenIssueTracker);
 	}
 	MenuBuilder.EndSection();
+#endif
 
 	MenuBuilder.BeginSection("HelpOnline", NSLOCTEXT("MainHelpMenu", "Online", "Help Online"));
 	{
+#if WITH_OCULUS_PRIVATE_CODE
+		// Remove UDN and Forums links
+#else
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().VisitSupportWebSite);
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().VisitForums);
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().VisitSearchForAnswersPage);
@@ -289,6 +296,7 @@ void FMainMenu::FillHelpMenu( FMenuBuilder& MenuBuilder, const TSharedRef< FExte
 		const FText SupportWebSiteLabel = NSLOCTEXT("MainHelpMenu", "VisitUnrealEngineSupportWebSite", "Unreal Engine Support Web Site...");
 
 		MenuBuilder.AddMenuSeparator("EpicGamesHelp");
+#endif
 		MenuBuilder.AddMenuEntry(FMainFrameCommands::Get().VisitEpicGamesDotCom, "VisitEpicGamesDotCom");
 
 		MenuBuilder.AddMenuSeparator("Credits");

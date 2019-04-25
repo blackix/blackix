@@ -646,6 +646,9 @@ void ApplyViewOverridesToMeshDrawCommands(
 	EMeshPass::Type PassType,
 	bool bReverseCulling,
 	bool bRenderSceneTwoSided,
+#if WITH_OCULUS_PRIVATE_CODE
+	bool bUseFoveatedMaskStencil,
+#endif
 	FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
 	FExclusiveDepthStencil::Type DefaultBasePassDepthStencilAccess,
 	FMeshCommandOneFrameArray& VisibleMeshDrawCommands,
@@ -658,7 +661,13 @@ void ApplyViewOverridesToMeshDrawCommands(
 
 	if ((FPassProcessorManager::GetPassFlags(ShadingPath, PassType) & EMeshPassFlags::MainView) != EMeshPassFlags::None)
 	{
+#if WITH_OCULUS_PRIVATE_CODE
+		bool applyOverride = bReverseCulling || bRenderSceneTwoSided || (BasePassDepthStencilAccess != DefaultBasePassDepthStencilAccess && PassType == EMeshPass::BasePass);		// matches the original condition
+		applyOverride = applyOverride || (bUseFoveatedMaskStencil && (PassType == EMeshPass::BasePass || PassType == EMeshPass::TranslucencyStandard || PassType == EMeshPass::TranslucencyAfterDOF || PassType == EMeshPass::TranslucencyAll));
+		if (applyOverride)
+#else
 		if (bReverseCulling || bRenderSceneTwoSided || (BasePassDepthStencilAccess != DefaultBasePassDepthStencilAccess && PassType == EMeshPass::BasePass))
+#endif 
 		{
 			for (int32 MeshCommandIndex = 0; MeshCommandIndex < VisibleMeshDrawCommands.Num(); MeshCommandIndex++)
 			{
@@ -679,10 +688,20 @@ void ApplyViewOverridesToMeshDrawCommands(
 
 				PipelineState.RasterizerState = GetStaticRasterizerState<true>(VisibleMeshDrawCommand.MeshFillMode, LocalCullMode);
 
+#if WITH_OCULUS_PRIVATE_CODE
+				bool overrideDepthStencil = (BasePassDepthStencilAccess != DefaultBasePassDepthStencilAccess && PassType == EMeshPass::BasePass); // matches the original condition
+				overrideDepthStencil = overrideDepthStencil || (bUseFoveatedMaskStencil && (PassType == EMeshPass::BasePass || PassType == EMeshPass::TranslucencyStandard || PassType == EMeshPass::TranslucencyAfterDOF || PassType == EMeshPass::TranslucencyAll));
+				if (overrideDepthStencil)
+#else
 				if (BasePassDepthStencilAccess != DefaultBasePassDepthStencilAccess && PassType == EMeshPass::BasePass)
+#endif
 				{
 					FMeshPassProcessorRenderState PassDrawRenderState;
+#if WITH_OCULUS_PRIVATE_CODE
+					SetupBasePassState(BasePassDepthStencilAccess, false, bUseFoveatedMaskStencil, PassDrawRenderState);
+#else
 					SetupBasePassState(BasePassDepthStencilAccess, false, PassDrawRenderState);
+#endif
 					PipelineState.DepthStencilState = PassDrawRenderState.GetDepthStencilState();
 				}
 
@@ -797,6 +816,9 @@ public:
 					Context.PassType,
 					Context.bReverseCulling,
 					Context.bRenderSceneTwoSided,
+#if WITH_OCULUS_PRIVATE_CODE
+					Context.bUseFoveatedMaskStencil,
+#endif
 					Context.BasePassDepthStencilAccess,
 					Context.DefaultBasePassDepthStencilAccess,
 					Context.MeshDrawCommands,
@@ -946,6 +968,9 @@ void FParallelMeshDrawCommandPass::DispatchPassSetup(
 	TaskContext.bDynamicInstancing = IsDynamicInstancingEnabled(View.GetFeatureLevel());
 	TaskContext.bReverseCulling = View.bReverseCulling;
 	TaskContext.bRenderSceneTwoSided = View.bRenderSceneTwoSided;
+#if WITH_OCULUS_PRIVATE_CODE
+	TaskContext.bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetShaderPlatform()) && View.StereoPass != eSSP_FULL;
+#endif
 	TaskContext.BasePassDepthStencilAccess = BasePassDepthStencilAccess;
 	TaskContext.DefaultBasePassDepthStencilAccess = Scene->DefaultBasePassDepthStencilAccess;
 	TaskContext.NumDynamicMeshElements = NumDynamicMeshElements;

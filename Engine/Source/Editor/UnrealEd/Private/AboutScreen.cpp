@@ -102,6 +102,9 @@ void SAboutScreen::Construct(const FArguments& InArgs)
 				[
 					SNew(SHorizontalBox)
 					+SHorizontalBox::Slot()
+#if WITH_OCULUS_PRIVATE_CODE
+					// Remove Facebook link
+#else
 					.HAlign(HAlign_Left)
 					.Padding(FMargin(5.f, 0.f, 5.f, 5.f)) 
 					[
@@ -115,6 +118,7 @@ void SAboutScreen::Construct(const FArguments& InArgs)
 					]
 					+SHorizontalBox::Slot()
 					.AutoWidth()
+#endif
 					.HAlign(HAlign_Right)
 					.VAlign(VAlign_Bottom)
 					.Padding(FMargin(5.f, 0.f, 5.f,5.f))

@@ -99,6 +99,11 @@ private:
 	FShaderParameter SceneColorBufferUVViewport;
 	FShaderResourceParameter BilinearTextureSampler0;
 	FShaderResourceParameter BilinearTextureSampler1;
+#if WITH_OCULUS_PRIVATE_CODE
+	FShaderParameter InputsIsFoveatedMasked;
+	FShaderParameter FoveatedMaskRadiusRatioItems;
+	FShaderParameter FoveatedMaskEyeFov;
+#endif
 
 public:
 	// @param Filter can be 0 if FilterOverrideArray is used
