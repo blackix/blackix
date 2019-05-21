@@ -335,6 +335,9 @@ namespace OculusHMD
 		if (InOrigin == EHMDTrackingOrigin::Floor)
 			ovrpOrigin = ovrpTrackingOrigin_FloorLevel;
 
+		if (InOrigin == EHMDTrackingOrigin::Stage)
+			ovrpOrigin = ovrpTrackingOrigin_Stage;
+
 		if (ovrp_GetInitialized())
 		{
 			EHMDTrackingOrigin::Type lastOrigin = GetTrackingOrigin();
@@ -363,6 +366,9 @@ namespace OculusHMD
 				break;
 			case ovrpTrackingOrigin_FloorLevel:
 				rv = EHMDTrackingOrigin::Floor;
+				break;
+			case ovrpTrackingOrigin_Stage:
+				rv = EHMDTrackingOrigin::Stage;
 				break;
 			default:
 				UE_LOG(LogHMD, Error, TEXT("Unsupported ovr tracking origin type %d"), int(TrackingOrigin));
@@ -538,6 +544,129 @@ namespace OculusHMD
 		}
 	}
 
+	DECLARE_STATS_GROUP(TEXT("Oculus System Metrics"), STATGROUP_OculusSystemMetrics, STATCAT_Advanced);
+
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("App CPU Time (ms)"), STAT_OculusSystem_AppCpuTime, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("App GPU Time (ms)"), STAT_OculusSystem_AppGpuTime, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("Compositor CPU Time (ms)"), STAT_OculusSystem_ComCpuTime, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("Compositor GPU Time (ms)"), STAT_OculusSystem_ComGpuTime, STATGROUP_OculusSystemMetrics, );
+	DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Compositor Dropped Frames"), STAT_OculusSystem_DroppedFrames, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("System GPU Util %"), STAT_OculusSystem_GpuUtil, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("System CPU Util Avg %"), STAT_OculusSystem_CpuUtilAvg, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("System CPU Util Worst %"), STAT_OculusSystem_CpuUtilWorst, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("CPU Clock Freq (MHz)"), STAT_OculusSystem_CpuFreq, STATGROUP_OculusSystemMetrics, );
+	DECLARE_FLOAT_COUNTER_STAT_EXTERN(TEXT("GPU Clock Freq (MHz)"), STAT_OculusSystem_GpuFreq, STATGROUP_OculusSystemMetrics, );
+	DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("CPU Clock Level"), STAT_OculusSystem_CpuClockLvl, STATGROUP_OculusSystemMetrics, );
+	DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("GPU Clock Level"), STAT_OculusSystem_GpuClockLvl, STATGROUP_OculusSystemMetrics, );
+
+	DEFINE_STAT(STAT_OculusSystem_AppCpuTime);
+	DEFINE_STAT(STAT_OculusSystem_AppGpuTime);
+	DEFINE_STAT(STAT_OculusSystem_ComCpuTime);
+	DEFINE_STAT(STAT_OculusSystem_ComGpuTime);
+	DEFINE_STAT(STAT_OculusSystem_DroppedFrames);
+	DEFINE_STAT(STAT_OculusSystem_GpuUtil);
+	DEFINE_STAT(STAT_OculusSystem_CpuUtilAvg);
+	DEFINE_STAT(STAT_OculusSystem_CpuUtilWorst);
+	DEFINE_STAT(STAT_OculusSystem_CpuFreq);
+	DEFINE_STAT(STAT_OculusSystem_GpuFreq);
+	DEFINE_STAT(STAT_OculusSystem_CpuClockLvl);
+	DEFINE_STAT(STAT_OculusSystem_GpuClockLvl);
+
+	void UpdateOculusSystemMetricsStats()
+	{
+		if (ovrp_GetInitialized() == ovrpBool_False)
+		{
+			return;
+		}
+
+		ovrpBool bIsSupported;
+		float valueFloat = 0;
+		int valueInt = 0;
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_App_CpuTime_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_App_CpuTime_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_AppCpuTime, valueFloat * 1000);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_App_GpuTime_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_App_GpuTime_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_AppGpuTime, valueFloat * 1000);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Compositor_CpuTime_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_Compositor_CpuTime_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_ComCpuTime, valueFloat * 1000);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Compositor_GpuTime_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_Compositor_GpuTime_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_ComGpuTime, valueFloat * 1000);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Compositor_DroppedFrameCount_Int, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsInt(ovrpPerfMetrics_Compositor_DroppedFrameCount_Int, &valueInt)))
+			{
+				SET_DWORD_STAT(STAT_OculusSystem_DroppedFrames, valueInt);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_System_GpuUtilPercentage_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_System_GpuUtilPercentage_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_GpuUtil, valueFloat * 100);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_System_CpuUtilAveragePercentage_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_System_CpuUtilAveragePercentage_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_CpuUtilAvg, valueFloat * 100);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_System_CpuUtilWorstPercentage_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_System_CpuUtilWorstPercentage_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_CpuUtilWorst, valueFloat * 100);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Device_CpuClockFrequencyInMHz_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_Device_CpuClockFrequencyInMHz_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_CpuFreq, valueFloat);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Device_GpuClockFrequencyInMHz_Float, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsFloat(ovrpPerfMetrics_Device_GpuClockFrequencyInMHz_Float, &valueFloat)))
+			{
+				SET_FLOAT_STAT(STAT_OculusSystem_GpuFreq, valueFloat);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Device_CpuClockLevel_Int, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsInt(ovrpPerfMetrics_Device_CpuClockLevel_Int, &valueInt)))
+			{
+				SET_DWORD_STAT(STAT_OculusSystem_CpuClockLvl, valueInt);
+			}
+		}
+		if (OVRP_SUCCESS(ovrp_IsPerfMetricsSupported(ovrpPerfMetrics_Device_GpuClockLevel_Int, &bIsSupported)) && bIsSupported == ovrpBool_True)
+		{
+			if (OVRP_SUCCESS(ovrp_GetPerfMetricsInt(ovrpPerfMetrics_Device_GpuClockLevel_Int, &valueInt)))
+			{
+				SET_DWORD_STAT(STAT_OculusSystem_GpuClockLvl, valueInt);
+			}
+		}
+	}
 
 	bool FOculusHMD::OnStartGameFrame(FWorldContext& InWorldContext)
 	{
@@ -547,6 +676,8 @@ namespace OculusHMD
 		{
 			return false;
 		}
+
+		UpdateOculusSystemMetricsStats();
 
 		RefreshTrackingToWorldTransform(InWorldContext);
 
@@ -1059,7 +1190,15 @@ namespace OculusHMD
 
 		const int32 ViewIndex = GetViewIndexForPass(StereoPass);
 
-		if (Settings_RenderThread.IsValid())
+#if WITH_OCULUS_PRIVATE_CODE
+		if (PreviousViewRect[ViewIndex] != FinalViewRect)
+		{
+			PreviousViewRect[ViewIndex] = FinalViewRect;
+			InvalidateAllGeneratedFoveatedMask();
+		}
+#endif
+
+		if (Settings_RenderThread.IsValid() && Settings_RenderThread->Flags.bPixelDensityAdaptive)
 		{
 			Settings_RenderThread->EyeRenderViewport[ViewIndex] = FinalViewRect;
 		}
@@ -1069,7 +1208,7 @@ namespace OculusHMD
 		{
 			CheckInRHIThread();
 
-			if (Settings_RHIThread.IsValid())
+			if (Settings_RHIThread.IsValid() && Settings_RHIThread->Flags.bPixelDensityAdaptive)
 			{
 				Settings_RHIThread->EyeRenderViewport[ViewIndex] = FinalViewRect;
 			}
@@ -1118,6 +1257,30 @@ namespace OculusHMD
 		return proj;
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
+	FMatrix FOculusHMD::GetStereoProjectionMatrix_RenderThread(EStereoscopicPass StereoPassType) const
+	{
+		CheckInRenderThread();
+
+		check(IsStereoEnabled());
+
+		const int32 ViewIndex = GetViewIndexForPass(StereoPassType);
+
+		FMatrix proj = ToFMatrix(Settings_RenderThread->EyeProjectionMatrices[ViewIndex]);
+
+		// correct far and near planes for reversed-Z projection matrix
+		const float WorldScale = GetWorldToMetersScale_RenderThread() * (1.0 / 100.0f); // physical scale is 100 UUs/meter
+		float InNearZ = GNearClippingPlane * WorldScale;
+
+		proj.M[3][3] = 0.0f;
+		proj.M[2][3] = 1.0f;
+
+		proj.M[2][2] = 0.0f;
+		proj.M[3][2] = InNearZ;
+
+		return proj;
+	}
+#endif
 
 	void FOculusHMD::InitCanvasFromView(FSceneView* InView, UCanvas* Canvas)
 	{
@@ -1168,16 +1331,24 @@ namespace OculusHMD
 
 	FIntRect FOculusHMD::GetFullFlatEyeRect_RenderThread(FTexture2DRHIRef EyeTexture) const
 	{
-		check(IsInRenderingThread());
+		CheckInRenderThread();
+
 		// Rift does this differently than other platforms, it already has an idea of what rectangle it wants to use stored.
 		FIntRect& EyeRect = Settings_RenderThread->EyeRenderViewport[0];
 
 		// But the rectangle rift specifies has corners cut off, so we will crop a little more.
-		static FVector2D SrcNormRectMin(0.05f, 0.0f);
-		static FVector2D SrcNormRectMax(0.95f, 1.0f);
-		const int32 SizeX = EyeRect.Max.X - EyeRect.Min.X;
-		const int32 SizeY = EyeRect.Max.Y - EyeRect.Min.Y;
-		return FIntRect(EyeRect.Min.X + SizeX * SrcNormRectMin.X, EyeRect.Min.Y + SizeY * SrcNormRectMin.Y, EyeRect.Min.X + SizeX * SrcNormRectMax.X, EyeRect.Min.Y + SizeY * SrcNormRectMax.Y);
+		if (ShouldDisableHiddenAndVisibileAreaMeshForSpectatorScreen_RenderThread())
+		{
+			return EyeRect;
+		}
+		else
+		{
+			static FVector2D SrcNormRectMin(0.05f, 0.0f);
+			static FVector2D SrcNormRectMax(0.95f, 1.0f);
+			const int32 SizeX = EyeRect.Max.X - EyeRect.Min.X;
+			const int32 SizeY = EyeRect.Max.Y - EyeRect.Min.Y;
+			return FIntRect(EyeRect.Min.X + SizeX * SrcNormRectMin.X, EyeRect.Min.Y + SizeY * SrcNormRectMin.Y, EyeRect.Min.X + SizeX * SrcNormRectMax.X, EyeRect.Min.Y + SizeY * SrcNormRectMax.Y);
+		}
 	}
 
 
@@ -1256,6 +1427,15 @@ namespace OculusHMD
 	}
 
 
+	bool FOculusHMD::NeedReAllocateFoveationTexture(const TRefCountPtr<IPooledRenderTarget>& FoveationTarget)
+	{
+		CheckInRenderThread();
+
+		return ensureMsgf(Settings_RenderThread.IsValid(), TEXT("Unexpected issue with Oculus settings on the RenderThread. This should be valid when this is called in AllocateFoveationTexture() - has the callsite changed?")) &&
+			Settings_RenderThread->IsStereoEnabled() && bNeedReAllocateFoveationTexture_RenderThread;
+	}
+
+
 	bool FOculusHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 	{
 		// Only called when RenderThread is suspended.  Both of these checks should pass.
@@ -1269,13 +1449,13 @@ namespace OculusHMD
 			InitializeEyeLayer_RenderThread(GetImmediateCommandList_ForRenderCommand());
 
 			UE_LOG(LogHMD, Log, TEXT("Allocating Oculus %d x %d rendertarget swapchain"), SizeX, SizeY);
+			UE_LOG(LogHMD, Log, TEXT("Format %d"), Format);
 
 			const FTextureSetProxyPtr& TextureSetProxy = EyeLayer_RenderThread->GetTextureSetProxy();
 
 			if (TextureSetProxy.IsValid())
 			{
-				OutTargetableTexture = TextureSetProxy->GetTexture2D();
-				OutShaderResourceTexture = TextureSetProxy->GetTexture2D();
+				OutTargetableTexture = OutShaderResourceTexture = TextureSetProxy->GetTexture2DArray() ? TextureSetProxy->GetTexture2DArray() : TextureSetProxy->GetTexture2D();
 				bNeedReAllocateViewportRenderTarget = false;
 				return true;
 			}
@@ -1300,13 +1480,18 @@ namespace OculusHMD
 				// Ensure the texture size matches the eye layer. We may get other depth allocations unrelated to the main scene render.
 				if (FIntPoint(SizeX, SizeY) == TextureSet->GetTexture2D()->GetSizeXY())
 				{
-					OutTargetableTexture = TextureSet->GetTexture2D();
-					OutShaderResourceTexture = TextureSet->GetTexture2D();
 					if (bNeedReAllocateDepthTexture_RenderThread)
 					{
 						UE_LOG(LogHMD, Log, TEXT("Allocating Oculus %d x %d depth rendertarget swapchain"), SizeX, SizeY);
 						bNeedReAllocateDepthTexture_RenderThread = false;
+#if WITH_OCULUS_PRIVATE_CODE
+						NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+						NeedGenerateFoveatedMask_RenderThread = true;
+#endif
 					}
+
+					OutTargetableTexture = TextureSet->GetTexture2D();
+					OutShaderResourceTexture = TextureSet->GetTexture2D();
 					return true;
 				}
 			}
@@ -1315,6 +1500,82 @@ namespace OculusHMD
 		return false;
 	}
 
+	bool FOculusHMD::AllocateFoveationTexture(uint32 Index, uint32 RenderSizeX, uint32 RenderSizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTexture, FIntPoint& OutTextureSize)
+	{
+		CheckInRenderThread();
+
+		check(Index == 0);
+
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSetProxy = EyeLayer_RenderThread->GetFoveationTextureSetProxy();
+			
+			if (TextureSetProxy.IsValid())
+			{
+				FTexture2DRHIRef Texture = TextureSetProxy->GetTexture2DArray() ? TextureSetProxy->GetTexture2DArray() : TextureSetProxy->GetTexture2D();
+				FIntPoint TexSize = Texture->GetSizeXY();
+
+				// Only set texture and return true if we have a valid texture of compatible size
+				if (Texture->IsValid() && TexSize.X > 0 && TexSize.Y > 0 && RenderSizeX % TexSize.X == 0 && RenderSizeY % TexSize.Y == 0)
+				{
+					if (bNeedReAllocateFoveationTexture_RenderThread)
+					{
+						UE_LOG(LogHMD, Log, TEXT("Allocating Oculus %d x %d variable resolution swapchain"), TexSize.X, TexSize.Y, Index);
+						bNeedReAllocateFoveationTexture_RenderThread = false;
+					}
+
+					OutTexture = Texture;
+					OutTextureSize = TexSize;
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	bool FOculusHMD::NeedFoveatedMaskGeneration()
+	{
+		CheckInRenderThread();
+		return NeedGenerateFoveatedMask_RenderThread;
+	}
+
+	void FOculusHMD::SetFoveatedMaskGenerated(bool IsMaskValid)
+	{
+		CheckInRenderThread();
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				uint32 Index = TextureSet->GetSwapChainIndex_RHIThread();
+				if (IsMaskValid)
+				{
+					NeedGenerateFoveatedMaskFlag_RenderThread &= ~(1 << Index);
+				}
+				else
+				{
+					NeedGenerateFoveatedMaskFlag_RenderThread |= (1 << Index);
+				}
+			}
+		}
+	}
+
+	void FOculusHMD::InvalidateAllGeneratedFoveatedMask()
+	{
+		CheckInRenderThread();
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+				NeedGenerateFoveatedMask_RenderThread = true;
+			}
+		}
+	}
+#endif
 
 	void FOculusHMD::UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget)
 	{
@@ -1646,6 +1907,18 @@ namespace OculusHMD
 		// Update mirror texture
 		CustomPresent->UpdateMirrorTexture_RenderThread();
 
+#if WITH_OCULUS_PRIVATE_CODE
+		if (EyeLayer_RenderThread.IsValid())
+		{
+			const FTextureSetProxyPtr& TextureSet = EyeLayer_RenderThread->GetDepthTextureSetProxy();
+			if (TextureSet.IsValid())
+			{
+				uint32 Index = TextureSet->GetSwapChainIndex_RHIThread();
+				NeedGenerateFoveatedMask_RenderThread = (NeedGenerateFoveatedMaskFlag_RenderThread & (1 << Index)) != 0;
+			}
+		}
+#endif
+
 #if !PLATFORM_ANDROID
 	#if 0 // The entire target should be cleared by the tonemapper and pp material
  		// Clear the padding between two eyes
@@ -1730,6 +2003,14 @@ namespace OculusHMD
 		Settings = CreateNewSettings();
 
 		RendererModule = nullptr;
+
+#if WITH_OCULUS_PRIVATE_CODE
+		NeedGenerateFoveatedMaskFlag_RenderThread = 0xffffffff;
+		NeedGenerateFoveatedMask_RenderThread = true;
+
+		PreviousViewRect[0] = { FIntPoint::ZeroValue, FIntPoint::ZeroValue };
+		PreviousViewRect[1] = { FIntPoint::ZeroValue, FIntPoint::ZeroValue };
+#endif
 
 		SplashLayerHandle = -1;
 
@@ -1935,8 +2216,14 @@ namespace OculusHMD
 			UE_LOG(LogHMD, Log, TEXT("OculusHMD plugin supports multiview!"));
 		}
 #endif
-
-		ovrp_SetupDistortionWindow3(ovrpDistortionWindowFlag_None);
+		ovrpDistortionWindowFlag flag = ovrpDistortionWindowFlag_None;
+#if PLATFORM_ANDROID && USE_ANDROID_EGL_NO_ERROR_CONTEXT
+		if (AndroidEGL::GetInstance()->GetSupportsNoErrorContext())
+		{
+			flag = ovrpDistortionWindowFlag_NoErrorContext;
+		}
+#endif // PLATFORM_ANDROID && USE_ANDROID_EGL_NO_ERROR_CONTEXT
+		ovrp_SetupDistortionWindow3(flag);
 		ovrp_SetSystemCpuLevel2(Settings->CPULevel);
 		ovrp_SetSystemGpuLevel2(Settings->GPULevel);
 		ovrp_SetTiledMultiResLevel((ovrpTiledMultiResLevel)Settings->MultiResLevel);
@@ -2135,7 +2422,7 @@ namespace OculusHMD
 			if (MeshType == ovrpViewportStencilType_HiddenArea)
 			{
 				Vertex.Position.X = (Position.x * 2.0f) - 1.0f;
-				Vertex.Position.Y = 1.0f - (Position.y * 2.0f);
+				Vertex.Position.Y = (Position.y * 2.0f) - 1.0f;
 				Vertex.Position.Z = 1.0f;
 				Vertex.Position.W = 1.0f;
 				Vertex.UV.X = 0.0f;
@@ -2144,11 +2431,11 @@ namespace OculusHMD
 			else if (MeshType == ovrpViewportStencilType_VisibleArea)
 			{
 				Vertex.Position.X = Position.x;
-				Vertex.Position.Y = Position.y;
+				Vertex.Position.Y = 1.0f - Position.y;
 				Vertex.Position.Z = 0.0f;
 				Vertex.Position.W = 1.0f;
 				Vertex.UV.X = Position.x;
-				Vertex.UV.Y = Position.y;
+				Vertex.UV.Y = 1.0f - Position.y;
 			}
 			else
 			{
@@ -2368,6 +2655,13 @@ namespace OculusHMD
 				if (!EyeLayer_RenderThread.IsValid() || EyeLayer->GetDepthTextureSetProxy() != EyeLayer_RenderThread->GetDepthTextureSetProxy())
 				{
 					bNeedReAllocateDepthTexture_RenderThread = true;
+				}
+			}
+			if (EyeLayer->GetFoveationTextureSetProxy().IsValid())
+			{
+				if (!EyeLayer_RenderThread.IsValid() || EyeLayer->GetFoveationTextureSetProxy() != EyeLayer_RenderThread->GetFoveationTextureSetProxy())
+				{
+					bNeedReAllocateFoveationTexture_RenderThread = true;
 				}
 			}
 
@@ -2611,6 +2905,20 @@ namespace OculusHMD
 
 		return 100.0f;
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	float FOculusHMD::GetWorldToMetersScale_RenderThread() const
+	{
+		CheckInRenderThread();
+
+		if (GetFrame_RenderThread())
+		{
+			return GetFrame_RenderThread()->WorldToMetersScale;
+		}
+
+		return 100.0f;
+	}
+#endif
 
 	FVector FOculusHMD::GetNeckPosition(const FQuat& HeadOrientation, const FVector& HeadPosition)
 	{

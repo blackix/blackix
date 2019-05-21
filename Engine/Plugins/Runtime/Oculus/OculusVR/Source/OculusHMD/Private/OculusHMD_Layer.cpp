@@ -70,6 +70,7 @@ FLayer::FLayer(const FLayer& Layer) :
 	OvrpLayer(Layer.OvrpLayer),
 	TextureSetProxy(Layer.TextureSetProxy),
 	DepthTextureSetProxy(Layer.DepthTextureSetProxy),
+	FoveationTextureSetProxy(Layer.FoveationTextureSetProxy),
 	RightTextureSetProxy(Layer.RightTextureSetProxy),
 	RightDepthTextureSetProxy(Layer.RightDepthTextureSetProxy),
 	bUpdateTexture(Layer.bUpdateTexture),
@@ -381,6 +382,10 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 			Shape = ovrpShape_Cubemap;
 			break;
 
+		case IStereoLayers::EquirectLayer:
+			Shape = ovrpShape_Equirect;
+			break;
+
 		default:
 			return;
 		}
@@ -433,6 +438,7 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 		OvrpLayer = InLayer->OvrpLayer;
 		TextureSetProxy = InLayer->TextureSetProxy;
 		DepthTextureSetProxy = InLayer->DepthTextureSetProxy;
+		FoveationTextureSetProxy = InLayer->FoveationTextureSetProxy;
 		RightTextureSetProxy = InLayer->RightTextureSetProxy;
 		RightDepthTextureSetProxy = InLayer->RightDepthTextureSetProxy;
 		bUpdateTexture = InLayer->bUpdateTexture;
@@ -441,10 +447,13 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 	else
 	{
 		bool bLayerCreated = false;
+		bool bValidFoveationTextures = true;
 		TArray<ovrpTextureHandle> ColorTextures;
 		TArray<ovrpTextureHandle> DepthTextures;
+		TArray<ovrpTextureHandle> FoveationTextures;
 		TArray<ovrpTextureHandle> RightColorTextures;
 		TArray<ovrpTextureHandle> RightDepthTextures;
+		ovrpSizei FoveationTextureSize;
 
 		ExecuteOnRHIThread([&]()
 		{
@@ -460,7 +469,10 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 					{
 						DepthTextures.SetNum(TextureCount);
 					}
-					
+
+					FoveationTextures.SetNum(TextureCount);
+					FoveationTextureSize.w = 0;
+					FoveationTextureSize.h = 0;
 
 					for (int32 TextureIndex = 0; TextureIndex < TextureCount; TextureIndex++)
 					{
@@ -470,6 +482,16 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 							UE_LOG(LogHMD, Error, TEXT("Failed to create Oculus layer texture. NOTE: This causes a leak of %d other texture(s), which will go unused."), TextureIndex);
 							// skip setting bLayerCreated and allocating any other textures
 							return;
+						}
+						if (bValidFoveationTextures)
+						{
+							// Call fails on unsupported platforms and returns null textures for no foveation texture
+							// Since this texture is not required for rendering, don't return on failure
+							if (!OVRP_SUCCESS(ovrp_GetLayerTextureFoveation(OvrpLayerId, TextureIndex, ovrpEye_Left, &FoveationTextures[TextureIndex], &FoveationTextureSize)) || 
+								FoveationTextures[TextureIndex] == (unsigned long long)nullptr)
+							{
+								bValidFoveationTextures = false;
+							}
 						}
 					}
 				}
@@ -542,6 +564,14 @@ void FLayer::Initialize_RenderThread(const FSettings* Settings, FCustomPresent* 
 			if (bHasDepth)
 			{
 				DepthTextureSetProxy = CustomPresent->CreateTextureSetProxy_RenderThread(SizeX, SizeY, DepthFormat, DepthTextureBinding, 1, NumSamples, NumSamplesTileMem, ResourceType, DepthTextures, DepthTexCreateFlags);
+			}
+			if (bValidFoveationTextures)
+			{
+				FoveationTextureSetProxy = CustomPresent->CreateTextureSetProxy_RenderThread(FoveationTextureSize.w, FoveationTextureSize.h, PF_R8G8, FClearValueBinding::White, 1, 1, 1, ResourceType, FoveationTextures, 0);
+			}
+			else
+			{
+				FoveationTextureSetProxy.Reset();
 			}
 
 			if (OvrpLayerDesc.Layout == ovrpLayout_Stereo)
@@ -622,6 +652,33 @@ const ovrpLayerSubmit* FLayer::UpdateLayer_RHIThread(const FSettings* Settings, 
 	bool injectColorScale = Id == 0 || Settings->bApplyColorScaleAndOffsetToAllLayers;
 	OvrpLayerSubmit.ColorOffset = injectColorScale ? Settings->ColorOffset : ovrpVector4f{ 0, 0, 0, 0 };
 	OvrpLayerSubmit.ColorScale = injectColorScale ? Settings->ColorScale : ovrpVector4f{ 1, 1, 1, 1};
+
+	if (OvrpLayerDesc.Shape == ovrpShape_Equirect) {
+		ovrpTextureRectMatrixf& RectMatrix = OvrpLayerSubmit.TextureRectMatrix;
+		ovrpRectf& LeftUVRect = RectMatrix.LeftRect;
+		ovrpRectf& RightUVRect = RectMatrix.RightRect;
+		LeftUVRect.Pos.x = Desc.EquirectProps.LeftUVRect.Min.X;
+		LeftUVRect.Pos.y = Desc.EquirectProps.LeftUVRect.Min.Y;
+		LeftUVRect.Size.w = Desc.EquirectProps.LeftUVRect.Max.X - Desc.EquirectProps.LeftUVRect.Min.X;
+		LeftUVRect.Size.h = Desc.EquirectProps.LeftUVRect.Max.Y - Desc.EquirectProps.LeftUVRect.Min.Y;
+		RightUVRect.Pos.x = Desc.EquirectProps.RightUVRect.Min.X;
+		RightUVRect.Pos.y = Desc.EquirectProps.RightUVRect.Min.Y;
+		RightUVRect.Size.w = Desc.EquirectProps.RightUVRect.Max.X - Desc.EquirectProps.RightUVRect.Min.X;
+		RightUVRect.Size.h = Desc.EquirectProps.RightUVRect.Max.Y - Desc.EquirectProps.RightUVRect.Min.Y;
+
+		ovrpVector4f& LeftScaleBias = RectMatrix.LeftScaleBias;
+		LeftScaleBias.x = Desc.EquirectProps.LeftScale.X;
+		LeftScaleBias.y = Desc.EquirectProps.LeftScale.Y;
+		LeftScaleBias.z = Desc.EquirectProps.LeftBias.X;
+		LeftScaleBias.w = Desc.EquirectProps.LeftBias.Y;
+		ovrpVector4f& RightScaleBias = RectMatrix.RightScaleBias;
+		RightScaleBias.x = Desc.EquirectProps.RightScale.X;
+		RightScaleBias.y = Desc.EquirectProps.RightScale.Y;
+		RightScaleBias.z = Desc.EquirectProps.RightBias.X;
+		RightScaleBias.w = Desc.EquirectProps.RightBias.Y;
+
+		OvrpLayerSubmit.OverrideTextureRectMatrix = ovrpBool_True;
+	}
 
 	if (Id != 0)
 	{
@@ -734,6 +791,11 @@ void FLayer::IncrementSwapChainIndex_RHIThread(FCustomPresent* CustomPresent)
 		DepthTextureSetProxy->IncrementSwapChainIndex_RHIThread(CustomPresent);
 	}
 
+	if (FoveationTextureSetProxy.IsValid())
+	{
+		FoveationTextureSetProxy->IncrementSwapChainIndex_RHIThread(CustomPresent);
+	}
+
 	if (RightTextureSetProxy.IsValid())
 	{
 		RightTextureSetProxy->IncrementSwapChainIndex_RHIThread(CustomPresent);
@@ -754,6 +816,7 @@ void FLayer::ReleaseResources_RHIThread()
 	OvrpLayer.Reset();
 	TextureSetProxy.Reset();
 	DepthTextureSetProxy.Reset();
+	FoveationTextureSetProxy.Reset();
 	RightTextureSetProxy.Reset();
 	RightDepthTextureSetProxy.Reset();
 	bUpdateTexture = false;

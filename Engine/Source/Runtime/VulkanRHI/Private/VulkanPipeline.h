@@ -349,6 +349,7 @@ public:
 			uint8 NumColorAttachments;
 			uint8 bHasDepthStencil;
 			uint8 bHasResolveAttachments;
+			uint8 bHasFragmentDensityAttachment;
 			uint8 NumUsedClearValues;
 			uint32 RenderPassCompatibleHash;
 			FVector Extent3D;
@@ -366,6 +367,7 @@ public:
 					NumColorAttachments == In.NumColorAttachments &&
 					bHasDepthStencil == In.bHasDepthStencil &&
 					bHasResolveAttachments == In.bHasResolveAttachments &&
+					bHasFragmentDensityAttachment == In.bHasFragmentDensityAttachment &&
 					NumUsedClearValues == In.NumUsedClearValues &&
 					RenderPassCompatibleHash == In.RenderPassCompatibleHash &&
 					Extent3D == In.Extent3D;

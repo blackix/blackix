@@ -31,7 +31,9 @@ void SAboutScreen::Construct(const FArguments& InArgs)
 #endif
 	AboutLines.Add(MakeShareable(new FLineDefinition(LOCTEXT("Copyright1", "Copyright 1998-2019 Epic Games, Inc. All rights reserved"), 11, FLinearColor(1.f, 1.f, 1.f), FMargin(0.f) )));
 	AboutLines.Add(MakeShareable(new FLineDefinition(LOCTEXT("Copyright2", "Epic, Epic Games, Unreal, and their respective logos are trademarks or registered trademarks of Epic Games, Inc.\nin the United States of America and elsewhere."), 8, FLinearColor(1.f, 1.f, 1.f), FMargin(0.0f,2.0f) )));
-
+#if WITH_OCULUS_PRIVATE_CODE
+	AboutLines.Add(MakeShareable(new FLineDefinition(LOCTEXT("Disclaimer", "This is a custom version of UE4 made and released by a partner of Epic Games and is not supported by Epic Games.\nFind support information for this custom editor the in the \"Help\" toolbar dropdown."), 8, FLinearColor(1.f, 1.f, 0.f), FMargin(0.0f, 2.0f))));
+#endif
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -102,6 +104,9 @@ void SAboutScreen::Construct(const FArguments& InArgs)
 				[
 					SNew(SHorizontalBox)
 					+SHorizontalBox::Slot()
+#if WITH_OCULUS_PRIVATE_CODE
+					// Remove Facebook link
+#else
 					.HAlign(HAlign_Left)
 					.Padding(FMargin(5.f, 0.f, 5.f, 5.f)) 
 					[
@@ -115,6 +120,7 @@ void SAboutScreen::Construct(const FArguments& InArgs)
 					]
 					+SHorizontalBox::Slot()
 					.AutoWidth()
+#endif
 					.HAlign(HAlign_Right)
 					.VAlign(VAlign_Bottom)
 					.Padding(FMargin(5.f, 0.f, 5.f,5.f))

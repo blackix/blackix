@@ -90,25 +90,34 @@ static const int32 NumTranslucencyShadowSurfaces = 2;
 *		BIT ID    | USE
 *		[0]       | sandbox bit (bit to be use by any rendering passes, but must be properly reset to 0 after using)
 *		[1]       | unallocated
-*		[2]       | unallocated
-*		[3]       | Temporal AA mask for translucent object.
+*		[2]       | Temporal AA mask for translucent object.
+*		[3]       | Lighting channels
 *		[4]       | Lighting channels
 *		[5]       | Lighting channels
-*		[6]       | Lighting channels
-*		[7]       | primitive receive decal bit
+*		[6]       | primitive receive decal bit
+*		[7]       | Foveated Mask bit. Put that to the highest bit because we want to preserve it in ShadowRendering
 *
 * After deferred decals, stencil is cleared to 0 and no longer packed in this way, to ensure use of fast hardware clears and HiStencil.
 */
 #define STENCIL_SANDBOX_BIT_ID				0
-#define STENCIL_TEMPORAL_RESPONSIVE_AA_BIT_ID 3
-#define STENCIL_LIGHTING_CHANNELS_BIT_ID	4
-#define STENCIL_RECEIVE_DECAL_BIT_ID		7
+#define STENCIL_TEMPORAL_RESPONSIVE_AA_BIT_ID 2
+#define STENCIL_LIGHTING_CHANNELS_BIT_ID	3
+#define STENCIL_RECEIVE_DECAL_BIT_ID		6
+
+#if WITH_OCULUS_PRIVATE_CODE
+#define STENCIL_FOVEATED_MASK_BIT_ID		7
+#endif
 
 // Outputs a compile-time constant stencil's bit mask ready to be used
 // in TStaticDepthStencilState<> template parameter. It also takes care
 // of masking the Value macro parameter to only keep the low significant
 // bit to ensure to not overflow on other bits.
 #define GET_STENCIL_BIT_MASK(BIT_NAME,Value) uint8((uint8(Value) & uint8(0x01)) << (STENCIL_##BIT_NAME##_BIT_ID))
+
+#if WITH_OCULUS_PRIVATE_CODE
+#define STENCIL_FOVEATED_MASK_MASK GET_STENCIL_BIT_MASK(FOVEATED_MASK, 1)
+#define STENCIL_FOVEATED_MASK_INV_MASK uint8(~STENCIL_FOVEATED_MASK_MASK)
+#endif
 
 #define STENCIL_SANDBOX_MASK GET_STENCIL_BIT_MASK(SANDBOX,1)
 
@@ -157,6 +166,9 @@ protected:
 	FSceneRenderTargets(): 
 		bScreenSpaceAOIsValid(false),
 		bCustomDepthIsValid(false),
+#if WITH_OCULUS_PRIVATE_CODE
+		bIsFoveatedMaskValidInStencil(false),
+#endif
 		GBufferRefCount(0),
 		ThisFrameNumber( 0 ),
 		CurrentDesiredSizeIndex ( 0 ),
@@ -184,7 +196,8 @@ protected:
 		DefaultColorClear(FClearValueBinding::Black),
 		DefaultDepthClear(FClearValueBinding::DepthFar),
 		QuadOverdrawIndex(INDEX_NONE),
-		bHMDAllocatedDepthTarget(false)
+		bHMDAllocatedDepthTarget(false),
+		bAllocatedVariableResolutionTexture(false)
 		{
 			FMemory::Memset(LargestDesiredSizes, 0);
 #if PREVENT_RENDERTARGET_SIZE_THRASHING
@@ -251,10 +264,22 @@ public:
 		}
 	}
 	
+	void FreeMaskReconstructedColor()
+	{
+		if (MaskReconstructedColorRT.GetReference())
+		{
+			MaskReconstructedColorRT.SafeRelease();
+		}
+	}
+
 	void ResolveSceneDepthTexture(FRHICommandList& RHICmdList, const FResolveRect& ResolveRect);
 	void ResolveSceneDepthToAuxiliaryTexture(FRHICommandList& RHICmdList);
 
+#if WITH_OCULUS_PRIVATE_CODE
+	void BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear, bool bShouldClearStencil);
+#else
 	void BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear);
+#endif
 	void FinishRenderingPrePass(FRHICommandListImmediate& RHICmdList);
 
 	void BeginRenderingSceneAlphaCopy(FRHICommandListImmediate& RHICmdList);
@@ -297,6 +322,18 @@ public:
 	const FTexture2DRHIRef& GetDownsampledTranslucencyDepthSurface()
 	{
 		return (const FTexture2DRHIRef&)DownsampledTranslucencyDepthRT->GetRenderTargetItem().TargetableTexture;
+	}
+
+	TRefCountPtr<IPooledRenderTarget>& GetMaskReconstructedColor(FRHICommandList& RHICmdList, FIntPoint Size);
+
+	const FTexture2DRHIRef& GetMaskReconstructedColorSurface()
+	{
+		return (const FTexture2DRHIRef&)MaskReconstructedColorRT->GetRenderTargetItem().TargetableTexture;
+	}
+
+	const FTextureRHIRef& GetMaskReconstructedColorTexture()
+	{
+		return (const FTextureRHIRef&)MaskReconstructedColorRT->GetRenderTargetItem().ShaderResourceTexture;
 	}
 
 	/**
@@ -349,6 +386,7 @@ public:
 		return (const FTexture2DRHIRef&)AuxiliarySceneDepthZ->GetRenderTargetItem().ShaderResourceTexture; 
 	}
 
+	const TRefCountPtr<IPooledRenderTarget>& GetActualDepthRenderTarget() const;
 	const FTexture2DRHIRef* GetActualDepthTexture() const;
 	const FTexture2DRHIRef& GetGBufferATexture() const { return (const FTexture2DRHIRef&)GBufferA->GetRenderTargetItem().ShaderResourceTexture; }
 	const FTexture2DRHIRef& GetGBufferBTexture() const { return (const FTexture2DRHIRef&)GBufferB->GetRenderTargetItem().ShaderResourceTexture; }
@@ -356,6 +394,7 @@ public:
 	const FTexture2DRHIRef& GetGBufferDTexture() const { return (const FTexture2DRHIRef&)GBufferD->GetRenderTargetItem().ShaderResourceTexture; }
 	const FTexture2DRHIRef& GetGBufferETexture() const { return (const FTexture2DRHIRef&)GBufferE->GetRenderTargetItem().ShaderResourceTexture; }
 	const FTexture2DRHIRef& GetGBufferVelocityTexture() const { return (const FTexture2DRHIRef&)SceneVelocity->GetRenderTargetItem().ShaderResourceTexture; }
+	const FTexture2DRHIRef& GetVariableResolutionTexture() const { return (const FTexture2DRHIRef&)VariableResolutionTexture->GetRenderTargetItem().ShaderResourceTexture; }
 
 	const FTextureRHIRef& GetLightAttenuationTexture() const
 	{
@@ -448,6 +487,13 @@ public:
 
 	// ---
 
+	/** Get the current scene depth target */
+	const TRefCountPtr<IPooledRenderTarget>& GetSceneDepth() const { return SceneDepthZ; }
+	TRefCountPtr<IPooledRenderTarget>& GetSceneDepth() { return SceneDepthZ; }
+
+	const TRefCountPtr<IPooledRenderTarget>& GetAuxiliarySceneDepth() const { return AuxiliarySceneDepthZ; }
+	TRefCountPtr<IPooledRenderTarget>& GetAuxiliarySceneDepth() { return AuxiliarySceneDepthZ; }
+
 	void SetLightAttenuation(IPooledRenderTarget* In);
 
 	// needs to be called between AllocSceneColor() and SetSceneColor(0)
@@ -485,6 +531,14 @@ public:
 	
 	ERHIFeatureLevel::Type GetCurrentFeatureLevel() const { return CurrentFeatureLevel; }
 
+	bool IsVariableResolutionTextureAllocated() const { return bAllocatedVariableResolutionTexture; }
+
+#if WITH_OCULUS_PRIVATE_CODE
+	bool IsFoveatedMaskValidInStencil() const { return bIsFoveatedMaskValidInStencil; }
+	void SetFoveatedMaskValidInStencil(bool IsMaskValid);
+	void InvalidateFoveatedMaskInStencil();
+#endif
+	
 private: // Get...() methods instead of direct access
 
 	// 0 before BeginRenderingSceneColor and after tone mapping in deferred shading
@@ -566,11 +620,22 @@ public:
 	/** Downsampled depth used when rendering translucency in smaller resolution. */
 	TRefCountPtr<IPooledRenderTarget> DownsampledTranslucencyDepthRT;
 
+	/** Texture to control variable resolution rendering */
+	TRefCountPtr<IPooledRenderTarget> VariableResolutionTexture;
+
+	/** The reconstructed color RT in mask-based foveated rendering */
+	TRefCountPtr<IPooledRenderTarget> MaskReconstructedColorRT;			// [WIP]
+
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bScreenSpaceAOIsValid;
 
 	// todo: free ScreenSpaceAO so pool can reuse
 	bool bCustomDepthIsValid;
+
+#if WITH_OCULUS_PRIVATE_CODE
+	/*The foveated mask has been already written to the stencil buffer. It's done in FDeferredShadingSceneRenderer::RenderPrePass()*/
+	bool bIsFoveatedMaskValidInStencil;
+#endif
 
 private:
 	/** used by AdjustGBufferRefCount */
@@ -618,6 +683,9 @@ private:
 	/** Allocates common depth render targets that are used by both mobile and deferred rendering paths */
 	void AllocateCommonDepthTargets(FRHICommandList& RHICmdList);
 
+	/** Allocates a texture for controlling variable resolution rendering. */
+	void AllocateVariableResolutionTexture(FRHICommandList& RHICmdList);
+
 	/** Determine the appropriate render target dimensions. */
 	FIntPoint ComputeDesiredSize(const FSceneViewFamily& ViewFamily);
 
@@ -642,6 +710,9 @@ private:
 
 	/** Determine if the default clear values for color and depth match the allocated scene render targets. Mobile only. */
 	bool AreRenderTargetClearsValid(ESceneColorFormatType InSceneColorFormatType) const;
+
+	/** Determine if an allocate is required for the render targets. */
+	bool IsAllocateRenderTargetsRequired() const;
 
 	/** Determine whether the render targets for any shading path have been allocated */
 	bool AreAnyShadingPathRenderTargetsAllocated() const 
@@ -744,6 +815,9 @@ private:
 
 	/** True if the depth target is allocated by an HMD plugin. This is a temporary fix to deal with HMD depth target swap chains not tracking the stencil SRV. */
 	bool bHMDAllocatedDepthTarget;
+
+	/** True if the a variable resolution texture is allocated to control sampling or shading rate */
+	bool bAllocatedVariableResolutionTexture;
 
 	/** CAUTION: When adding new data, make sure you copy it in the snapshot constructor! **/
 

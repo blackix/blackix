@@ -162,6 +162,9 @@ public:
 	//virtual FVector2D GetTextSafeRegionBounds() const override;
 	virtual void CalculateStereoViewOffset(const enum EStereoscopicPass StereoPassType, FRotator& ViewRotation, const float WorldToMeters, FVector& ViewLocation) override;
 	virtual FMatrix GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual FMatrix GetStereoProjectionMatrix_RenderThread(const enum EStereoscopicPass StereoPassType) const override;
+#endif
 	virtual void InitCanvasFromView(class FSceneView* InView, class UCanvas* Canvas) override;
 	//virtual void GetEyeRenderParams_RenderThread(const struct FRenderingCompositePassContext& Context, FVector2D& EyeToSrcUVScaleValue, FVector2D& EyeToSrcUVOffsetValue) const override;
 	virtual void RenderTexture_RenderThread(class FRHICommandListImmediate& RHICmdList, class FRHITexture2D* BackBuffer, class FRHITexture2D* SrcTexture, FVector2D WindowSize) const override;
@@ -182,8 +185,15 @@ public:
 	virtual void CalculateRenderTargetSize(const FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) override;
 	virtual bool NeedReAllocateViewportRenderTarget(const class FViewport& Viewport) override;
 	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
+	virtual bool NeedReAllocateFoveationTexture(const TRefCountPtr<IPooledRenderTarget>& FoveationTarget) override;
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	virtual bool AllocateFoveationTexture(uint32 Index, uint32 RenderSizeX, uint32 RenderSizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTexture, FIntPoint& OutTextureSize) override;
+#if WITH_OCULUS_PRIVATE_CODE
+	virtual bool NeedFoveatedMaskGeneration() override;
+	virtual void SetFoveatedMaskGenerated(bool IsMaskValid) override;
+	virtual void InvalidateAllGeneratedFoveatedMask() override;
+#endif
 	virtual void UpdateViewportWidget(bool bUseSeparateRenderTarget, const class FViewport& Viewport, class SViewport* ViewportWidget) override;
 	virtual FXRRenderBridge* GetActiveRenderBridge_GameThread(bool bUseSeparateRenderTarget);
 
@@ -246,6 +256,9 @@ public:
 	FCustomPresent* GetCustomPresent_Internal() const { return CustomPresent; }
 
 	float GetWorldToMetersScale() const;
+#if WITH_OCULUS_PRIVATE_CODE
+	float GetWorldToMetersScale_RenderThread() const;
+#endif
 
 	ESpectatorScreenMode GetSpectatorScreenMode_RenderThread() const;
 
@@ -420,6 +433,7 @@ protected:
 	TArray<FLayerPtr> Layers_RenderThread;
 	FLayerPtr EyeLayer_RenderThread; // Valid to be accessed from game thread, since updated only when game thread is waiting
 	bool bNeedReAllocateDepthTexture_RenderThread;
+	bool bNeedReAllocateFoveationTexture_RenderThread;
 
 	// RHI thread
 	FSettingsPtr Settings_RHIThread;
@@ -429,6 +443,13 @@ protected:
 
 	FHMDViewMesh HiddenAreaMeshes[2];
 	FHMDViewMesh VisibleAreaMeshes[2];
+
+#if WITH_OCULUS_PRIVATE_CODE
+	uint32 NeedGenerateFoveatedMaskFlag_RenderThread;	// one bit for each SwapChainIndex
+	bool NeedGenerateFoveatedMask_RenderThread;
+
+	FIntRect PreviousViewRect[2];
+#endif
 
 	FPerformanceStats PerformanceStats;
 

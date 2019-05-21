@@ -1,0 +1,317 @@
+// Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	FoveatedMaskCommon.usf: Shared functions and structures for mask-based foveated rendering
+=============================================================================*/
+
+#ifndef __FOVEATED_MASK_COMMON__
+#define __FOVEATED_MASK_COMMON__
+
+#if WITH_OCULUS_PRIVATE_CODE
+
+float4 FoveatedMaskRadiusRatioItems;	// (FrameIndexMod8, high_res_ring, mid_res_ring, low_res_ring)
+float4 FoveatedMaskEyeFov;				// (LeftTan, RightTan, UpTan, DownTan)
+
+float FoveatedMask_ComputeDistance(float2 PosVS, float2 Offset)
+{
+	float TanW = lerp(-FoveatedMaskEyeFov.x, FoveatedMaskEyeFov.y, PosVS.x * 0.5 + 0.5);
+	float TanH = lerp(-FoveatedMaskEyeFov.w, FoveatedMaskEyeFov.z, PosVS.y * 0.5 + 0.5);
+	if (Offset.x > 0.0)
+	{
+		TanW = max(abs(TanW) - Offset.x, 0.0);
+	}
+	if (Offset.y > 0.0)
+	{
+		TanH = max(abs(TanH) - Offset.y, 0.0);
+	}
+	float SqrTan = TanW * TanW + TanH * TanH;
+	return SqrTan;
+}
+
+float FoveatedMask_ComputeDistance(float2 PosVS)
+{
+	return FoveatedMask_ComputeDistance(PosVS, float2(0, 0));
+}
+
+// return true if the position is inside High-Res ring. false if the position should be partially masked
+bool FoveatedMask_ComputeDistanceMask(float2 PosVS, out float4 Mask)
+{
+	float Dist = FoveatedMask_ComputeDistance(PosVS);
+	if (Dist < FoveatedMaskRadiusRatioItems.y)
+	{
+		return false;
+	}
+
+	Mask = float4(1.0, step(Dist.xxx, FoveatedMaskRadiusRatioItems.wzy));
+	return true;
+}
+
+bool FoveatedMask_ComputeDistanceMask(float2 PosVS, float2 Offset, out float4 Mask)
+{
+	float Dist = FoveatedMask_ComputeDistance(PosVS, Offset);
+	if (Dist < FoveatedMaskRadiusRatioItems.y)
+	{
+		return false;
+	}
+
+	Mask = float4(1.0, step(Dist.xxx, FoveatedMaskRadiusRatioItems.wzy));
+	return true;
+}
+
+void FoveatedMask_ComputeQuadMaskSimple(uint2 PixelPosition, int FrameIndexMod8, out uint OutQuadSubIndex)
+{
+	uint QuadX = PixelPosition.x / 2;
+	uint QuadY = PixelPosition.y / 2;
+	uint QuadSubX = QuadX & 1;
+	uint QuadSubY = QuadY & 1;
+
+	static const uint QuadOrderArray[4][4] = {
+		{0, 2, 3, 1},
+		{3, 0, 1, 2},
+		{1, 3, 2, 0},
+		{2, 1, 0, 3}
+	};
+
+	OutQuadSubIndex = QuadOrderArray[FrameIndexMod8 & 0x1/*0x3*/][QuadSubY * 2 + QuadSubX];
+}
+
+// TODO: merge to FoveatedMask_LoadTexture()
+bool FoveatedMask_IsPixelIntepolated(int2 TexelPos, float2 ViewPos)
+{
+	bool result = true;
+	float4 DistMask;
+	bool UseMask = FoveatedMask_ComputeDistanceMask(ViewPos, DistMask);
+
+	if (!UseMask)
+	{
+		result = false;
+	}
+	else
+	{
+		uint QuadSubIndex = 0;
+		FoveatedMask_ComputeQuadMaskSimple(TexelPos, (int)FoveatedMaskRadiusRatioItems.x, QuadSubIndex);
+		bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+		result = IsMaskedQuad;
+	}
+	return result;
+}
+
+bool FoveatedMask_IsPixelIntepolated(float4 TextureSize, uint4 ViewportRect, float2 UV)
+{
+	float2 TexturePos = UV * TextureSize.xy;
+	float2 ViewportCenter = float2(ViewportRect.zw + ViewportRect.xy) * 0.5;
+	float2 ViewportSize = float2(ViewportRect.zw) - ViewportCenter;
+	float2 ViewPos = (TexturePos - ViewportCenter) / ViewportSize;
+	return FoveatedMask_IsPixelIntepolated(int2(TexturePos), ViewPos);
+}
+
+float FoveatedMask_ComputeLuminance(float3 rgb)
+{
+    return dot(rgb, float3(0.299, 0.587, 0.114));
+}
+
+float4 FoveatedMask_LoadFromMaskedTexture(Texture2D Texture, int2 TexelPos, float2 ViewPos)
+{
+	float4 OutColor = float4(0, 0, 0, 0);
+
+	float4 DistMask;
+	bool UseMask = FoveatedMask_ComputeDistanceMask(ViewPos, DistMask);
+
+	if (!UseMask)
+	{
+		OutColor = Texture.Load(int3(TexelPos.x, TexelPos.y, 0));
+	}
+	else
+	{
+		int FrameIndexMod8 = (int)FoveatedMaskRadiusRatioItems.x;
+		uint QuadSubIndex = 0;
+		FoveatedMask_ComputeQuadMaskSimple(TexelPos, FrameIndexMod8, QuadSubIndex);
+		bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+
+		if (!IsMaskedQuad)
+		{
+			OutColor = Texture.Load(int3(TexelPos.x, TexelPos.y, 0));
+		}
+		else
+		{
+			const float Weight0 = 0.667;
+			const float Weight1 = 0.333;
+
+			int SubX = TexelPos.x & 1;
+			int SubY = TexelPos.y & 1;
+			if (DistMask.y == 1.0)		// 25% or 50%
+			{
+				int DX0 = 2 * SubX - 1;
+				int DX1 = -4 * SubX + 2;
+				int DY0 = 2 * SubY - 1;
+				int DY1 = -4 * SubY + 2;
+				float4 P0 = Texture.Load(int3(TexelPos.x + DX0, TexelPos.y, 0));
+				float4 P1 = Texture.Load(int3(TexelPos.x, TexelPos.y + DY0, 0));
+				float4 P2 = Texture.Load(int3(TexelPos.x + DX1, TexelPos.y, 0));
+				float4 P3 = Texture.Load(int3(TexelPos.x, TexelPos.y + DY1, 0));
+
+				float DeltaLumaH = max(abs(FoveatedMask_ComputeLuminance(P0.rgb) - FoveatedMask_ComputeLuminance(P2.rgb)), 0.01);
+				float DeltaLumaV = max(abs(FoveatedMask_ComputeLuminance(P1.rgb) - FoveatedMask_ComputeLuminance(P3.rgb)), 0.01);
+
+				float4 PH = (P0 * Weight0 + P2 * Weight1);
+				float4 PV = (P1 * Weight0 + P3 * Weight1);
+
+				OutColor = (PH * DeltaLumaV + PV * DeltaLumaH) / (DeltaLumaH + DeltaLumaV);
+			}
+			else // the rest is 25% area
+			{
+				int DX0, DY0, DX1, DY1;
+				if (QuadSubIndex == 1)
+				{
+					DX0 = SubX * 2 - 1;
+					DX1 = -4 * SubX + 2;
+					DY0 = SubY * 2 - 1;
+					DY1 = -4 * SubY + 2;
+				}
+				else if (((QuadSubIndex + FrameIndexMod8) & 1) == 0)
+				{
+					DX0 = SubX * 2 - 1;
+					DX1 = -4 * SubX + 2;
+					DY0 = 0;
+					DY1 = 0;
+				}
+				else
+				{
+					DX0 = 0;
+					DX1 = 0;
+					DY0 = SubY * 2 - 1;
+					DY1 = -4 * SubY + 2;
+				}
+				float4 P0 = Texture.Load(int3(TexelPos.x + DX0, TexelPos.y + DY0, 0));
+				float4 P1 = Texture.Load(int3(TexelPos.x + DX1, TexelPos.y + DY1, 0));
+				OutColor = P0 * Weight0 + P1 * Weight1;
+			}
+		}
+	}
+
+	return OutColor;
+}
+
+float4 FoveatedMask_LoadFromMaskedTexture(Texture2D Texture, float4 TextureSize, uint4 ViewportRect, float4 ViewportSize, float2 UV)
+{
+	float2 TexturePos = UV * TextureSize.xy;
+	float2 ViewportCenter = float2(ViewportRect.zw + ViewportRect.xy) * 0.5;
+	float2 ViewPos = (TexturePos - ViewportCenter) * ViewportSize.zw * float2(2.0, -2.0);
+	return FoveatedMask_LoadFromMaskedTexture(Texture, int2(TexturePos), ViewPos);
+}
+
+// OutConfidenceLevel == 1.0 -> ground truth; 0.5 -> 4-tap reconstruction; 0.25 -> 2-tap reconstruction; 0.0 -> 1-tap reconstruction
+float FoveatedMask_GetConfidenceLevel(int2 TexelPos, float2 ViewPos)
+{
+	float OutConfidenceLevel = 1.0;
+
+	float4 DistMask;
+	bool UseMask = FoveatedMask_ComputeDistanceMask(ViewPos, DistMask);
+
+	if (!UseMask)
+	{
+		OutConfidenceLevel = 1.0;
+	}
+	else
+	{
+		int FrameIndexMod8 = (int)FoveatedMaskRadiusRatioItems.x;
+		uint QuadSubIndex = 0;
+		FoveatedMask_ComputeQuadMaskSimple(TexelPos, FrameIndexMod8, QuadSubIndex);
+		bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+
+		if (!IsMaskedQuad)
+		{
+			OutConfidenceLevel = 1.0;
+		}
+		else
+		{
+			if (DistMask.y == 1.0)		// 25% or 50%
+			{
+				OutConfidenceLevel = 0.5;
+			}
+			else // the rest is 25% area
+			{
+				OutConfidenceLevel = 0.0;
+			}
+		}
+	}
+
+	return OutConfidenceLevel;
+}
+
+float FoveatedMask_GetConfidenceLevel(float4 TextureSize, uint4 ViewportRect, float4 ViewportSize, float2 UV)
+{
+	float2 TexturePos = UV * TextureSize.xy;
+	float2 ViewportCenter = float2(ViewportRect.zw + ViewportRect.xy) * 0.5;
+	float2 ViewPos = (TexturePos - ViewportCenter) * ViewportSize.zw * float2(2.0, -2.0);
+	return FoveatedMask_GetConfidenceLevel(int2(TexturePos), ViewPos);
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+//////////// COARSE VERSION: ONE TEXEL FETCH FOR ALL QUALITY LEVELS //////////////
+
+float4 FoveatedMask_LoadFromMaskedTextureCoarse(Texture2D Texture, int2 TexelPos, float2 ViewPos)
+{
+	float4 OutColor = float4(0, 0, 0, 0);
+
+	float4 DistMask;
+	bool UseMask = FoveatedMask_ComputeDistanceMask(ViewPos, DistMask);
+
+	if (!UseMask)
+	{
+		OutColor = Texture.Load(int3(TexelPos.x, TexelPos.y, 0));
+	}
+	else
+	{
+		int FrameIndexMod8 = (int)FoveatedMaskRadiusRatioItems.x;
+		uint QuadSubIndex = 0;
+		FoveatedMask_ComputeQuadMaskSimple(TexelPos, FrameIndexMod8, QuadSubIndex);
+		bool IsMaskedQuad = DistMask[QuadSubIndex] == 0.0;
+
+		if (!IsMaskedQuad)
+		{
+			OutColor = Texture.Load(int3(TexelPos.x, TexelPos.y, 0));
+		}
+		else
+		{
+			int SubX = TexelPos.x & 1;
+			int SubY = TexelPos.y & 1;
+			int DX = SubX * 2 - 1;
+			int DY = SubY * 2 - 1;
+			if (DistMask.y == 1.0)		// 25% or 50%
+			{
+				DX = 0;
+			}
+			else // the rest is 25% area
+			{
+				if (QuadSubIndex == 1)
+				{
+					// do nothing
+				}
+				else if (((QuadSubIndex + FrameIndexMod8) & 1) == 0)
+				{
+					DY = 0;
+				}
+				else
+				{
+					DX = 0;
+				}
+			}
+			OutColor = Texture.Load(int3(TexelPos.x + DX, TexelPos.y + DY, 0));
+		}
+	}
+
+	return OutColor;
+}
+
+float4 FoveatedMask_LoadFromMaskedTextureCoarse(Texture2D Texture, float4 TextureSize, uint4 ViewportRect, float4 ViewportSize, float2 UV)
+{
+	float2 TexturePos = UV * TextureSize.xy;
+	float2 ViewportCenter = float2(ViewportRect.zw + ViewportRect.xy) * 0.5;
+	float2 ViewPos = (TexturePos - ViewportCenter) * ViewportSize.zw * float2(2.0, -2.0);
+	return FoveatedMask_LoadFromMaskedTextureCoarse(Texture, int2(TexturePos), ViewPos);
+}
+
+#endif // WITH_OCULUS_PRIVATE_CODE
+
+#endif

@@ -168,9 +168,21 @@ public:
 		SceneColorInputTexture.Bind(Initializer.ParameterMap, TEXT("SceneColorInputTexture"));
 		SceneColorInputSampler.Bind(Initializer.ParameterMap, TEXT("SceneColorInputSampler"));
 		SceneTextureParameters.Bind(Initializer);
+#if WITH_OCULUS_PRIVATE_CODE
+		ViewportRect.Bind(Initializer.ParameterMap, TEXT("ViewportRect"));
+		ViewportSize.Bind(Initializer.ParameterMap, TEXT("ViewportSize"));
+		SceneColorInputTextureSize.Bind(Initializer.ParameterMap, TEXT("SceneColorInputTextureSize"));
+		SceneColorInputTextureFoveatedMasked.Bind(Initializer.ParameterMap, TEXT("SceneColorInputTextureFoveatedMasked"));
+		FoveatedMaskRadiusRatioItems.Bind(Initializer.ParameterMap, TEXT("FoveatedMaskRadiusRatioItems"));
+		FoveatedMaskEyeFov.Bind(Initializer.ParameterMap, TEXT("FoveatedMaskEyeFov"));
+#endif
 	}
 
+#if WITH_OCULUS_PRIVATE_CODE
+	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FPlanarReflectionSceneProxy* ReflectionSceneProxy, FTextureRHIParamRef SceneColorInput, int32 FilterWidth, bool SceneColorInputFoveatedMasked)
+#else
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FPlanarReflectionSceneProxy* ReflectionSceneProxy, FTextureRHIParamRef SceneColorInput, int32 FilterWidth)
+#endif
 	{
 		const FPixelShaderRHIParamRef ShaderRHI = GetPixelShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
@@ -186,6 +198,71 @@ public:
 		FPlanarReflectionUniformParameters PlanarReflectionUniformParameters;
 		SetupPlanarReflectionUniformParameters(View, ReflectionSceneProxy, PlanarReflectionUniformParameters);
 		SetUniformBufferParameterImmediate(RHICmdList, ShaderRHI, GetUniformBufferParameter<FPlanarReflectionUniformParameters>(), PlanarReflectionUniformParameters);
+
+#if WITH_OCULUS_PRIVATE_CODE
+		if (ViewportSize.IsBound() || ViewportRect.IsBound())
+		{
+			FIntRect LocalViewport = View.UnconstrainedViewRect;
+
+			FIntPoint ViewportOffset = LocalViewport.Min;
+			FIntPoint ViewportExtent = LocalViewport.Size();
+
+			{
+				FVector4 Value(ViewportExtent.X, ViewportExtent.Y, 1.0f / ViewportExtent.X, 1.0f / ViewportExtent.Y);
+
+				SetShaderValue(RHICmdList, ShaderRHI, ViewportSize, Value);
+			}
+
+			{
+				SetShaderValue(RHICmdList, ShaderRHI, ViewportRect, LocalViewport);
+			}
+		}
+
+		if (SceneColorInputTextureSize.IsBound())
+		{
+			FVector4 TextureSize(1.0f, 1.0f, 1.0f, 1.0f);
+			if (SceneColorInput->GetTexture2D())
+			{
+				float Width = (float)SceneColorInput->GetTexture2D()->GetSizeX();
+				float Height = (float)SceneColorInput->GetTexture2D()->GetSizeY();
+				TextureSize = FVector4(Width, Height, 1.0f / Width, 1.0f / Height);
+			}
+			SetShaderValue(RHICmdList, ShaderRHI, SceneColorInputTextureSize, TextureSize);
+		}
+
+		if (SceneColorInputTextureFoveatedMasked.IsBound())
+		{
+			SetShaderValue(RHICmdList, ShaderRHI, SceneColorInputTextureFoveatedMasked, SceneColorInputFoveatedMasked ? 1 : 0);
+		}
+
+		bool UseMaskAnimation = GetMaskBasedFoveatedRenderingUsingMaskAnimation() && View.State != nullptr && View.AntiAliasingMethod == AAM_TemporalAA;
+		uint32 FrameIndexMod8 = UseMaskAnimation ? View.State->GetConcreteViewState()->GetFrameIndex(8) : 0;
+		if (GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() >= 0)
+		{
+			UseMaskAnimation = true;
+			FrameIndexMod8 = GetMaskBasedFoveatedRenderingAnimationOverrideFrameIndex() & 7;
+		}
+
+		if (FoveatedMaskRadiusRatioItems.IsBound())
+		{
+			FVector4 Items;
+			Items = FVector4((float)FrameIndexMod8, GetMaskBasedFoveatedRenderingHighResSqrTan(), GetMaskBasedFoveatedRenderingMediumResSqrTan(), GetMaskBasedFoveatedRenderingLowResSqrTan());
+			SetShaderValue(RHICmdList, ShaderRHI, FoveatedMaskRadiusRatioItems, Items);
+		}
+
+		if (FoveatedMaskEyeFov.IsBound())
+		{
+			FVector4 Fov(1.0f, 1.0f, 1.0f, 1.0f);
+			const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+			if (bStereo)
+			{
+				EStereoscopicPass Eye = View.StereoPass;
+				FMatrix Proj = GEngine->StereoRenderingDevice->GetStereoProjectionMatrix_RenderThread(Eye);
+				Fov = GetFovFromAsymmetricProjectionMatrix(Proj);
+			}
+			SetShaderValue(RHICmdList, ShaderRHI, FoveatedMaskEyeFov, Fov);
+		}
+#endif
 	}
 
 	// FShader interface.
@@ -197,6 +274,14 @@ public:
 		Ar << SceneColorInputTexture;
 		Ar << SceneColorInputSampler;
 		Ar << SceneTextureParameters;
+#if WITH_OCULUS_PRIVATE_CODE
+		Ar << ViewportRect;
+		Ar << ViewportSize;
+		Ar << SceneColorInputTextureSize;
+		Ar << SceneColorInputTextureFoveatedMasked;
+		Ar << FoveatedMaskRadiusRatioItems;
+		Ar << FoveatedMaskEyeFov;
+#endif
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -207,6 +292,14 @@ private:
 	FShaderResourceParameter SceneColorInputTexture;
 	FShaderResourceParameter SceneColorInputSampler;
 	FSceneTextureShaderParameters SceneTextureParameters;
+#if WITH_OCULUS_PRIVATE_CODE
+	FShaderParameter ViewportRect;
+	FShaderParameter ViewportSize;
+	FShaderParameter SceneColorInputTextureSize;
+	FShaderParameter SceneColorInputTextureFoveatedMasked;
+	FShaderParameter FoveatedMaskRadiusRatioItems;
+	FShaderParameter FoveatedMaskEyeFov;
+#endif
 };
 
 IMPLEMENT_SHADER_TYPE(template<>, FPrefilterPlanarReflectionPS<false>, TEXT("/Engine/Private/PlanarReflectionShaders.usf"), TEXT("PrefilterPlanarReflectionPS"), SF_Pixel);
@@ -216,6 +309,9 @@ template<bool bEnablePlanarReflectionPrefilter>
 void PrefilterPlanarReflection(FRHICommandListImmediate& RHICmdList, FViewInfo& View, const FPlanarReflectionSceneProxy* ReflectionSceneProxy, const FRenderTarget* Target)
 {
 	FTextureRHIParamRef SceneColorInput = FSceneRenderTargets::Get(RHICmdList).GetSceneColorTexture();
+#if WITH_OCULUS_PRIVATE_CODE
+	bool SceneColorInputFovatedMasked = FSceneRenderTargets::Get(RHICmdList).GetSceneColor()->GetRenderTargetItem().IsFoveatedMasked();
+#endif
 
 	if(View.FeatureLevel >= ERHIFeatureLevel::SM4)
 	{
@@ -227,6 +323,9 @@ void PrefilterPlanarReflection(FRHICommandListImmediate& RHICmdList, FViewInfo& 
 		if (FilteredSceneColor)
 		{
 			SceneColorInput = FilteredSceneColor->GetRenderTargetItem().ShaderResourceTexture;
+#if WITH_OCULUS_PRIVATE_CODE
+			SceneColorInputFovatedMasked = FilteredSceneColor->GetRenderTargetItem().IsFoveatedMasked();
+#endif
 		}
 	}
 
@@ -257,7 +356,11 @@ void PrefilterPlanarReflection(FRHICommandListImmediate& RHICmdList, FViewInfo& 
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
+#if WITH_OCULUS_PRIVATE_CODE
+			PixelShader->SetParameters(RHICmdList, View, ReflectionSceneProxy, SceneColorInput, View.ViewRect.Width(), SceneColorInputFovatedMasked);
+#else
 			PixelShader->SetParameters(RHICmdList, View, ReflectionSceneProxy, SceneColorInput, View.ViewRect.Width());
+#endif
 			VertexShader->SetSimpleLightParameters(RHICmdList, View, FSphere(0));
 
 			FIntPoint UV = View.ViewRect.Min;

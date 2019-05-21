@@ -728,4 +728,6 @@ void FVulkanDevice::ParseOptionalDeviceExtensions(const TArray<const ANSICHAR *>
 #if VULKAN_SUPPORTS_COLOR_CONVERSIONS
 	OptionalDeviceExtensions.HasYcbcrSampler = HasExtension(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME) && HasExtension(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME) && HasExtension(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 #endif
+
+	OptionalDeviceExtensions.HasEXTFragmentDensityMap = HasExtension(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME);
 }

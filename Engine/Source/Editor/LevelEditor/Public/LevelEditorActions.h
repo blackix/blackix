@@ -45,6 +45,11 @@ public:
 
 public:
 	
+#if WITH_OCULUS_PRIVATE_CODE
+	TSharedPtr< FUICommandInfo > OculusUnrealDocumentation;
+	TSharedPtr< FUICommandInfo > OculusUnrealDevelopmentForum;
+#endif
+
 	TSharedPtr< FUICommandInfo > BrowseDocumentation;
 	TSharedPtr< FUICommandInfo > BrowseAPIReference;
 	TSharedPtr< FUICommandInfo > BrowseCVars;
@@ -658,6 +663,14 @@ public:
 	 * By default commands cannot be executed if the application is in K2 debug mode.
 	 */
 	static bool DefaultCanExecuteAction();
+
+#if WITH_OCULUS_PRIVATE_CODE
+	/** Opens Oculus Unreal documentation */
+	static void OculusUnrealDocumentation();
+
+	/** Opens Oculus Unreal Development forum */
+	static void OculusUnrealDevelopmentForum();
+#endif
 
 	/** Opens the global documentation homepage */
 	static void BrowseDocumentation();

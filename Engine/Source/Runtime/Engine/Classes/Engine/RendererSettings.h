@@ -533,14 +533,14 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
 		ConsoleVariable = "vr.MobileMultiView", DisplayName = "Mobile Multi-View",
-		ToolTip = "Enable mobile multi-view rendering (only available on some Gear VR Android devices using OpenGL ES 2.0).",
+		ToolTip = "Enable mobile multi-view rendering (only available on Oculus Mobile and some Gear VR Android devices).",
 		ConfigRestartRequired = true))
 		uint32 bMobileMultiView : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
 		EditCondition = "bMobileMultiView",
 		ConsoleVariable = "vr.MobileMultiView.Direct", DisplayName = "Mobile Multi-View Direct",
-		ToolTip = "Enable direct mobile multi-view rendering (only available on multi-view enabled Gear VR and Daydream Android devices).",
+		ToolTip = "Enable direct mobile multi-view rendering (only available on multi-view enabled Oculus Mobile, Gear VR, and Daydream Android devices).",
 		ConfigRestartRequired = true))
 		uint32 bMobileMultiViewDirect : 1;
 
@@ -555,6 +555,33 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable Omni-directional Stereo Capture.",
 		ConfigRestartRequired = true))
 		uint32 bODSCapture : 1;
+
+//#if WITH_OCULUS_PRIVATE_CODE		// This preprocessor macro can't be handled by UnrealHeaderTool
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bForwardShading",
+		ConsoleVariable = "vr.Foveated.Mask.Enable", DisplayName = "[VR] Enable Mask-based Foveated Rendering (requires Forward Shading)",
+		ToolTip = "Enable mask-based foveated rendering. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+		uint32 bEnableFoveatedMask : 1;
+	
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.HighResFov", DisplayName = "[VR] Foveated Mask High Resolution Ring FOV (in degrees)",
+		ToolTip = "High-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskHighResFov;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.MediumResFov", DisplayName = "[VR] Foveated Mask Medium Resolution Ring FOV (in degrees)",
+		ToolTip = "Medium-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskMediumResFov;
+
+	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
+		EditCondition = "bEnableFoveatedMask",
+		ConsoleVariable = "vr.Foveated.Mask.LowResFov", DisplayName = "[VR] Foveated Mask Low Resolution Ring FOV (in degrees)",
+		ToolTip = "Low-res region FOV in mask-based foveated rendering (0.0-179.0)"))
+		float FoveatedMaskLowResFov;
+//#endif
 
 	UPROPERTY(config, EditAnywhere, Category=Editor, meta=(
 		ConsoleVariable="r.WireframeCullThreshold",DisplayName="Wireframe Cull Threshold",

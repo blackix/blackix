@@ -80,19 +80,19 @@ public:
 	FLinearColor KeyboardFocusColor;
 
 	/** The color used to tint the editor window backgrounds */
-	UPROPERTY(EditAnywhere, config, Category=Colors)
+	UPROPERTY(/*EditAnywhere, config, Category=Colors*/) // WITH_OCULUS_PRIVATE_CODE
 	FLinearColor EditorWindowBackgroundColor;
 
 	/** The override for the background of the main window (if not modified, the defaults will be used) */
-	UPROPERTY(EditAnywhere, config, Category=Colors)
+	UPROPERTY(/*EditAnywhere, config, Category=Colors*/) // WITH_OCULUS_PRIVATE_CODE
 	FSlateBrush EditorMainWindowBackgroundOverride;
 
 	/** The override for the background of the child window (if not modified, the defaults will be used) */
-	UPROPERTY(EditAnywhere, config, Category=Colors)
+	UPROPERTY(/*EditAnywhere, config, Category=Colors*/) // WITH_OCULUS_PRIVATE_CODE
 	FSlateBrush EditorChildWindowBackgroundOverride;
 
 	/** Check to reset the window background settings to editor defaults */
-	UPROPERTY(EditAnywhere, config, Category=Colors)
+	UPROPERTY(/*EditAnywhere, config, Category=Colors*/) // WITH_OCULUS_PRIVATE_CODE
 	bool bResetEditorWindowBackgroundSettings;
 
 	/** Whether to use small toolbar icons without labels or not. */
