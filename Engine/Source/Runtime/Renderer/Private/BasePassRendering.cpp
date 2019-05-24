@@ -139,25 +139,61 @@ void SetBasePassDitheredLODTransitionState(const FSceneView* SceneView, const FM
 
 		if (ViewInfo->bAllowStencilDither)
 		{
+#if WITH_OCULUS_PRIVATE_CODE
+			bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(ViewInfo->GetShaderPlatform()) && ViewInfo->StereoPass != eSSP_FULL;
+#endif
+
 			if (ViewInfo->StaticMeshFadeOutDitheredLODMap[StaticMeshId])
 			{
-				DrawRenderState.SetDepthStencilState(
-					TStaticDepthStencilState<
-					false, CF_Equal,
-					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-					0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-					>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+				if (bUseFoveatedMaskStencil)
+				{
+					DrawRenderState.SetDepthStencilState(
+						TStaticDepthStencilState<
+						false, CF_Equal,
+						true, CF_Equal, SO_Keep, SO_Keep, SO_Replace,
+						true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+						STENCIL_FOVEATED_MASK_MASK,
+						GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+						>::GetRHI());
+				}
+				else
+#endif
+				{
+					DrawRenderState.SetDepthStencilState(
+						TStaticDepthStencilState<
+						false, CF_Equal,
+						true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+						false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+						0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+						>::GetRHI());
+				}
 			}
 			else if (ViewInfo->StaticMeshFadeInDitheredLODMap[StaticMeshId])
 			{
-				DrawRenderState.SetDepthStencilState(
-					TStaticDepthStencilState<
-					false, CF_Equal,
-					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-					0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-					>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+				if (bUseFoveatedMaskStencil)
+				{
+					DrawRenderState.SetDepthStencilState(
+						TStaticDepthStencilState<
+						false, CF_Equal,
+						true, CF_Equal, SO_Keep, SO_Keep, SO_Replace,
+						true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+						STENCIL_FOVEATED_MASK_MASK,
+						GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+						>::GetRHI());
+				}
+				else
+#endif
+				{
+					DrawRenderState.SetDepthStencilState(
+						TStaticDepthStencilState<
+						false, CF_Equal,
+						true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+						false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+						0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+						>::GetRHI());
+				}
 			}
 		}
 	}
@@ -262,7 +298,11 @@ FMeshDrawCommandSortKey CalculateBasePassMeshStaticSortKey(EDepthDrawingMode Ear
 	return SortKey;
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void SetDepthStencilStateForBasePass(FMeshPassProcessorRenderState& DrawRenderState, ERHIFeatureLevel::Type FeatureLevel, const FMeshBatch& Mesh, const FPrimitiveSceneProxy* PrimitiveSceneProxy, bool bEnableReceiveDecalOutput, bool bUseDebugViewPS, bool bUseFoveatedMaskStencil, FDepthStencilStateRHIParamRef LodFadeOverrideDepthStencilState)
+#else
 void SetDepthStencilStateForBasePass(FMeshPassProcessorRenderState& DrawRenderState, ERHIFeatureLevel::Type FeatureLevel, const FMeshBatch& Mesh, const FPrimitiveSceneProxy* PrimitiveSceneProxy, bool bEnableReceiveDecalOutput, bool bUseDebugViewPS, FDepthStencilStateRHIParamRef LodFadeOverrideDepthStencilState)
+#endif
 {
 	static IConsoleVariable* EarlyZPassOnlyMaterialMaskingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EarlyZPassOnlyMaterialMasking"));
 	bool bMaskInEarlyPass = (EarlyZPassOnlyMaterialMaskingCVar && Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsMasked() && EarlyZPassOnlyMaterialMaskingCVar->GetInt());
@@ -282,42 +322,109 @@ void SetDepthStencilStateForBasePass(FMeshPassProcessorRenderState& DrawRenderSt
 		}
 		else if (bMaskInEarlyPass)
 		{
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
-				false, CF_Equal,
-				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-				0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-			>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					false, CF_Equal,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Replace,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					false, CF_Equal, 
+					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+					0xFF,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
 			DrawRenderState.SetStencilRef(StencilValue);
 		}
 		else if (DrawRenderState.GetDepthStencilAccess() & FExclusiveDepthStencil::DepthWrite)
 		{
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
-				true, CF_GreaterEqual,
-				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-				0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-			>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					true, CF_GreaterEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Replace,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					true, CF_GreaterEqual,
+					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+					0xFF,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
 			DrawRenderState.SetStencilRef(StencilValue);
 		}
 		else
 		{
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
-				false, CF_GreaterEqual,
-				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
-				0xFF, GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
-			>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					false, CF_GreaterEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Replace,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+					false, CF_GreaterEqual,
+					true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+					false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+					0xFF,
+					GET_STENCIL_BIT_MASK(RECEIVE_DECAL, 1) | STENCIL_LIGHTING_CHANNELS_MASK(0x7)
+				>::GetRHI());
+			}
 			DrawRenderState.SetStencilRef(StencilValue);
 		}
 	}
 	else if (bMaskInEarlyPass)
 	{
-		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Equal>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+		if (bUseFoveatedMaskStencil)
+		{
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<
+				false, CF_Equal,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK,
+				0xFF
+			>::GetRHI());
+		}
+		else
+#endif
+		{
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Equal>::GetRHI());
+		}
 	}
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void SetupBasePassState(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const bool bShaderComplexity, const bool bUseFoveatedMaskStencil, FMeshPassProcessorRenderState& DrawRenderState)
+#else
 void SetupBasePassState(FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const bool bShaderComplexity, FMeshPassProcessorRenderState& DrawRenderState)
+#endif
 {
 	DrawRenderState.SetDepthStencilAccess(BasePassDepthStencilAccess);
 
@@ -326,7 +433,23 @@ void SetupBasePassState(FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
 		// Additive blending when shader complexity viewmode is enabled.
 		DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_One>::GetRHI());
 		// Disable depth writes as we have a full depth prepass.
-		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+		if (bUseFoveatedMaskStencil)
+		{
+			DrawRenderState.SetDepthStencilState(
+				TStaticDepthStencilState<
+				false, CF_DepthNearOrEqual,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+				STENCIL_FOVEATED_MASK_MASK,
+				0
+				>::GetRHI());
+		}
+		else
+#endif
+		{
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+		}
 	}
 	else
 	{
@@ -343,11 +466,43 @@ void SetupBasePassState(FExclusiveDepthStencil::Type BasePassDepthStencilAccess,
 
 		if (DrawRenderState.GetDepthStencilAccess() & FExclusiveDepthStencil::DepthWrite)
 		{
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(
+					TStaticDepthStencilState<
+					true, CF_DepthNearOrEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					0
+					>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
+			}
 		}
 		else
 		{
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(
+					TStaticDepthStencilState<
+					false, CF_DepthNearOrEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					0
+					>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+			}
 		}
 	}
 }
@@ -646,7 +801,12 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 
 				FMeshPassProcessorRenderState DrawRenderState(View, BasePassUniformBuffer);
 
+#if WITH_OCULUS_PRIVATE_CODE
+				const bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetShaderPlatform()) && View.StereoPass != eSSP_FULL;
+				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, bUseFoveatedMaskStencil, DrawRenderState);
+#else
 				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
+#endif
 
 				if (View.ShouldRenderView())
 				{
@@ -680,7 +840,12 @@ bool FDeferredShadingSceneRenderer::RenderBasePass(FRHICommandListImmediate& RHI
 
 				FMeshPassProcessorRenderState DrawRenderState(View, BasePassUniformBuffer);
 
+#if WITH_OCULUS_PRIVATE_CODE
+				const bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetShaderPlatform()) && View.StereoPass != eSSP_FULL;
+				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, bUseFoveatedMaskStencil, DrawRenderState);
+#else
 				SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
+#endif
 
 				if (View.ShouldRenderView())
 				{
@@ -795,7 +960,12 @@ bool HasEditorPrimitivesForDPG(const FViewInfo& View, ESceneDepthPriorityGroup D
 void FDeferredShadingSceneRenderer::RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FExclusiveDepthStencil::Type BasePassDepthStencilAccess, const FMeshPassProcessorRenderState& InDrawRenderState, bool& bOutDirty) 
 {
 	FMeshPassProcessorRenderState DrawRenderState(InDrawRenderState);
+#if WITH_OCULUS_PRIVATE_CODE
+	const bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetShaderPlatform()) && View.StereoPass != eSSP_FULL;
+	SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, bUseFoveatedMaskStencil, DrawRenderState);
+#else
 	SetupBasePassState(BasePassDepthStencilAccess, ViewFamily.EngineShowFlags.ShaderComplexity, DrawRenderState);
+#endif
 	SetupBasePassView(RHICmdList, View, this, true);
 
 	RenderEditorPrimitivesForDPG(RHICmdList, View, BasePassDepthStencilAccess, DrawRenderState, SDPG_World, bOutDirty);
@@ -944,7 +1114,13 @@ void FBasePassMeshProcessor::Process(
 
 	FMeshPassProcessorRenderState DrawRenderState(PassDrawRenderState);
 
+
+#if WITH_OCULUS_PRIVATE_CODE
+	const bool bUseFoveatedMaskStencil = ViewIfDynamicMeshCommand && FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(ViewIfDynamicMeshCommand->GetShaderPlatform()) && ViewIfDynamicMeshCommand->StereoPass != eSSP_FULL;
+	SetDepthStencilStateForBasePass(DrawRenderState, FeatureLevel, MeshBatch, PrimitiveSceneProxy, bEnableReceiveDecalOutput, false, bUseFoveatedMaskStencil, nullptr);
+#else
 	SetDepthStencilStateForBasePass(DrawRenderState, FeatureLevel, MeshBatch, PrimitiveSceneProxy, bEnableReceiveDecalOutput, false, nullptr);
+#endif
 
 	if (bTranslucentBasePass)
 	{
@@ -1524,7 +1700,13 @@ FMeshPassProcessor* CreateBasePassProcessor(const FScene* Scene, const FSceneVie
 {
 	FMeshPassProcessorRenderState PassDrawRenderState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.OpaqueBasePassUniformBuffer);
 	PassDrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
+
+#if WITH_OCULUS_PRIVATE_CODE
+	const bool bUseFoveatedMaskStencil = InViewIfDynamicMeshCommand && FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(InViewIfDynamicMeshCommand->GetShaderPlatform()) && InViewIfDynamicMeshCommand->StereoPass != eSSP_FULL;
+	SetupBasePassState(Scene->DefaultBasePassDepthStencilAccess, false, bUseFoveatedMaskStencil, PassDrawRenderState);
+#else
 	SetupBasePassState(Scene->DefaultBasePassDepthStencilAccess, false, PassDrawRenderState);
+#endif
 
 	const FBasePassMeshProcessor::EFlags Flags = FBasePassMeshProcessor::EFlags::CanUseDepthStencil;
 

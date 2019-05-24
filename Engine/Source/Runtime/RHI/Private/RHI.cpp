@@ -866,6 +866,14 @@ void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& Ou
 		++OutRTInfo.NumColorRenderTargets;
 
 		OutRTInfo.bClearColor |= (LoadAction == ERenderTargetLoadAction::EClear);
+
+		ensure(!OutRTInfo.bHasResolveAttachments || ColorRenderTargets[Index].ResolveTarget);
+		if (ColorRenderTargets[Index].ResolveTarget)
+		{
+			OutRTInfo.bHasResolveAttachments = true;
+			OutRTInfo.ColorResolveRenderTarget[Index] = OutRTInfo.ColorRenderTarget[Index];
+			OutRTInfo.ColorResolveRenderTarget[Index].Texture = ColorRenderTargets[Index].ResolveTarget;
+		}
 	}
 
 	ERenderTargetActions DepthActions = GetDepthActions(DepthStencilRenderTarget.Action);
@@ -883,6 +891,8 @@ void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& Ou
 		DepthStencilRenderTarget.ExclusiveDepthStencil);
 	OutRTInfo.bClearDepth = (DepthLoadAction == ERenderTargetLoadAction::EClear);
 	OutRTInfo.bClearStencil = (StencilLoadAction == ERenderTargetLoadAction::EClear);
+
+	OutRTInfo.VariableResolutionTexture = VariableResolutionTexture;
 
 	if (NumUAVs > 0)
 	{

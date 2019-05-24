@@ -651,6 +651,7 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 	{
 		SCOPED_DRAW_EVENT(RHICmdList, SlateUI);
 		SCOPED_GPU_STAT(RHICmdList, SlateUI);
+		SCOPED_NAMED_EVENT_TEXT("Slate::DrawWindow_RenderThread", FColor::Magenta);
 
 		// Should only be called by the rendering thread
 		check(IsInRenderingThread());
@@ -807,10 +808,10 @@ void FSlateRHIRenderer::DrawWindow_RenderThread(FRHICommandListImmediate& RHICmd
 					}
 				}
 	#endif
-				RHICmdList.BeginRenderPass(RPInfo, TEXT("SlateBatches"));
 				{
 					if (BatchData.GetRenderBatches().Num() > 0)
 					{
+						RHICmdList.BeginRenderPass(RPInfo, TEXT("SlateBatches"));
 						SCOPE_CYCLE_COUNTER(STAT_SlateRTDrawBatches);
 
 						FSlateBackBuffer BackBufferTarget(BackBuffer, FIntPoint(ViewportWidth, ViewportHeight));

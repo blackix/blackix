@@ -151,6 +151,7 @@ void FVulkanAndroidPlatform::GetDeviceExtensions(TArray<const ANSICHAR*>& OutExt
 	OutExtensions.Add(VK_KHR_SURFACE_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
 	OutExtensions.Add(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+	OutExtensions.Add(VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME);
 }
 
 bool FVulkanAndroidPlatform::SupportsStandardSwapchain()

@@ -2,6 +2,7 @@
 
 #include "OculusAmbisonicSpatializer.h"
 #include "OculusAudioMixer.h"
+#include "OculusAudioDllManager.h"
 
 FOculusAmbisonicsMixer::FOculusAmbisonicsMixer()
 	: Context(nullptr)
@@ -11,7 +12,7 @@ FOculusAmbisonicsMixer::FOculusAmbisonicsMixer()
 
 void FOculusAmbisonicsMixer::Shutdown()
 {
-	ovrAudio_DestroyContext(Context);
+	OVRA_CALL(ovrAudio_DestroyContext)(Context);
 }
 
 int32 FOculusAmbisonicsMixer::GetNumChannelsForAmbisonicsFormat(UAmbisonicsSubmixSettingsBase* InSettings)
@@ -25,7 +26,7 @@ void FOculusAmbisonicsMixer::OnOpenEncodingStream(const uint32 StreamId, UAmbiso
 
 	ovrAudioAmbisonicStream NewStream = nullptr;
 	ovrAudioAmbisonicFormat StreamFormat = (Settings->ChannelOrder == EAmbisonicFormat::AmbiX ? ovrAudioAmbisonicFormat_AmbiX : ovrAudioAmbisonicFormat_FuMa);
-	ovrResult OurResult = ovrAudio_CreateAmbisonicStream(Context, SampleRate, BufferLength, StreamFormat, 1, &NewStream);
+	ovrResult OurResult = OVRA_CALL(ovrAudio_CreateAmbisonicStream)(Context, SampleRate, BufferLength, StreamFormat, 1, &NewStream);
 	check(OurResult == 0);
 	check(NewStream != nullptr);
 	OpenStreams.Add(StreamId, NewStream);
@@ -36,7 +37,7 @@ void FOculusAmbisonicsMixer::OnCloseEncodingStream(const uint32 SourceId)
 	ovrAudioAmbisonicStream* InStream = OpenStreams.Find(SourceId);
 	if (InStream != nullptr)
 	{
-		ovrAudio_DestroyAmbisonicStream(*InStream);
+		OVRA_CALL(ovrAudio_DestroyAmbisonicStream)(*InStream);
 		OpenStreams.Remove(SourceId);
 	}
 	else
@@ -57,23 +58,26 @@ void FOculusAmbisonicsMixer::EncodeToAmbisonics(const uint32 SourceId, const FAm
 
 void FOculusAmbisonicsMixer::OnOpenDecodingStream(const uint32 StreamId, UAmbisonicsSubmixSettingsBase* InSettings, FAmbisonicsDecoderPositionalData& SpecifiedOutputPositions)
 {
-	UOculusAmbisonicsSettings* Settings = Cast<UOculusAmbisonicsSettings>(InSettings);
-	if (Settings)
+	ovrAudioAmbisonicFormat StreamFormat = ovrAudioAmbisonicFormat_AmbiX;
+	ovrAudioAmbisonicSpeakerLayout SpeakerLayout = ovrAudioAmbisonicSpeakerLayout_SphericalHarmonics;
+	if (InSettings != nullptr) 
 	{
-		ovrAudioAmbisonicStream NewStream = nullptr;
-		ovrAudioAmbisonicFormat StreamFormat = (Settings->ChannelOrder == EAmbisonicFormat::AmbiX ? ovrAudioAmbisonicFormat_AmbiX : ovrAudioAmbisonicFormat_FuMa);
-		ovrResult OurResult = ovrAudio_CreateAmbisonicStream(Context, SampleRate, BufferLength, StreamFormat, 1, &NewStream);
-
-		check(OurResult == 0);
-		check(NewStream != nullptr);
-
-		ovrAudioAmbisonicSpeakerLayout SpeakerLayout = (Settings->SpatializationMode == EAmbisonicMode::SphericalHarmonics) ?
+		UOculusAmbisonicsSettings* Settings = CastChecked<UOculusAmbisonicsSettings>(InSettings);
+		StreamFormat = (Settings->ChannelOrder == EAmbisonicFormat::AmbiX ? ovrAudioAmbisonicFormat_AmbiX : ovrAudioAmbisonicFormat_FuMa);
+		SpeakerLayout = (Settings->SpatializationMode == EAmbisonicMode::SphericalHarmonics) ?
 			ovrAudioAmbisonicSpeakerLayout_SphericalHarmonics : ovrAudioAmbisonicSpeakerLayout_Icosahedron;
-		OurResult = ovrAudio_SetAmbisonicSpeakerLayout(NewStream, SpeakerLayout);
-
-		check(OurResult == 0);
-		OpenStreams.Add(StreamId, NewStream);
 	}
+
+	ovrAudioAmbisonicStream NewStream = nullptr;
+	ovrResult OurResult = OVRA_CALL(ovrAudio_CreateAmbisonicStream)(Context, SampleRate, BufferLength, StreamFormat, 1, &NewStream);
+
+	check(OurResult == 0);
+	check(NewStream != nullptr);
+
+	OurResult = OVRA_CALL(ovrAudio_SetAmbisonicSpeakerLayout)(NewStream, SpeakerLayout);
+
+	check(OurResult == 0);
+	OpenStreams.Add(StreamId, NewStream);
 }
 
 void FOculusAmbisonicsMixer::OnCloseDecodingStream(const uint32 StreamId)
@@ -81,7 +85,7 @@ void FOculusAmbisonicsMixer::OnCloseDecodingStream(const uint32 StreamId)
 	ovrAudioAmbisonicStream* InStream = OpenStreams.Find(StreamId);
 	if (InStream != nullptr)
 	{
-		ovrAudio_DestroyAmbisonicStream(*InStream);
+		OVRA_CALL(ovrAudio_DestroyAmbisonicStream)(*InStream);
 		OpenStreams.Remove(StreamId);
 	}
 	else
@@ -106,12 +110,13 @@ void FOculusAmbisonicsMixer::DecodeFromAmbisonics(const uint32 StreamId, const F
 				FVector OvrListenerForward = OculusAudioSpatializationAudioMixer::ToOVRVector(ListenerRotation.GetForwardVector());
 				FVector OvrListenerUp = OculusAudioSpatializationAudioMixer::ToOVRVector(ListenerRotation.GetUpVector());
 
-				ovrResult Result = ovrAudio_SetListenerVectors(Context,
+				static auto SetListenerVectors = OVRA_CALL(ovrAudio_SetListenerVectors);
+				ovrResult Result = SetListenerVectors(Context,
 					0.0f, 0.0f, 0.0f,
 					OvrListenerForward.X, OvrListenerForward.Y, OvrListenerForward.Z,
 					OvrListenerUp.X, OvrListenerUp.Y, OvrListenerUp.Z);
 			}
-			ovrResult DecodeResult= ovrAudio_ProcessAmbisonicStreamInterleaved(Context, *ThisStream, InputData.AudioBuffer->GetData(), OutputData.AudioBuffer.GetData(), InputData.AudioBuffer->Num() / InputData.NumChannels);
+			ovrResult DecodeResult= OVRA_CALL(ovrAudio_ProcessAmbisonicStreamInterleaved)(Context, *ThisStream, InputData.AudioBuffer->GetData(), OutputData.AudioBuffer.GetData(), InputData.AudioBuffer->Num() / InputData.NumChannels);
 			check(DecodeResult == 0);
 		}
 		else
@@ -159,7 +164,7 @@ void FOculusAmbisonicsMixer::Initialize(const FAudioPluginInitializationParams I
 	ContextConfig.acc_MaxNumSources = 1;
 	ContextConfig.acc_SampleRate = SampleRate;
 	ContextConfig.acc_BufferLength = BufferLength;
-	ovrResult Result = ovrAudio_CreateContext(&Context, &ContextConfig);
+	ovrResult Result = OVRA_CALL(ovrAudio_CreateContext)(&Context, &ContextConfig);
 	OVR_AUDIO_CHECK(Result, "Failed to create ambisonic context");
 }
 

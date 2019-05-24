@@ -244,8 +244,12 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, EditorPrimitivesDepth(GRenderTargetPool.MakeSnapshot(SnapshotSource.EditorPrimitivesDepth))
 	, SeparateTranslucencyRT(SnapshotSource.SeparateTranslucencyRT)
 	, DownsampledTranslucencyDepthRT(SnapshotSource.DownsampledTranslucencyDepthRT)
+	, VariableResolutionTexture(GRenderTargetPool.MakeSnapshot(SnapshotSource.VariableResolutionTexture))
 	, bScreenSpaceAOIsValid(SnapshotSource.bScreenSpaceAOIsValid)
 	, bCustomDepthIsValid(SnapshotSource.bCustomDepthIsValid)
+#if WITH_OCULUS_PRIVATE_CODE
+	, bIsFoveatedMaskValidInStencil(SnapshotSource.bIsFoveatedMaskValidInStencil)
+#endif
 	, GBufferRefCount(SnapshotSource.GBufferRefCount)
 	, ThisFrameNumber(SnapshotSource.ThisFrameNumber)
 	, CurrentDesiredSizeIndex(SnapshotSource.CurrentDesiredSizeIndex)
@@ -278,6 +282,7 @@ FSceneRenderTargets::FSceneRenderTargets(const FViewInfo& View, const FSceneRend
 	, DefaultDepthClear(SnapshotSource.DefaultDepthClear)
 	, QuadOverdrawIndex(SnapshotSource.QuadOverdrawIndex)
 	, bHMDAllocatedDepthTarget(SnapshotSource.bHMDAllocatedDepthTarget)
+	, bAllocatedVariableResolutionTexture(SnapshotSource.bAllocatedVariableResolutionTexture)
 {
 	FMemory::Memcpy(LargestDesiredSizes, SnapshotSource.LargestDesiredSizes);
 #if PREVENT_RENDERTARGET_SIZE_THRASHING
@@ -636,6 +641,10 @@ void FSceneRenderTargets::Allocate(FRHICommandListImmediate& RHICmdList, const F
 		UE_LOG(LogRenderer, Log, TEXT("Reallocating scene render targets to support %ux%u Format %u NumSamples %u (Frame:%u)."), BufferSize.X, BufferSize.Y, (uint32)GetSceneColorFormat(NewFeatureLevel), CurrentMSAACount, ViewFamily.FrameNumber);
 
 		UpdateRHI();
+
+#if WITH_OCULUS_PRIVATE_CODE
+		SetFoveatedMaskValidInStencil(false);
+#endif
 	}
 
 	// Do allocation of render targets if they aren't available for the current shading path
@@ -879,7 +888,11 @@ void FSceneRenderTargets::BeginRenderingGBuffer(FRHICommandList& RHICmdList, ERe
 			Textures[i] = RPInfo.ColorRenderTargets[i].RenderTarget;
 		}
 		//depth/stencil should have been handled by the fast clear.  only color for RT0 can get changed.
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0, 0xff);
+#else
 		DrawClearQuadMRT(RHICmdList, true, MRTCount, ClearColors, false, 0, false, 0);
+#endif
 	}
 
 	//bind any clear data that won't be bound automatically
@@ -1005,6 +1018,8 @@ void FSceneRenderTargets::AllocMobileMultiViewSceneColor(FRHICommandList& RHICmd
 		MobileMultiViewSceneColor.SafeRelease();
 	}
 
+	bool MobileHWsRGB = IsMobileColorsRGB();
+
 	if (!MobileMultiViewSceneColor)
 	{
 		const EPixelFormat SceneColorBufferFormat = GetSceneColorFormat();
@@ -1014,6 +1029,7 @@ void FSceneRenderTargets::AllocMobileMultiViewSceneColor(FRHICommandList& RHICmd
 		Desc.NumSamples = GetNumSceneColorMSAASamples(CurrentFeatureLevel);
 		Desc.ArraySize = 2;
 		Desc.bIsArray = true;
+		Desc.Flags |= MobileHWsRGB ? TexCreate_SRGB : 0;
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MobileMultiViewSceneColor, TEXT("MobileMultiViewSceneColor"));
 	}
 	check(MobileMultiViewSceneColor);
@@ -1360,7 +1376,11 @@ void FSceneRenderTargets::FinishRenderingCustomDepth(FRHICommandListImmediate& R
 	bCustomDepthIsValid = true;
 }
 
+#if WITH_OCULUS_PRIVATE_CODE
+void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear, bool bShouldClearStencil)
+#else
 void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, bool bPerformClear)
+#endif
 {
 	check(RHICmdList.IsOutsideRenderPass());
 
@@ -1377,7 +1397,11 @@ void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, boo
 	{				
 		// Clear the depth buffer.
 		// Note, this is a reversed Z depth surface, so 0.0f is the far plane.
+#if WITH_OCULUS_PRIVATE_CODE
+		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Clear_Store, bShouldClearStencil ? ERenderTargetActions::Clear_Store : ERenderTargetActions::Load_Store) ;
+#else
 		RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Clear_Store, ERenderTargetActions::Clear_Store);
+#endif
 		bSceneDepthCleared = true;	
 	}
 	else
@@ -1392,7 +1416,11 @@ void FSceneRenderTargets::BeginRenderingPrePass(FRHICommandList& RHICmdList, boo
 	if (!bPerformClear)
 	{
 		// Needs to be called after we start a renderpass.
+#if WITH_OCULUS_PRIVATE_CODE
+		RHICmdList.BindClearMRTValues(false, true, bShouldClearStencil);
+#else
 		RHICmdList.BindClearMRTValues(false, true, true);
+#endif
 	}
 }
 
@@ -1506,6 +1534,18 @@ TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetDownsampledTranslucen
 	return DownsampledTranslucencyDepthRT;
 }
 
+TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetMaskReconstructedColor(FRHICommandList& RHICmdList, FIntPoint Size)
+{
+	if (!MaskReconstructedColorRT || MaskReconstructedColorRT->GetDesc().Extent != Size)
+	{
+		// Create the SeparateTranslucency depth render target 
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(Size, PF_FloatRGBA, FClearValueBinding::None, TexCreate_None, TexCreate_RenderTargetable, false));
+		Desc.NumSamples = 1;
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, MaskReconstructedColorRT, TEXT("MaskReconstructedColor"));
+	}
+	return MaskReconstructedColorRT;
+}
+
 void FSceneRenderTargets::BeginRenderingTranslucency(FRHICommandList& RHICmdList, const FViewInfo& View, const FSceneRenderer& Renderer, bool bFirstTimeThisFrame)
 {
 	check(RHICmdList.IsOutsideRenderPass());
@@ -1516,7 +1556,11 @@ void FSceneRenderTargets::BeginRenderingTranslucency(FRHICommandList& RHICmdList
 	if (bFirstTimeThisFrame)
 	{
 		// Clear the stencil buffer for ResponsiveAA
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0, STENCIL_FOVEATED_MASK_INV_MASK);
+#else
 		DrawClearQuad(RHICmdList, false, FLinearColor(), false, 0, true, 0);
+#endif
 	}
 
 	// viewport to match view size
@@ -1958,6 +2002,7 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandList& RHICmdLis
 	// on ES2 we don't do on demand allocation of SceneColor yet (in non ES2 it's released in the Tonemapper Process())
 	AllocSceneColor(RHICmdList);
 	AllocateCommonDepthTargets(RHICmdList);
+	AllocateVariableResolutionTexture(RHICmdList);
 
 #if PLATFORM_ANDROID
 	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
@@ -1971,11 +2016,8 @@ void FSceneRenderTargets::AllocateMobileRenderTargets(FRHICommandList& RHICmdLis
 	if (bIsUsingMobileMultiView)
 	{
 		const int32 ScaleFactor = (bIsMobileMultiViewDirectEnabled) ? 1 : 2;
-		if (!bIsMobileMultiViewDirectEnabled)
-		{
-			AllocMobileMultiViewSceneColor(RHICmdList, ScaleFactor);
-		}
 
+		AllocMobileMultiViewSceneColor(RHICmdList, ScaleFactor);
 		AllocMobileMultiViewDepth(RHICmdList, ScaleFactor);
 	}
 #endif
@@ -2130,7 +2172,7 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 	if (!SceneDepthZ || GFastVRamConfig.bDirty)
 	{
 		FTexture2DRHIRef DepthTex, SRTex;
-		const bool bHMDAllocated = StereoRenderTargetManager && StereoRenderTargetManager->AllocateDepthTexture(0, BufferSize.X, BufferSize.Y, PF_X24_G8, 0, TexCreate_None, TexCreate_DepthStencilTargetable, DepthTex, SRTex, GetNumSceneColorMSAASamples(CurrentFeatureLevel));
+		bHMDAllocatedDepthTarget = StereoRenderTargetManager && StereoRenderTargetManager->AllocateDepthTexture(0, BufferSize.X, BufferSize.Y, PF_X24_G8, 0, TexCreate_None, TexCreate_DepthStencilTargetable, DepthTex, SRTex, GetNumSceneColorMSAASamples(CurrentFeatureLevel));
 
 		// Create a texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
 		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(BufferSize, PF_DepthStencil, DefaultDepthClear, TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource, false));
@@ -2138,10 +2180,9 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		Desc.Flags |= GFastVRamConfig.SceneDepth;
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SceneDepthZ, TEXT("SceneDepthZ"));
 
-		if (bHMDAllocated)
+		if (SceneDepthZ && bHMDAllocatedDepthTarget)
 		{
 			const uint32 OldElementSize = SceneDepthZ->ComputeMemorySize();
-			bHMDAllocatedDepthTarget = true;
 		
 			// If SRT and texture are different (MSAA), only modify the resolve render target, to avoid creating a swapchain of MSAA textures
 			if (SceneDepthZ->GetRenderTargetItem().ShaderResourceTexture == SceneDepthZ->GetRenderTargetItem().TargetableTexture)
@@ -2156,14 +2197,24 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 			GRenderTargetPool.UpdateElementSize(SceneDepthZ, OldElementSize);
 		}
 
-		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
+		SceneStencilSRV.SafeRelease();
 	}
-	else if (bStereo && bHMDAllocatedDepthTarget)
+
+	// We need to update the stencil SRV every frame if the depth target was allocated by an HMD.
+	// TODO: This should be handled by the HMD depth target swap chain, but currently it only updates the depth SRV.
+	if (bHMDAllocatedDepthTarget)
 	{
-		// We need to update the stencil SRV every frame if the depth target was allocated by an HMD.
-		// TODO: This should be handled by the HMD depth target swap chain, but currently it only updates the depth SRV.
+		SceneStencilSRV.SafeRelease();
+	}
+
+	if (SceneDepthZ && !SceneStencilSRV)
+	{
 		SceneStencilSRV = RHICreateShaderResourceView((FTexture2DRHIRef&)SceneDepthZ->GetRenderTargetItem().TargetableTexture, 0, 1, PF_X24_G8);
 	}
+
+#if WITH_OCULUS_PRIVATE_CODE
+	bIsFoveatedMaskValidInStencil = StereoRenderTargetManager && !StereoRenderTargetManager->NeedFoveatedMaskGeneration();
+#endif
 
 	// When targeting DX Feature Level 10, create an auxiliary texture to store the resolved scene depth, and a render-targetable surface to hold the unresolved scene depth.
 	if (!AuxiliarySceneDepthZ && !GSupportsDepthFetchDuringDepthTest)
@@ -2173,6 +2224,54 @@ void FSceneRenderTargets::AllocateCommonDepthTargets(FRHICommandList& RHICmdList
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, AuxiliarySceneDepthZ, TEXT("AuxiliarySceneDepthZ"), true, ERenderTargetTransience::NonTransient);
 	}
 }
+
+void FSceneRenderTargets::AllocateVariableResolutionTexture(FRHICommandList& RHICmdList)
+{
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	
+	FTexture2DRHIRef Texture;
+	FIntPoint TextureSize;
+
+	// Allocate variable resolution texture for VR foveation if supported
+	if (StereoRenderTargetManager && StereoRenderTargetManager->NeedReAllocateFoveationTexture(VariableResolutionTexture))
+	{
+		VariableResolutionTexture.SafeRelease();
+	}
+	bAllocatedVariableResolutionTexture = StereoRenderTargetManager && StereoRenderTargetManager->AllocateFoveationTexture(0, BufferSize.X, BufferSize.Y, PF_R8G8, 0, TexCreate_None, TexCreate_None, Texture, TextureSize);
+	if (bAllocatedVariableResolutionTexture)
+	{
+		FPooledRenderTargetDesc Desc(FPooledRenderTargetDesc::Create2DDesc(TextureSize, PF_R8G8, FClearValueBinding::White, TexCreate_None, TexCreate_None, false));
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, VariableResolutionTexture, TEXT("VariableResolution"));
+		const uint32 OldElementSize = VariableResolutionTexture->ComputeMemorySize();
+		VariableResolutionTexture->GetRenderTargetItem().ShaderResourceTexture = VariableResolutionTexture->GetRenderTargetItem().TargetableTexture = Texture;
+		GRenderTargetPool.UpdateElementSize(VariableResolutionTexture, OldElementSize);
+	}
+}
+
+#if WITH_OCULUS_PRIVATE_CODE
+void FSceneRenderTargets::SetFoveatedMaskValidInStencil(bool IsMaskValid)
+{
+	bIsFoveatedMaskValidInStencil = IsMaskValid;
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	if (StereoRenderTargetManager && bHMDAllocatedDepthTarget)
+	{
+		StereoRenderTargetManager->SetFoveatedMaskGenerated(IsMaskValid);
+	}
+}
+
+void FSceneRenderTargets::InvalidateFoveatedMaskInStencil()
+{
+	bIsFoveatedMaskValidInStencil = false;
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+	if (StereoRenderTargetManager && bHMDAllocatedDepthTarget)
+	{
+		StereoRenderTargetManager->InvalidateAllGeneratedFoveatedMask();
+	}
+}
+#endif
 
 void FSceneRenderTargets::AllocateScreenShadowMask(FRHICommandList& RHICmdList, TRefCountPtr<IPooledRenderTarget>& ScreenShadowMaskTexture)
 {
@@ -2525,7 +2624,7 @@ EPixelFormat FSceneRenderTargets::GetSceneColorFormat(ERHIFeatureLevel::Type InF
 
 void FSceneRenderTargets::AllocateRenderTargets(FRHICommandListImmediate& RHICmdList, const int32 NumViews)
 {
-	if (BufferSize.X > 0 && BufferSize.Y > 0 && (!AreShadingPathRenderTargetsAllocated(GetSceneColorFormatType()) || !AreRenderTargetClearsValid(GetSceneColorFormatType())))
+	if (BufferSize.X > 0 && BufferSize.Y > 0 && IsAllocateRenderTargetsRequired())
 	{
 		if ((EShadingPath)CurrentShadingPath == EShadingPath::Mobile)
 		{
@@ -2604,6 +2703,8 @@ void FSceneRenderTargets::ReleaseAllTargets()
 
 	EditorPrimitivesColor.SafeRelease();
 	EditorPrimitivesDepth.SafeRelease();
+
+	VariableResolutionTexture.SafeRelease();
 }
 
 void FSceneRenderTargets::ReleaseDynamicRHI()
@@ -2678,6 +2779,42 @@ const FUnorderedAccessViewRHIRef& FSceneRenderTargets::GetSceneColorTextureUAV()
 	check(GetSceneColorForCurrentShadingPath());
 
 	return (const FUnorderedAccessViewRHIRef&)GetSceneColor()->GetRenderTargetItem().UAV;
+}
+
+const TRefCountPtr<IPooledRenderTarget>& FSceneRenderTargets::GetActualDepthRenderTarget() const
+{
+	const TRefCountPtr<IPooledRenderTarget>* DepthRenderTargetPtr = NULL;
+	if ((CurrentFeatureLevel >= ERHIFeatureLevel::SM4) || IsPCPlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
+	{
+		if (GSupportsDepthFetchDuringDepthTest)
+		{
+			DepthRenderTargetPtr = &GetSceneDepth();
+		}
+		else
+		{
+			DepthRenderTargetPtr = &GetAuxiliarySceneDepth();
+		}
+	}
+	else if (IsMobilePlatform(GShaderPlatformForFeatureLevel[CurrentFeatureLevel]))
+	{
+		// TODO: avoid depth texture fetch when shader needs fragment previous depth and device supports framebuffer fetch
+
+		//bool bSceneDepthInAlpha = (GetSceneColor()->GetDesc().Format == PF_FloatRGBA);
+		//bool bOnChipDepthFetch = (GSupportsShaderDepthStencilFetch || (bSceneDepthInAlpha && GSupportsShaderFramebufferFetch));
+		//
+		//if (bOnChipDepthFetch)
+		//{
+		//	DepthTexture = (const FTexture2DRHIRef*)(&GSystemTextures.DepthDummy->GetRenderTargetItem().ShaderResourceTexture);
+		//}
+		//else
+		{
+			DepthRenderTargetPtr = &GetSceneDepth();
+		}
+	}
+
+	check(DepthRenderTargetPtr != NULL);
+
+	return *DepthRenderTargetPtr;
 }
 
 const FTexture2DRHIRef* FSceneRenderTargets::GetActualDepthTexture() const
@@ -2866,6 +3003,22 @@ bool FSceneRenderTargets::AreShadingPathRenderTargetsAllocated(ESceneColorFormat
 			return false;
 		}
 	}
+}
+
+bool FSceneRenderTargets::IsAllocateRenderTargetsRequired() const
+{
+	bool bAllocateRequired = false;
+
+	const bool bStereo = GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled();
+	IStereoRenderTargetManager* const StereoRenderTargetManager = bStereo ? GEngine->StereoRenderingDevice->GetRenderTargetManager() : nullptr;
+
+	// HMD controlled foveation textures may be destroyed externally and need a new allocation
+	if (StereoRenderTargetManager && StereoRenderTargetManager->NeedReAllocateFoveationTexture(VariableResolutionTexture))
+	{
+		bAllocateRequired = true;
+	}
+	
+	return bAllocateRequired || !AreShadingPathRenderTargetsAllocated(GetSceneColorFormatType()) || !AreRenderTargetClearsValid(GetSceneColorFormatType());
 }
 
 /*-----------------------------------------------------------------------------

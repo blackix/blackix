@@ -274,7 +274,11 @@ public:
 	/** Adds a draw element for the debug canvas.  Called externally by a widget that manages where the debug canvas draws */
 	void PaintDebugCanvas(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32 LayerId) const;
 
+#if WITH_OCULUS_PRIVATE_CODE
+protected:
+#else
 private:
+#endif
 	/**
 	 * Called when this viewport is destroyed
 	 */
@@ -374,7 +378,11 @@ private:
 	 */
 	void OnPostResizeWindowBackbuffer(void* Backbuffer);
 
+#if WITH_OCULUS_PRIVATE_CODE
+protected:
+#else
 private:
+#endif
 	/** An intermediate reply state that is reset whenever an input event is generated */
 	FReply CurrentReplyState;
 	/** A mapping of key names to their pressed state */

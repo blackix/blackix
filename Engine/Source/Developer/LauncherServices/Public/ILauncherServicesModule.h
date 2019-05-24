@@ -14,6 +14,8 @@
  */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnLauncherProfileManagerInitialized, ILauncherProfileManager&);
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnCreateLauncher, ILauncherRef);
+
 
 /**
  * Interface for launcher tools modules.
@@ -75,4 +77,6 @@ public:
 	 * Delegate that is invoked when a profile manager is initialized.
 	 */
 	LAUNCHERSERVICES_API static FOnLauncherProfileManagerInitialized ProfileManagerInitializedDelegate;
+
+	FOnCreateLauncher OnCreateLauncherDelegate;
 };

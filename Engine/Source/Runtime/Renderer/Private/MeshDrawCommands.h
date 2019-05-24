@@ -55,6 +55,9 @@ public:
 		, bDynamicInstancing(false)
 		, bReverseCulling(false)
 		, bRenderSceneTwoSided(false)
+#if WITH_OCULUS_PRIVATE_CODE
+		, bUseFoveatedMaskStencil(false)
+#endif
 		, BasePassDepthStencilAccess(FExclusiveDepthStencil::DepthNop_StencilNop)
 		, MeshPassProcessor(nullptr)
 		, MobileBasePassCSMMeshPassProcessor(nullptr)
@@ -78,6 +81,9 @@ public:
 	bool bDynamicInstancing;
 	bool bReverseCulling;
 	bool bRenderSceneTwoSided;
+#if WITH_OCULUS_PRIVATE_CODE
+	bool bUseFoveatedMaskStencil;
+#endif
 	FExclusiveDepthStencil::Type BasePassDepthStencilAccess;
 	FExclusiveDepthStencil::Type DefaultBasePassDepthStencilAccess;
 

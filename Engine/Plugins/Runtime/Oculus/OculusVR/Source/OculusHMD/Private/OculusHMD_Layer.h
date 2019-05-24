@@ -46,6 +46,7 @@ public:
 	const FTextureSetProxyPtr& GetTextureSetProxy() const { return TextureSetProxy; }
 	const FTextureSetProxyPtr& GetRightTextureSetProxy() const { return RightTextureSetProxy; }
 	const FTextureSetProxyPtr& GetDepthTextureSetProxy() const { return DepthTextureSetProxy; }
+	const FTextureSetProxyPtr& GetFoveationTextureSetProxy() const { return FoveationTextureSetProxy; }
 	void MarkTextureForUpdate() { bUpdateTexture = true; }
 #if PLATFORM_ANDROID
 	bool NeedsPokeAHole() { return (Desc.Flags & IStereoLayers::LAYER_FLAG_SUPPORT_DEPTH) != 0; }
@@ -78,6 +79,7 @@ protected:
 	FOvrpLayerPtr OvrpLayer;
 	FTextureSetProxyPtr TextureSetProxy;
 	FTextureSetProxyPtr DepthTextureSetProxy;
+	FTextureSetProxyPtr FoveationTextureSetProxy;
 	FTextureSetProxyPtr RightTextureSetProxy;
 	FTextureSetProxyPtr RightDepthTextureSetProxy;
 	bool bUpdateTexture;

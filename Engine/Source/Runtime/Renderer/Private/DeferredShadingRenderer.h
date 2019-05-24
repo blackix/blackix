@@ -179,6 +179,13 @@ private:
 	 */
 	bool RenderPrePassHMD(FRHICommandListImmediate& RHICmdList);
 
+#if WITH_OCULUS_PRIVATE_CODE
+	/**
+	* Renders the foveated mask into stencil buffer, if available.
+	*/
+	void RenderFoveatedMaskInStencil(FRHICommandListImmediate& RHICmdList);
+#endif
+
 
 	/** Renders the scene's fogging. */
 	bool RenderFog(FRHICommandListImmediate& RHICmdList, const FLightShaftsOutput& LightShaftsOutput);

@@ -333,7 +333,11 @@ static void UpdateSceneCaptureContentDeferred_RenderThread(
 		TransitionRenderPassTargets(RHICmdList, RPInfo);
 
 		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearSceneCaptureContent"));
+#if WITH_OCULUS_PRIVATE_CODE
+		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, 0xff, Target->GetSizeXY(), View.UnscaledViewRect);
+#else
 		DrawClearQuad(RHICmdList, true, FLinearColor::Black, false, 0, false, 0, Target->GetSizeXY(), View.UnscaledViewRect);
+#endif
 		RHICmdList.EndRenderPass();
 
 		// Render the scene normally

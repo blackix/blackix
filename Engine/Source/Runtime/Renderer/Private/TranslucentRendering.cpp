@@ -897,6 +897,10 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 		CreateTranslucentBasePassUniformBuffer(RHICmdList, View, SceneColorCopy, ESceneTextureSetupMode::All, BasePassUniformBuffer, ViewIndex);
 		FMeshPassProcessorRenderState DrawRenderState(View, BasePassUniformBuffer);
 
+#if WITH_OCULUS_PRIVATE_CODE
+		bool bUseFoveatedMaskStencil = FSceneRenderer::ShouldUseMaskBasedFoveatedRendering(View.GetShaderPlatform()) && View.StereoPass != eSSP_FULL;
+#endif
+
 		// If downsampling we need to render in the separate buffer. Otherwise we also need to render offscreen to apply TPT_TranslucencyAfterDOF
 		if (RenderInSeparateTranslucency(SceneContext, TranslucencyPass, View.TranslucentPrimCount.DisableOffscreenRendering(TranslucencyPass)))
 		{
@@ -932,7 +936,23 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 			SceneContext.BeginRenderingSeparateTranslucency(RHICmdList, View, *this, ViewIndex == 0 || View.Family->bMultiGPUForkAndJoin);
 
 			// Draw only translucent prims that are in the SeparateTranslucency pass
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(
+					TStaticDepthStencilState<
+					false, CF_DepthNearOrEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					0xFF
+					>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+			}
 
 			if (bUseParallel)
 			{
@@ -961,7 +981,24 @@ void FDeferredShadingSceneRenderer::RenderTranslucency(FRHICommandListImmediate&
 		else
 		{
 			SceneContext.BeginRenderingTranslucency(RHICmdList, View, *this, ViewIndex == 0 || View.Family->bMultiGPUForkAndJoin);
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+
+#if WITH_OCULUS_PRIVATE_CODE
+			if (bUseFoveatedMaskStencil)
+			{
+				DrawRenderState.SetDepthStencilState(
+					TStaticDepthStencilState<
+					false, CF_DepthNearOrEqual,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+					STENCIL_FOVEATED_MASK_MASK,
+					0xFF
+					>::GetRHI());
+			}
+			else
+#endif
+			{
+				DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+			}
 
 			if (bUseParallel && !ViewFamily.UseDebugViewPS())
 			{
